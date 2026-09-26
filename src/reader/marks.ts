@@ -31,7 +31,7 @@ import {
  */
 
 /** What the toolbar has selected. */
-export type MarkTool = "none" | "highlight" | "note" | "draw";
+export type MarkTool = "none" | "highlight" | "note" | "draw" | "pin";
 
 /** Colours offered, chosen to stay legible over a mostly white page. */
 export const MARK_COLOURS = [
@@ -58,6 +58,13 @@ export class MarkLayer {
   private drawingPointer: number | null = null;
   /** The note editor, while one is open. */
   private notePopover: HTMLElement | null = null;
+  /**
+   * Called when a pin drag starts, if a pin layer is attached.
+   *
+   * Set by the reader rather than reaching for the layer directly, so the mark
+   * layer does not have to know that pins exist.
+   */
+  onPinSelect: ((e: PointerEvent, page: HTMLElement) => void) | null = null;
 
   constructor(scroller: HTMLElement, patternId: string, doc: MarkTarget) {
     this.scroller = scroller;
@@ -444,7 +451,14 @@ export class MarkLayer {
     // own drag behaviour and a mark under them would be unreachable.
     if ((e.target as HTMLElement).closest(".highlight-line, .highlight-layer")) return;
 
-    if (this.tool === "draw") {
+    if (this.tool === "pin") {
+      // A pin is a crop of the page rather than a mark drawn on it, so the pin
+      // layer owns the drag. It is reached through here so that one tool is
+      // active at a time: a drag that started as a pin must not also leave a
+      // note behind on the way.
+      e.preventDefault();
+      this.onPinSelect?.(e, page);
+    } else if (this.tool === "draw") {
       const point = this.pointFrom(e, page);
       if (!point) return;
       e.preventDefault();

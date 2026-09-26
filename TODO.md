@@ -82,7 +82,7 @@ Notes planned: first two files to write.
 
 Built on `feature/marks`. Done: PDF rects, EPUB quote + occurrence, notes that
 open for editing (emptying one removes it), freehand drawings, Select as the
-default tool, a colour picker, and `H` for highlight.
+default tool, a colour picker, and `H` for highlight. Merged to `main`.
 
 ### 2. Pins
 
@@ -92,6 +92,15 @@ stops at five.
 
 - `src/reader/pins.ts` — drag to select a region, crop to JPEG on a canvas,
   then floating cards that can be dragged, resized, and hidden.
+
+Built on `feature/pins`. Done for PDFs, as chosen: drag a box, crop to JPEG,
+cards that drag, resize, rename, hide and delete, named from the words under the
+crop, cascading so they do not stack, limit of 5 enforced in the backend with the
+button greying out first. EPUB is refused with a reason rather than faked.
+
+Not done, and would need a command: bringing a card to the front. `update_pin`
+only carries a placement, so `z` cannot be changed from the frontend. Cards stack
+in the order they were made.
 
 ### 3. Bookmarks and the index
 

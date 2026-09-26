@@ -253,6 +253,38 @@ function startsAfter(boundary: Range, node: Node, offset: number): boolean {
 }
 
 /**
+ * The text of a page that falls inside a rectangle, in reading order.
+ *
+ * Used to label a pinned crop: the card wants to say what it is a picture of,
+ * and the words under the region are the only thing that can say it. A region
+ * with no text under it — a chart, a photograph — simply comes back empty, and
+ * the caller falls back to a generic name rather than inventing one.
+ *
+ * Measured against the text layer, not the canvas, so it is the words a reader
+ * could actually select, not whatever happens to be painted there.
+ */
+export function textInRect(container: HTMLElement, page: HTMLElement, rect: Rect): string {
+  const box = page.getBoundingClientRect();
+  if (box.width <= 0 || box.height <= 0) return "";
+  const left = box.left + rect.x * box.width;
+  const right = left + rect.w * box.width;
+  const top = box.top + rect.y * box.height;
+  const bottom = top + rect.h * box.height;
+
+  const parts: string[] = [];
+  for (const el of container.querySelectorAll<HTMLElement>("span")) {
+    const r = el.getBoundingClientRect();
+    // A span with no box is a line break or a spacer: it carries no words, and
+    // without this a zero-height span sitting on the edge would count as a hit.
+    if (r.width === 0 && r.height === 0) continue;
+    if (r.right < left || r.left > right || r.bottom < top || r.top > bottom) continue;
+    const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (text) parts.push(text);
+  }
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * The rectangles for a set of ranges that actually fall inside the page.
  *
  * Unlike `rectsForRanges`, a rectangle entirely outside the page is dropped
