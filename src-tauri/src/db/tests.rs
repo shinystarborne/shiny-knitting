@@ -1,0 +1,1261 @@
+//! Tests for the data layer: filtering, row arithmetic, and highlight storage.
+
+use super::*;
+use crate::models::{
+    AnnotationInput, Counter, CounterInput, HighlightSettings, Pattern, PinInput, PinPlacement,
+};
+
+/// A connection against a throwaway in-memory database.
+fn test_db() -> Connection {
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    migrate(&conn).expect("migrate");
+    conn
+}
+
+/// The same helper, for tests in other modules that need a real schema.
+pub fn open_test_db() -> Connection {
+    test_db()
+}
+
+fn sample(conn: &Connection, title: &str, designer: &str, status: &str, tags: &[&str]) -> Pattern {
+    let input = PatternInput {
+        title: title.to_string(),
+        designer: designer.to_string(),
+        file_name: format!("{}.pdf", title),
+        bytes: Some(vec![]),
+        source_path: None,
+        status: status.to_string(),
+        difficulty: "intermediate".to_string(),
+        needle_size: "4mm".to_string(),
+        yarn_weight: String::new(),
+        tags: tags.iter().map(|t| t.to_string()).collect(),
+        notes: String::new(),
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    insert_pattern(conn, &id, &input, &format!("C:/lib/{}.pdf", id), "pdf").expect("insert")
+}
+
+/// A pattern with a stated yarn weight, for the weight filter tests.
+fn with_yarn(conn: &Connection, title: &str, weight: &str) -> Pattern {
+    let mut p = sample(conn, title, "Someone", "want-to-knit", &[]);
+    p.yarn_weight = weight.to_string();
+    update_pattern(conn, &p).expect("update")
+}
+
+/// A filter with only the yarn weights set.
+fn yarn_filter(weights: &[&str]) -> Filter {
+    Filter {
+        yarn_weight: Some(weights.iter().map(|w| w.to_string()).collect()),
+        ..Filter::default()
+    }
+}
+
+/// A counter that counts as soon as rows are counted, the common case.
+fn enabled_counter(conn: &Connection, pattern_id: &str, name: &str, target: i64) -> Counter {
+    add_counter(
+        conn,
+        pattern_id,
+        &CounterInput {
+            name: name.to_string(),
+            target,
+            enabled: true,
+            excluded_from_total: false,
+        },
+    )
+    .expect("add counter")
+}
+
+/// Finds one counter in a result by id, so a test can assert on it without
+/// depending on the order the rows happen to come back in.
+fn counter<'a>(out: &'a CountOutcome, id: &str) -> &'a Counter {
+    out.counters
+        .iter()
+        .find(|c| c.id == id)
+        .unwrap_or_else(|| panic!("no counter {id} in the result"))
+}
+
+#[test]
+fn the_yarn_family_is_derived_when_a_pattern_is_written() {
+    let conn = test_db();
+    let p = with_yarn(&conn, "Aran Cardigan", "aran");
+    assert_eq!(p.yarn_weight, "aran");
+    assert_eq!(p.yarn_weight_family, "aran");
+
+    // The family is derived, never taken on trust: a metre figure is read
+    // into the family it belongs to.
+    let q = with_yarn(&conn, "Sock", "100 m/100g");
+    assert_eq!(q.yarn_weight_family, "dk");
+
+    // Something unrecognisable leaves the family empty rather than guessing.
+    let r = with_yarn(&conn, "Mystery", "hand-dyed local spin");
+    assert_eq!(r.yarn_weight, "hand-dyed local spin");
+    assert_eq!(r.yarn_weight_family, "");
+}
+
+#[test]
+fn correcting_the_weight_corrects_the_family() {
+    // Otherwise a pattern edited from "aran" to "lace" would keep filtering
+    // under the old weight, which is worse than having no filter at all.
+    let conn = test_db();
+    let mut p = with_yarn(&conn, "Cowl", "aran");
+    assert_eq!(p.yarn_weight_family, "aran");
+
+    p.yarn_weight = "lace weight".to_string();
+    let saved = update_pattern(&conn, &p).unwrap();
+    assert_eq!(saved.yarn_weight_family, "lace");
+}
+
+#[test]
+fn patterns_can_be_filtered_by_yarn_weight() {
+    let conn = test_db();
+    with_yarn(&conn, "A", "fingering");
+    with_yarn(&conn, "B", "aran");
+    with_yarn(&conn, "C", "75 m/100g");
+    // No weight at all, which must never be swept into a family's results.
+    sample(&conn, "D", "Someone", "want-to-knit", &[]);
+
+    let titles = |f: Filter| -> Vec<String> {
+        let mut rows = list_patterns(&conn, &f).unwrap();
+        rows.sort_by(|a, b| a.title.cmp(&b.title));
+        rows.into_iter().map(|p| p.title).collect()
+    };
+
+    assert_eq!(titles(yarn_filter(&["aran"])), vec!["B", "C"]);
+    // Several weights are an OR within the group.
+    assert_eq!(
+        titles(yarn_filter(&["aran", "fingering"])),
+        vec!["A", "B", "C"]
+    );
+    // An empty group filters nothing rather than everything.
+    assert_eq!(titles(yarn_filter(&[])).len(), 4);
+}
+
+#[test]
+fn yarn_weight_filters_combine_with_the_others() {
+    let conn = test_db();
+    with_yarn(&conn, "A", "aran");
+    with_yarn(&conn, "B", "dk");
+
+    let both = Filter {
+        status: Some("want-to-knit".to_string()),
+        ..yarn_filter(&["aran"])
+    };
+    assert_eq!(list_patterns(&conn, &both).unwrap().len(), 1);
+
+    // A status that matches nothing empties the result even with a weight set.
+    let none = Filter {
+        status: Some("finished".to_string()),
+        ..yarn_filter(&["aran", "dk"])
+    };
+    assert!(list_patterns(&conn, &none).unwrap().is_empty());
+}
+
+#[test]
+fn the_yarn_facets_list_every_family_with_its_count() {
+    let conn = test_db();
+    with_yarn(&conn, "A", "aran");
+    with_yarn(&conn, "B", "75 m/100g");
+    with_yarn(&conn, "C", "fingering");
+
+    let facets = list_facets(&conn).unwrap();
+    // Every family in the table is present whether or not it is used, so the
+    // sidebar reads the same for everyone.
+    assert_eq!(facets.yarn_weights.len(), crate::yarn::FAMILIES.len());
+    let count = |key: &str| -> i64 {
+        facets
+            .yarn_weights
+            .iter()
+            .find(|f| f.key == key)
+            .unwrap_or_else(|| panic!("no facet for {key}"))
+            .count
+    };
+    assert_eq!(count("aran"), 2, "the named one and the 75 m one");
+    assert_eq!(count("fingering"), 1);
+    assert_eq!(count("jumbo"), 0, "unused but still listed");
+    // Table order, lightest first, so the filter reads as a scale.
+    let keys: Vec<&str> = facets.yarn_weights.iter().map(|f| f.key.as_str()).collect();
+    assert_eq!(keys[0], "lace");
+    assert_eq!(*keys.last().unwrap(), "jumbo");
+}
+
+#[test]
+fn a_library_built_before_yarn_weights_is_migrated() {
+    // The old schema, with a pattern that already states a weight in its notes
+    // and no columns for it.
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    conn.execute_batch(
+        "CREATE TABLE patterns (
+             id TEXT PRIMARY KEY, title TEXT NOT NULL, designer TEXT NOT NULL DEFAULT '',
+             file_path TEXT NOT NULL, file_name TEXT NOT NULL, format TEXT NOT NULL,
+             status TEXT NOT NULL, difficulty TEXT NOT NULL DEFAULT '',
+             needle_size TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+             notes TEXT NOT NULL DEFAULT '', added_at INTEGER NOT NULL,
+             last_opened_at INTEGER, last_page INTEGER NOT NULL DEFAULT 0,
+             last_scroll REAL NOT NULL DEFAULT 0
+         );
+         INSERT INTO patterns (id, title, file_path, file_name, format, status, added_at)
+         VALUES ('a', 'Old', 'C:/x.pdf', 'x.pdf', 'pdf', 'want-to-knit', 1);
+        ",
+    )
+    .expect("seed old schema");
+
+    migrate(&conn).expect("migrate");
+
+    let columns = |c: &str| -> bool { column_exists(&conn, "patterns", c).unwrap() };
+    assert!(columns("yarn_weight"));
+    assert!(columns("yarn_weight_family"));
+    assert!(columns("cover_path"), "the earlier migration still runs");
+}
+
+#[test]
+fn insert_seeds_progress_and_highlight() {
+    let conn = test_db();
+    let p = sample(&conn, "Lace Sock", "Jess", "want-to-knit", &[]);
+
+    let progress = get_progress(&conn, &p.id).unwrap();
+    assert_eq!(progress.total_rows, 0);
+    // A new pattern has no counters; the ones it gets are the user's to add.
+    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+
+    // A pattern gets usable highlight settings without the caller asking.
+    let h = get_highlight(&conn, &p.id).unwrap();
+    assert!(h.enabled);
+    assert_eq!(h.pattern_id, p.id);
+    // 30% rather than the old 90%: the point of the line is to mark a spot,
+    // and at 90% it hid the text it was marking.
+    assert!((h.opacity - 0.3).abs() < f64::EPSILON, "opacity was {}", h.opacity);
+}
+
+#[test]
+fn migration_moves_only_the_old_default_opacity() {
+    // A library from before the default changed: one line left at the old
+    // 0.9, one deliberately dimmed, one deliberately strengthened.
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    conn.execute_batch(
+        "CREATE TABLE highlights (
+             pattern_id TEXT PRIMARY KEY,
+             enabled INTEGER NOT NULL DEFAULT 1,
+             offset_y REAL NOT NULL DEFAULT 0.35,
+             thickness REAL NOT NULL DEFAULT 3,
+             width REAL NOT NULL DEFAULT 0,
+             inset_x REAL NOT NULL DEFAULT 24,
+             color TEXT NOT NULL DEFAULT '#e5484d',
+             opacity REAL NOT NULL DEFAULT 0.9,
+             animate INTEGER NOT NULL DEFAULT 1,
+             animation_ms INTEGER NOT NULL DEFAULT 260
+         );
+         INSERT INTO highlights (pattern_id, opacity) VALUES ('untouched', 0.9);
+         INSERT INTO highlights (pattern_id, opacity) VALUES ('dimmed', 0.15);
+         INSERT INTO highlights (pattern_id, opacity) VALUES ('strong', 1.0);
+        ",
+    )
+    .expect("seed old schema");
+
+    migrate(&conn).expect("migrate");
+
+    let opacity = |id: &str| -> f64 {
+        conn.query_row("SELECT opacity FROM highlights WHERE pattern_id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .expect("row")
+    };
+    assert!((opacity("untouched") - 0.3).abs() < 0.0001, "was {}", opacity("untouched"));
+    // Deliberate choices survive the migration.
+    assert!((opacity("dimmed") - 0.15).abs() < 0.0001);
+    assert!((opacity("strong") - 1.0).abs() < 0.0001);
+}
+
+#[test]
+fn unknown_status_falls_back_to_default() {
+    let conn = test_db();
+    let p = sample(&conn, "Odd", "Nobody", "nonsense-status", &[]);
+    assert_eq!(p.status, "want-to-knit");
+}
+
+#[test]
+fn tags_round_trip_through_json() {
+    let conn = test_db();
+    let p = sample(&conn, "Tagged", "Someone", "in-progress", &["lace", "socks"]);
+    let fetched = get_pattern(&conn, &p.id).unwrap();
+    assert_eq!(fetched.tags, vec!["lace", "socks"]);
+}
+
+#[test]
+fn facets_collect_distinct_values() {
+    let conn = test_db();
+    sample(&conn, "A", "Jess", "want-to-knit", &["lace"]);
+    sample(&conn, "B", "Jess", "in-progress", &["lace", "socks"]);
+    sample(&conn, "C", "Elizabeth", "in-progress", &["colourwork"]);
+
+    let facets = list_facets(&conn).unwrap();
+    assert_eq!(facets.designers, vec!["Elizabeth", "Jess"]);
+    // Both used 4mm, so it appears once.
+    assert_eq!(facets.needle_sizes, vec!["4mm"]);
+    assert_eq!(facets.tags, vec!["colourwork", "lace", "socks"]);
+}
+
+#[test]
+fn search_covers_title_designer_and_notes() {
+    let conn = test_db();
+    sample(&conn, "Featherweight Sock", "Jess Leslie", "want-to-knit", &[]);
+    sample(&conn, "Cable Cardigan", "Elizabeth Zimmermann", "want-to-knit", &[]);
+
+    let f = Filter {
+        search: Some("sock".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(list_patterns(&conn, &f).unwrap().len(), 1);
+
+    let f = Filter {
+        search: Some("zimmermann".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(list_patterns(&conn, &f).unwrap().len(), 1);
+
+    let f = Filter {
+        search: Some("nothing here".to_string()),
+        ..Default::default()
+    };
+    assert!(list_patterns(&conn, &f).unwrap().is_empty());
+}
+
+#[test]
+fn empty_search_matches_everything() {
+    let conn = test_db();
+    sample(&conn, "A", "X", "want-to-knit", &[]);
+    sample(&conn, "B", "Y", "want-to-knit", &[]);
+
+    for term in [None, Some(String::new()), Some("   ".to_string())] {
+        let f = Filter {
+            search: term.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            list_patterns(&conn, &f).unwrap().len(),
+            2,
+            "empty search should match all, got {:?}",
+            term
+        );
+    }
+}
+
+#[test]
+fn tag_filter_matches_whole_tags_only() {
+    let conn = test_db();
+    sample(&conn, "Lace", "A", "want-to-knit", &["lace"]);
+    sample(&conn, "Laceweight", "B", "want-to-knit", &["laceweight"]);
+
+    // "lace" must not match the "laceweight" tag.
+    let f = Filter {
+        tags: Some(vec!["lace".to_string()]),
+        ..Default::default()
+    };
+    let hits = list_patterns(&conn, &f).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Lace");
+}
+
+#[test]
+fn multiple_tags_are_combined_with_and() {
+    let conn = test_db();
+    sample(&conn, "Both", "A", "want-to-knit", &["lace", "socks"]);
+    sample(&conn, "Only socks", "B", "want-to-knit", &["socks"]);
+
+    let f = Filter {
+        tags: Some(vec!["lace".to_string(), "socks".to_string()]),
+        ..Default::default()
+    };
+    let hits = list_patterns(&conn, &f).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Both");
+}
+
+#[test]
+fn status_and_difficulty_filters() {
+    let conn = test_db();
+    sample(&conn, "WIP", "A", "in-progress", &[]);
+    sample(&conn, "Idea", "B", "want-to-knit", &[]);
+
+    let f = Filter {
+        status: Some("in-progress".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(list_patterns(&conn, &f).unwrap().len(), 1);
+
+    let f = Filter {
+        difficulty: Some("intermediate".to_string()),
+        ..Default::default()
+    };
+    // Both samples are intermediate, so difficulty alone does not narrow it.
+    assert_eq!(list_patterns(&conn, &f).unwrap().len(), 2);
+}
+
+#[test]
+fn counting_moves_the_total_and_every_enabled_counter() {
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let front = enabled_counter(&conn, &p.id, "Front", 0);
+    let cuff = enabled_counter(&conn, &p.id, "Cuff", 0);
+
+    // Two sleeves worked in turn: one action moves both, and the total.
+    let out = count_rows(&conn, &p.id, 5).unwrap();
+    assert_eq!(out.total_rows, 5);
+    assert_eq!(counter(&out, &front.id).current, 5);
+    assert_eq!(counter(&out, &cuff.id).current, 5);
+
+    let out = count_rows(&conn, &p.id, -2).unwrap();
+    assert_eq!(out.total_rows, 3);
+    assert_eq!(counter(&out, &front.id).current, 3);
+    assert_eq!(counter(&out, &cuff.id).current, 3);
+}
+
+#[test]
+fn a_disabled_counter_stays_put_while_the_total_moves() {
+    // The point of the enable flag: a counter that is set aside keeps its
+    // place, and the work still counts towards the project.
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let working = enabled_counter(&conn, &p.id, "Working", 0);
+    let set_aside = add_counter(
+        &conn,
+        &p.id,
+        &CounterInput {
+            name: "Set aside".to_string(),
+            target: 0,
+            enabled: false,
+            excluded_from_total: false,
+        },
+    )
+    .unwrap();
+    count_rows(&conn, &p.id, 7).unwrap();
+
+    let out = count_rows(&conn, &p.id, 3).unwrap();
+    assert_eq!(out.total_rows, 10);
+    assert_eq!(counter(&out, &working.id).current, 10);
+    assert_eq!(
+        counter(&out, &set_aside.id).current, 0,
+        "a counter that was never enabled stays at zero"
+    );
+}
+
+#[test]
+fn several_counters_can_be_enabled_at_once() {
+    let conn = test_db();
+    let p = sample(&conn, "Pair", "A", "in-progress", &[]);
+    let a = enabled_counter(&conn, &p.id, "Sleeve 1", 0);
+    let b = enabled_counter(&conn, &p.id, "Sleeve 2", 0);
+    assert_ne!(a.id, b.id, "two distinct counters");
+    count_rows(&conn, &p.id, 4).unwrap();
+    let out = list_counters(&conn, &p.id).unwrap();
+    assert_eq!(out.iter().filter(|c| c.enabled).count(), 2);
+    assert!(out.iter().all(|c| c.current == 4));
+}
+
+#[test]
+fn a_counter_on_its_target_does_not_stop_the_total() {
+    // The total counts work, not targets. A finished part should not silently
+    // stop the project total, or the two numbers quietly disagree.
+    let conn = test_db();
+    let p = sample(&conn, "Cardigan", "A", "in-progress", &[]);
+    let front = enabled_counter(&conn, &p.id, "Front", 10);
+
+    let out = count_rows(&conn, &p.id, 10).unwrap();
+    assert_eq!(counter(&out, &front.id).current, 10, "exactly on target");
+    assert_eq!(out.total_rows, 10);
+
+    let out = count_rows(&conn, &p.id, 5).unwrap();
+    assert_eq!(counter(&out, &front.id).current, 10, "clamped at the target");
+    assert_eq!(out.total_rows, 15, "the total carries on regardless");
+}
+
+#[test]
+fn counter_counting_clamps_to_target_and_floor() {
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Repeat", 4);
+
+    // Overshooting the target stops at the target, and the total only counts
+    // the rows actually applied to the counter.
+    let out = count_rows(&conn, &p.id, 10).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 4);
+    assert_eq!(out.total_rows, 10, "the total is not clamped by a counter target");
+
+    // Going below zero stops at zero rather than going negative.
+    let out = count_rows(&conn, &p.id, -100).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 0);
+    assert_eq!(out.total_rows, 0);
+}
+
+#[test]
+fn an_untargeted_counter_can_count_past_any_limit() {
+    let conn = test_db();
+    let p = sample(&conn, "Freeform", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Notes", 0);
+    let out = count_rows(&conn, &p.id, 250).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 250);
+    assert_eq!(out.total_rows, 250);
+}
+
+#[test]
+fn a_counter_can_be_counted_on_its_own() {
+    // Its own buttons, which is how a counter is nudged without counting a
+    // project row -- checking a count against the pattern, say.
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Cuff", 0);
+    count_rows(&conn, &p.id, 4).unwrap();
+
+    let out = count_one(&conn, &c.id, 2).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 6);
+    assert_eq!(out.total_rows, 6, "a plain counter still moves the total");
+}
+
+#[test]
+fn an_excluded_counter_leaves_the_total_alone() {
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let c = add_counter(
+        &conn,
+        &p.id,
+        &CounterInput {
+            name: "Setup row".to_string(),
+            target: 0,
+            enabled: false,
+            excluded_from_total: true,
+        },
+    )
+    .unwrap();
+
+    let out = count_one(&conn, &c.id, 12).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 12);
+    assert_eq!(out.total_rows, 0, "excluded from the project total");
+}
+
+#[test]
+fn counters_are_independent_of_each_other() {
+    // One counter reaching its target must not affect another, which is the
+    // whole reason they are separate rows rather than one shared number.
+    let conn = test_db();
+    let p = sample(&conn, "Cardigan", "A", "in-progress", &[]);
+    let front = enabled_counter(&conn, &p.id, "Front", 3);
+    let sleeve = enabled_counter(&conn, &p.id, "Sleeve", 0);
+
+    let out = count_rows(&conn, &p.id, 9).unwrap();
+    assert_eq!(counter(&out, &front.id).current, 3);
+    assert_eq!(counter(&out, &sleeve.id).current, 9);
+    assert_eq!(out.total_rows, 9);
+}
+
+#[test]
+fn counters_can_be_renamed_switched_reset_and_deleted() {
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let c = add_counter(
+        &conn,
+        &p.id,
+        &CounterInput {
+            name: "Draft".to_string(),
+            target: 0,
+            enabled: true,
+            excluded_from_total: false,
+        },
+    )
+    .unwrap();
+
+    update_counter(&conn, &c.id, "Final", 20, false).unwrap();
+    let stored = &list_counters(&conn, &p.id).unwrap()[0];
+    assert_eq!(stored.name, "Final");
+    assert_eq!(stored.target, 20);
+
+    set_counter_enabled(&conn, &c.id, false).unwrap();
+    assert!(!list_counters(&conn, &p.id).unwrap()[0].enabled);
+
+    count_rows(&conn, &p.id, 5).unwrap();
+    reset_counter(&conn, &c.id).unwrap();
+    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].current, 0);
+
+    delete_counter(&conn, &c.id).unwrap();
+    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_counter_is_an_error() {
+    // The UI removes the row first, so a silent success would leave a button
+    // wired to something that no longer exists.
+    let conn = test_db();
+    assert!(update_counter(&conn, "gone", "x", 0, false).is_err());
+    assert!(set_counter_enabled(&conn, "gone", true).is_err());
+    assert!(reset_counter(&conn, "gone").is_err());
+    assert!(delete_counter(&conn, "gone").is_err());
+    assert!(count_one(&conn, "gone", 1).is_err());
+}
+
+#[test]
+fn deleting_a_pattern_removes_its_counters() {
+    let conn = test_db();
+    let p = sample(&conn, "Doomed", "A", "in-progress", &[]);
+    enabled_counter(&conn, &p.id, "Front", 0);
+    delete_pattern(&conn, &p.id).unwrap();
+    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+}
+
+#[test]
+fn counters_persist_across_reopening() {
+    // Counts are the one thing that must never be lost by closing the app, so
+    // this reads back through a fresh handle rather than the same connection.
+    let conn = test_db();
+    let p = sample(&conn, "Kept", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Front", 100);
+    count_rows(&conn, &p.id, 42).unwrap();
+    set_total_rows(&conn, &p.id, 42).unwrap();
+
+    let reopened = get_progress(&conn, &p.id).unwrap();
+    assert_eq!(reopened.total_rows, 42);
+    let counters = list_counters(&conn, &p.id).unwrap();
+    assert_eq!(counters[0].id, c.id);
+    assert_eq!(counters[0].current, 42);
+    assert_eq!(counters[0].name, "Front");
+    assert!(counters[0].enabled);
+}
+
+// ---------- migration ----------
+
+/// The old schema, with the tables as they were before counters existed.
+///
+/// Written out in full rather than trimmed, because the point is to prove the
+/// migration reads a database shaped the way a real one would be.
+fn old_schema(conn: &Connection) {
+    conn.execute_batch(
+        "CREATE TABLE patterns (
+             id TEXT PRIMARY KEY, title TEXT NOT NULL, designer TEXT NOT NULL DEFAULT '',
+             file_path TEXT NOT NULL, file_name TEXT NOT NULL, format TEXT NOT NULL,
+             status TEXT NOT NULL, difficulty TEXT NOT NULL DEFAULT '',
+             needle_size TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+             notes TEXT NOT NULL DEFAULT '', added_at INTEGER NOT NULL,
+             last_opened_at INTEGER, last_page INTEGER NOT NULL DEFAULT 0,
+             last_scroll REAL NOT NULL DEFAULT 0
+         );
+         INSERT INTO patterns (id, title, file_path, file_name, format, status, added_at)
+         VALUES ('p1', 'Old Sock', 'C:/x.pdf', 'x.pdf', 'pdf', 'in-progress', 1);
+
+         CREATE TABLE sections (
+             id TEXT PRIMARY KEY,
+             pattern_id TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+             name TEXT NOT NULL,
+             target INTEGER NOT NULL DEFAULT 0,
+             current INTEGER NOT NULL DEFAULT 0,
+             excluded_from_total INTEGER NOT NULL DEFAULT 0,
+             position INTEGER NOT NULL DEFAULT 0
+         );
+         CREATE TABLE progress (
+             pattern_id TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
+             total_rows INTEGER NOT NULL DEFAULT 0,
+             current_section_id TEXT,
+             updated_at INTEGER NOT NULL DEFAULT 0
+         );
+         -- Two sections, one of them the active one, and a total already worked.
+         INSERT INTO progress (pattern_id, total_rows, current_section_id, updated_at)
+         VALUES ('p1', 340, 's2', 1);
+         INSERT INTO sections VALUES ('s1', 'p1', 'Lace repeat', 8, 3, 0, 0);
+         INSERT INTO sections VALUES ('s2', 'p1', 'Front', 340, 340, 1, 1);
+        ",
+    )
+    .expect("seed the old schema");
+}
+
+#[test]
+fn sections_become_counters_without_losing_anything() {
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    old_schema(&conn);
+
+    migrate(&conn).expect("migrate");
+
+    assert!(!table_exists(&conn, "sections").expect("sections"), "the old table is gone");
+    let counters = list_counters(&conn, "p1").expect("counters");
+    assert_eq!(counters.len(), 2, "both sections carried over");
+
+    let lace = counters.iter().find(|c| c.name == "Lace repeat").expect("lace");
+    let front = counters.iter().find(|c| c.name == "Front").expect("front");
+
+    // Counts and targets must survive exactly.
+    assert_eq!(lace.current, 3);
+    assert_eq!(lace.target, 8);
+    assert_eq!(front.current, 340);
+    assert_eq!(front.target, 340);
+    assert!(front.excluded_from_total, "the exclusion flag carries over");
+
+    // The section that was active becomes the one enabled counter, so
+    // reopening a pattern lands where the user left off.
+    assert!(front.enabled, "the previously active section is now enabled");
+    assert!(!lace.enabled, "the others are inert rather than lost");
+
+    // The work already counted is still counted.
+    assert_eq!(get_progress(&conn, "p1").unwrap().total_rows, 340);
+}
+
+#[test]
+fn the_migration_runs_only_once() {
+    // Idempotent, because it runs on every launch. A second pass must not
+    // duplicate the counters or fail on the missing table.
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    old_schema(&conn);
+    migrate(&conn).expect("first");
+    let first = list_counters(&conn, "p1").unwrap().len();
+    migrate(&conn).expect("second");
+    migrate(&conn).expect("third");
+    assert_eq!(list_counters(&conn, "p1").unwrap().len(), first);
+    assert_eq!(first, 2);
+}
+
+#[test]
+fn a_database_with_no_sections_migrates_cleanly() {
+    // The common case for anyone who never used sections: there is no old table
+    // at all, and the migration must be a no-op rather than an error.
+    let conn = test_db();
+    let p = sample(&conn, "Fresh", "A", "want-to-knit", &[]);
+    migrate(&conn).expect("migrate again");
+    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 0);
+}
+
+#[test]
+fn counter_ordering_follows_insertion() {
+    let conn = test_db();
+    let p = sample(&conn, "Ordered", "A", "in-progress", &[]);
+    for name in ["Cuff", "Leg", "Foot"] {
+        add_counter(
+            &conn,
+            &p.id,
+            &CounterInput {
+                name: name.to_string(),
+                target: 0,
+                enabled: false,
+                excluded_from_total: false,
+            },
+        )
+        .unwrap();
+    }
+    let names: Vec<String> = list_counters(&conn, &p.id)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(names, vec!["Cuff", "Leg", "Foot"]);
+}
+
+#[test]
+fn progress_defaults_for_an_unknown_pattern() {
+    let conn = test_db();
+    let p = get_progress(&conn, "not-a-real-id").unwrap();
+    assert_eq!(p.pattern_id, "not-a-real-id");
+    assert_eq!(p.total_rows, 0);
+}
+
+#[test]
+fn highlight_settings_round_trip() {
+    let conn = test_db();
+    let p = sample(&conn, "Chart", "A", "in-progress", &[]);
+
+    let mut h = get_highlight(&conn, &p.id).unwrap();
+    h.thickness = 8.0;
+    h.width = 640.0;
+    h.color = "#00ff88".to_string();
+    h.animate = false;
+    h.offset_y = 0.8;
+    save_highlight(&conn, &h).unwrap();
+
+    let loaded = get_highlight(&conn, &p.id).unwrap();
+    assert_eq!(loaded.thickness, 8.0);
+    assert_eq!(loaded.width, 640.0);
+    assert_eq!(loaded.color, "#00ff88");
+    assert!(!loaded.animate);
+    assert_eq!(loaded.offset_y, 0.8);
+}
+
+#[test]
+fn saving_highlight_twice_updates_rather_than_duplicates() {
+    let conn = test_db();
+    let p = sample(&conn, "Chart", "A", "in-progress", &[]);
+    let mut h = get_highlight(&conn, &p.id).unwrap();
+    for thickness in [2.0, 5.0, 9.0] {
+        h.thickness = thickness;
+        save_highlight(&conn, &h).unwrap();
+    }
+    assert_eq!(get_highlight(&conn, &p.id).unwrap().thickness, 9.0);
+}
+
+#[test]
+fn saved_position_is_remembered() {
+    let conn = test_db();
+    let p = sample(&conn, "Long", "A", "in-progress", &[]);
+    touch_pattern(&conn, &p.id, 7, 1234.5).unwrap();
+    let loaded = get_pattern(&conn, &p.id).unwrap();
+    assert_eq!(loaded.last_page, 7);
+    assert_eq!(loaded.last_scroll, 1234.5);
+    assert!(loaded.last_opened_at.is_some());
+}
+
+// ---------- covers ----------
+
+#[test]
+fn new_patterns_have_no_cover() {
+    let conn = test_db();
+    let p = sample(&conn, "No Cover", "A", "want-to-knit", &[]);
+    assert_eq!(p.cover_path, "");
+    assert_eq!(get_cover(&conn, &p.id).unwrap(), "");
+}
+
+#[test]
+fn cover_path_is_stored_and_cleared() {
+    let conn = test_db();
+    let p = sample(&conn, "Has Cover", "A", "want-to-knit", &[]);
+    set_cover(&conn, &p.id, "abc-123.png").unwrap();
+    assert_eq!(get_cover(&conn, &p.id).unwrap(), "abc-123.png");
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().cover_path, "abc-123.png");
+
+    set_cover(&conn, &p.id, "").unwrap();
+    assert_eq!(get_cover(&conn, &p.id).unwrap(), "");
+}
+
+// ---------- settings ----------
+
+#[test]
+fn settings_round_trip_and_default_when_absent() {
+    let conn = test_db();
+    // Absent gives the default rather than an error.
+    let s: crate::models::AiSettings = get_setting(&conn, "ai").unwrap();
+    assert!(!s.base_url.is_empty());
+    assert!(s.api_key.is_empty());
+
+    let custom = crate::models::AiSettings {
+        base_url: "http://192.168.1.20:1234/v1".to_string(),
+        model: "some-model".to_string(),
+        max_characters: 1234,
+        skip_existing: false,
+        ..Default::default()
+    };
+    set_setting(&conn, "ai", &custom).unwrap();
+
+    let loaded: crate::models::AiSettings = get_setting(&conn, "ai").unwrap();
+    assert_eq!(loaded.base_url, "http://192.168.1.20:1234/v1");
+    assert_eq!(loaded.model, "some-model");
+    assert_eq!(loaded.max_characters, 1234);
+    assert!(!loaded.skip_existing);
+}
+
+#[test]
+fn corrupt_settings_fall_back_to_default() {
+    let conn = test_db();
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES ('ai', 'not json at all')",
+        [],
+    )
+    .unwrap();
+    let s: crate::models::AiSettings = get_setting(&conn, "ai").unwrap();
+    assert!(!s.base_url.is_empty());
+}
+
+// ---------- AI history ----------
+
+#[test]
+fn ai_change_can_be_undone() {
+    let conn = test_db();
+    let mut p = sample(&conn, "AI Target", "Unknown", "want-to-knit", &[]);
+    let before = p.clone();
+
+    p.designer = "Jess Leslie".to_string();
+    p.tags = vec!["lace".to_string()];
+    p.needle_size = "4mm".to_string();
+    update_pattern(&conn, &p).unwrap();
+    record_ai_change(&conn, &p.id, &before, &p).unwrap();
+
+    let (_id, restored) = latest_ai_change(&conn, &p.id).unwrap().expect("a change");
+    assert_eq!(restored.designer, "Unknown");
+    assert!(restored.tags.is_empty());
+
+    // Restoring it puts the row back as it was.
+    update_pattern(&conn, &restored).unwrap();
+    let now = get_pattern(&conn, &p.id).unwrap();
+    assert_eq!(now.designer, "Unknown");
+    assert!(now.tags.is_empty());
+}
+
+#[test]
+fn ai_history_is_empty_without_changes() {
+    let conn = test_db();
+    let p = sample(&conn, "Untouched", "A", "want-to-knit", &[]);
+    assert!(latest_ai_change(&conn, &p.id).unwrap().is_none());
+}
+
+#[test]
+fn latest_ai_change_wins_over_older_ones() {
+    let conn = test_db();
+    let mut p = sample(&conn, "Twice", "First", "want-to-knit", &[]);
+    let original = p.clone();
+
+    p.designer = "Second".to_string();
+    update_pattern(&conn, &p).unwrap();
+    record_ai_change(&conn, &p.id, &original, &p).unwrap();
+    let after_first = p.clone();
+
+    p.designer = "Third".to_string();
+    update_pattern(&conn, &p).unwrap();
+    record_ai_change(&conn, &p.id, &after_first, &p).unwrap();
+
+    // Undo should only step back one change, not to the very beginning.
+    let (_id, restored) = latest_ai_change(&conn, &p.id).unwrap().unwrap();
+    assert_eq!(restored.designer, "Second");
+}
+
+#[test]
+fn deleting_a_pattern_removes_its_ai_history() {
+    let conn = test_db();
+    let mut p = sample(&conn, "Doomed", "A", "want-to-knit", &[]);
+    let before = p.clone();
+    p.designer = "Changed".to_string();
+    update_pattern(&conn, &p).unwrap();
+    record_ai_change(&conn, &p.id, &before, &p).unwrap();
+
+    delete_pattern(&conn, &p.id).unwrap();
+    assert!(latest_ai_change(&conn, &p.id).unwrap().is_none());
+}
+
+// ---------- migration ----------
+
+/// A database created before the cover column existed must be brought forward
+/// without losing the rows already in it.
+#[test]
+fn migration_adds_cover_path_to_an_old_database() {
+    let conn = Connection::open_in_memory().unwrap();
+    // The original schema, as it shipped in 0.1.0.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE patterns (
+            id             TEXT PRIMARY KEY,
+            title          TEXT NOT NULL,
+            designer       TEXT NOT NULL DEFAULT '',
+            file_path      TEXT NOT NULL,
+            file_name      TEXT NOT NULL,
+            format         TEXT NOT NULL,
+            status         TEXT NOT NULL DEFAULT 'want-to-knit',
+            difficulty     TEXT NOT NULL DEFAULT '',
+            needle_size    TEXT NOT NULL DEFAULT '',
+            tags           TEXT NOT NULL DEFAULT '[]',
+            notes          TEXT NOT NULL DEFAULT '',
+            added_at       INTEGER NOT NULL,
+            last_opened_at INTEGER,
+            last_page      INTEGER NOT NULL DEFAULT 0,
+            last_scroll    REAL    NOT NULL DEFAULT 0
+        );
+        INSERT INTO patterns
+          (id,title,file_path,file_name,format,added_at)
+          VALUES ('old1','Vintage Pattern','C:/x.pdf','x.pdf','pdf',1);
+        "#,
+    )
+    .unwrap();
+
+    migrate(&conn).unwrap();
+
+    // The existing row survives and gains an empty cover.
+    let row: Pattern = conn
+        .query_row("SELECT * FROM patterns WHERE id = 'old1'", [], row_to_pattern)
+        .unwrap();
+    assert_eq!(row.title, "Vintage Pattern");
+    assert_eq!(row.cover_path, "");
+
+    // And the migration is safe to run a second time.
+    migrate(&conn).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM patterns", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
+// ---------- annotations ----------
+
+fn annotation_input(kind: &str) -> AnnotationInput {
+    AnnotationInput {
+        kind: kind.to_string(),
+        page: 3,
+        geometry: r#"[{"x":0.1,"y":0.2,"w":0.3,"h":0.04}]"#.to_string(),
+        quote: "k1, yo, k5".to_string(),
+        occurrence: 0,
+        color: "#ffd60a".to_string(),
+        text: String::new(),
+    }
+}
+
+#[test]
+fn annotations_round_trip_for_each_kind() {
+    let conn = test_db();
+    let p = sample(&conn, "Charted", "A", "in-progress", &[]);
+    for kind in ["highlight", "note", "draw"] {
+        let mut input = annotation_input(kind);
+        if kind == "note" {
+            input.text = "decrease here".to_string();
+        }
+        let a = insert_annotation(&conn, &p.id, &input).unwrap();
+        assert_eq!(a.kind, kind);
+        assert_eq!(a.page, 3);
+        assert_eq!(a.quote, "k1, yo, k5");
+        assert_eq!(a.color, "#ffd60a");
+        if kind == "note" {
+            assert_eq!(a.text, "decrease here");
+        }
+    }
+    assert_eq!(list_annotations(&conn, &p.id).unwrap().len(), 3);
+}
+
+#[test]
+fn an_unknown_annotation_kind_falls_back_to_highlight() {
+    let conn = test_db();
+    let p = sample(&conn, "Odd", "A", "in-progress", &[]);
+    let mut input = annotation_input("something-else");
+    input.kind = "something-else".to_string();
+    let a = insert_annotation(&conn, &p.id, &input).unwrap();
+    assert_eq!(a.kind, "highlight");
+}
+
+#[test]
+fn annotations_are_listed_in_page_order() {
+    let conn = test_db();
+    let p = sample(&conn, "Ordered", "A", "in-progress", &[]);
+    for page in [5, 1, 3] {
+        let mut input = annotation_input("highlight");
+        input.page = page;
+        insert_annotation(&conn, &p.id, &input).unwrap();
+    }
+    let pages: Vec<i64> = list_annotations(&conn, &p.id)
+        .unwrap()
+        .into_iter()
+        .map(|a| a.page)
+        .collect();
+    assert_eq!(pages, vec![1, 3, 5]);
+}
+
+#[test]
+fn a_note_can_be_edited() {
+    let conn = test_db();
+    let p = sample(&conn, "Editable", "A", "in-progress", &[]);
+    let a = insert_annotation(&conn, &p.id, &annotation_input("note")).unwrap();
+    update_annotation_text(&conn, &a.id, "new wording", "#00ff00").unwrap();
+    let stored = &list_annotations(&conn, &p.id).unwrap()[0];
+    assert_eq!(stored.text, "new wording");
+    assert_eq!(stored.color, "#00ff00");
+}
+
+#[test]
+fn deleting_a_missing_annotation_is_an_error() {
+    let conn = test_db();
+    // The frontend removes the mark from the page first, so a silent success
+    // would leave it on screen with no way back.
+    assert!(delete_annotation(&conn, "no-such-id").is_err());
+    assert!(update_annotation_text(&conn, "no-such-id", "x", "#fff").is_err());
+}
+
+#[test]
+fn deleting_a_pattern_removes_its_annotations() {
+    let conn = test_db();
+    let p = sample(&conn, "Doomed", "A", "in-progress", &[]);
+    insert_annotation(&conn, &p.id, &annotation_input("highlight")).unwrap();
+    delete_pattern(&conn, &p.id).unwrap();
+    assert!(list_annotations(&conn, &p.id).unwrap().is_empty());
+}
+
+// ---------- bookmarks ----------
+
+#[test]
+fn bookmarks_append_in_order() {
+    let conn = test_db();
+    let p = sample(&conn, "Indexed", "A", "in-progress", &[]);
+    add_bookmark(&conn, &p.id, 4, "Heel turn", None).unwrap();
+    add_bookmark(&conn, &p.id, 9, "Cuff", None).unwrap();
+    let list = list_bookmarks(&conn, &p.id).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[0].title, "Heel turn");
+    assert_eq!(list[0].sort_order, 0);
+    assert_eq!(list[1].title, "Cuff");
+    assert_eq!(list[1].sort_order, 1);
+}
+
+#[test]
+fn a_bookmark_can_be_renamed_and_reordered() {
+    let conn = test_db();
+    let p = sample(&conn, "Indexed", "A", "in-progress", &[]);
+    let first = add_bookmark(&conn, &p.id, 1, "One", None).unwrap();
+    add_bookmark(&conn, &p.id, 2, "Two", None).unwrap();
+
+    rename_bookmark(&conn, &first.id, "Renamed").unwrap();
+    assert_eq!(list_bookmarks(&conn, &p.id).unwrap()[0].title, "Renamed");
+
+    move_bookmark(&conn, &first.id, 5).unwrap();
+    let list = list_bookmarks(&conn, &p.id).unwrap();
+    assert_eq!(list[0].title, "Two", "the moved bookmark goes last");
+    assert_eq!(list[1].title, "Renamed");
+}
+
+#[test]
+fn a_bookmark_can_be_inserted_at_a_position() {
+    let conn = test_db();
+    let p = sample(&conn, "Indexed", "A", "in-progress", &[]);
+    add_bookmark(&conn, &p.id, 1, "First", None).unwrap();
+    add_bookmark(&conn, &p.id, 3, "Third", None).unwrap();
+    let middle = add_bookmark(&conn, &p.id, 2, "Second", Some(1)).unwrap();
+    assert_eq!(middle.sort_order, 1);
+
+    let titles: Vec<String> = list_bookmarks(&conn, &p.id)
+        .unwrap()
+        .into_iter()
+        .map(|b| b.title)
+        .collect();
+    assert_eq!(titles, vec!["First", "Second", "Third"]);
+}
+
+#[test]
+fn bookmarks_can_be_deleted_and_missing_ones_error() {
+    let conn = test_db();
+    let p = sample(&conn, "Indexed", "A", "in-progress", &[]);
+    let b = add_bookmark(&conn, &p.id, 1, "Temp", None).unwrap();
+    delete_bookmark(&conn, &b.id).unwrap();
+    assert!(list_bookmarks(&conn, &p.id).unwrap().is_empty());
+
+    assert!(delete_bookmark(&conn, "gone").is_err());
+    assert!(rename_bookmark(&conn, "gone", "x").is_err());
+    assert!(move_bookmark(&conn, "gone", 0).is_err());
+}
+
+// ---------- pins ----------
+
+fn pin_input() -> PinInput {
+    PinInput {
+        page: 2,
+        geometry: r#"[{"x":0.1,"y":0.5,"w":0.4,"h":0.2}]"#.to_string(),
+        quote: "Stitch key".to_string(),
+        title: "Key".to_string(),
+        image_bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
+        image_mime: "image/jpeg".to_string(),
+    }
+}
+
+#[test]
+fn pins_are_stored_and_listed_newest_on_top() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    let first = insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+    let second = insert_pin(&conn, &p.id, &pin_input(), "b.jpg").unwrap();
+
+    let list = list_pins(&conn, &p.id).unwrap();
+    assert_eq!(list.len(), 2);
+    // Highest z first, so a new pin is never buried.
+    assert_eq!(list[0].id, second.id);
+    assert_eq!(list[1].id, first.id);
+}
+
+#[test]
+fn the_pin_limit_is_counted_not_guessed() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    for i in 0..5 {
+        insert_pin(&conn, &p.id, &pin_input(), &format!("{i}.jpg")).unwrap();
+    }
+    assert_eq!(count_pins(&conn, &p.id).unwrap(), 5);
+    // The command refuses the sixth; this confirms the count it relies on.
+    assert!(count_pins(&conn, &p.id).unwrap() >= crate::models::MAX_PINS);
+}
+
+#[test]
+fn pin_placement_is_remembered() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    let pin = insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+
+    let updated = update_pin_placement(
+        &conn,
+        &pin.id,
+        &PinPlacement {
+            offset_x: 0.1,
+            offset_y: 0.9,
+            width: 0.4,
+            hidden: true,
+        },
+    )
+    .unwrap();
+
+    assert!((updated.offset_x - 0.1).abs() < 1e-9);
+    assert!((updated.offset_y - 0.9).abs() < 1e-9);
+    assert!((updated.width - 0.4).abs() < 1e-9);
+    assert!(updated.hidden);
+}
+
+#[test]
+fn a_hidden_pin_stays_hidden_after_being_moved() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    let pin = insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+    update_pin_placement(
+        &conn,
+        &pin.id,
+        &PinPlacement { offset_x: 0.5, offset_y: 0.5, width: 0.3, hidden: true },
+    )
+    .unwrap();
+    let stored = get_pin(&conn, &pin.id).unwrap();
+    assert!(stored.hidden, "hiding must survive a move");
+}
+
+#[test]
+fn a_pin_can_be_renamed_and_deleted() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    let pin = insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+    rename_pin(&conn, &pin.id, "Abbreviations").unwrap();
+    assert_eq!(get_pin(&conn, &pin.id).unwrap().title, "Abbreviations");
+
+    // Deletion reports the image file so the caller can remove it from disk.
+    let file = delete_pin(&conn, &pin.id).unwrap();
+    assert_eq!(file.as_deref(), Some("a.jpg"));
+    assert!(list_pins(&conn, &p.id).unwrap().is_empty());
+    assert!(delete_pin(&conn, &pin.id).is_err());
+}
+
+#[test]
+fn deleting_a_pattern_removes_its_pins_and_bookmarks() {
+    let conn = test_db();
+    let p = sample(&conn, "Doomed", "A", "in-progress", &[]);
+    insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+    add_bookmark(&conn, &p.id, 1, "Here", None).unwrap();
+
+    delete_pattern(&conn, &p.id).unwrap();
+    assert!(list_pins(&conn, &p.id).unwrap().is_empty());
+    assert!(list_bookmarks(&conn, &p.id).unwrap().is_empty());
+}
+
+/// Every field of the highlight settings must survive a save/load cycle.
+/// This guards the column order in the UPDATE, which is easy to break.
+#[test]
+fn every_highlight_field_persists() {
+    let conn = test_db();
+    let p = sample(&conn, "Chart", "A", "in-progress", &[]);
+    let mut h = HighlightSettings::defaults(&p.id);
+    h.enabled = false;
+    h.offset_y = 0.77;
+    h.thickness = 11.0;
+    h.width = 321.0;
+    h.inset_x = 55.0;
+    h.color = "#123456".to_string();
+    h.opacity = 0.42;
+    h.animate = false;
+    h.animation_ms = 555;
+    save_highlight(&conn, &h).unwrap();
+
+    let got = get_highlight(&conn, &p.id).unwrap();
+    assert!(!got.enabled);
+    assert_eq!(got.offset_y, 0.77);
+    assert_eq!(got.thickness, 11.0);
+    assert_eq!(got.width, 321.0);
+    assert_eq!(got.inset_x, 55.0);
+    assert_eq!(got.color, "#123456");
+    assert_eq!(got.opacity, 0.42);
+    assert!(!got.animate);
+    assert_eq!(got.animation_ms, 555);
+}
+

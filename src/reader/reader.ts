@@ -1,0 +1,713 @@
+import { api, toBytes, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
+import { EpubView } from "./epub";
+import { closestEl } from "../dom";
+import { HighlightLine } from "./highlight";
+import { PdfView, type RenderedDoc } from "./pdf";
+import { RowCounter } from "./counter";
+import { scanOne } from "../ai/scan";
+import { extractFromDocument, forgetCover, prepareChosenImage, saveCover } from "../covers";
+
+export type Layout = "focus" | "split";
+
+/**
+ * The thickest highlight line the settings panel will produce, in px.
+ *
+ * A highlight is often used to mask a block of chart legend or a run of
+ * instructions, not just to draw a hairline under the current row, so the
+ * range has to reach well past a line of text. The number field beside the
+ * slider accepts the same range for an exact value.
+ */
+const HIGHLIGHT_THICKNESS_MAX = 600;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * The reading screen: document on one side, tools on the other, with a layout
+ * toggle because a chart wants more document width and a text page benefits
+ * from the notes being visible at the same time.
+ */
+export class ReaderView {
+  /**
+   * The shared screen the reader is mounted into.
+   *
+   * The reader builds its own element inside it rather than writing straight
+   * into the screen. That matters: every listener this view adds is attached
+   * to its own element, so mounting a second reader cannot leave a stale
+   * listener behind to act on the new one's clicks.
+   */
+  private screen: HTMLElement;
+  private root!: HTMLElement;
+  private pattern: Pattern;
+  private layout: Layout;
+
+  private scroller!: HTMLElement;
+  private doc: RenderedDoc | null = null;
+  private highlight: HighlightLine | null = null;
+  private counter: RowCounter | null = null;
+  private settings: HighlightSettings | null = null;
+
+  /** Guards against writing a stale scroll position after the user navigates. */
+  private saveTimer: number | null = null;
+
+  /**
+   * Set once the view is torn down. `mount` does real async work (reading a
+   * file, rendering pages), so it can still be mid-flight when the user opens
+   * another pattern. Every await after the first is a chance to notice that
+   * this view is no longer on screen and stop touching detached DOM.
+   */
+  private destroyed = false;
+
+  /** The pattern being read, so the app can re-render this view in a new layout. */
+  get patternId(): string {
+    return this.pattern.id;
+  }
+
+  constructor(screen: HTMLElement, pattern: Pattern, layout: Layout) {
+    this.screen = screen;
+    this.pattern = pattern;
+    this.layout = layout;
+  }
+
+  async mount(): Promise<void> {
+    this.renderChrome();
+
+    const bytes = await api.readFile(this.pattern.id);
+    if (this.destroyed) return;
+    const data = toBytes(bytes);
+
+    this.doc = this.pattern.format === "epub" ? new EpubView(this.scroller) : new PdfView(this.scroller);
+    try {
+      await this.doc.load(data);
+    } catch (e) {
+      if (!this.destroyed) this.showError(e);
+      return;
+    }
+    if (this.destroyed) return;
+
+    this.settings = await api.getHighlight(this.pattern.id);
+    if (this.destroyed) return;
+    this.highlight = new HighlightLine(this.settings);
+    this.highlight.attach(this.scroller);
+    this.highlight.onChange = (s) => {
+      void api.saveHighlight(s);
+      // A drag ends here, so this is where the row readout catches up.
+      this.refreshRowReadout();
+    };
+    this.highlight.onConfigureRequest = () => this.openHighlightPanel();
+
+    const slot = this.root.querySelector<HTMLElement>(".counter-slot");
+    if (!slot) return;
+    this.counter = new RowCounter(slot, this.pattern.id);
+    await this.counter.refresh();
+    if (this.destroyed) return;
+
+    this.bindKeys();
+    this.bindPositionSaving();
+    this.restorePosition();
+  }
+
+  private renderChrome(): void {
+    const sidebar = this.layout === "split";
+    this.root = document.createElement("div");
+    this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}`;
+    this.root.innerHTML = `
+      <header class="reader-bar">
+        <button class="ghost back" data-act="back">â† Library</button>
+        <div class="reader-title">
+          <h2>${escapeHtml(this.pattern.title)}</h2>
+          <p>
+            ${this.pattern.designer ? escapeHtml(this.pattern.designer) + " Â· " : ""}
+            <span class="pill">${this.pattern.status.replace(/-/g, " ")}</span>
+            ${this.pattern.needleSize ? `<span class="pill">${escapeHtml(this.pattern.needleSize)}</span>` : ""}
+            ${this.pattern.difficulty ? `<span class="pill">${escapeHtml(this.pattern.difficulty)}</span>` : ""}
+          </p>
+        </div>
+        <div class="reader-tools">
+          <span class="row-readout" data-row-readout
+            title="Which row the highlight line is on. Press J or K to step a row and count it."
+            >${this.rowLabel}</span
+          >
+          <button data-act="describe" class="ghost" title="Read this pattern's details with your model">Describe</button>
+          <button data-act="layout" class="ghost" title="Switch layout">
+            ${sidebar ? "Focus view" : "Split view"}
+          </button>
+          <button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>
+          <button data-act="edit" class="ghost" title="Edit details">Details</button>
+        </div>
+      </header>
+      <div class="reader-body">
+        <div class="doc-pane">
+          <div class="doc-scroller" tabindex="0"></div>
+        </div>
+        <aside class="side-pane" ${sidebar ? "" : "hidden"}>
+          <div class="counter-slot"></div>
+          <div class="side-section">
+            <h3>Notes</h3>
+            <textarea class="notes-area" placeholder="Notes about this pattern...">${escapeHtml(
+              this.pattern.notes,
+            )}</textarea>
+            <p class="hint">Saved automatically.</p>
+          </div>
+          <div class="side-section">
+            <h3>Tags</h3>
+            <div class="tag-row">${this.pattern.tags
+              .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+              .join("")}</div>
+          </div>
+        </aside>
+      </div>
+      <div class="highlight-panel" hidden></div>
+    `;
+
+    this.scroller = this.root.querySelector(".doc-scroller")!;
+
+    this.root.addEventListener("click", (e) => {
+      const btn = closestEl(e.target, "button[data-act]");
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === "back") this.root.dispatchEvent(new CustomEvent("navigate-back", { bubbles: true }));
+      if (act === "layout") {
+        this.root.dispatchEvent(
+          new CustomEvent("change-layout", { bubbles: true, detail: sidebar ? "focus" : "split" }),
+        );
+      }
+      if (act === "highlight-cfg") this.openHighlightPanel();
+      if (act === "edit") {
+        this.root.dispatchEvent(
+          new CustomEvent("edit-pattern", { bubbles: true, detail: this.pattern }),
+        );
+      }
+      if (act === "describe") void this.describeWithModel(btn as HTMLButtonElement);
+      if (act === "cover-file") void this.chooseCover();
+      if (act === "cover-reset") void this.resetCover();
+    });
+
+    // The side pane is always in the DOM, so the counter keeps its state; the
+    // focus layout just hides it. Show it on demand via the counter button.
+    const sidePane = this.root.querySelector(".side-pane") as HTMLElement;
+    if (!sidebar) {
+      const fab = document.createElement("button");
+      fab.className = "counter-fab";
+      fab.textContent = "Counter";
+      fab.title = "Show the row counter";
+      fab.addEventListener("click", () => {
+        sidePane.hidden = false;
+        sidePane.classList.add("peek");
+        fab.remove();
+        // Click outside the floating panel to put it away again. Registered
+        // on the next tick so the click that opened the panel does not
+        // immediately close it.
+        const dismiss = (e: MouseEvent) => {
+          if (sidePane.contains(e.target as Node)) return;
+          sidePane.hidden = true;
+          sidePane.classList.remove("peek");
+          document.removeEventListener("click", dismiss);
+        };
+        setTimeout(() => document.addEventListener("click", dismiss), 0);
+      });
+      this.root.querySelector(".reader-body")?.appendChild(fab);
+    }
+
+    const notes = this.root.querySelector(".notes-area") as HTMLTextAreaElement;
+    notes.addEventListener("input", () => {
+      this.pattern.notes = notes.value;
+      clearTimeout(this.saveTimer ?? undefined);
+      this.saveTimer = window.setTimeout(() => {
+        void api.updatePattern(this.pattern);
+      }, 600);
+    });
+
+    // Attached last, so everything above is in place before the element goes
+    // on screen and can receive a click.
+    this.screen.appendChild(this.root);
+  }
+
+  /**
+   * Asks the configured model to describe this one pattern, and shows what it
+   * found before anything is written.
+   *
+   * Unlike a library-wide scan, a single pattern is always shown first: the
+   * user is looking at the pattern, so they can judge a needle size or a tag
+   * immediately and correct it there and then.
+   */
+  private async describeWithModel(button: HTMLButtonElement): Promise<void> {
+    const settings: AiSettingsView = await api.getAiSettings();
+    if (!settings.baseUrl.trim()) {
+      this.root.dispatchEvent(
+        new CustomEvent("open-ai-settings", { bubbles: true, detail: settings }),
+      );
+      return;
+    }
+
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Reading...";
+    try {
+      const result: SuggestionResult = await scanOne(this.pattern, settings);
+      if (result.failed) {
+        window.alert(`The model could not read this pattern.\n\n${result.error}`);
+        return;
+      }
+      if (!result.changedFields.length) {
+        window.alert("Everything the model could fill in is already filled in.");
+        return;
+      }
+      this.showSuggestion(result);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
+  /** A small panel showing the model's proposal, with the choice to keep it. */
+  private showSuggestion(result: SuggestionResult): void {
+    this.root.querySelector(".suggest-panel")?.remove();
+    const rows = result.changedFields
+      .map((field) => {
+        const before = fieldValue(result.before, field);
+        const after = fieldValue(result.after, field);
+        return `
+          <tr>
+            <th>${escapeHtml(field)}</th>
+            <td class="was">${escapeHtml(before) || "<em>empty</em>"}</td>
+            <td class="now">${escapeHtml(after) || "<em>empty</em>"}</td>
+          </tr>`;
+      })
+      .join("");
+
+    const panel = document.createElement("div");
+    panel.className = "suggest-panel";
+    panel.innerHTML = `
+      <div class="panel-head">
+        <h3>What the model found</h3>
+        <button class="ghost" data-act="suggest-close">Ã—</button>
+      </div>
+      <table class="suggest-table">
+        <thead><tr><th>Field</th><th>Now</th><th>Proposed</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${
+        result.applied
+          ? `<p class="hint">Already saved. You can undo it from the library card.</p>`
+          : ""
+      }
+      <div class="modal-actions">
+        <button class="ghost" data-act="suggest-close">Close</button>
+        ${
+          result.applied
+            ? ""
+            : `<button class="primary" data-act="suggest-apply">Use these</button>`
+        }
+      </div>
+    `;
+    this.root.appendChild(panel);
+
+    panel.addEventListener("click", async (e) => {
+      const btn = closestEl(e.target, "button[data-act]");
+      if (!btn) return;
+      if (btn.dataset.act === "suggest-close") {
+        panel.remove();
+      }
+      if (btn.dataset.act === "suggest-apply") {
+        const updated = await api.applySuggestion(result.patternId, result.after);
+        this.pattern = updated;
+        // Repaint the header so the new details show at once.
+        const title = this.root.querySelector(".reader-title h2");
+        if (title) title.textContent = updated.title;
+        const sub = this.root.querySelector(".reader-title p");
+        if (sub) sub.innerHTML = this.subtitleHtml(updated);
+        panel.remove();
+        this.root.dispatchEvent(
+          new CustomEvent("pattern-updated", { bubbles: true, detail: updated }),
+        );
+      }
+    });
+  }
+
+  private subtitleHtml(pattern: Pattern): string {
+    const parts: string[] = [];
+    if (pattern.designer) parts.push(escapeHtml(pattern.designer));
+    parts.push(`<span class="pill">${pattern.status.replace(/-/g, " ")}</span>`);
+    if (pattern.needleSize) parts.push(`<span class="pill">${escapeHtml(pattern.needleSize)}</span>`);
+    if (pattern.difficulty) parts.push(`<span class="pill">${escapeHtml(pattern.difficulty)}</span>`);
+    return parts.join(" Â· ");
+  }
+
+  // ---------- covers ----------
+
+  private async chooseCover(): Promise<void> {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const blob = await prepareChosenImage(file);
+      if (!blob) {
+        window.alert("That file could not be read as an image.");
+        return;
+      }
+      await saveCover(this.pattern.id, blob);
+      forgetCover(this.pattern.id);
+      this.root.dispatchEvent(
+        new CustomEvent("pattern-updated", { bubbles: true, detail: this.pattern }),
+      );
+    });
+    input.click();
+  }
+
+  private async resetCover(): Promise<void> {
+    try {
+      const bytes = await api.readFile(this.pattern.id);
+      const found = await extractFromDocument(this.pattern, toBytes(bytes));
+      if (!found) {
+        window.alert("No cover image was found in that file.");
+        return;
+      }
+      await saveCover(this.pattern.id, found.blob);
+      forgetCover(this.pattern.id);
+      this.root.dispatchEvent(
+        new CustomEvent("pattern-updated", { bubbles: true, detail: this.pattern }),
+      );
+    } catch {
+      window.alert("Could not read that file.");
+    }
+  }
+
+  /**
+   * The highlight settings panel. Every control writes straight through to
+   * the database, so the configuration is remembered per pattern.
+   */
+  private openHighlightPanel(): void {
+    const panel = this.root.querySelector(".highlight-panel") as HTMLElement;
+    const s = this.highlight?.current;
+    if (!s) return;
+
+    const wasHidden = panel.hasAttribute("hidden");
+    panel.innerHTML = `
+      <div class="panel-head">
+        <h3>Highlight line</h3>
+        <button class="ghost" data-act="close-panel">Ã—</button>
+      </div>
+      <label class="row">
+        <span>Show line</span>
+        <input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} />
+      </label>
+      <label class="row">
+        <span>Height on screen <em data-row-readout>${this.rowLabel}</em></span>
+        <input type="range" data-f="offsetY" min="0" max="1" step="0.001" value="${s.offsetY}" />
+      </label>
+      <label class="row">
+        <span>Thickness <em data-out="thickness">${s.thickness}px</em></span>
+        <span class="thickness-controls">
+          <input
+            type="range"
+            data-f="thickness"
+            min="1"
+            max="${HIGHLIGHT_THICKNESS_MAX}"
+            step="1"
+            value="${Math.min(s.thickness, HIGHLIGHT_THICKNESS_MAX)}"
+          />
+          <input
+            class="px-field"
+            type="number"
+            data-f="thickness-number"
+            min="1"
+            max="${HIGHLIGHT_THICKNESS_MAX}"
+            step="1"
+            value="${s.thickness}"
+            aria-label="Highlight line thickness in pixels"
+          />
+        </span>
+      </label>
+      <label class="row">
+        <span>Width <em>${s.width > 0 ? s.width + "px" : "full width"}</em></span>
+        <input type="range" data-f="width" min="0" max="1600" step="10" value="${s.width}" />
+      </label>
+      <label class="row">
+        <span>Side margin <em>${s.insetX}px</em></span>
+        <input type="range" data-f="insetX" min="0" max="200" step="2" value="${s.insetX}" />
+      </label>
+      <label class="row">
+        <span>Colour</span>
+        <input type="color" data-f="color" value="${s.color}" />
+      </label>
+      <label class="row">
+        <span>Opacity <em>${Math.round(s.opacity * 100)}%</em></span>
+        <input type="range" data-f="opacity" min="0.1" max="1" step="0.05" value="${s.opacity}" />
+      </label>
+      <label class="row">
+        <span>Smooth movement</span>
+        <input type="checkbox" data-f="animate" ${s.animate ? "checked" : ""} />
+      </label>
+      <label class="row">
+        <span>Animation speed <em>${s.animationMs}ms</em></span>
+        <input type="range" data-f="animationMs" min="80" max="800" step="20" value="${s.animationMs}" />
+      </label>
+      <p class="hint">
+        Set the thickness to the on-screen height of one chart row and
+        <kbd>J</kbd>/<kbd>K</kbd> steps the line a whole row and counts it.
+        <kbd>Shift</kbd> to count without moving, <kbd>Alt</kbd> to move
+        without counting. Drag the line to place it freely,
+        double-click it to reopen this panel.
+      </p>
+    `;
+
+    if (wasHidden) panel.removeAttribute("hidden");
+
+    panel.querySelector('[data-act="close-panel"]')?.addEventListener("click", () => {
+      panel.setAttribute("hidden", "");
+    });
+
+    // The number field next to the thickness slider is a second control for
+    // the same setting, not a setting of its own, so it is wired separately
+    // and kept in step with the slider.
+    const thicknessNumber = panel.querySelector<HTMLInputElement>('[data-f="thickness-number"]');
+    const thicknessRange = panel.querySelector<HTMLInputElement>('[data-f="thickness"]');
+    const setThickness = (raw: string) => {
+      const parsed = Math.round(parseFloat(raw));
+      if (!Number.isFinite(parsed)) return;
+      const value = clamp(parsed, 1, HIGHLIGHT_THICKNESS_MAX);
+      const current = this.highlight!.current;
+      current.thickness = value;
+      // Both boxes are written back, including the one being typed into: a
+      // value outside the range is clamped, and the field has to show what was
+      // actually stored rather than what was typed.
+      if (thicknessRange) thicknessRange.value = String(value);
+      if (thicknessNumber) thicknessNumber.value = String(value);
+      this.highlight!.update(current);
+      void api.saveHighlight(current);
+      this.updatePanelReadout(panel, current);
+      // The band grid is the thickness, so changing it changes which row the
+      // line is on even though the line itself has not moved.
+      this.refreshRowReadout();
+    };
+    thicknessNumber?.addEventListener("input", () => setThickness(thicknessNumber.value));
+    thicknessNumber?.addEventListener("change", () => setThickness(thicknessNumber.value));
+
+    panel.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
+      const name = input.dataset.f ?? "";
+      if (name === "thickness-number") return; // handled above
+      const field = name as keyof HighlightSettings;
+      const handler = () => {
+        const current = this.highlight!.current;
+        let value: unknown;
+        if (input.type === "checkbox") value = input.checked;
+        else if (input.type === "range") value = parseFloat(input.value);
+        else value = input.value;
+        // The field comes from a fixed list of input data-f attributes.
+        (current as unknown as Record<string, unknown>)[field] = value;
+        this.highlight!.update(current);
+        void api.saveHighlight(current);
+        this.updatePanelReadout(panel, current);
+        if (field === "thickness" && thicknessNumber) {
+          thicknessNumber.value = String(current.thickness);
+        }
+      };
+      input.addEventListener("input", handler);
+      input.addEventListener("change", handler);
+    });
+  }
+
+  private updatePanelReadout(panel: HTMLElement, s: HighlightSettings): void {
+    const set = (label: string, text: string) => {
+      const row = [...panel.querySelectorAll(".row")].find((r) =>
+        r.querySelector("span")?.textContent?.startsWith(label),
+      );
+      const em = row?.querySelector("em");
+      if (em) em.textContent = text;
+    };
+    // Computed live rather than read from the cached label, so dragging the
+    // height slider reports the row it actually landed on.
+    set("Height on screen", this.highlight ? `row ${this.highlight.row}` : this.rowLabel);
+    set("Thickness", `${s.thickness}px`);
+    set("Width", s.width > 0 ? `${s.width}px` : "full width");
+    set("Side margin", `${s.insetX}px`);
+    set("Opacity", `${Math.round(s.opacity * 100)}%`);
+    set("Animation speed", `${s.animationMs}ms`);
+  }
+
+  /**
+   * The synchronised row keys.
+   *
+   * `J` and `K` step the highlight line down or up by exactly one band and
+   * count the row at the same time, which is the whole point: with the line's
+   * thickness set to the on-screen height of one schematic row, each press
+   * lands on the next chart row and the counter follows without a second key.
+   *
+   * The two modifiers separate the halves for the cases where only one should
+   * move. `Shift` counts without moving, for correcting a miscount when the
+   * line is already where it should be; `Alt` moves without counting, for
+   * re-aligning the line after dragging it somewhere free.
+   *
+   * Moving down counts up: the line tracks progress through the document, and
+   * the project total counts rows worked, so the two run in the same direction.
+   * Every counter that is switched on moves with it; the counter's own buttons
+   * are for nudging one without counting a project row.
+   *
+   * Returns true when the key was handled.
+   */
+  private handleRowKey(e: KeyboardEvent): boolean {
+    const key = e.key.toLowerCase();
+    if (key !== "j" && key !== "k") return false;
+    if (e.ctrlKey || e.metaKey) return false;
+    // Typing in the counter's own inputs must not be intercepted.
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return false;
+    }
+    const line = this.highlight;
+    if (!line) return false;
+
+    e.preventDefault();
+    const direction: 1 | -1 = key === "j" ? 1 : -1;
+
+    if (!e.altKey) {
+      // The counter owns the arithmetic: one action moves the project total
+      // and every enabled counter, so the numbers cannot drift apart.
+      void this.counter?.countRows(direction);
+    }
+    if (!e.shiftKey) {
+      line.stepRow(direction, true);
+      line.flush();
+    }
+    this.refreshRowReadout();
+    return true;
+  }
+
+  /**
+   * Updates the "row N" readout wherever it appears.
+   *
+   * There are two: a badge in the reader bar and the panel's own row, and both
+   * have to move together or the number lies about where the line is.
+   */
+  private refreshRowReadout(): void {
+    const line = this.highlight;
+    if (!line) return;
+    this.rowLabel = `row ${line.row}`;
+    this.root
+      .querySelectorAll("[data-row-readout]")
+      .forEach((el) => (el.textContent = this.rowLabel));
+  }
+
+  /** The row the line is on, shown in the reader bar and the settings panel. */
+  private rowLabel = "row 1";
+
+  private bindKeys(): void {
+    this.scroller.addEventListener("keydown", async (e) => {
+      // Row keys first: they are the synchronised action, and the counter
+      // below must not swallow them.
+      if (this.handleRowKey(e)) return;
+
+      // Counter keys win when the counter is present, except for scrolling
+      // keys with Shift, which move the highlight line.
+      if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        this.highlight?.moveLineBy(e.key === "ArrowDown" ? 40 : -40, true);
+        this.highlight?.flush();
+        this.refreshRowReadout();
+        return;
+      }
+      if (e.key === "PageDown" || e.key === "PageUp") {
+        e.preventDefault();
+        this.highlight?.nudge(e.key === "PageDown" ? 600 : -600, true);
+        return;
+      }
+      if (this.counter && (await this.counter.handleKey(e))) {
+        e.preventDefault();
+      }
+    });
+
+    // Clicking the document parks the line at that spot, which is handy when
+    // you are counting down a specific chart row.
+    this.scroller.addEventListener("click", (e) => {
+      const line = this.highlight;
+      if (!line || e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      if (target.closest(".highlight-line")) return;
+      const rect = this.scroller.getBoundingClientRect();
+      line.commitTop(e.clientY - rect.top);
+      line.flush();
+      this.refreshRowReadout();
+    });
+  }
+
+  private bindPositionSaving(): void {
+    this.scroller.addEventListener("scroll", () => {
+      clearTimeout(this.saveTimer ?? undefined);
+      this.saveTimer = window.setTimeout(this.savePosition, 400);
+    });
+    window.addEventListener("beforeunload", this.savePosition);
+  }
+
+  /** Writes the reading position back to the database. */
+  private savePosition = (): void => {
+    if (!this.doc || this.destroyed) return;
+    void api.savePosition(this.pattern.id, this.doc.currentPage(), this.doc.scrollTop);
+  };
+
+  private restorePosition(): void {
+    if (!this.doc) return;
+    const { lastPage, lastScroll } = this.pattern;
+    if (lastPage > 1) {
+      this.doc.goToPage(lastPage, lastScroll);
+    } else if (lastScroll > 0) {
+      this.doc.scrollTop = lastScroll;
+    }
+  }
+
+  private showError(e: unknown): void {
+    const message = e instanceof Error ? e.message : String(e);
+    this.scroller.innerHTML = `
+      <div class="reader-error">
+        <h3>Could not open this pattern</h3>
+        <p>${escapeHtml(message)}</p>
+        <p class="hint">The file is in your library folder. Re-adding it may help.</p>
+      </div>`;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    clearTimeout(this.saveTimer ?? undefined);
+    // A window listener outlives the element unless removed, so drop it here.
+    window.removeEventListener("beforeunload", this.savePosition);
+    this.highlight?.detach();
+    this.doc?.destroy();
+    // Takes this view's listeners with it, so a later reader cannot be acted
+    // on by them.
+    this.root?.remove();
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Reads one displayable value out of a pattern, by field name. */
+function fieldValue(pattern: Pattern, field: string): string {
+  switch (field) {
+    case "Designer":
+      return pattern.designer;
+    case "Difficulty":
+      return pattern.difficulty;
+    case "Needle size":
+      return pattern.needleSize;
+    case "Yarn weight":
+      return pattern.yarnWeight;
+    case "Tags":
+      return pattern.tags.join(", ");
+    case "Yarn":
+      return pattern.notes.includes("Yarn:") ? pattern.notes : "";
+    case "Summary":
+      return pattern.notes.includes("Yarn:") ? "" : pattern.notes;
+    default:
+      return "";
+  }
+}

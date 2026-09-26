@@ -1,0 +1,1453 @@
+use std::path::Path;
+
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::models::{
+    Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
+    CounterInput, HighlightSettings, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
+    DIFFICULTIES, STATUSES,
+};
+
+#[cfg(test)]
+pub mod tests;
+
+/// Exposed for tests in other modules that need a migrated database.
+#[cfg(test)]
+pub(crate) use tests::open_test_db;
+
+/// Opens the library database and brings the schema up to date.
+pub fn open(path: &Path) -> AppResult<Connection> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let conn = Connection::open(path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    migrate(&conn)?;
+    Ok(conn)
+}
+
+fn migrate(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS patterns (
+            id             TEXT PRIMARY KEY,
+            title          TEXT NOT NULL,
+            designer       TEXT NOT NULL DEFAULT '',
+            file_path      TEXT NOT NULL,
+            file_name      TEXT NOT NULL,
+            format         TEXT NOT NULL,
+            status         TEXT NOT NULL DEFAULT 'want-to-knit',
+            difficulty     TEXT NOT NULL DEFAULT '',
+            needle_size    TEXT NOT NULL DEFAULT '',
+            yarn_weight     TEXT NOT NULL DEFAULT '',
+            yarn_weight_family TEXT NOT NULL DEFAULT '',
+            tags           TEXT NOT NULL DEFAULT '[]',
+            notes          TEXT NOT NULL DEFAULT '',
+            added_at       INTEGER NOT NULL,
+            last_opened_at INTEGER,
+            last_page      INTEGER NOT NULL DEFAULT 0,
+            last_scroll    REAL    NOT NULL DEFAULT 0,
+            cover_path     TEXT    NOT NULL DEFAULT ''
+        );
+
+        -- Named counters: the places in a pattern that get counted separately,
+        -- such as a front, two sleeves worked in turn, or a collar. Each keeps
+        -- its own count and target and is independent of the others.
+        --
+        -- `enabled` is what makes a counter count: a counting action moves the
+        -- project total always, and every enabled counter besides. Several can
+        -- be on at once, which is the point -- working two sleeves alternately
+        -- means both need to advance from the same rows.
+        CREATE TABLE IF NOT EXISTS counters (
+            id                   TEXT PRIMARY KEY,
+            pattern_id           TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            name                 TEXT NOT NULL,
+            target               INTEGER NOT NULL DEFAULT 0,
+            current              INTEGER NOT NULL DEFAULT 0,
+            enabled              INTEGER NOT NULL DEFAULT 0,
+            excluded_from_total  INTEGER NOT NULL DEFAULT 0,
+            position             INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_counters_pattern ON counters(pattern_id);
+
+        CREATE TABLE IF NOT EXISTS progress (
+            pattern_id        TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
+            total_rows        INTEGER NOT NULL DEFAULT 0,
+            current_section_id TEXT,
+            updated_at        INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS highlights (
+            pattern_id    TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
+            enabled       INTEGER NOT NULL DEFAULT 1,
+            offset_y      REAL    NOT NULL DEFAULT 0.35,
+            thickness     REAL    NOT NULL DEFAULT 3,
+            width         REAL    NOT NULL DEFAULT 0,
+            inset_x       REAL    NOT NULL DEFAULT 24,
+            color         TEXT    NOT NULL DEFAULT '#e5484d',
+            opacity       REAL    NOT NULL DEFAULT 0.3,
+            animate       INTEGER NOT NULL DEFAULT 1,
+            animation_ms  INTEGER NOT NULL DEFAULT 260
+        );
+
+        -- A previous snapshot of a pattern's metadata, written before the AI
+        -- changed it, so the change can be undone.
+        CREATE TABLE IF NOT EXISTS ai_history (
+            id           TEXT PRIMARY KEY,
+            pattern_id   TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            before_json  TEXT NOT NULL,
+            after_json   TEXT NOT NULL,
+            created_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_history_pattern ON ai_history(pattern_id, created_at DESC);
+
+        -- Key/value store for app settings that are not per-pattern.
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        -- Mark a user made on a pattern: a coloured highlight, a written note,
+        -- or a freehand drawing. `geometry` holds the shape; how to read it
+        -- depends on `kind`.
+        CREATE TABLE IF NOT EXISTS annotations (
+            id          TEXT PRIMARY KEY,
+            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL,
+            -- 1-based page for a PDF, chapter index for an EPUB.
+            page        INTEGER NOT NULL DEFAULT 1,
+            geometry    TEXT NOT NULL DEFAULT '[]',
+            -- For EPUB anchoring, and as a readable label everywhere: the text
+            -- this was made from. Also what gets re-found after a reflow.
+            quote       TEXT NOT NULL DEFAULT '',
+            occurrence  INTEGER NOT NULL DEFAULT 0,
+            color       TEXT NOT NULL DEFAULT '#e5484d',
+            text        TEXT NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_annotations_pattern ON annotations(pattern_id, page);
+
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            id          TEXT PRIMARY KEY,
+            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            page        INTEGER NOT NULL,
+            title       TEXT NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_bookmarks_pattern ON bookmarks(pattern_id, sort_order);
+
+        -- A floating copy of a piece of the pattern, kept beside it. At most
+        -- five per pattern, which is enforced in the command rather than the
+        -- schema so the limit can be explained in an error message.
+        CREATE TABLE IF NOT EXISTS pins (
+            id          TEXT PRIMARY KEY,
+            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            page        INTEGER NOT NULL DEFAULT 1,
+            -- What was pinned, in normalised 0..1 page coordinates.
+            geometry    TEXT NOT NULL DEFAULT '[]',
+            quote       TEXT NOT NULL DEFAULT '',
+            title       TEXT NOT NULL DEFAULT '',
+            -- Where the floating card sits, as a fraction of the reading pane.
+            offset_x    REAL NOT NULL DEFAULT 0.72,
+            offset_y    REAL NOT NULL DEFAULT 0.18,
+            width       REAL NOT NULL DEFAULT 0.24,
+            -- File name of the cropped image inside library/pins.
+            image_file  TEXT NOT NULL DEFAULT '',
+            hidden      INTEGER NOT NULL DEFAULT 0,
+            z           INTEGER NOT NULL DEFAULT 0,
+            created_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pins_pattern ON pins(pattern_id);
+
+        CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
+        CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
+        "#,
+    )?;
+
+
+    // ALTER TABLE ADD COLUMN is not idempotent, so it is only issued when the
+    // column is genuinely missing. This is what brings an existing library
+    // (created before covers existed) up to date.
+    // Sections became counters. The concepts are the same -- a named thing you
+    // count with a target -- but a counter carries an `enabled` flag so several
+    // can count at once, where a section could only ever have one active.
+    //
+    // The previously active section becomes the one enabled counter, so
+    // reopening a pattern lands the user where they left off. Everything else
+    // carries over disabled, which is inert rather than lossy.
+    if table_exists(conn, "sections")? {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO counters
+               (id, pattern_id, name, target, current, enabled, excluded_from_total, position)
+             SELECT s.id, s.pattern_id, s.name, s.target, s.current,
+                    CASE WHEN s.id = p.current_section_id THEN 1 ELSE 0 END,
+                    s.excluded_from_total, s.position
+             FROM sections s
+             LEFT JOIN progress p ON p.pattern_id = s.pattern_id",
+            [],
+        )?;
+        tx.execute("DROP TABLE sections", [])?;
+        tx.commit()?;
+    }
+
+    // The active section is now expressed by `counters.enabled`, so the column
+    // that pointed at one is dead. Dropping it needs SQLite 3.35 or newer;
+    // where that is unavailable the column is simply left empty and unused,
+    // which costs nothing but a little clutter.
+    if column_exists(conn, "progress", "current_section_id")? {
+        let _ = conn.execute("ALTER TABLE progress DROP COLUMN current_section_id", []);
+    }
+
+    if !column_exists(conn, "patterns", "cover_path")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+
+    // Yarn weight as the pattern states it, plus the standard family derived
+    // from it. The family is a separate column because the filter matches on
+    // it: deriving a family from free text inside SQL would mean either a
+    // fuzzy match per row or a scan of the whole table.
+    for (column, kind) in [
+        ("yarn_weight", "TEXT NOT NULL DEFAULT ''"),
+        ("yarn_weight_family", "TEXT NOT NULL DEFAULT ''"),
+    ] {
+        if !column_exists(conn, "patterns", column)? {
+            conn.execute(
+                &format!("ALTER TABLE patterns ADD COLUMN {column} {kind}"),
+                [],
+            )?;
+        }
+    }
+    // A library that predates the column has no family to filter on, so any
+    // rows that already state a weight get their family filled in. This has to
+    // be done in Rust: the family is derived from free text, which SQL has no
+    // way to do per row.
+    backfill_yarn_families(conn)?;
+
+    // The highlight line's default opacity dropped from 0.9 to 0.3, which
+    // reads far better over a pattern: at 90% the text underneath was hard to
+    // follow. Only rows still sitting on the old default are moved, so a line
+    // someone has deliberately made more or less strong is left alone.
+    conn.execute(
+        "UPDATE highlights SET opacity = 0.3 WHERE ABS(opacity - 0.9) < 0.0001",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Fills in the derived yarn family for any row that states a weight but has
+/// no family yet.
+///
+/// Idempotent, and cheap on an already-migrated library because the `WHERE`
+/// matches nothing once every row is up to date.
+fn backfill_yarn_families(conn: &Connection) -> AppResult<()> {
+    let stale: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, yarn_weight FROM patterns WHERE yarn_weight <> '' AND yarn_weight_family = ''")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    for (id, weight) in stale {
+        conn.execute(
+            "UPDATE patterns SET yarn_weight_family = ?2 WHERE id = ?1",
+            params![id, crate::yarn::family_of(&weight)],
+        )?;
+    }
+    Ok(())
+}
+
+/// Reports whether a table exists at all.
+///
+/// Used to decide whether the section-to-counter migration has already run,
+/// since `CREATE TABLE IF NOT EXISTS` cannot tell "not yet" from "already
+/// done" and the two need opposite handling.
+fn table_exists(conn: &Connection, table: &str) -> AppResult<bool> {
+    // The name is a compile-time constant from this module, never user input.
+    let found: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [table],
+        |r| r.get(0),
+    )?;
+    Ok(found > 0)
+}
+
+/// Reports whether a table already has a column.
+fn column_exists(conn: &Connection, table: &str, column: &str) -> AppResult<bool> {
+    // table_info takes a literal, and both values here are compile-time
+    // constants from this module, never user input.
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
+    let tags_json: String = row.get("tags")?;
+    let tags = serde_json::from_str(&tags_json).unwrap_or_default();
+    Ok(Pattern {
+        id: row.get("id")?,
+        title: row.get("title")?,
+        designer: row.get("designer")?,
+        file_path: row.get("file_path")?,
+        file_name: row.get("file_name")?,
+        format: row.get("format")?,
+        status: row.get("status")?,
+        difficulty: row.get("difficulty")?,
+        needle_size: row.get("needle_size")?,
+        yarn_weight: row.get("yarn_weight")?,
+        yarn_weight_family: row.get("yarn_weight_family")?,
+        tags,
+        notes: row.get("notes")?,
+        added_at: row.get("added_at")?,
+        last_opened_at: row.get("last_opened_at")?,
+        last_page: row.get("last_page")?,
+        last_scroll: row.get("last_scroll")?,
+        cover_path: row.get("cover_path")?,
+    })
+}
+
+/// Optional filters for the library view. All fields are optional; empty means
+/// "do not filter on this".
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Filter {
+    pub search: Option<String>,
+    pub status: Option<String>,
+    pub designer: Option<String>,
+    pub difficulty: Option<String>,
+    pub needle_size: Option<String>,
+    /// Standard yarn weight family, e.g. "dk". Several may be given to widen
+    /// the filter, the same way tags are.
+    pub yarn_weight: Option<Vec<String>>,
+    pub tags: Option<Vec<String>>,
+    pub sort: Option<String>,
+}
+
+pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Pattern>> {
+    // The free-text term is parameter ?1 and is always present, so an empty
+    // search becomes "%%" and matches everything.
+    let term = match filter.search.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(s) => format!("%{}%", s.trim()),
+        None => "%".to_string(),
+    };
+    let mut sql = String::from(
+        "SELECT * FROM patterns WHERE 1=1 \
+         AND (title LIKE ?1 OR designer LIKE ?1 OR notes LIKE ?1 OR tags LIKE ?1)",
+    );
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(term)];
+
+    // Each optional filter appends a placeholder numbered by its position.
+    let mut next_index = 2usize;
+    macro_rules! push_eq {
+        ($col:expr, $value:expr) => {{
+            let idx = next_index;
+            next_index += 1;
+            sql.push_str(&format!(" AND {} = ?{}", $col, idx));
+            args.push(Box::new($value.clone()));
+        }};
+    }
+
+    if let Some(v) = filter.status.as_ref().filter(|s| !s.is_empty()) {
+        push_eq!("status", v);
+    }
+    if let Some(v) = filter.difficulty.as_ref().filter(|s| !s.is_empty()) {
+        push_eq!("difficulty", v);
+    }
+    if let Some(v) = filter.designer.as_ref().filter(|s| !s.is_empty()) {
+        push_eq!("designer", v);
+    }
+    if let Some(v) = filter.needle_size.as_ref().filter(|s| !s.is_empty()) {
+        push_eq!("needle_size", v);
+    }
+
+    // Yarn weight is an OR within itself and an AND against everything else,
+    // which is how the other checkbox groups behave: picking DK and Aran means
+    // "either", not "both".
+    if let Some(families) = filter.yarn_weight.as_ref().filter(|f| !f.is_empty()) {
+        let mut placeholders = Vec::new();
+        for family in families.iter().filter(|f| !f.is_empty()) {
+            let idx = next_index;
+            next_index += 1;
+            placeholders.push(format!("?{idx}"));
+            args.push(Box::new(family.clone()));
+        }
+        if !placeholders.is_empty() {
+            sql.push_str(&format!(
+                " AND yarn_weight_family IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+
+    // Tags are stored as a JSON array, so match on the quoted substring to
+    // avoid "lace" matching "laceweight".
+    if let Some(tags) = filter.tags.as_ref().filter(|t| !t.is_empty()) {
+        for tag in tags {
+            let idx = next_index;
+            next_index += 1;
+            sql.push_str(&format!(" AND tags LIKE ?{}", idx));
+            args.push(Box::new(format!("%\"{}\"%", tag)));
+        }
+    }
+
+    let order = match filter.sort.as_deref() {
+        Some("title") => "title COLLATE NOCASE ASC",
+        Some("oldest") => "added_at ASC",
+        Some("lastOpened") => "last_opened_at DESC NULLS LAST",
+        _ => "added_at DESC",
+    };
+    sql.push_str(&format!(" ORDER BY {}", order));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt.query_map(refs.as_slice(), row_to_pattern)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn get_pattern(conn: &Connection, id: &str) -> AppResult<Pattern> {
+    conn.query_row("SELECT * FROM patterns WHERE id = ?1", params![id], row_to_pattern)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(id.to_string()))
+}
+
+/// Stores a new pattern. `file_path` is where the bytes were copied to.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_pattern(
+    conn: &Connection,
+    id: &str,
+    input: &PatternInput,
+    file_path: &str,
+    format: &str,
+) -> AppResult<Pattern> {
+    let status = if STATUSES.contains(&input.status.as_str()) {
+        input.status.as_str()
+    } else {
+        "want-to-knit"
+    };
+    // Difficulty is optional; an unrecognised value is dropped rather than
+    // stored, so the filter list stays meaningful.
+    let difficulty = if DIFFICULTIES.contains(&input.difficulty.as_str()) {
+        input.difficulty.as_str()
+    } else {
+        ""
+    };
+    let tags_json = serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".to_string());
+    let added = now_ms();
+
+    conn.execute(
+        "INSERT INTO patterns
+         (id, title, designer, file_path, file_name, format, status, difficulty,
+          needle_size, yarn_weight, yarn_weight_family, tags, notes, added_at, cover_path)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'')",
+        params![
+            id,
+            input.title,
+            input.designer,
+            file_path,
+            input.file_name,
+            format,
+            status,
+            difficulty,
+            input.needle_size,
+            input.yarn_weight,
+            crate::yarn::family_of(&input.yarn_weight),
+            tags_json,
+            input.notes,
+            added
+        ],
+    )?;
+
+    // Seed the progress and highlight rows so the UI never has to handle nulls.
+    conn.execute(
+        "INSERT INTO progress (pattern_id, total_rows, updated_at)
+         VALUES (?1, 0, ?2)",
+        params![id, added],
+    )?;
+    let h = HighlightSettings::defaults(id);
+    save_highlight(conn, &h)?;
+
+    get_pattern(conn, id)
+}
+
+pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern> {
+    let tags_json = serde_json::to_string(&pattern.tags).unwrap_or_else(|_| "[]".to_string());
+    let status = if STATUSES.contains(&pattern.status.as_str()) {
+        pattern.status.as_str()
+    } else {
+        "want-to-knit"
+    };
+    let difficulty = if DIFFICULTIES.contains(&pattern.difficulty.as_str()) {
+        pattern.difficulty.as_str()
+    } else {
+        ""
+    };
+    conn.execute(
+        "UPDATE patterns SET title=?2, designer=?3, status=?4, difficulty=?5,
+         needle_size=?6, yarn_weight=?7, yarn_weight_family=?8, tags=?9, notes=?10
+         WHERE id=?1",
+        params![
+            pattern.id,
+            pattern.title,
+            pattern.designer,
+            status,
+            difficulty,
+            pattern.needle_size,
+            pattern.yarn_weight,
+            // Re-derived on every write, so correcting the stated weight also
+            // corrects the family the filter matches on.
+            crate::yarn::family_of(&pattern.yarn_weight),
+            tags_json,
+            pattern.notes
+        ],
+    )?;
+    get_pattern(conn, &pattern.id)
+}
+
+pub fn delete_pattern(conn: &Connection, id: &str) -> AppResult<()> {
+    // Child rows go with it via ON DELETE CASCADE.
+    conn.execute("DELETE FROM patterns WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn touch_pattern(
+    conn: &Connection,
+    id: &str,
+    page: i64,
+    scroll: f64,
+) -> AppResult<()> {
+    conn.execute(
+        "UPDATE patterns SET last_opened_at = ?2, last_page = ?3, last_scroll = ?4 WHERE id = ?1",
+        params![id, now_ms(), page, scroll],
+    )?;
+    Ok(())
+}
+
+/// One entry in the yarn weight filter: a family from the standard table, with
+/// the number of patterns that fall into it.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnWeightFacet {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
+/// Distinct designers, needle sizes, yarn weight families and tags, for
+/// populating the filter sidebar.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Facets {
+    pub designers: Vec<String>,
+    pub needle_sizes: Vec<String>,
+    /// Every family in the standard table, in table order, whether or not any
+    /// pattern uses it, so the sidebar reads the same for everyone.
+    pub yarn_weights: Vec<YarnWeightFacet>,
+    pub tags: Vec<String>,
+}
+
+pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
+    let column = |col: &str| -> AppResult<Vec<String>> {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT DISTINCT {0} FROM patterns WHERE {0} <> '' ORDER BY {0} COLLATE NOCASE",
+            col
+        ))?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    };
+
+    // Yarn weights come from the fixed table rather than from the data, so the
+    // sidebar reads the same way whether or not you happen to own a jumbo
+    // pattern, and so the counts line up with the table's own order.
+    let mut yarn_weights: Vec<YarnWeightFacet> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT yarn_weight_family, COUNT(*) FROM patterns
+             WHERE yarn_weight_family <> '' GROUP BY yarn_weight_family",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        let mut counts: Vec<(String, i64)> = Vec::new();
+        for r in rows {
+            counts.push(r?);
+        }
+        for (key, _, _, _) in crate::yarn::FAMILIES {
+            let count = counts
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, n)| *n)
+                .unwrap_or(0);
+            yarn_weights.push(YarnWeightFacet {
+                key: key.to_string(),
+                label: crate::yarn::label_for(key).to_string(),
+                count,
+            });
+        }
+    }
+
+    let mut tags: Vec<String> = Vec::new();
+    {
+        let mut stmt =
+            conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for r in rows {
+            let list: Vec<String> = serde_json::from_str(&r?).unwrap_or_default();
+            for t in list {
+                if !tags.contains(&t) {
+                    tags.push(t);
+                }
+            }
+        }
+    }
+    tags.sort_by_key(|t| t.to_lowercase());
+    tags.dedup();
+
+    Ok(Facets {
+        designers: column("designer")?,
+        needle_sizes: column("needle_size")?,
+        yarn_weights,
+        tags,
+    })
+}
+
+
+// ---------- counters ----------
+
+/// What one counting action did, so the UI can repaint from a single result
+/// rather than doing arithmetic of its own and drifting out of step with the
+/// clamping rules.
+#[derive(Debug, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CountOutcome {
+    pub pattern_id: String,
+    /// The project total after the action. Always one of these two numbers.
+    pub total_rows: i64,
+    /// Every counter after the action, in display order.
+    pub counters: Vec<Counter>,
+}
+
+pub fn list_counters(conn: &Connection, pattern_id: &str) -> AppResult<Vec<Counter>> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM counters WHERE pattern_id = ?1 ORDER BY position ASC, rowid ASC",
+    )?;
+    let rows = stmt.query_map(params![pattern_id], row_to_counter)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn row_to_counter(row: &rusqlite::Row) -> rusqlite::Result<Counter> {
+    Ok(Counter {
+        id: row.get("id")?,
+        pattern_id: row.get("pattern_id")?,
+        name: row.get("name")?,
+        target: row.get("target")?,
+        current: row.get("current")?,
+        enabled: row.get::<_, i64>("enabled")? != 0,
+        excluded_from_total: row.get::<_, i64>("excluded_from_total")? != 0,
+        position: row.get("position")?,
+    })
+}
+
+pub fn add_counter(
+    conn: &Connection,
+    pattern_id: &str,
+    input: &CounterInput,
+) -> AppResult<Counter> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let position: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM counters WHERE pattern_id = ?1",
+        params![pattern_id],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "INSERT INTO counters
+           (id, pattern_id, name, target, current, enabled, excluded_from_total, position)
+         VALUES (?1,?2,?3,?4,0,?5,?6,?7)",
+        params![
+            id,
+            pattern_id,
+            input.name,
+            input.target,
+            input.enabled as i64,
+            input.excluded_from_total as i64,
+            position
+        ],
+    )?;
+    Ok(Counter {
+        id,
+        pattern_id: pattern_id.to_string(),
+        name: input.name.clone(),
+        target: input.target,
+        current: 0,
+        enabled: input.enabled,
+        excluded_from_total: input.excluded_from_total,
+        position,
+    })
+}
+
+pub fn update_counter(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    target: i64,
+    excluded: bool,
+) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE counters SET name=?2, target=?3, excluded_from_total=?4 WHERE id=?1",
+        params![id, name, target, excluded as i64],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No counter with id {id}.")));
+    }
+    Ok(())
+}
+
+/// Switches a counter on or off.
+///
+/// Off means the counter keeps its place and its count but stops moving when
+/// rows are counted. That is the whole difference between a counter you are
+/// working through and one you have set aside.
+pub fn set_counter_enabled(
+    conn: &Connection,
+    id: &str,
+    enabled: bool,
+) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE counters SET enabled = ?2 WHERE id = ?1",
+        params![id, enabled as i64],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No counter with id {id}.")));
+    }
+    Ok(())
+}
+
+pub fn reset_counter(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE counters SET current = 0 WHERE id = ?1",
+        params![id],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No counter with id {id}.")));
+    }
+    Ok(())
+}
+
+pub fn delete_counter(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM counters WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No counter with id {id}.")));
+    }
+    Ok(())
+}
+
+/// Moves one counter by `delta` and returns the new state.
+///
+/// The project total moves with it unless the counter is excluded, which is
+/// what the flag is for: a setup row or a side note that is not one of the
+/// project's rows.
+pub fn count_one(conn: &Connection, id: &str, delta: i64) -> AppResult<CountOutcome> {
+    let (pattern_id, current, target, excluded): (String, i64, i64, bool) = conn.query_row(
+        "SELECT pattern_id, current, target, excluded_from_total FROM counters WHERE id = ?1",
+        params![id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0)),
+    )?;
+
+    let next = clamp_count(current, delta, target);
+    let applied = next - current;
+    conn.execute(
+        "UPDATE counters SET current = ?2 WHERE id = ?1",
+        params![id, next],
+    )?;
+
+    let total = get_progress(conn, &pattern_id)?.total_rows;
+    let total = if excluded {
+        total
+    } else {
+        (total + applied).max(0)
+    };
+    set_total_rows(conn, &pattern_id, total)?;
+    outcome(conn, &pattern_id, total)
+}
+
+/// Applies one counting action across the project: the total, plus every
+/// counter that is switched on.
+///
+/// The total always moves. Each enabled counter moves independently, clamped to
+/// its own target, and a counter sitting on its target simply stays there
+/// while the total carries on -- the total counts the work, not the target.
+///
+/// One transaction, because a half-applied count is worse than a failed one:
+/// the total and the counters must never disagree about what has been worked.
+pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<CountOutcome> {
+    let tx = conn.unchecked_transaction()?;
+
+    let total = tx
+        .query_row(
+            "SELECT total_rows FROM progress WHERE pattern_id = ?1",
+            params![pattern_id],
+            |r| r.get::<_, i64>(0),
+        )
+        .optional()?
+        .unwrap_or(0);
+    let next_total = (total + delta).max(0);
+
+    // Collect first, then write, so the reads are not interleaved with the
+    // updates on a connection that is mid-transaction.
+    let enabled: Vec<(String, i64, i64)> = {
+        let mut stmt = tx.prepare(
+            "SELECT id, current, target FROM counters
+             WHERE pattern_id = ?1 AND enabled = 1",
+        )?;
+        let rows = stmt.query_map(params![pattern_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    for (id, current, target) in enabled {
+        let next = clamp_count(current, delta, target);
+        tx.execute(
+            "UPDATE counters SET current = ?2 WHERE id = ?1",
+            params![id, next],
+        )?;
+    }
+
+    tx.execute(
+        "UPDATE progress SET total_rows = ?2, updated_at = ?3 WHERE pattern_id = ?1",
+        params![pattern_id, next_total, now_ms()],
+    )?;
+    tx.commit()?;
+
+    outcome(conn, pattern_id, next_total)
+}
+
+/// One counter's new count, held inside its own limits.
+///
+/// A target of zero means "no target", which is why an untargeted counter can
+/// count past any number; a targeted one stops at its target rather than
+/// running on and having to be corrected by hand.
+fn clamp_count(current: i64, delta: i64, target: i64) -> i64 {
+    if target > 0 {
+        (current + delta).clamp(0, target)
+    } else {
+        (current + delta).max(0)
+    }
+}
+
+fn outcome(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<CountOutcome> {
+    Ok(CountOutcome {
+        pattern_id: pattern_id.to_string(),
+        total_rows: total,
+        counters: list_counters(conn, pattern_id)?,
+    })
+}
+
+// ---------- progress ----------
+
+pub fn get_progress(conn: &Connection, pattern_id: &str) -> AppResult<Progress> {
+    let found = conn
+        .query_row(
+            "SELECT pattern_id, total_rows, updated_at FROM progress WHERE pattern_id = ?1",
+            params![pattern_id],
+            |r| {
+                Ok(Progress {
+                    pattern_id: r.get(0)?,
+                    total_rows: r.get(1)?,
+                    updated_at: r.get(2)?,
+                })
+            },
+        )
+        .optional()?
+        .unwrap_or_else(|| Progress {
+            pattern_id: pattern_id.to_string(),
+            ..Default::default()
+        });
+    Ok(found)
+}
+
+pub fn set_total_rows(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<()> {
+    conn.execute(
+        "UPDATE progress SET total_rows = ?2, updated_at = ?3 WHERE pattern_id = ?1",
+        params![pattern_id, total.max(0), now_ms()],
+    )?;
+    Ok(())
+}
+
+// ---------- highlight ----------
+
+pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<HighlightSettings> {
+    let found = conn
+        .query_row(
+            "SELECT pattern_id, enabled, offset_y, thickness, width, inset_x,
+                    color, opacity, animate, animation_ms
+             FROM highlights WHERE pattern_id = ?1",
+            params![pattern_id],
+            |r| {
+                Ok(HighlightSettings {
+                    pattern_id: r.get(0)?,
+                    enabled: r.get::<_, i64>(1)? != 0,
+                    offset_y: r.get(2)?,
+                    thickness: r.get(3)?,
+                    width: r.get(4)?,
+                    inset_x: r.get(5)?,
+                    color: r.get(6)?,
+                    opacity: r.get(7)?,
+                    animate: r.get::<_, i64>(8)? != 0,
+                    animation_ms: r.get(9)?,
+                })
+            },
+        )
+        .optional()?
+        .unwrap_or_else(|| HighlightSettings::defaults(pattern_id));
+    Ok(found)
+}
+
+pub fn save_highlight(conn: &Connection, h: &HighlightSettings) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO highlights
+           (pattern_id, enabled, offset_y, thickness, width, inset_x, color, opacity, animate, animation_ms)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(pattern_id) DO UPDATE SET
+           enabled=excluded.enabled, offset_y=excluded.offset_y,
+           thickness=excluded.thickness, width=excluded.width,
+           inset_x=excluded.inset_x, color=excluded.color,
+           opacity=excluded.opacity, animate=excluded.animate,
+           animation_ms=excluded.animation_ms",
+        params![
+            h.pattern_id,
+            h.enabled as i64,
+            h.offset_y,
+            h.thickness,
+            h.width,
+            h.inset_x,
+            h.color,
+            h.opacity,
+            h.animate as i64,
+            h.animation_ms
+        ],
+    )?;
+    Ok(())
+}
+
+// ---------- app settings ----------
+
+/// Reads a stored setting, falling back to the type's default.
+///
+/// A setting that will not parse is treated as absent rather than fatal: it
+/// means the stored shape changed under us, and refusing to start the app over
+/// one bad row would be a poor trade.
+pub fn get_setting<T>(conn: &Connection, key: &str) -> AppResult<T>
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            params![key],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match raw {
+        Some(text) => serde_json::from_str(&text).unwrap_or_default(),
+        None => T::default(),
+    })
+}
+
+pub fn set_setting<T: serde::Serialize>(conn: &Connection, key: &str, value: &T) -> AppResult<()> {
+    let text = serde_json::to_string(value)?;
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, text],
+    )?;
+    Ok(())
+}
+
+// ---------- ai history ----------
+
+/// Stores the state before the model changed a pattern, so the change can be
+/// undone. Only the most recent is ever used; older ones are pruned.
+pub fn record_ai_change(
+    conn: &Connection,
+    pattern_id: &str,
+    before: &Pattern,
+    after: &Pattern,
+) -> AppResult<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO ai_history (id, pattern_id, before_json, after_json, created_at)
+         VALUES (?1,?2,?3,?4,?5)",
+        params![
+            id,
+            pattern_id,
+            serde_json::to_string(before)?,
+            serde_json::to_string(after)?,
+            now_ms()
+        ],
+    )?;
+    // Keep one step of history: an undo only ever applies to the last change,
+    // and an unbounded log of whole patterns would grow without limit.
+    conn.execute(
+        "DELETE FROM ai_history WHERE pattern_id = ?1 AND id <> (
+             SELECT id FROM ai_history WHERE pattern_id = ?1
+             ORDER BY created_at DESC, rowid DESC LIMIT 1
+         )",
+        params![pattern_id],
+    )?;
+    Ok(())
+}
+
+/// The most recent undo point for a pattern, as its id and the "before" state.
+///
+/// Ordered by rowid as well as the timestamp because two changes inside the
+/// same millisecond are indistinguishable by time alone, and picking the wrong
+/// one would restore the wrong thing.
+pub fn latest_ai_change(
+    conn: &Connection,
+    pattern_id: &str,
+) -> AppResult<Option<(String, Pattern)>> {
+    let found = conn
+        .query_row(
+            "SELECT id, before_json FROM ai_history WHERE pattern_id = ?1
+             ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            params![pattern_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()?;
+    Ok(match found {
+        Some((id, json)) => match serde_json::from_str::<Pattern>(&json) {
+            Ok(pattern) => Some((id, pattern)),
+            // A snapshot that will not parse is no use as an undo point, and
+            // is better treated as no history than as a crash on open.
+            Err(_) => None,
+        },
+        None => None,
+    })
+}
+
+pub fn clear_ai_history(conn: &Connection, pattern_id: &str) -> AppResult<()> {
+    conn.execute(
+        "DELETE FROM ai_history WHERE pattern_id = ?1",
+        params![pattern_id],
+    )?;
+    Ok(())
+}
+
+// ---------- annotations ----------
+
+
+
+pub fn list_annotations(conn: &Connection, pattern_id: &str) -> AppResult<Vec<Annotation>> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM annotations WHERE pattern_id = ?1 ORDER BY page ASC, rowid ASC",
+    )?;
+    let rows = stmt.query_map(params![pattern_id], |row| {
+        Ok(Annotation {
+            id: row.get("id")?,
+            pattern_id: row.get("pattern_id")?,
+            kind: row.get("kind")?,
+            page: row.get("page")?,
+            geometry: row.get("geometry")?,
+            quote: row.get("quote")?,
+            occurrence: row.get("occurrence")?,
+            color: row.get("color")?,
+            text: row.get("text")?,
+            created_at: row.get("created_at")?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn insert_annotation(
+    conn: &Connection,
+    pattern_id: &str,
+    input: &AnnotationInput,
+) -> AppResult<Annotation> {
+    let id = uuid::Uuid::new_v4().to_string();
+    // An unrecognised kind becomes a highlight, so a row written by a future
+    // version can never leave a pattern with a mark nothing knows how to draw.
+    let kind = AnnotationKind::parse(&input.kind);
+    // Pages are 1-based everywhere the UI shows them, and a 0 here would be an
+    // annotation nothing can ever display.
+    let page = input.page.max(1);
+    let created_at = now_ms();
+    conn.execute(
+        "INSERT INTO annotations
+           (id, pattern_id, kind, page, geometry, quote, occurrence, color, text, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        params![
+            id,
+            pattern_id,
+            kind.as_str(),
+            page,
+            input.geometry,
+            input.quote,
+            input.occurrence,
+            input.color,
+            input.text,
+            created_at
+        ],
+    )?;
+    Ok(Annotation {
+        id,
+        pattern_id: pattern_id.to_string(),
+        kind: kind.as_str().to_string(),
+        page,
+        geometry: input.geometry.clone(),
+        quote: input.quote.clone(),
+        occurrence: input.occurrence,
+        color: input.color.clone(),
+        text: input.text.clone(),
+        created_at,
+    })
+}
+
+pub fn update_annotation_text(
+    conn: &Connection,
+    id: &str,
+    text: &str,
+    color: &str,
+) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE annotations SET text = ?2, color = ?3 WHERE id = ?1",
+        params![id, text, color],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No annotation with id {id}.")));
+    }
+    Ok(())
+}
+
+pub fn delete_annotation(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM annotations WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No annotation with id {id}.")));
+    }
+    Ok(())
+}
+
+// ---------- bookmarks ----------
+
+pub fn list_bookmarks(conn: &Connection, pattern_id: &str) -> AppResult<Vec<Bookmark>> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM bookmarks WHERE pattern_id = ?1
+         ORDER BY sort_order ASC, created_at ASC, rowid ASC",
+    )?;
+    let rows = stmt.query_map(params![pattern_id], |row| {
+        Ok(Bookmark {
+            id: row.get("id")?,
+            pattern_id: row.get("pattern_id")?,
+            page: row.get("page")?,
+            title: row.get("title")?,
+            sort_order: row.get("sort_order")?,
+            created_at: row.get("created_at")?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// Adds a bookmark, at the end or at a given position.
+///
+/// A position renumbers the ones after it rather than leaving gaps, so the
+/// list is always 0, 1, 2 and moving something cannot leave a hole behind.
+pub fn add_bookmark(
+    conn: &Connection,
+    pattern_id: &str,
+    page: i64,
+    title: &str,
+    position: Option<i64>,
+) -> AppResult<Bookmark> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let existing: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM bookmarks WHERE pattern_id = ?1",
+        params![pattern_id],
+        |r| r.get(0),
+    )?;
+    let at = position.unwrap_or(existing).clamp(0, existing) as usize;
+
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE bookmarks SET sort_order = sort_order + 1
+         WHERE pattern_id = ?1 AND sort_order >= ?2",
+        params![pattern_id, at as i64],
+    )?;
+    tx.execute(
+        "INSERT INTO bookmarks (id, pattern_id, page, title, sort_order, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6)",
+        params![id, pattern_id, page.max(1), title, at as i64, now_ms()],
+    )?;
+    tx.commit()?;
+
+    Ok(Bookmark {
+        id,
+        pattern_id: pattern_id.to_string(),
+        page: page.max(1),
+        title: title.to_string(),
+        sort_order: at as i64,
+        created_at: now_ms(),
+    })
+}
+
+pub fn rename_bookmark(conn: &Connection, id: &str, title: &str) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE bookmarks SET title = ?2 WHERE id = ?1",
+        params![id, title],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No bookmark with id {id}.")));
+    }
+    Ok(())
+}
+
+/// Moves a bookmark to a new index, then closes the gap it leaves.
+pub fn move_bookmark(conn: &Connection, id: &str, position: i64) -> AppResult<()> {
+    let pattern_id: String = conn
+        .query_row(
+            "SELECT pattern_id FROM bookmarks WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("No bookmark with id {id}.")))?;
+
+    // Read the current order out, reorder it in memory, and write it back.
+    // Doing it with a set of UPDATE ... sort_order = ? shifts is where gaps and
+    // duplicates come from.
+    let mut ids: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM bookmarks WHERE pattern_id = ?1
+             ORDER BY sort_order ASC, created_at ASC, rowid ASC",
+        )?;
+        let rows = stmt.query_map(params![pattern_id], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    let from = ids
+        .iter()
+        .position(|x| x == id)
+        .ok_or_else(|| AppError::NotFound(format!("No bookmark with id {id}.")))?;
+    let to = (position.max(0) as usize).min(ids.len() - 1);
+    let moved = ids.remove(from);
+    ids.insert(to, moved);
+
+    let tx = conn.unchecked_transaction()?;
+    for (index, bookmark_id) in ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE bookmarks SET sort_order = ?2 WHERE id = ?1",
+            params![bookmark_id, index as i64],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn delete_bookmark(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM bookmarks WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No bookmark with id {id}.")));
+    }
+    Ok(())
+}
+
+// ---------- pins ----------
+
+pub fn list_pins(conn: &Connection, pattern_id: &str) -> AppResult<Vec<Pin>> {
+    // Highest z first, so the pin just made is the one on top rather than
+    // buried under the ones already there.
+    let mut stmt = conn.prepare("SELECT * FROM pins WHERE pattern_id = ?1 ORDER BY z DESC")?;
+    let rows = stmt.query_map(params![pattern_id], row_to_pin)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn row_to_pin(row: &rusqlite::Row) -> rusqlite::Result<Pin> {
+    Ok(Pin {
+        id: row.get("id")?,
+        pattern_id: row.get("pattern_id")?,
+        page: row.get("page")?,
+        geometry: row.get("geometry")?,
+        quote: row.get("quote")?,
+        title: row.get("title")?,
+        offset_x: row.get("offset_x")?,
+        offset_y: row.get("offset_y")?,
+        width: row.get("width")?,
+        hidden: row.get::<_, i64>("hidden")? != 0,
+        z: row.get("z")?,
+        image_file: row.get("image_file")?,
+        created_at: row.get("created_at")?,
+    })
+}
+
+pub fn get_pin(conn: &Connection, id: &str) -> AppResult<Pin> {
+    conn.query_row("SELECT * FROM pins WHERE id = ?1", params![id], row_to_pin)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("No pin with id {id}.")))
+}
+
+pub fn count_pins(conn: &Connection, pattern_id: &str) -> AppResult<usize> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM pins WHERE pattern_id = ?1",
+        params![pattern_id],
+        |r| r.get(0),
+    )?;
+    Ok(n.max(0) as usize)
+}
+
+pub fn insert_pin(
+    conn: &Connection,
+    pattern_id: &str,
+    input: &PinInput,
+    file_name: &str,
+) -> AppResult<Pin> {
+    let id = uuid::Uuid::new_v4().to_string();
+    // Above every existing pin, so a new one is always the topmost.
+    let z: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(z), -1) + 1 FROM pins WHERE pattern_id = ?1",
+        params![pattern_id],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "INSERT INTO pins
+           (id, pattern_id, page, geometry, quote, title, offset_x, offset_y,
+            width, hidden, z, image_file, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,0.72,0.18,0.24,0,?7,?8,?9)",
+        params![
+            id,
+            pattern_id,
+            input.page.max(1),
+            input.geometry,
+            input.quote,
+            input.title,
+            z,
+            file_name,
+            now_ms()
+        ],
+    )?;
+    get_pin(conn, &id)
+}
+
+/// Moves or resizes a pin's floating card, returning it as stored.
+///
+/// The fractions are clamped so a card cannot be dragged off the pane or
+/// resized to nothing, which would make it unreachable to move back.
+pub fn update_pin_placement(
+    conn: &Connection,
+    id: &str,
+    placement: &PinPlacement,
+) -> AppResult<Pin> {
+    let changed = conn.execute(
+        "UPDATE pins SET offset_x = ?2, offset_y = ?3, width = ?4, hidden = ?5
+         WHERE id = ?1",
+        params![
+            id,
+            placement.offset_x.clamp(0.0, 1.0),
+            placement.offset_y.clamp(0.0, 1.0),
+            placement.width.clamp(0.05, 1.0),
+            placement.hidden as i64
+        ],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No pin with id {id}.")));
+    }
+    get_pin(conn, id)
+}
+
+pub fn rename_pin(conn: &Connection, id: &str, title: &str) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE pins SET title = ?2 WHERE id = ?1",
+        params![id, title],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No pin with id {id}.")));
+    }
+    Ok(())
+}
+
+/// Deletes a pin and reports the image file so the caller can remove it.
+pub fn delete_pin(conn: &Connection, id: &str) -> AppResult<Option<String>> {
+    let file: Option<String> = conn
+        .query_row("SELECT image_file FROM pins WHERE id = ?1", params![id], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    match file {
+        Some(name) => {
+            conn.execute("DELETE FROM pins WHERE id = ?1", params![id])?;
+            Ok(Some(name))
+        }
+        None => Err(AppError::NotFound(format!("No pin with id {id}."))),
+    }
+}
+
+// ---------- covers ----------
+
+/// The cover file name recorded against a pattern, or an empty string when it
+/// has none.
+pub fn get_cover(conn: &Connection, pattern_id: &str) -> AppResult<String> {
+    let found = conn
+        .query_row(
+            "SELECT cover_path FROM patterns WHERE id = ?1",
+            params![pattern_id],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .unwrap_or_default();
+    Ok(found)
+}
+
+/// Records a cover file name against a pattern. An empty name clears it, which
+/// is how a cover is removed.
+pub fn set_cover(conn: &Connection, pattern_id: &str, file_name: &str) -> AppResult<()> {
+    conn.execute(
+        "UPDATE patterns SET cover_path = ?2 WHERE id = ?1",
+        params![pattern_id, file_name],
+    )?;
+    Ok(())
+}

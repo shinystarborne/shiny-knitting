@@ -1,0 +1,16 @@
+# Keep line endings stable in the repository itself, whatever the cloner uses.
+# The app is Windows-only, but the sources are LF on disk (Vite and cargo both
+# expect that) and letting the working tree decide means a file rewritten on one
+# platform shows as entirely changed on another.
+* text=auto eol=lf
+
+# Binary files git must never try to normalise or diff.
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.epub binary
+*.woff binary
+*.woff2 binary

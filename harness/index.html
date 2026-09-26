@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Harness</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!--
+      The stub has to be a module so a production build bundles it, and it is
+      listed before the app so the IPC layer exists by the time the app calls
+      it. A plain <script src> would be dropped from the build output.
+    -->
+    <script type="module" src="/harness/stub.js"></script>
+    <script type="module" src="/harness/layout-checks.js"></script>
+    <script type="module" src="/harness/row-checks.js"></script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

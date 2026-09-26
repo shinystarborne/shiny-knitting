@@ -1,0 +1,31 @@
+{
+  "name": "shiny-knitting-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A reading app for knitting patterns with row counters and a moving highlight line.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "harness": "vite --config harness/vite.harness.config.ts",
+    "harness:build": "vite build --config harness/vite.harness.config.ts",
+    "harness:serve": "vite preview --config harness/vite.harness.config.ts --port 1422 --strictPort",
+    "test": "cd src-tauri && cargo test",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "app": "tauri dev",
+    "app:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "fflate": "^0.8.2",
+    "pdfjs-dist": "^4.9.155"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "typescript": "^5.6.3",
+    "vite": "^8.3.1"
+  }
+}
