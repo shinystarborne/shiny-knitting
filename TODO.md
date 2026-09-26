@@ -213,6 +213,35 @@ forcing one model on both could get ugly.
   appears after minification will not show up in the dev harness.
 - **Screen capture of the Tauri webview does not work** on this multi-monitor
   setup. Use the browser harness.
+- **`window.prompt`, `window.confirm` and `window.alert` do not work in a Tauri
+  window**, and they fail in ways that look like nothing happening. `prompt`
+  never returns and wedges the window permanently; `confirm` returns `undefined`
+  rather than `true`/`false`, so `if (!confirm(...))` is always taken; `alert`
+  does not show. All three work perfectly in a browser, so code using them passes
+  every harness test and then does nothing in the app — this shipped broken once,
+  and the whole marking toolbar was dead on arrival. Everything now goes through
+  `src/dialogs.ts`, and `harness/no-dialogs.js` makes the harness refuse the
+  three so it cannot pass there again.
+- **Test the built app, not only the harness.** The harness agrees with itself:
+  it is the same code in the same engine, so anything the host environment does
+  differently is invisible to it. The built app can be driven for real by
+  starting it with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`
+  and talking CDP to `http://127.0.0.1:9222`. Use `Input.dispatchKeyEvent` for
+  keys — a synthetic event dispatched on `document` takes a different
+  propagation path and will not show whether a global handler would have run.
+- **A `ResizeObserver` never fires in a hidden tab** and a `MutationObserver`
+  does, so anything that must be provable in the harness has to be driven by a
+  mutation. Related: an observer only watches elements in its own document, so
+  one made in the app cannot watch a chapter inside an iframe — build it from
+  the iframe's own window.
+- **A dialog must own the keyboard, not just the screen.** The reader and main
+  both bind keys on the document, so a question would otherwise be answered
+  twice: Escape closed the dialog *and* left the pattern. Note that
+  `stopPropagation` is not enough when the other handler is a *bubble* listener
+  on the same node — the stop-propagation flag is only read between nodes — so
+  it needs `stopImmediatePropagation`. And do not register one listener per
+  dialog: each one stopping propagation silences the others, including the one
+  belonging to the dialog actually on screen. One listener and a stack.
 - **PowerShell `Invoke-WebRequest` cannot download a GitHub release asset.** The
   download redirects to S3 and the connection is closed mid-transfer, with
   "The request was aborted". Use the asset API instead, which serves the bytes
