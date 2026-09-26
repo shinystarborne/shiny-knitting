@@ -16,6 +16,20 @@ It does five things:
   from its own file, and a language model can read the front of a pattern and
   fill in the designer, difficulty, needle size, yarn, and tags.
 
+## Releases
+
+Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
+
+- **[v0.2.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.2.0-beta.1)** — a
+  pre-release with everything, including pins. The one to test.
+- **[v0.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.1.0)** — the
+  last release without pins, if the beta misbehaves.
+
+Each has an `.exe` (installs per user, no administrator rights) and an `.msi`.
+Both install to the same place, so running the older one afterwards puts you
+back on it. Your library lives in `%APPDATA%\com.shiny.knittingapp\` and is
+untouched by either.
+
 ## Requirements
 
 Building from source needs:

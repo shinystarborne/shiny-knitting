@@ -213,6 +213,12 @@ forcing one model on both could get ugly.
   appears after minification will not show up in the dev harness.
 - **Screen capture of the Tauri webview does not work** on this multi-monitor
   setup. Use the browser harness.
+- **PowerShell `Invoke-WebRequest` cannot download a GitHub release asset.** The
+  download redirects to S3 and the connection is closed mid-transfer, with
+  "The request was aborted". Use the asset API instead, which serves the bytes
+  itself: `curl.exe -L -H "Accept: application/octet-stream"
+  https://api.github.com/repos/OWNER/REPO/releases/assets/ID`. Uploading works
+  fine from PowerShell; it is only the download that fails.
 - **PowerShell `Set-Content -Encoding UTF8` writes a BOM** and has corrupted
   files here twice. Use `[IO.File]::WriteAllText` or the edit tool.
 - **`cargo` is not on `PATH`.** Source `vcvars64.bat` and add
