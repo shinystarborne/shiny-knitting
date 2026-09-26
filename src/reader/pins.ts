@@ -15,6 +15,7 @@
  */
 import { api, MAX_PINS, type Pin, type PinPlacement } from "../api";
 import { fromPageRect, textInRect, toPageRect, type Rect } from "../annotations";
+import { askText, askYesNo, say } from "../dialogs";
 
 /** The part of a rendered document a pin needs. */
 export interface PinTarget {
@@ -443,8 +444,8 @@ export class PinLayer {
   }
 
   private async rename(pin: Pin): Promise<void> {
-    const next = window.prompt("Name this pin:", pin.title);
-    // A prompt cancelled is null; one cleared is a deliberate blank. Only the
+    const next = await askText("Name this pin:", { value: pin.title });
+    // A dialog cancelled is null; one cleared is a deliberate blank. Only the
     // first means "leave it alone".
     if (next === null) return;
     const title = next.trim();
@@ -459,7 +460,11 @@ export class PinLayer {
   }
 
   private async remove(pin: Pin): Promise<void> {
-    if (!window.confirm(`Remove “${pin.title || "this pin"}”?`)) return;
+    const yes = await askYesNo(`Remove “${pin.title || "this pin"}”?`, {
+      okLabel: "Remove",
+      danger: true,
+    });
+    if (!yes) return;
     try {
       await api.deletePin(pin.id);
     } catch (e) {
@@ -499,7 +504,7 @@ export class PinLayer {
   }
 
   private report(e: unknown): void {
-    window.alert(e instanceof Error ? e.message : String(e));
+    void say(e instanceof Error ? e.message : String(e), "Pins");
   }
 
   detach(): void {

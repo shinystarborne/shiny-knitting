@@ -1259,6 +1259,89 @@ body.dragging-highlight { cursor: ns-resize; user-select: none; }
   padding: 20px;
 }
 .modal-backdrop.hidden { display: none; }
+
+/* In-app dialogs. These stand in for the browser's own prompt, confirm and
+   alert, none of which work in a Tauri window -- see src/dialogs.ts. */
+.dialog-backdrop { z-index: 200; }
+.dialog-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.dialog-title { margin: 0; font-size: 15px; }
+.dialog-message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.dialog-input {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.dialog-label { font-size: 12px; color: var(--muted); }
+/* Sits under the label it belongs to, and is deliberately quieter: it explains
+   a choice rather than asking for one. */
+.dialog-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.dialog-checkfield {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.dialog-checkfield .dialog-label { color: var(--text); font-size: 13px; }
+.dialog-check { margin-top: 2px; flex: 0 0 auto; }
+.dialog-actions button {
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.dialog-actions .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.dialog-actions .danger {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .modal {
   background: var(--bg-raised);
   border: 1px solid var(--border);

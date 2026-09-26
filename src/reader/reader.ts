@@ -1,5 +1,6 @@
 import { api, toBytes, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
+import { say } from "../dialogs";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
@@ -306,16 +307,16 @@ export class ReaderView {
     try {
       const result: SuggestionResult = await scanOne(this.pattern, settings);
       if (result.failed) {
-        window.alert(`The model could not read this pattern.\n\n${result.error}`);
+        await say(`The model could not read this pattern.\n\n${result.error}`, "Describe");
         return;
       }
       if (!result.changedFields.length) {
-        window.alert("Everything the model could fill in is already filled in.");
+        await say("Everything the model could fill in is already filled in.", "Describe");
         return;
       }
       this.showSuggestion(result);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : String(err));
+      await say(err instanceof Error ? err.message : String(err), "Describe");
     } finally {
       button.disabled = false;
       button.textContent = label;
@@ -407,7 +408,7 @@ export class ReaderView {
       if (!file) return;
       const blob = await prepareChosenImage(file);
       if (!blob) {
-        window.alert("That file could not be read as an image.");
+        await say("That file could not be read as an image.", "Cover");
         return;
       }
       await saveCover(this.pattern.id, blob);
@@ -424,7 +425,7 @@ export class ReaderView {
       const bytes = await api.readFile(this.pattern.id);
       const found = await extractFromDocument(this.pattern, toBytes(bytes));
       if (!found) {
-        window.alert("No cover image was found in that file.");
+        await say("No cover image was found in that file.", "Cover");
         return;
       }
       await saveCover(this.pattern.id, found.blob);
@@ -433,7 +434,7 @@ export class ReaderView {
         new CustomEvent("pattern-updated", { bubbles: true, detail: this.pattern }),
       );
     } catch {
-      window.alert("Could not read that file.");
+      await say("Could not read that file.", "Cover");
     }
   }
 
@@ -692,7 +693,7 @@ export class ReaderView {
     if (tool === "pin") {
       const room = this.pins?.availability();
       if (room && !room.ok) {
-        window.alert(room.reason);
+        void say(room.reason, "Pin");
         tool = "none";
       }
     }

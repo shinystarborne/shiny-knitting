@@ -8,6 +8,7 @@ import {
   type Filter,
   type Pattern,
 } from "../api";
+import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import {
   coverUrl,
@@ -315,13 +316,14 @@ export class LibraryView {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await askYesNo(
       `Describe ${targets.length} pattern${targets.length === 1 ? "" : "s"} using ${
         this.settings.model || "your model"
       }?\n\n` +
         `Only the start of each pattern is sent, to ${
           this.settings.isLocal ? "your own network" : this.settings.baseUrl
         }.`,
+      { title: "Describe with your model", okLabel: "Describe" },
     );
     if (!confirmed) return;
 
@@ -622,9 +624,10 @@ export class LibraryView {
     const pattern = this.patterns.find((p) => p.id === id);
     const name = pattern ? `"${pattern.title}"` : "this pattern";
     if (
-      !window.confirm(
+      !(await askYesNo(
         `Remove ${name} from your library?\n\nThe file and its cover will be deleted too. This cannot be undone.`,
-      )
+        { title: "Remove pattern", okLabel: "Remove", danger: true },
+      ))
     ) {
       return;
     }

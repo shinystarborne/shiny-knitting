@@ -1,4 +1,5 @@
 import { api, type Annotation } from "../api";
+import { askText, askYesNo } from "../dialogs";
 import {
   findQuoteRanges,
   fromPageRect,
@@ -295,7 +296,7 @@ export class MarkLayer {
     const pageNumber = this.doc.currentPage();
     const page = this.doc.pageElement(pageNumber);
     if (!page) return false;
-    const text = window.prompt("Note:");
+    const text = await askText("Note:");
     if (text === null) return false;
 
     const rect: Rect = {
@@ -331,7 +332,7 @@ export class MarkLayer {
     const hit = this.markAt(x, y);
     if (!hit) return false;
     const what = describeMark(hit);
-    if (!window.confirm(`Remove ${what}?`)) return false;
+    if (!(await askYesNo(`Remove ${what}?`, { okLabel: "Remove", danger: true }))) return false;
     await api.deleteAnnotation(hit.id);
     this.marks = this.marks.filter((m) => m.id !== hit.id);
     this.repaint();
@@ -389,11 +390,13 @@ export class MarkLayer {
       this.repaint();
     });
     remove.addEventListener("click", async () => {
-      if (window.confirm(`Remove ${describeMark(hit)}?`)) {
+      this.closeNotePopover();
+      // Asked from the note editor rather than over it, so the popover is not
+      // left hanging behind a question it cannot answer.
+      if (await askYesNo(`Remove ${describeMark(hit)}?`, { okLabel: "Remove", danger: true })) {
         await this.removeById(hit.id);
         this.repaint();
       }
-      this.closeNotePopover();
     });
     close.addEventListener("click", () => this.closeNotePopover());
 

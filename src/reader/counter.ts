@@ -1,4 +1,5 @@
 import { api, type Counter, type CountOutcome, type Progress } from "../api";
+import { askForm } from "../dialogs";
 import { closestEl } from "../dom";
 import { isClickMuted, playClick, setClickMuted } from "./click";
 
@@ -216,16 +217,18 @@ export class RowCounter {
   }
 
   private async promptCounter(): Promise<void> {
-    const name = window.prompt(
-      'Name this counter (e.g. "Front", "Sleeve", "Lace repeat"):',
+    const answer = await askForm(
+      [
+        { label: "Name", placeholder: 'Front, Sleeve, Lace repeat…' },
+        { label: "Rows", value: "0", type: "number", placeholder: "0 for no target" },
+      ],
+      { title: "Add a counter", okLabel: "Add" },
     );
-    if (name === null) return;
-    const targetRaw = window.prompt("How many rows? (0 for no target)", "0");
-    if (targetRaw === null) return;
-    const target = Math.max(0, parseInt(targetRaw, 10) || 0);
+    if (!answer) return;
+    const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
 
     const created = await api.addCounter(this.patternId, {
-      name: name.trim() || "Counter",
+      name: (answer["Name"] ?? "").trim() || "Counter",
       target,
       // New counters start switched on: someone who has just named the part
       // they are working is almost certainly working it.
@@ -242,18 +245,26 @@ export class RowCounter {
   private async editCounter(id: string): Promise<void> {
     const current = this.counters.find((c) => c.id === id);
     if (!current) return;
-    const name = window.prompt("Counter name:", current.name);
-    if (name === null) return;
-    const targetRaw = window.prompt("Rows:", String(current.target));
-    if (targetRaw === null) return;
-    const target = Math.max(0, parseInt(targetRaw, 10) || 0);
-    const excluded = window.confirm(
-      "Leave the project total alone when this counter's own buttons are used?\n\n" +
-        "Answer Yes for setup rows or other counts that are not part of " +
-        "the pattern's main row total. Counting rows normally still moves " +
-        "the total either way.",
+    const answer = await askForm(
+      [
+        { label: "Name", value: current.name },
+        { label: "Rows", value: String(current.target), type: "number" },
+      ],
+      {
+        title: "Edit counter",
+        checkbox: {
+          label: "Leave the project total alone when this counter's own buttons are used",
+          checked: current.excludedFromTotal,
+          hint:
+            "For setup rows and other counts that are not part of the pattern's " +
+            "main row total. Counting rows normally still moves the total either way.",
+        },
+      },
     );
-    await api.updateCounter(id, name.trim() || "Counter", target, excluded);
+    if (!answer) return;
+    const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
+    const excluded = answer["Leave the project total alone when this counter's own buttons are used"] === "yes";
+    await api.updateCounter(id, (answer["Name"] ?? "").trim() || "Counter", target, excluded);
     await this.refresh();
   }
 
