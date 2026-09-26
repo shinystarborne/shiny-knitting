@@ -1,14 +1,17 @@
 import { api, type Annotation } from "../api";
 import {
+  findQuoteRanges,
   fromPageRect,
   isDistinctStrokePoint,
   mergeRects,
+  occurrenceAt,
   parsePoints,
   parseRects,
   pointsToJson,
   rectsForRanges,
   rectsToJson,
   toPageRect,
+  visibleRectsForRanges,
   type Point,
   type Rect,
 } from "../annotations";
@@ -53,6 +56,8 @@ export class MarkLayer {
   private liveStroke: Point[] = [];
   private liveNode: SVGSVGElement | null = null;
   private drawingPointer: number | null = null;
+  /** The note editor, while one is open. */
+  private notePopover: HTMLElement | null = null;
 
   constructor(scroller: HTMLElement, patternId: string, doc: MarkTarget) {
     this.scroller = scroller;
@@ -79,6 +84,7 @@ export class MarkLayer {
   }
 
   detach(): void {
+    this.closeNotePopover();
     this.host.remove();
   }
 
@@ -122,17 +128,34 @@ export class MarkLayer {
   repaint(): void {
     this.host.textContent = "";
     const pageNumber = this.doc.currentPage();
+    const page = this.doc.pageElement(pageNumber);
+    if (!page) return;
+    // An EPUB's text has moved since the mark was made, so its rectangles are
+    // worked out again from the quote rather than read back. A PDF's have not,
+    // and a stored rectangle is exact and costs nothing.
+    const reflowing = page instanceof HTMLIFrameElement;
+    const text = reflowing ? this.doc.textLayerFor(pageNumber) : null;
     for (const mark of this.marks) {
       if (mark.page !== pageNumber) continue;
-      const page = this.doc.pageElement(pageNumber);
-      if (!page) continue;
-      if (mark.kind === "draw") this.paintDrawing(mark, page);
-      else this.paintRects(mark, page);
+      if (mark.kind === "draw") {
+        this.paintDrawing(mark, page);
+        continue;
+      }
+      if (reflowing && mark.kind === "highlight" && mark.quote && text) {
+        const ranges = findQuoteRanges(text, mark.quote, mark.occurrence);
+        if (!ranges.length) continue; // The passage is gone after an edit.
+        // Dropped rather than clamped if the passage has scrolled outside the
+        // chapter's visible box, so a mark never lands on the page edge.
+        this.paintRects(mark, page, visibleRectsForRanges(ranges, page));
+        continue;
+      }
+      this.paintRects(mark, page);
     }
   }
 
-  private paintRects(mark: Annotation, page: HTMLElement): void {
-    const rects = mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry);
+  private paintRects(mark: Annotation, page: HTMLElement, given?: Rect[]): void {
+    const rects =
+      given ?? (mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry));
     for (const rect of rects) {
       const box = fromPageRect(rect, page);
       const el = document.createElement("div");
@@ -196,14 +219,20 @@ export class MarkLayer {
     const rects = mergeRects(rectsForRanges([range], page));
     if (!rects.length) return false;
 
+    // On an EPUB the text will move, so what is recorded is *which* passage
+    // this was and the rectangles are only there to paint it right now. On a
+    // PDF the page is fixed, the rectangles are the record, and the quote is
+    // kept purely so the mark can be labelled later.
+    const reflowing = page instanceof HTMLIFrameElement;
+    const text = reflowing ? this.doc.textLayerFor(pageNumber) : null;
+    const occurrence = text ? occurrenceAt(text, range, quote) : 0;
+
     const created = await api.addAnnotation(this.patternId, {
       kind: "highlight",
       page: pageNumber,
       geometry: rectsToJson(rects),
       quote,
-      // The occurrence matters only where the text has to be re-found, which
-      // is an EPUB. For a PDF the rectangles are the record.
-      occurrence: 0,
+      occurrence,
       color: this.colour,
       text: "",
     });
@@ -294,12 +323,92 @@ export class MarkLayer {
   async removeAt(x: number, y: number): Promise<boolean> {
     const hit = this.markAt(x, y);
     if (!hit) return false;
-    const what = hit.kind === "note" ? "this note" : hit.kind === "draw" ? "this drawing" : "this highlight";
+    const what = describeMark(hit);
     if (!window.confirm(`Remove ${what}?`)) return false;
     await api.deleteAnnotation(hit.id);
     this.marks = this.marks.filter((m) => m.id !== hit.id);
     this.repaint();
     return true;
+  }
+
+  /**
+   * Opens a note for reading and editing, or says why it cannot be opened.
+   *
+   * Notes are the one mark with something to say, so clicking one opens it
+   * rather than offering to delete it: a note you can only create and destroy
+   * is not much use once you have thought of a better wording.
+   */
+  async editNoteAt(x: number, y: number): Promise<boolean> {
+    const hit = this.markAt(x, y);
+    if (!hit || hit.kind !== "note") return false;
+    this.closeNotePopover();
+
+    const pop = document.createElement("div");
+    pop.className = "note-popover";
+    const textarea = document.createElement("textarea");
+    textarea.value = hit.text;
+    textarea.rows = 4;
+    textarea.setAttribute("aria-label", "Note text");
+
+    const actions = document.createElement("div");
+    actions.className = "note-actions";
+    const save = button("Save", "primary");
+    const remove = button("Remove", "danger");
+    const close = button("Close", "ghost");
+    actions.append(save, remove, close);
+    pop.append(textarea, actions);
+
+    const anchor = this.host.querySelector<HTMLElement>(`[data-id="${hit.id}"]`);
+    const box = (anchor ?? this.scroller).getBoundingClientRect();
+    pop.style.left = `${Math.min(box.left, window.innerWidth - 300)}px`;
+    pop.style.top = `${Math.min(box.bottom + 8, window.innerHeight - 220)}px`;
+    this.host.appendChild(pop);
+    this.notePopover = pop;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    save.addEventListener("click", async () => {
+      const text = textarea.value.trim();
+      // An emptied note is a note the user changed their mind about, so it is
+      // removed rather than left as an empty dot.
+      if (!text) {
+        await this.removeById(hit.id);
+      } else {
+        await api.editAnnotation(hit.id, text, hit.color);
+        const stored = this.marks.find((m) => m.id === hit.id);
+        if (stored) stored.text = text;
+      }
+      this.closeNotePopover();
+      this.repaint();
+    });
+    remove.addEventListener("click", async () => {
+      if (window.confirm(`Remove ${describeMark(hit)}?`)) {
+        await this.removeById(hit.id);
+        this.repaint();
+      }
+      this.closeNotePopover();
+    });
+    close.addEventListener("click", () => this.closeNotePopover());
+
+    // Clicking elsewhere dismisses, on the next tick so the click that opened
+    // this does not immediately close it.
+    const dismiss = (e: MouseEvent) => {
+      if (pop.contains(e.target as Node)) return;
+      this.closeNotePopover();
+      document.removeEventListener("click", dismiss);
+    };
+    setTimeout(() => document.addEventListener("click", dismiss), 0);
+    return true;
+  }
+
+  private async removeById(id: string): Promise<void> {
+    await api.deleteAnnotation(id);
+    this.marks = this.marks.filter((m) => m.id !== id);
+  }
+
+  private closeNotePopover(): void {
+    this.notePopover?.remove();
+    this.notePopover = null;
   }
 
   /** The topmost mark under a point, or null. */
@@ -355,14 +464,14 @@ export class MarkLayer {
       e.preventDefault();
       void this.addNoteAt(e.clientX, e.clientY);
     } else if (this.tool === "none") {
-      // With no tool chosen, a click on a mark removes it. Deliberately not a
-      // modifier: the toolbar has an eraser for the deliberate case, and this
-      // is the shortcut most people will want.
+      // With no tool chosen, a click on a mark does something useful to it: a
+      // note opens for editing, anything else offers to be removed.
       const hit = this.markAt(e.clientX, e.clientY);
       if (hit) {
         e.preventDefault();
         e.stopPropagation();
-        void this.removeAt(e.clientX, e.clientY);
+        if (hit.kind === "note") void this.editNoteAt(e.clientX, e.clientY);
+        else void this.removeAt(e.clientX, e.clientY);
       }
     }
   };
@@ -457,6 +566,21 @@ export interface MarkTarget {
    * which has no text at all.
    */
   textLayerFor(page: number): HTMLElement | null;
+}
+
+/** How a mark is named when asking whether to remove it. */
+function describeMark(mark: Annotation): string {
+  if (mark.kind === "note") return "this note";
+  if (mark.kind === "draw") return "this drawing";
+  return mark.quote ? `this highlight on “${mark.quote.slice(0, 40)}”` : "this highlight";
+}
+
+function button(label: string, kind: string): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.textContent = label;
+  el.className = kind;
+  el.type = "button";
+  return el;
 }
 
 /** A note's marker box, with a little slack so the dot is easy to click. */

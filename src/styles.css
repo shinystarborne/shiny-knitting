@@ -588,6 +588,46 @@ kbd {
   cursor: pointer;
 }
 
+/* The note editor, opened by clicking a note. */
+.note-popover {
+  position: fixed;
+  z-index: 40;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+.note-popover textarea {
+  min-height: 70px;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px;
+}
+.note-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.note-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.note-actions .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.note-actions .danger { color: var(--accent); }
+
 /* Marks ---------- */
 
 /*

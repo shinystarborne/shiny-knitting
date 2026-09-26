@@ -27,6 +27,13 @@ export interface RenderedDoc {
   textLayerFor(page: number): HTMLElement | null;
   /** The element a page is painted into, for placing a mark. */
   pageElement(page: number): HTMLElement | null;
+  /**
+   * Called when the document's own layout shifts under the reader.
+   *
+   * A PDF's pages are fixed sizes, so nothing calls it; an EPUB's chapters are
+   * not, and one growing pushes everything below it down.
+   */
+  onReflow: (() => void) | null;
   destroy(): void;
 }
 
@@ -39,6 +46,8 @@ export interface RenderedDoc {
  */
 export class PdfView implements RenderedDoc {
   pageCount = 0;
+  /** A PDF's pages are fixed, so its layout never shifts on its own. */
+  onReflow: (() => void) | null = null;
   private pages: HTMLDivElement[] = [];
   private rendered = new Set<number>();
   /**
@@ -174,11 +183,16 @@ export class PdfView implements RenderedDoc {
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      // The text layer is built alongside the paint rather than after it. It is
+      // independent of the canvas -- invisible, and positioned in CSS pixels at
+      // the CSS scale, since its spans would be wrong at the device-pixel
+      // viewport the canvas uses -- and a large page can take a while to paint.
+      // Waiting for the picture to finish means waiting to be able to select
+      // the words in it, for no benefit, and it ties the text to a paint that
+      // does not always settle.
+      const text = this.buildTextLayer(page, pageEl, page.getViewport({ scale }));
       await page.render({ canvasContext: ctx, viewport }).promise;
-      // The text layer is built after the paint, at the CSS size, because its
-      // spans are positioned in CSS pixels and would be wrong at the
-      // device-pixel viewport the canvas uses.
-      await this.buildTextLayer(page, pageEl, page.getViewport({ scale }));
+      await text;
     } catch (e) {
       // Allow a later pass to retry this page rather than leaving a permanent
       // blank in the document.

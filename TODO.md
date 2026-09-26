@@ -54,6 +54,10 @@ Notes planned: first two files to write.
 - `src/reader/marks.ts` — text selection → highlight, the note dialog, and a
   freehand drawing layer using pointer capture.
 
+Built on `feature/marks`. Done: PDF rects, EPUB quote + occurrence, notes that
+open for editing (emptying one removes it), freehand drawings, Select as the
+default tool, a colour picker, and `H` for highlight.
+
 ### 2. Pins
 
 A cropped image of a region of the page, up to **5** per pattern. The limit is
@@ -146,6 +150,20 @@ forcing one model on both could get ugly.
   impossible. The fix was to stop awaiting the first paint. When something
   mysteriously never completes in the harness, check
   `document.visibilityState` and whether rAF fires before reading any app code.
+- **A `ResizeObserver` never fires in a hidden tab either**, for the same reason:
+  its notifications are delivered during the rendering steps, which do not run.
+  `MutationObserver` does fire, so anything that must be provable in the harness
+  has to be driven by a mutation. This is why an EPUB frame is re-fitted from a
+  mutation on its document (with a `ResizeObserver` alongside it) rather than
+  from size alone.
+- **An observer only watches elements in its own document.** A `ResizeObserver`
+  made in the app watching a chapter's `<body>` inside an iframe does nothing at
+  all — silently, with no error. Build it from the iframe's own window
+  (`frame.contentWindow.ResizeObserver`) instead. Same for `MutationObserver`.
+- **Do not wait for a canvas paint to build a PDF's text layer.** The text layer
+  is invisible and positioned in CSS pixels, so it is independent of the paint,
+  and tying it to one means a page's words are not selectable until the picture
+  happens to finish — or ever, if the paint does not settle.
 - **Never overwrite the screen element's class.** `.screen` carries the
   `flex`/`min-height` chain that lets a scrolling pane work. A view that writes
   over it makes the document grow to its full length instead of scrolling, and

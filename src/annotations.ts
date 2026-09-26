@@ -205,6 +205,87 @@ function normalise(value: string): string {
 }
 
 /**
+ * Which occurrence of a quote a selection is on.
+ *
+ * Built on `findQuoteRanges` deliberately, so the two cannot disagree about
+ * what "the third occurrence" means. If saving counted matches one way and
+ * drawing counted them another, a mark would be saved against one passage and
+ * drawn over a different one, and nothing would look wrong until the text
+ * reflowed.
+ *
+ * Walking the document with `compareDocumentPosition` rather than adding up
+ * character offsets keeps this exact: a DOM position has to be compared with
+ * another DOM position, and any index arithmetic in between is a chance to be
+ * off by the length of a collapsed run of whitespace.
+ *
+ * Returns 0 for a quote that is not present, which is the best available
+ * answer and makes a missing anchor fall back to the first match.
+ */
+export function occurrenceAt(container: HTMLElement, range: Range, quote: string): number {
+  const wanted = normalise(quote);
+  if (!wanted) return 0;
+
+  // The answer is the last match that starts at or before the selection, which
+  // is not the same as the first match after it: a selection made on a passage
+  // starts exactly where that passage starts, so it is not "after" it and
+  // would be skipped entirely.
+  let best = 0;
+  let matched = false;
+  // Bounded so a pathological document cannot spin here: a passage is never
+  // going to be the five-hundredth identical occurrence.
+  for (let n = 0; n < 500; n++) {
+    const candidate = findQuoteRanges(container, wanted, n);
+    if (!candidate.length) break;
+    if (startsAfter(candidate[0], range.startContainer, range.startOffset)) break;
+    best = n;
+    matched = true;
+  }
+  return matched ? best : 0;
+}
+
+/** True when a boundary sits strictly after a given position in the document. */
+function startsAfter(boundary: Range, node: Node, offset: number): boolean {
+  const other = boundary.startContainer;
+  if (other === node) return boundary.startOffset > offset;
+  // The argument preceding the reference means the reference comes later, which
+  // is what is being asked.
+  return (other.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+}
+
+/**
+ * The rectangles for a set of ranges that actually fall inside the page.
+ *
+ * Unlike `rectsForRanges`, a rectangle entirely outside the page is dropped
+ * rather than clamped into it. That matters for a reflowable document: while a
+ * chapter is re-laying out, or before its frame has been resized to fit, the
+ * text a mark refers to can be outside the frame's visible box. Clamping would
+ * then paint the mark against the wrong edge of the page, which looks like a
+ * mark on the wrong words -- worse than no mark at all. A rectangle that
+ * overhangs the edge slightly is still drawn, because that is just a
+ * selection running past a margin.
+ */
+export function visibleRectsForRanges(ranges: Range[], page: HTMLElement): Rect[] {
+  const box = page.getBoundingClientRect();
+  const inside: Rect[] = [];
+  for (const range of ranges) {
+    for (const rect of range.getClientRects()) {
+      const overlaps =
+        rect.left < box.right &&
+        rect.right > box.left &&
+        rect.top < box.bottom &&
+        rect.bottom > box.top;
+      if (!overlaps) continue;
+      const r = toPageRect(
+        { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        page,
+      );
+      if (r.w > 0 && r.h > 0) inside.push(r);
+    }
+  }
+  return mergeRects(inside);
+}
+
+/**
  * The rectangles for a set of ranges, relative to a page element.
  *
  * A range that spans a line break reports a rectangle covering both lines, so

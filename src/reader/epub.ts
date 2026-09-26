@@ -25,6 +25,12 @@ export class EpubView implements RenderedDoc {
   private chapterHrefs: string[] = [];
   private files: Map<string, Uint8Array> = new Map();
   private resizeObserver: ResizeObserver | null = null;
+  /** Watches each chapter's own content, so a frame is re-fitted when it grows. */
+  private contentObserver: MutationObserver | null = null;
+  /** Watches a chapter's box for purely geometric changes. */
+  private sizeObserver: ResizeObserver | null = null;
+  /** Frames already being watched, so none is watched twice. */
+  private watched = new WeakSet<HTMLIFrameElement>();
 
   constructor(scroller: HTMLElement) {
     this.scroller = scroller;
@@ -242,8 +248,89 @@ export class EpubView implements RenderedDoc {
   private fitHeight(frame: HTMLIFrameElement): void {
     const doc = frame.contentDocument;
     if (!doc?.body) return;
+    this.observeBody(frame);
     const height = doc.body.scrollHeight;
-    if (height > 0) frame.style.height = `${height}px`;
+    if (height <= 0) return;
+    // Only write when the height has genuinely changed. `fitHeight` runs from a
+    // ResizeObserver, and setting the frame's height resizes the frame, so
+    // writing unconditionally would re-trigger the observer for ever.
+    const current = Math.round(frame.getBoundingClientRect().height);
+    if (Math.abs(current - height) <= 1) return;
+    frame.style.height = `${height}px`;
+    // Everything below this frame has just moved, including any mark drawn
+    // over it, so the reader has to redraw rather than wait for a scroll.
+    this.onReflow?.();
+  }
+
+  /**
+   * Called after a chapter changes height.
+   *
+   * Repainting on scroll alone is not enough: a chapter that grows when a
+   * webfont settles pushes everything below it down without the reader moving
+   * at all, which would leave every mark under that point drawn where its text
+   * used to be.
+   */
+  onReflow: (() => void) | null = null;
+
+  /**
+   * Watches a frame's own content, so the frame is re-fitted when it grows.
+   *
+   * Watching only the container is not enough: a chapter can get taller after
+   * it has loaded — a late webfont settling, an image decoding — without the
+   * container moving at all. A frame left at its old height clips the text,
+   * and a mark on clipped text has nowhere to be drawn, so the mark silently
+   * disappears rather than being placed wrongly.
+   *
+   * Done here rather than once up front because a chapter's document does not
+   * exist yet when the frames are created: the markup is written into them a
+   * moment later. `fitHeight` runs at each of those moments, so asking it to
+   * make sure the body is watched catches every one of them.
+   */
+  private observeBody(frame: HTMLIFrameElement): void {
+    const doc = frame.contentDocument;
+    if (!doc?.body || this.watched.has(frame)) return;
+    // Keyed on the frame rather than the body, because writing the document
+    // replaces the body element and the frame would then be watched twice.
+    this.watched.add(frame);
+
+    // Both observers are built from the chapter's own window: an observer only
+    // watches elements in its own document, and a chapter's body lives in the
+    // iframe's, not this one.
+    const view = frame.contentWindow as (Window & typeof globalThis) | null;
+    if (!view) return;
+    const refit = () => this.fitHeight(frame);
+
+    // Content changing is the common case -- an image decoding, a stylesheet
+    // applying, a late webfont -- and a mutation is the only way to hear about
+    // most of them, since a chapter can grow while the container sits still.
+    // A ResizeObserver is kept alongside it for the purely geometric case, and
+    // `fitHeight` only writes a height that has really changed, so neither can
+    // set the other off in a loop.
+    const MutationCtor = view.MutationObserver ?? MutationObserver;
+    this.contentObserver ??= new MutationCtor(refit);
+    // The whole document rather than the body, because the change that
+    // resizes a chapter as often comes from its head: a stylesheet arriving or
+    // a webfont rule applying changes every line below it without touching the
+    // body itself.
+    this.contentObserver.observe(doc.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
+    if (!this.sizeObserver) {
+      const SizeCtor = view.ResizeObserver ?? ResizeObserver;
+      if (SizeCtor) {
+        this.sizeObserver = new SizeCtor((entries: ResizeObserverEntry[]) => {
+          for (const entry of entries) {
+            const target = entry.target as HTMLElement;
+            const owner = target.ownerDocument?.defaultView?.frameElement;
+            if (owner instanceof HTMLIFrameElement) this.fitHeight(owner);
+          }
+        });
+      }
+    }
+    this.sizeObserver?.observe(doc.body);
   }
 
   get scrollTop(): number {
@@ -304,6 +391,8 @@ export class EpubView implements RenderedDoc {
 
   destroy(): void {
     this.resizeObserver?.disconnect();
+    this.contentObserver?.disconnect();
+    this.sizeObserver?.disconnect();
     this.container.remove();
     this.frames = [];
     this.chapterHrefs = [];

@@ -17,10 +17,12 @@ import {
   isUsableRect,
   isDistinctStrokePoint,
   mergeRects,
+  occurrenceAt,
   parsePoints,
   parseRects,
   rectsForRanges,
   toPageRect,
+  visibleRectsForRanges,
 } from "../src/annotations";
 
 interface CheckResult {
@@ -155,6 +157,63 @@ export function runAnnotationChecks(): CheckResult[] {
   const rects = rectsForRanges(spanning, across);
   check(results, "ranges become drawable rectangles", rects.length >= 1 && rects.every((r) => r.w > 0 && r.h > 0), JSON.stringify(rects));
   check(results, "the rectangles stay inside the page", rects.every((r) => r.x >= 0 && r.y >= 0 && r.w <= 1 && r.h <= 1), JSON.stringify(rects));
+
+  // --- A passage outside the visible box is dropped, not clamped ---
+  // A reflowable chapter re-lays out, and while it is doing so, or before its
+  // frame has been resized to fit, the text a mark refers to can sit outside
+  // the box the mark is measured against. Clamping would paint it against the
+  // page edge, which reads as a mark on the wrong words.
+  const scrolled = track(fakePage(600, 120, 0, 0));
+  scrolled.style.overflow = "hidden";
+  scrolled.innerHTML =
+    '<p style="margin:0">visible text</p>' +
+    // A large top margin puts this paragraph unambiguously below the 120px
+    // box, rather than merely looking like it should be.
+    '<p style="margin:400px 0 0">and a great deal of further text that has ended ' +
+    'up well below the visible box, with the word sts down here where nobody ' +
+    'can see it at all</p>';
+  const outside = findQuoteRanges(scrolled, "sts", 0);
+  check(results, "an off-page passage is found", outside.length > 0);
+  const dropped = visibleRectsForRanges(outside, scrolled);
+  check(results, "an off-page passage is dropped, not clamped", dropped.length === 0, JSON.stringify(dropped));
+  const visibleQuote = findQuoteRanges(scrolled, "visible text", 0);
+  check(results, "a visible passage is still drawn", visibleRectsForRanges(visibleQuote, scrolled).length > 0);
+
+  // --- Which occurrence is a selection on? This is what an EPUB mark is
+  // saved against, and getting it wrong draws the mark on the wrong words. ---
+  const repeats = track(fakePage(600, 400));
+  repeats.innerHTML =
+    "<p>Row 1: k1, yo.</p><p>Some other text.</p><p>Row 1: k1, yo.</p><p>Row 1: k1, yo.</p>";
+
+  const secondPara = repeats.children[2].firstChild as Text;
+  const onSecond = document.createRange();
+  onSecond.setStart(secondPara, 0);
+  onSecond.setEnd(secondPara, 5);
+  check(results, "a selection on the second match reports occurrence 1", occurrenceAt(repeats, onSecond, "Row 1: k1, yo.") === 1, String(occurrenceAt(repeats, onSecond, "Row 1: k1, yo.")));
+
+  const thirdPara = repeats.children[3].firstChild as Text;
+  const onThird = document.createRange();
+  onThird.setStart(thirdPara, 0);
+  onThird.setEnd(thirdPara, 5);
+  check(results, "a selection on the third match reports occurrence 2", occurrenceAt(repeats, onThird, "Row 1: k1, yo.") === 2, String(occurrenceAt(repeats, onThird, "Row 1: k1, yo.")));
+
+  const firstPara = repeats.children[0].firstChild as Text;
+  const onFirst = document.createRange();
+  onFirst.setStart(firstPara, 0);
+  onFirst.setEnd(firstPara, 5);
+  check(results, "a selection on the first match reports occurrence 0", occurrenceAt(repeats, onFirst, "Row 1: k1, yo.") === 0);
+
+  // The round trip that matters: a mark saved against an occurrence must be
+  // drawn over the words it was made from.
+  for (const n of [0, 1, 2]) {
+    const found = findQuoteRanges(repeats, "Row 1: k1, yo.", n);
+    const back = occurrenceAt(repeats, found[0], "Row 1: k1, yo.");
+    check(results, `occurrence ${n} survives save and redraw`, back === n, `came back as ${back}`);
+  }
+
+  // A quote that is not there at all must not claim a match.
+  check(results, "an absent quote reports occurrence 0", occurrenceAt(repeats, onFirst, "not in the text") === 0);
+  check(results, "an empty quote reports occurrence 0", occurrenceAt(repeats, onFirst, "  ") === 0);
 
   for (const el of pages) el.remove();
   return results;

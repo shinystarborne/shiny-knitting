@@ -82,6 +82,9 @@ export class ReaderView {
     const data = toBytes(bytes);
 
     this.doc = this.pattern.format === "epub" ? new EpubView(this.scroller) : new PdfView(this.scroller);
+    // A chapter that changes height moves everything below it, and marks are
+    // positioned against the text, so they have to be redrawn straight away.
+    this.doc.onReflow = () => this.marks?.repaint();
     try {
       await this.doc.load(data);
     } catch (e) {

@@ -167,6 +167,29 @@ panel back for a quick check.
 Your place in the document is saved as you scroll, so reopening a pattern
 returns you to the same page and position.
 
+## Marking up a pattern
+
+Four tools, in the bar above the reading area. **Select** is the default, so
+reading and tidying up need no tool chosen at all.
+
+- **Select** — click a note to open it and change the wording, or click a
+  highlight or drawing to be offered its removal. Nothing is deleted without
+  asking.
+- **Highlight** — select some text and it is marked in the current colour.
+  `H` does the same without leaving the keyboard.
+- **Note** — click anywhere to drop a note. Clearing the text and saving
+  removes the note rather than leaving an empty dot behind.
+- **Draw** — freehand, over charts and diagrams. Per page.
+
+The colour button picks the highlight colour.
+
+On a **PDF**, a mark is remembered as a rectangle on its page, because the page
+does not move. On an **EPUB**, the text does move — a wider window, a different
+font — so a mark is remembered as *which* passage it was made on: the words
+themselves, and which time round they appear if the same phrase occurs more
+than once. A highlight therefore stays on the words you made it on when the
+chapter rewraps, instead of drifting to wherever that text used to be.
+
 ## Covers
 
 A new pattern gets a cover automatically, in the background: the first page of
@@ -236,6 +259,7 @@ src/
   main.ts              app shell, swaps library and reader
   api.ts               typed wrapper over the Tauri commands
   covers.ts            cover extraction, downscaling, storage
+  annotations.ts       mark coordinates, quote anchoring, rectangle merging
   views/
     library.ts         search, filters, covers, scanning
     pattern-form.ts    add/edit dialog
@@ -250,6 +274,7 @@ src/
     highlight.ts       the movable highlight line and its row grid
     counter.ts         the project total and the named counters
     click.ts           the mechanical-counter click, synthesised
+    marks.ts           highlights, notes, drawings, and the note editor
 src-tauri/src/
   db/                  schema, queries, counter arithmetic, and their tests
   ai/                  the model client, prompting, parsing, and merge rules
@@ -257,11 +282,12 @@ src-tauri/src/
   commands.rs          the commands exposed to the frontend
   models.rs            shared types
   yarn.rs              the standard yarn weight table, and reading a weight
+  annotations.rs        storing and editing marks
 ```
 
-Agreed but not yet built — annotations, pins, bookmarks, the index, and PDF
-export — are written down in [TODO.md](TODO.md), along with the traps worth
-remembering about this codebase.
+Agreed but not yet built — pins, bookmarks, the index, PDF export, and the
+native file drop — are written down in [TODO.md](TODO.md), along with the traps
+worth remembering about this codebase.
 
 ## Notes on the design
 
@@ -386,4 +412,10 @@ checks on demand so a test driver can assert on the result.
 `window.__rowChecks()`. The band arithmetic is a pure function, so the edges —
 row one being reachable, the last band fitting, a line dragged off the grid —
 are checked directly rather than by pressing keys and reading the DOM.
+
+`harness/annotation-checks.ts` covers marks, via `window.__annotationChecks()`.
+It checks the coordinate mapping both ways, that a quote saved against one
+occurrence is redrawn over the words it was made from, and that a passage which
+has ended up outside the visible box is dropped rather than clamped onto the
+page edge. Together that is 66 checks: 7 layout, 13 row, 46 annotation.
 
