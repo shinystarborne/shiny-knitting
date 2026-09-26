@@ -23,7 +23,18 @@ import {
   toPageRect,
 } from "../src/annotations";
 
-function check(results, name, condition, detail = "") {
+interface CheckResult {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+function check(
+  results: CheckResult[],
+  name: string,
+  condition: unknown,
+  detail = "",
+): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
 
@@ -43,8 +54,8 @@ function closeTo(a: number, b: number, tolerance = 0.002): boolean {
   return Math.abs(a - b) <= tolerance;
 }
 
-export function runAnnotationChecks() {
-  const results = [];
+export function runAnnotationChecks(): CheckResult[] {
+  const results: CheckResult[] = [];
   const pages: HTMLElement[] = [];
   const track = (el: HTMLElement) => (pages.push(el), el);
 
@@ -157,6 +168,13 @@ export async function verifyAnnotations() {
     results,
     failed: failed.map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`),
   };
+}
+
+declare global {
+  interface Window {
+    __annotationChecks: typeof verifyAnnotations;
+    __annotationCheckResult: Awaited<ReturnType<typeof verifyAnnotations>> | null;
+  }
 }
 
 if (typeof window !== "undefined") {

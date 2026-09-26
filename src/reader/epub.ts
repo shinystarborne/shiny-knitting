@@ -272,6 +272,36 @@ export class EpubView implements RenderedDoc {
     return best;
   }
 
+  /**
+   * The element a chapter is rendered into, for placing a mark.
+   *
+   * The iframe itself, because a mark's coordinates are stored relative to the
+   * chapter as the reader sees it.
+   */
+  pageElement(page: number): HTMLElement | null {
+    return this.frames[page - 1] ?? null;
+  }
+
+  /**
+   * A chapter's body, for measuring a selection.
+   *
+   * EPUB text is already DOM, so unlike a PDF there is nothing to synthesise.
+   * The frame is same-origin because it is sandboxed with
+   * `allow-same-origin`, which is what lets the parent reach into it. A chapter
+   * that has not finished loading has no document yet, and a selection cannot
+   * be made in one either.
+   */
+  textLayerFor(page: number): HTMLElement | null {
+    const frame = this.frames[page - 1];
+    if (!frame) return null;
+    try {
+      return frame.contentDocument?.body ?? null;
+    } catch {
+      // A frame the browser refuses to reach is a frame we cannot mark.
+      return null;
+    }
+  }
+
   destroy(): void {
     this.resizeObserver?.disconnect();
     this.container.remove();

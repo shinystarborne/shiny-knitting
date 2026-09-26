@@ -173,6 +173,7 @@ function seed() {
   }
   // Counters, seeded to cover the cases worth seeing side by side: one on, one
   // switched off, one on its target, and one that keeps its own total.
+  store.annotations = [];
   store.counters = [
     {
       id: "c1",
@@ -453,6 +454,44 @@ const handlers = {
     const pr = store.progress.get(patternId) || newProgress(patternId);
     pr.totalRows = Math.max(0, total);
     return clone(pr);
+  },
+  // ---------- annotations ----------
+  //
+  // An unknown kind is stored as a highlight and a missing id is an error,
+  // matching the backend. A stub that accepted anything would let the frontend
+  // save a mark the real app then refuses to draw.
+  list_annotations: ({ patternId }) =>
+    clone(
+      store.annotations
+        .filter((a) => a.patternId === patternId)
+        .sort((a, b) => a.page - b.page || a.createdAt - b.createdAt),
+    ),
+  add_annotation: ({ patternId, input }) => {
+    const a = {
+      id: `a${store.nextId++}`,
+      patternId,
+      kind: ["highlight", "note", "draw"].includes(input.kind) ? input.kind : "highlight",
+      page: Math.max(1, input.page || 1),
+      geometry: input.geometry || "[]",
+      quote: input.quote || "",
+      occurrence: input.occurrence || 0,
+      color: input.color || "#e5484d",
+      text: input.text || "",
+      createdAt: Date.now(),
+    };
+    store.annotations.push(a);
+    return clone(a);
+  },
+  edit_annotation: ({ id, text, color }) => {
+    const a = store.annotations.find((x) => x.id === id);
+    if (!a) throw new Error("no annotation with that id");
+    a.text = text;
+    a.color = color;
+  },
+  delete_annotation: ({ id }) => {
+    const before = store.annotations.length;
+    store.annotations = store.annotations.filter((a) => a.id !== id);
+    if (store.annotations.length === before) throw new Error("no annotation with that id");
   },
   get_highlight: ({ patternId }) => clone(store.highlights.get(patternId)),
   save_highlight: ({ settings }) => {

@@ -135,6 +135,42 @@ export interface Filter {
   sort?: string;
 }
 
+/** Mirrors `models.rs::Annotation`. */
+export interface Annotation {
+  id: string;
+  patternId: string;
+  kind: string;
+  /** 1-based page for a PDF, chapter index for an EPUB. */
+  page: number;
+  /**
+   * Rectangles for a highlight, or strokes for a drawing, as a JSON string.
+   * Meaning depends on `kind`; see `src/annotations.ts`.
+   */
+  geometry: string;
+  /**
+   * The text this was made from. On an EPUB this is what re-finds the passage
+   * after the text reflows, so it is stored even for a PDF, where it also
+   * serves as a readable label.
+   */
+  quote: string;
+  /** Which occurrence of `quote`, for when the same words appear more than once. */
+  occurrence: number;
+  color: string;
+  /** Note body. Empty for the other kinds. */
+  text: string;
+  createdAt: number;
+}
+
+export interface AnnotationInput {
+  kind: string;
+  page: number;
+  geometry: string;
+  quote: string;
+  occurrence: number;
+  color: string;
+  text: string;
+}
+
 export interface SectionState {
   current: number;
   totalRows: number;
@@ -286,8 +322,15 @@ export const api = {
   setTotalRows: (patternId: string, total: number) =>
     invoke<Progress>("set_total_rows", { patternId, total }),
 
-  getHighlight: (patternId: string) => invoke<HighlightSettings>("get_highlight", { patternId }),
-  saveHighlight: (settings: HighlightSettings) =>
+  // Annotations: highlights, notes and drawings.
+  listAnnotations: (patternId: string) => invoke<Annotation[]>("list_annotations", { patternId }),
+  addAnnotation: (patternId: string, input: AnnotationInput) =>
+    invoke<Annotation>("add_annotation", { patternId, input }),
+  editAnnotation: (id: string, text: string, color: string) =>
+    invoke<void>("edit_annotation", { id, text, color }),
+  deleteAnnotation: (id: string) => invoke<void>("delete_annotation", { id }),
+
+  getHighlight: (patternId: string) => invoke<HighlightSettings>("get_highlight", { patternId }),  saveHighlight: (settings: HighlightSettings) =>
     invoke<HighlightSettings>("save_highlight", { settings }),
 
   // Covers.
