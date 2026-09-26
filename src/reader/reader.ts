@@ -2,6 +2,7 @@ import { api, toBytes, type AiSettingsView, type HighlightSettings, type Pattern
 import { EpubView } from "./epub";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
+import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
 import { scanOne } from "../ai/scan";
@@ -45,11 +46,14 @@ export class ReaderView {
   private scroller!: HTMLElement;
   private doc: RenderedDoc | null = null;
   private highlight: HighlightLine | null = null;
+  private marks: MarkLayer | null = null;
   private counter: RowCounter | null = null;
   private settings: HighlightSettings | null = null;
 
   /** Guards against writing a stale scroll position after the user navigates. */
   private saveTimer: number | null = null;
+  /** Throttles mark repainting while scrolling. */
+  private markRepaintTimer: number | null = null;
 
   /**
    * Set once the view is torn down. `mount` does real async work (reading a
@@ -78,6 +82,9 @@ export class ReaderView {
     const data = toBytes(bytes);
 
     this.doc = this.pattern.format === "epub" ? new EpubView(this.scroller) : new PdfView(this.scroller);
+    // A chapter that changes height moves everything below it, and marks are
+    // positioned against the text, so they have to be redrawn straight away.
+    this.doc.onReflow = () => this.marks?.repaint();
     try {
       await this.doc.load(data);
     } catch (e) {
@@ -97,6 +104,12 @@ export class ReaderView {
     };
     this.highlight.onConfigureRequest = () => this.openHighlightPanel();
 
+    this.marks = new MarkLayer(this.scroller, this.pattern.id, this.doc);
+    this.marks.attach();
+    this.marks.setTool("none");
+    await this.marks.refresh();
+    if (this.destroyed) return;
+
     const slot = this.root.querySelector<HTMLElement>(".counter-slot");
     if (!slot) return;
     this.counter = new RowCounter(slot, this.pattern.id);
@@ -106,6 +119,21 @@ export class ReaderView {
     this.bindKeys();
     this.bindPositionSaving();
     this.restorePosition();
+
+    // The toolbar opens on Select, so the common case -- reading, and removing
+    // a mark by clicking it -- needs no tool chosen, and a stray drag on the
+    // page draws nothing.
+    this.setMarkTool("none");
+
+    const colour = this.root.querySelector<HTMLInputElement>("[data-mark-colour]");
+    colour?.addEventListener("input", () => this.marks?.setColour(colour.value));
+
+    // Marks are stored per page, so they are repainted as the reader moves and
+    // as pages finish rendering underneath.
+    this.scroller.addEventListener("scroll", () => {
+      clearTimeout(this.markRepaintTimer ?? undefined);
+      this.markRepaintTimer = window.setTimeout(() => this.marks?.repaint(), 120);
+    }, { passive: true });
   }
 
   private renderChrome(): void {
@@ -129,6 +157,13 @@ export class ReaderView {
             title="Which row the highlight line is on. Press J or K to step a row and count it."
             >${this.rowLabel}</span
           >
+          <div class="mark-tools" role="toolbar" aria-label="Marking">
+            <button data-mark="none" class="ghost" title="Select: click a mark to remove it">Select</button>
+            <button data-mark="highlight" class="ghost" title="Highlight: select text, then press this or H">Highlight</button>
+            <button data-mark="note" class="ghost" title="Note: click where it belongs">Note</button>
+            <button data-mark="draw" class="ghost" title="Draw: drag on the page">Draw</button>
+            <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
+          </div>
           <button data-act="describe" class="ghost" title="Read this pattern's details with your model">Describe</button>
           <button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
@@ -164,6 +199,13 @@ export class ReaderView {
     this.scroller = this.root.querySelector(".doc-scroller")!;
 
     this.root.addEventListener("click", (e) => {
+      // Marking tools first: they sit in the reader bar, which is also where
+      // the other buttons are, and a tool button carries no data-act.
+      const tool = closestEl(e.target, "[data-mark]");
+      if (tool) {
+        this.setMarkTool(tool.dataset.mark as MarkTool);
+        return;
+      }
       const btn = closestEl(e.target, "button[data-act]");
       if (!btn) return;
       const act = btn.dataset.act;
@@ -173,8 +215,7 @@ export class ReaderView {
           new CustomEvent("change-layout", { bubbles: true, detail: sidebar ? "focus" : "split" }),
         );
       }
-      if (act === "highlight-cfg") this.openHighlightPanel();
-      if (act === "edit") {
+      if (act === "highlight-cfg") this.openHighlightPanel();      if (act === "edit") {
         this.root.dispatchEvent(
           new CustomEvent("edit-pattern", { bubbles: true, detail: this.pattern }),
         );
@@ -596,9 +637,65 @@ export class ReaderView {
   /** The row the line is on, shown in the reader bar and the settings panel. */
   private rowLabel = "row 1";
 
+  /**
+   * The marking shortcuts: H highlights the selection, N places a note, D draws.
+   *
+   * H is the one that earns a key, because highlighting is a two-step action --
+   * select the words, then press -- and reaching for the toolbar with the other
+   * hand on the mouse is awkward. The other two are single clicks on the page,
+   * which are quicker than a key.
+   */
+  private handleMarkKey(e: KeyboardEvent): boolean {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return false;
+    }
+    const key = e.key.toLowerCase();
+    if (key === "h") {
+      e.preventDefault();
+      void this.highlightSelection();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Switches the marking tool, and paints the toolbar to show which is on.
+   *
+   * The highlight tool is the one that needs a two-step action -- select, then
+   * press -- so it also takes a key. Switching away from it does not clear the
+   * selection, which would throw away the words the user just chose.
+   */
+  private setMarkTool(tool: MarkTool): void {
+    if (!this.marks) return;
+    this.marks.setTool(tool);
+    this.root.querySelectorAll<HTMLElement>("[data-mark]").forEach((button) => {
+      const on = button.dataset.mark === tool;
+      button.classList.toggle("on", on);
+      button.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  /**
+   * Highlights whatever is selected, and reports whether it did.
+   *
+   * The selection is left alone when there is nothing to highlight, so a
+   * mistimed keypress does not clear the words.
+   */
+  private async highlightSelection(): Promise<boolean> {
+    if (!this.marks) return false;
+    const done = await this.marks.highlightSelection();
+    if (done) this.setMarkTool("highlight");
+    return done;
+  }
+
   private bindKeys(): void {
     this.scroller.addEventListener("keydown", async (e) => {
-      // Row keys first: they are the synchronised action, and the counter
+      // Marking keys first, so H reaches the highlight rather than falling
+      // through to something that handles letters.
+      if (this.handleMarkKey(e)) return;
+
+      // Row keys next: they are the synchronised action, and the counter
       // below must not swallow them.
       if (this.handleRowKey(e)) return;
 
@@ -672,8 +769,10 @@ export class ReaderView {
   destroy(): void {
     this.destroyed = true;
     clearTimeout(this.saveTimer ?? undefined);
+    clearTimeout(this.markRepaintTimer ?? undefined);
     // A window listener outlives the element unless removed, so drop it here.
     window.removeEventListener("beforeunload", this.savePosition);
+    this.marks?.detach();
     this.highlight?.detach();
     this.doc?.destroy();
     // Takes this view's listeners with it, so a later reader cannot be acted

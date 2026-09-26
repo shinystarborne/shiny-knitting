@@ -18,6 +18,22 @@ export interface RenderedDoc {
   currentPage(): number;
   /** Renders every page at a width matching the container. */
   render(): Promise<void>;
+  /**
+   * The element holding a page's real text, for measuring a selection.
+   *
+   * Null until the page has rendered, and null for a page with no text layer
+   * at all, which is an image-only scan.
+   */
+  textLayerFor(page: number): HTMLElement | null;
+  /** The element a page is painted into, for placing a mark. */
+  pageElement(page: number): HTMLElement | null;
+  /**
+   * Called when the document's own layout shifts under the reader.
+   *
+   * A PDF's pages are fixed sizes, so nothing calls it; an EPUB's chapters are
+   * not, and one growing pushes everything below it down.
+   */
+  onReflow: (() => void) | null;
   destroy(): void;
 }
 
@@ -30,8 +46,20 @@ export interface RenderedDoc {
  */
 export class PdfView implements RenderedDoc {
   pageCount = 0;
+  /** A PDF's pages are fixed, so its layout never shifts on its own. */
+  onReflow: (() => void) | null = null;
   private pages: HTMLDivElement[] = [];
   private rendered = new Set<number>();
+  /**
+   * The text layer of each page, once built.
+   *
+   * pdf.js paints a page to a canvas, and canvas text is not text: it cannot
+   * be selected, copied, or measured. The text layer is a transparent set of
+   * positioned spans over the canvas carrying the same characters, which is
+   * what makes a PDF's words selectable and what a highlight is measured
+   * against. It is invisible, so it costs nothing visually.
+   */
+  private textLayers = new Map<number, pdfjs.TextLayer>();
   private task: pdfjs.PDFDocumentProxy | null = null;
   private scroller: HTMLElement;
   private container: HTMLDivElement;
@@ -111,6 +139,11 @@ export class PdfView implements RenderedDoc {
     }
   }
 
+  /** The element a page is painted into, for placing a mark. */
+  pageElement(page: number): HTMLElement | null {
+    return this.pages[page - 1] ?? null;
+  }
+
   /** Width available for a page, minus padding and scrollbar allowance. */
   private targetWidth(): number {
     const styles = getComputedStyle(this.container);
@@ -150,13 +183,59 @@ export class PdfView implements RenderedDoc {
 
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      // The text layer is built alongside the paint rather than after it. It is
+      // independent of the canvas -- invisible, and positioned in CSS pixels at
+      // the CSS scale, since its spans would be wrong at the device-pixel
+      // viewport the canvas uses -- and a large page can take a while to paint.
+      // Waiting for the picture to finish means waiting to be able to select
+      // the words in it, for no benefit, and it ties the text to a paint that
+      // does not always settle.
+      const text = this.buildTextLayer(page, pageEl, page.getViewport({ scale }));
       await page.render({ canvasContext: ctx, viewport }).promise;
+      await text;
     } catch (e) {
       // Allow a later pass to retry this page rather than leaving a permanent
       // blank in the document.
       this.rendered.delete(n);
       throw e;
     }
+  }
+
+  /**
+   * Builds the invisible text layer for a page.
+   *
+   * Failure here is not worth failing the page over: the picture is already
+   * painted, and a page without selectable text is still readable, just not
+   * highlightable.
+   */
+  private async buildTextLayer(
+    page: pdfjs.PDFPageProxy,
+    pageEl: HTMLElement,
+    viewport: pdfjs.PageViewport,
+  ): Promise<void> {
+    let container = pageEl.querySelector<HTMLElement>(".text-layer");
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "text-layer";
+      pageEl.appendChild(container);
+    }
+    const layer = new pdfjs.TextLayer({
+      textContentSource: page.streamTextContent(),
+      container,
+      viewport,
+    });
+    this.textLayers.set(page.pageNumber, layer);
+    await layer.render();
+  }
+
+  /**
+   * The element a page's text lives in, for measuring a selection.
+   *
+   * Public because the mark layer needs it: a highlight is the rectangle
+   * around real text, so the text has to be in the DOM to be measured.
+   */
+  textLayerFor(page: number): HTMLElement | null {
+    return this.pages[page - 1]?.querySelector<HTMLElement>(".text-layer") ?? null;
   }
 
   /** Renders visible pages first, then the rest in the background. */

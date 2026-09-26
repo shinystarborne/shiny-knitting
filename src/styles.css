@@ -518,6 +518,7 @@ kbd {
   max-width: 1100px;
 }
 .pdf-page {
+  position: relative;
   background: #fff;
   border-radius: 4px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
@@ -525,6 +526,165 @@ kbd {
   line-height: 0;
 }
 .pdf-canvas { display: block; max-width: 100%; }
+
+/*
+  The text layer sits over the painted canvas and carries the same characters
+  invisibly. It is what makes a PDF's words selectable and copyable, and what a
+  highlight is measured against -- canvas text cannot be selected at all.
+
+  The rules are pdf.js's own requirements for the layer to line up with the
+  paint, and changing the font metrics breaks the correspondence between where
+  a span claims to be and where the glyphs actually are.
+*/
+.text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.2;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  user-select: text;
+  z-index: 2;
+}
+.text-layer span {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 0;
+  color: transparent;
+}
+.text-layer ::selection {
+  background: rgba(90, 169, 247, 0.45);
+  color: transparent;
+}
+
+/* The marking toolbar in the reader bar. */
+.mark-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.mark-tools button { font-size: 11px; padding: 3px 9px; }
+/* The tool in use is shown, so it is obvious what a click on the page will do
+   before it is clicked. */
+.mark-tools button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.mark-tools input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+/* The note editor, opened by clicking a note. */
+.note-popover {
+  position: fixed;
+  z-index: 40;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+.note-popover textarea {
+  min-height: 70px;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px;
+}
+.note-actions { display: flex; gap: 5px; justify-content: flex-end; }
+.note-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.note-actions .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.note-actions .danger { color: var(--accent); }
+
+/* Marks ---------- */
+
+/*
+  An overlay rather than anything inserted into the document, so the same code
+  works over a PDF canvas and an EPUB iframe, and a mark cannot be lost to a
+  re-render. Positioned against the document, so it must not intercept the
+  pointer except where a mark actually is.
+*/
+.mark-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.mark {
+  position: fixed;
+  pointer-events: auto;
+}
+
+.mark-highlight {
+  background: var(--mark-colour, #ffd60a);
+  /* Multiply keeps the text underneath readable: the page shows through the
+     mark rather than being painted over, which a solid fill would hide. */
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.mark-note {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% 50% 50% 2px;
+  background: var(--mark-colour, #ffd60a);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.mark-draw {
+  overflow: visible;
+  pointer-events: none;
+}
+.mark-draw path {
+  fill: none;
+  stroke: var(--mark-colour, #e5484d);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mark-draw.live path { stroke-dasharray: none; }
+
+/* A drawing tool turns off text selection, which would otherwise fight the
+   stroke being drawn. */
+.mark-tool-draw { cursor: crosshair; user-select: none; }
+.mark-tool-pick .mark { cursor: pointer; }
 
 .epub-frame {
   width: 100%;
