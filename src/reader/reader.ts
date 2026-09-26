@@ -3,6 +3,7 @@ import { EpubView } from "./epub";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
+import { PinLayer } from "./pins";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
 import { scanOne } from "../ai/scan";
@@ -47,6 +48,8 @@ export class ReaderView {
   private doc: RenderedDoc | null = null;
   private highlight: HighlightLine | null = null;
   private marks: MarkLayer | null = null;
+  /** The floating pin cards. Null until the document has loaded. */
+  private pins: PinLayer | null = null;
   private counter: RowCounter | null = null;
   private settings: HighlightSettings | null = null;
 
@@ -110,6 +113,20 @@ export class ReaderView {
     await this.marks.refresh();
     if (this.destroyed) return;
 
+    this.pins = new PinLayer(this.scroller, this.pattern.id, {
+      currentPage: () => this.doc?.currentPage() ?? 1,
+      pageElement: (page) => this.doc?.pageElement(page) ?? null,
+      textLayerFor: (page) => this.doc?.textLayerFor(page) ?? null,
+      format: this.pattern.format,
+    });
+    // A pin drag is started from the mark layer, so that only one tool can be
+    // active: a press that begins a crop cannot also leave a note behind.
+    this.marks.onPinSelect = (e, page) => this.pins?.beginSelection(e, page);
+    this.pins.onChange = () => this.refreshPinTool();
+    await this.pins.load();
+    if (this.destroyed) return;
+    this.refreshPinTool();
+
     const slot = this.root.querySelector<HTMLElement>(".counter-slot");
     if (!slot) return;
     this.counter = new RowCounter(slot, this.pattern.id);
@@ -162,6 +179,7 @@ export class ReaderView {
             <button data-mark="highlight" class="ghost" title="Highlight: select text, then press this or H">Highlight</button>
             <button data-mark="note" class="ghost" title="Note: click where it belongs">Note</button>
             <button data-mark="draw" class="ghost" title="Draw: drag on the page">Draw</button>
+            <button data-mark="pin" class="ghost" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>Pin</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
           </div>
           <button data-act="describe" class="ghost" title="Read this pattern's details with your model">Describe</button>
@@ -668,12 +686,38 @@ export class ReaderView {
    */
   private setMarkTool(tool: MarkTool): void {
     if (!this.marks) return;
+    // A tool that cannot work right now is not chosen: pressing Pin on an
+    // EPUB, or on a pattern already holding five, falls back to Select rather
+    // than arming a drag that would refuse at the end of it.
+    if (tool === "pin") {
+      const room = this.pins?.availability();
+      if (room && !room.ok) {
+        window.alert(room.reason);
+        tool = "none";
+      }
+    }
     this.marks.setTool(tool);
     this.root.querySelectorAll<HTMLElement>("[data-mark]").forEach((button) => {
       const on = button.dataset.mark === tool;
       button.classList.toggle("on", on);
       button.setAttribute("aria-pressed", String(on));
     });
+  }
+
+  /**
+   * Greys the Pin button out when pinning is not possible.
+   *
+   * The reason is kept in the tooltip, because a button that is simply
+   * disabled tells you nothing about why.
+   */
+  private refreshPinTool(): void {
+    const button = this.root.querySelector<HTMLButtonElement>("[data-pin-tool]");
+    if (!button) return;
+    const room = this.pins?.availability() ?? { ok: false, reason: "Still opening." };
+    button.disabled = !room.ok;
+    button.title = room.ok
+      ? "Pin: drag a box around part of the page to keep it in view"
+      : room.reason;
   }
 
   /**
@@ -773,6 +817,7 @@ export class ReaderView {
     // A window listener outlives the element unless removed, so drop it here.
     window.removeEventListener("beforeunload", this.savePosition);
     this.marks?.detach();
+    this.pins?.detach();
     this.highlight?.detach();
     this.doc?.destroy();
     // Takes this view's listeners with it, so a later reader cannot be acted

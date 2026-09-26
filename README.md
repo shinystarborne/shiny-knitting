@@ -190,6 +190,30 @@ themselves, and which time round they appear if the same phrase occurs more
 than once. A highlight therefore stays on the words you made it on when the
 chapter rewraps, instead of drifting to wherever that text used to be.
 
+## Pins
+
+A pin keeps a picture of part of a page somewhere you can see it while you work,
+which is the point: a chart you have to keep scrolling back to is no help.
+
+Choose **Pin** and drag a box around anything — a chart, a stitch diagram, a run
+of instructions you will refer to again. Up to **5** per pattern; the button
+greys out at the limit and says so. Each pin becomes a card you can:
+
+- **drag** by its title bar, anywhere over the reading pane
+- **resize** by the corner grip
+- **rename** by clicking its title
+- **hide** and bring back, without losing it
+- **remove** with the ×
+
+Cards stay where you put them — including across closing the pattern — and a new
+one arrives clear of the last, so five pins do not land on the same spot. A card
+is named after the words under its crop, cut to fit.
+
+Pins are for **PDFs**. A PDF page is a picture, so a crop is real pixels. An
+EPUB's text is reflowed and rewrapped by the window it is shown in, so there is
+no fixed region of the page to cut, and the Pin button says so rather than
+offering a card that is subtly not what you pointed at.
+
 ## Covers
 
 A new pattern gets a cover automatically, in the background: the first page of
@@ -275,6 +299,7 @@ src/
     counter.ts         the project total and the named counters
     click.ts           the mechanical-counter click, synthesised
     marks.ts           highlights, notes, drawings, and the note editor
+    pins.ts            cropping part of a page, and the floating cards
 src-tauri/src/
   db/                  schema, queries, counter arithmetic, and their tests
   ai/                  the model client, prompting, parsing, and merge rules
@@ -285,9 +310,9 @@ src-tauri/src/
   annotations.rs        storing and editing marks
 ```
 
-Agreed but not yet built — pins, bookmarks, the index, PDF export, and the
-native file drop — are written down in [TODO.md](TODO.md), along with the traps
-worth remembering about this codebase.
+Agreed but not yet built — bookmarks, the index, PDF export, and the native file
+drop — are written down in [TODO.md](TODO.md), along with the traps worth
+remembering about this codebase.
 
 ## Notes on the design
 
@@ -417,5 +442,7 @@ are checked directly rather than by pressing keys and reading the DOM.
 It checks the coordinate mapping both ways, that a quote saved against one
 occurrence is redrawn over the words it was made from, and that a passage which
 has ended up outside the visible box is dropped rather than clamped onto the
-page edge. Together that is 66 checks: 7 layout, 13 row, 46 annotation.
+page edge, and that a crop is named after the words inside it rather than a
+neighbouring paragraph. Together that is 78 checks: 7 layout, 13 row, 58
+annotation.
 

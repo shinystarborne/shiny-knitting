@@ -12,6 +12,8 @@ const store = {
   progress: new Map(),
   highlights: new Map(),
   covers: new Map(),
+  pins: [],
+  pinImages: new Map(),
   aiHistory: new Map(),
   aiSettings: null,
   apiKey: null,
@@ -493,6 +495,71 @@ const handlers = {
     store.annotations = store.annotations.filter((a) => a.id !== id);
     if (store.annotations.length === before) throw new Error("no annotation with that id");
   },
+
+  // ---------- pins ----------
+  //
+  // The five-pin limit, the empty-crop refusal and the placement clamping all
+  // live in the backend. A stub that skipped them would let the frontend look
+  // right here and then fail against the real thing, which is the whole reason
+  // this stub mirrors the rules rather than just the shapes.
+  list_pins: ({ patternId }) =>
+    clone(store.pins.filter((p) => p.patternId === patternId).sort((a, b) => a.z - b.z)),
+  pin_count: ({ patternId }) => store.pins.filter((p) => p.patternId === patternId).length,
+  add_pin: ({ patternId, input }) => {
+    if (store.pins.filter((p) => p.patternId === patternId).length >= 5) {
+      throw new Error("This pattern already has 5 pins. Remove one before adding another.");
+    }
+    if (!input.imageBytes || input.imageBytes.length === 0) {
+      throw new Error("There was nothing to pin.");
+    }
+    const id = `pin${store.nextId++}`;
+    const pin = {
+      id,
+      patternId,
+      page: Math.max(1, input.page || 1),
+      geometry: input.geometry || "[]",
+      quote: input.quote || "",
+      title: input.title || "",
+      offsetX: 0.72,
+      offsetY: 0.18,
+      width: 0.24,
+      hidden: false,
+      z: store.pins.reduce((top, p) => Math.max(top, p.z), -1) + 1,
+      imageFile: `${id}.jpg`,
+      createdAt: Date.now(),
+    };
+    store.pins.push(pin);
+    store.pinImages.set(id, input.imageBytes);
+    return clone(pin);
+  },
+  update_pin: ({ id, placement }) => {
+    const pin = store.pins.find((p) => p.id === id);
+    if (!pin) throw new Error("no pin with that id");
+    // Clamped exactly as the command does, so a card dragged off the pane
+    // comes back to the same place here as it does in the app.
+    pin.offsetX = Math.min(0.98, Math.max(0, placement.offsetX));
+    pin.offsetY = Math.min(0.98, Math.max(0, placement.offsetY));
+    pin.width = Math.min(0.9, Math.max(0.1, placement.width));
+    pin.hidden = !!placement.hidden;
+    return clone(pin);
+  },
+  rename_pin: ({ id, title }) => {
+    const pin = store.pins.find((p) => p.id === id);
+    if (!pin) throw new Error("no pin with that id");
+    pin.title = (title || "").trim();
+  },
+  delete_pin: ({ id }) => {
+    const before = store.pins.length;
+    store.pins = store.pins.filter((p) => p.id !== id);
+    if (store.pins.length === before) throw new Error("no pin with that id");
+    store.pinImages.delete(id);
+  },
+  get_pin_image: ({ id }) => {
+    const bytes = store.pinImages.get(id);
+    if (!bytes) throw new Error("This pin has no image.");
+    return Uint8Array.from(bytes).buffer;
+  },
+
   get_highlight: ({ patternId }) => clone(store.highlights.get(patternId)),
   save_highlight: ({ settings }) => {
     store.highlights.set(settings.patternId, clone(settings));

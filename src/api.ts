@@ -176,6 +176,54 @@ export interface SectionState {
   totalRows: number;
 }
 
+/** Mirrors `models.rs::Pin`. */
+export interface Pin {
+  id: string;
+  patternId: string;
+  /** 1-based page the crop was taken from. */
+  page: number;
+  /** The cropped region, as a JSON string of one normalised page rectangle. */
+  geometry: string;
+  /** The text under the crop, when there was any. A label, nothing more. */
+  quote: string;
+  title: string;
+  /** Card position and size, as a fraction of the reading pane. */
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  hidden: boolean;
+  z: number;
+  /** File name of the crop inside `library/pins`. */
+  imageFile: string;
+  createdAt: number;
+}
+
+export interface PinInput {
+  page: number;
+  geometry: string;
+  quote: string;
+  title: string;
+  /** The cropped area as JPEG bytes. */
+  imageBytes: number[];
+  imageMime: string;
+}
+
+export interface PinPlacement {
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  hidden: boolean;
+}
+
+/**
+ * How many pins a pattern may hold.
+ *
+ * Mirrors `models.rs::MAX_PINS`. The backend enforces it too — this copy is
+ * only so the toolbar can grey the button out before the user is told off, and
+ * it is not the thing that stops them at six.
+ */
+export const MAX_PINS = 5;
+
 
 /** Mirrors `commands.rs::AiSettingsView`. */
 export interface AiSettingsView {
@@ -329,6 +377,17 @@ export const api = {
   editAnnotation: (id: string, text: string, color: string) =>
     invoke<void>("edit_annotation", { id, text, color }),
   deleteAnnotation: (id: string) => invoke<void>("delete_annotation", { id }),
+
+  // Pins: a cropped image of part of a page, kept beside the pattern.
+  listPins: (patternId: string) => invoke<Pin[]>("list_pins", { patternId }),
+  /** Counted separately so the toolbar can grey out before the user tries. */
+  pinCount: (patternId: string) => invoke<number>("pin_count", { patternId }),
+  addPin: (patternId: string, input: PinInput) => invoke<Pin>("add_pin", { patternId, input }),
+  updatePin: (id: string, placement: PinPlacement) => invoke<Pin>("update_pin", { id, placement }),
+  renamePin: (id: string, title: string) => invoke<void>("rename_pin", { id, title }),
+  deletePin: (id: string) => invoke<void>("delete_pin", { id }),
+  /** Raw binary; the caller makes a blob URL and lets the browser decode it. */
+  getPinImage: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_pin_image", { id }),
 
   getHighlight: (patternId: string) => invoke<HighlightSettings>("get_highlight", { patternId }),  saveHighlight: (settings: HighlightSettings) =>
     invoke<HighlightSettings>("save_highlight", { settings }),

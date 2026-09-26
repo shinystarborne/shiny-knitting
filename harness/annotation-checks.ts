@@ -21,9 +21,11 @@ import {
   parsePoints,
   parseRects,
   rectsForRanges,
+  textInRect,
   toPageRect,
   visibleRectsForRanges,
 } from "../src/annotations";
+import { titleFor } from "../src/reader/pins";
 
 interface CheckResult {
   name: string;
@@ -178,6 +180,47 @@ export function runAnnotationChecks(): CheckResult[] {
   check(results, "an off-page passage is dropped, not clamped", dropped.length === 0, JSON.stringify(dropped));
   const visibleQuote = findQuoteRanges(scrolled, "visible text", 0);
   check(results, "a visible passage is still drawn", visibleRectsForRanges(visibleQuote, scrolled).length > 0);
+
+  // --- Naming a card from the words under the crop ---
+  // A pin's title comes from the text inside its crop, so getting this wrong
+  // means every card is called "Pin 2" or, worse, is named after a neighbouring
+  // paragraph.
+  const named = track(fakePage(600, 400));
+  named.innerHTML =
+    '<div class="text-layer">' +
+    '<span style="position:absolute;left:20px;top:20px;width:300px">Row 1: k1, yo.</span>' +
+    '<span style="position:absolute;left:20px;top:200px;width:300px">Row 2: k2, k1.</span>' +
+    "</div>";
+  const upper = textInRect(named, named, { x: 0, y: 0, w: 1, h: 0.3 });
+  check(results, "a crop over the first line names that line", upper === "Row 1: k1, yo.", upper);
+  const lower = textInRect(named, named, { x: 0, y: 0.4, w: 1, h: 0.3 });
+  check(results, "a crop lower down names that line instead", lower === "Row 2: k2, k1.", lower);
+  const both = textInRect(named, named, { x: 0, y: 0, w: 1, h: 1 });
+  check(results, "a crop over both names both, in reading order", both === "Row 1: k1, yo. Row 2: k2, k1.", both);
+  const nothing = textInRect(named, named, { x: 0.6, y: 0.8, w: 0.05, h: 0.05 });
+  check(results, "a crop over blank paper names nothing", nothing === "", JSON.stringify(nothing));
+  // A zero-sized box has no area to divide by, and must not report the whole
+  // page's text or throw.
+  const noArea = textInRect(named, named, { x: 0.2, y: 0.2, w: 0, h: 0 });
+  check(results, "a collapsed crop names nothing rather than everything", noArea === "", JSON.stringify(noArea));
+
+  // A card name is a label, not a transcript: a crop over a long run of
+  // instructions is cut to fit, and ends on a whole word.
+  const long = titleFor(
+    "Row 1: k1, yo. Work across the row, then turn. Repeat for the length given.",
+    1,
+  );
+  check(results, "a long card name is cut to fit", long.length <= 60, `${long.length}: ${long}`);
+  check(results, "a cut card name ends on a whole word", !/\w…$/.test(long.slice(0, -1)) || long.endsWith("…"), long);
+  check(results, "a card name keeps the start of the text", long.startsWith("Row 1: k1, yo."), long);
+  check(results, "a chart with no text gets a plain name", titleFor("", 2) === "Pin 2", titleFor("", 2));
+  check(results, "whitespace is not a name", titleFor("   \n  ", 3) === "Pin 3", titleFor("   \n  ", 3));
+  // A pattern is full of labels that look like sentence ends. Cutting at one
+  // would name every card after its own heading, which is worse than useless.
+  const heading = titleFor("Row 1: k1, yo. Work across the row, then turn.", 1);
+  check(results, "a card name is not cut at a heading's colon", heading.startsWith("Row 1: k1"), heading);
+  const trimmed = titleFor("  Row 1:   k1,  yo.  ", 1);
+  check(results, "runs of whitespace in a name are collapsed", trimmed === "Row 1: k1, yo.", trimmed);
 
   // --- Which occurrence is a selection on? This is what an EPUB mark is
   // saved against, and getting it wrong draws the mark on the wrong words. ---

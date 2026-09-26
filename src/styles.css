@@ -588,6 +588,104 @@ kbd {
   cursor: pointer;
 }
 
+/* Pins ---------- */
+
+/* The card layer covers the reading pane and does not scroll: a pin that moved
+   with the document would be no use for the thing it is there to help with. */
+.pin-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pin-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  overflow: hidden;
+}
+.pin-card.moving,
+.pin-card.resizing { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6); }
+.pin-card.hidden { width: auto !important; }
+.pin-card.hidden .pin-image,
+.pin-card.hidden .pin-grip { display: none; }
+
+.pin-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 4px 3px 6px;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+}
+.pin-card.moving .pin-bar { cursor: grabbing; }
+.pin-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pin-name:hover { text-decoration: underline; }
+.pin-btn {
+  font-size: 11px;
+  padding: 2px 5px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pin-btn:hover { border-color: var(--border); color: var(--text); }
+.pin-btn.danger:hover { color: var(--accent); }
+.pin-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+.pin-missing {
+  padding: 14px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.pin-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--muted) 50%);
+  opacity: 0.7;
+}
+
+/* The rectangle dragged out to choose what to pin. */
+.pin-band {
+  position: absolute;
+  z-index: 30;
+  border: 2px solid var(--accent);
+  background: rgba(229, 72, 77, 0.16);
+  pointer-events: none;
+}
+
 /* The note editor, opened by clicking a note. */
 .note-popover {
   position: fixed;
