@@ -3,6 +3,31 @@
 Work that has been agreed but not built yet, and things worth knowing that are
 not obvious from the code. Newest first.
 
+## How this is worked
+
+**One branch per task, named in the table below, all cut from `main`.** A branch
+is created when its task starts, not before, so `main` is always the thing that
+builds and installs. Merging back into `main` is a squash, so `main`'s history
+stays a readable list of features rather than a record of every commit.
+
+The first four share a dependency: highlights, drawings, pins and bookmarks all
+need a toolbar in the reader, and marks and pins both need the coordinate
+mapping in `src/annotations.ts`. That work should land on `feature/marks` first
+and the others build on it.
+
+| Branch | Task |
+| --- | --- |
+| `feature/marks` | Highlights, notes and drawings. Start here: the others need it. |
+| `feature/pins` | Cropped image pins, up to five per pattern. |
+| `feature/bookmarks` | Bookmarks and the document index. |
+| `feature/export` | Page-range PDF export. Independent of the other three. |
+| `feature/raglan-calculator` | Raglan calculator. Has open questions below. |
+| `feature/colourwork-designer` | Schematic colourwork designer. Open questions below. |
+| `feature/lopapeysa` | Round yoke calculator. Probably a mode of the raglan one. |
+| `feature/native-file-drop` | Native file drop, so dropping a large PDF is as fast as Browse. |
+| `feature/undo-delete` | A way to recover a removed pattern. |
+| `feature/keyboard-config` | Make the row keys configurable. |
+
 ## Status
 
 | Area | State |
@@ -13,6 +38,7 @@ not obvious from the code. Newest first.
 | Yarn weight filter | shipped |
 | Scroll-in-release bug, large-file speed, scanned-PDF AI | shipped |
 | Row keys: line and counter in step, one band per press | shipped |
+| Named counters, multiple at once, with a click | shipped |
 | Highlights, notes, drawings, pins, bookmarks, index, PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
 
