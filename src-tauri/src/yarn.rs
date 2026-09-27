@@ -17,19 +17,19 @@
 ///
 /// The bands are inclusive of `min` and exclusive of `max`, and they are
 /// contiguous from `jumbo` upwards, so every plausible figure lands in exactly
-/// one row. The top row is open-ended: embroidery thread runs to several
-/// hundred metres per 100 g and there is no useful ceiling.
+/// one row. The top row is open-ended: lace runs from around 460 m/100 g up
+/// past 800 for a cobweb, and there is no useful ceiling.
 pub const FAMILIES: &[(&str, &str, u32, u32)] = &[
-    ("lace", "Lace", 200, u32::MAX),
-    ("fingering", "Fingering", 170, 200),
-    ("sport", "Sport", 120, 170),
-    ("dk", "DK", 100, 120),
-    ("worsted", "Worsted", 80, 100),
-    ("aran", "Aran", 60, 80),
-    ("bulky", "Bulky", 40, 60),
-    ("chunky", "Chunky", 30, 40),
-    ("super-chunky", "Super chunky", 20, 30),
-    ("jumbo", "Jumbo", 0, 20),
+    ("lace", "Lace", 460, u32::MAX),
+    ("fingering", "Fingering", 360, 460),
+    ("sport", "Sport", 300, 360),
+    ("dk", "DK", 220, 300),
+    ("worsted", "Worsted", 190, 220),
+    ("aran", "Aran", 160, 190),
+    ("bulky", "Bulky", 100, 160),
+    ("chunky", "Chunky", 70, 100),
+    ("super-chunky", "Super chunky", 40, 70),
+    ("jumbo", "Jumbo", 0, 40),
 ];
 
 /// Words that name a family directly, longest and most specific first so that
@@ -42,9 +42,11 @@ const KEYWORDS: &[(&str, &str)] = &[
     ("sock weight", "fingering"),
     ("4-ply", "worsted"),
     ("4 ply", "worsted"),
-    ("3-ply", "chunky"),
-    ("2-ply", "super-chunky"),
-    ("2 ply", "super-chunky"),
+    // Ply counts run the other way from thickness: fewer plies, finer yarn.
+    // 3-ply is a light fingering and 2-ply a lace or baby weight.
+    ("3-ply", "fingering"),
+    ("2-ply", "lace"),
+    ("2 ply", "lace"),
     ("afghan", "worsted"),
     ("fingering", "fingering"),
     ("finger", "fingering"),
@@ -250,18 +252,19 @@ mod tests {
     #[test]
     fn a_metre_figure_is_used_when_no_name_is_given() {
         for (text, expected) in [
-            ("100 m/100g", "dk"),
-            ("100m per 100g", "dk"),
-            ("85 m/100 g", "worsted"),
-            ("75 m/100g", "aran"),
-            ("180 m/100g", "fingering"),
-            ("140 m/100g", "sport"),
-            // 230 is past fingering, so it reads as lace.
-            ("230 m/100g", "lace"),
-            ("300m/100g", "lace"),
-            ("400 m per 100 g", "lace"),
-            ("50m/100g", "bulky"),
-            ("35m/100g", "chunky"),
+            ("800 m/100g", "lace"),
+            ("420 m/100g", "fingering"),
+            ("400 m per 100 g", "fingering"),
+            ("300m/100g", "sport"),
+            ("230 m/100g", "dk"),
+            ("220 m/100g", "dk"),
+            ("200 m/100g", "worsted"),
+            ("180 m/100g", "aran"),
+            ("120 m/100g", "bulky"),
+            ("100 m/100g", "bulky"),
+            ("100m per 100g", "bulky"),
+            ("85 m/100 g", "chunky"),
+            ("50m/100g", "super-chunky"),
             ("12 m/100g", "jumbo"),
         ] {
             assert_eq!(family_of(text), expected, "for {text:?}");
@@ -269,12 +272,24 @@ mod tests {
     }
 
     #[test]
+    fn ply_names_map_thinner_to_finer() {
+        // A ply count names how many strands are spun together, so it runs
+        // the other way from thickness: 2-ply is a lace or baby weight and
+        // 3-ply a light fingering, never the other way round.
+        assert_eq!(family_of("2-ply"), "lace");
+        assert_eq!(family_of("2 ply"), "lace");
+        assert_eq!(family_of("3-ply"), "fingering");
+        // The digit before the hyphen is part of the word, so a longer count
+        // is not misread as a shorter one.
+        assert_eq!(family_of("12-ply"), "");
+    }
+
+    #[test]
     fn a_name_wins_over_a_contradicting_figure() {
         // The designer's stated weight is more trustworthy than our reading of
         // a number, especially since the number may not even be a metre figure.
         assert_eq!(family_of("Aran, 100 m/100g"), "aran");
-        assert_eq!(family_of("Lace weight - 85m/100g"), "lace");
-    }
+        assert_eq!(family_of("Lace weight - 85m/100g"), "lace");    }
 
     #[test]
     fn a_bare_number_is_not_a_metre_figure() {

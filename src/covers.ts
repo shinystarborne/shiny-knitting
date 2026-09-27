@@ -106,7 +106,7 @@ async function extractFromEpub(bytes: Uint8Array): Promise<ExtractedCover | null
   }
 
   if (!href) return null;
-  const data = files.get(normalize(resolvePath(opfDir, href.split("#")[0])));
+  const data = files.get(normalize(resolvePath(opfDir, decodeHref(href.split("#")[0]))));
   if (!data) return null;
 
   const source = dataMime(href);
@@ -226,13 +226,17 @@ export async function removeCover(patternId: string): Promise<void> {
 }
 
 /**
- * Object URLs for covers, cached per pattern.
+ * Object URLs for covers, cached per pattern as the promise that produces
+ * them.
  *
  * Reading a cover is a round trip to the backend, and the library view asks
  * for the same cover every time it repaints, so each one is fetched once and
- * the URL is reused. Revoked by `clearCoverCache` when the library changes.
+ * the URL is reused. Caching the in-flight promise, not just the resolved
+ * URL, means two calls for one pattern share a single read instead of each
+ * creating an object URL that only one of them can keep. Revoked by
+ * `clearCoverCache` when the library changes.
  */
-const urlCache = new Map<string, string>();
+const urlCache = new Map<string, Promise<string | null>>();
 
 /**
  * Works out an image's type from its first bytes.
@@ -257,35 +261,57 @@ export function imageMime(bytes: Uint8Array): string {
   return "application/octet-stream";
 }
 
-export async function coverUrl(patternId: string): Promise<string | null> {
+export function coverUrl(patternId: string): Promise<string | null> {
   const cached = urlCache.get(patternId);
   if (cached) return cached;
-  try {
-    const raw = await api.getCover(patternId);
-    const bytes = toBytes(raw);
-    if (bytes.length === 0) return null;
-    const blob = new Blob([bytes], { type: imageMime(bytes) });
-    const url = URL.createObjectURL(blob);
-    urlCache.set(patternId, url);
+  // Declared separately: the body below compares the cache entry against the
+  // promise itself, and a const cannot be named inside its own initializer.
+  let promise!: Promise<string | null>;
+  promise = (async () => {
+    let url: string | null = null;
+    try {
+      const raw = await api.getCover(patternId);
+      const bytes = toBytes(raw);
+      if (bytes.length > 0) {
+        const blob = new Blob([bytes], { type: imageMime(bytes) });
+        url = URL.createObjectURL(blob);
+      }
+    } catch {
+      // No cover, or the file went missing. Not an error worth surfacing.
+    }
+    // Only a URL that is still the current entry is kept. One produced after
+    // the cache was cleared or replaced belongs to a dead screen: nothing
+    // will revoke it, so it is revoked here rather than leaked. Misses are
+    // not cached either, so a later call can retry.
+    if (urlCache.get(patternId) !== promise) {
+      if (url) URL.revokeObjectURL(url);
+      return null;
+    }
+    if (!url) urlCache.delete(patternId);
     return url;
-  } catch {
-    // No cover, or the file went missing. Not an error worth surfacing.
-    return null;
-  }
+  })();
+  urlCache.set(patternId, promise);
+  return promise;
 }
 
 /** Drops cached URLs so the next read fetches fresh bytes. */
 export function forgetCover(patternId: string): void {
-  const url = urlCache.get(patternId);
-  if (url) {
-    URL.revokeObjectURL(url);
-    urlCache.delete(patternId);
-  }
+  const entry = urlCache.get(patternId);
+  if (!entry) return;
+  urlCache.delete(patternId);
+  void entry.then((url) => {
+    if (url) URL.revokeObjectURL(url);
+  });
 }
 
 export function clearCoverCache(): void {
-  for (const url of urlCache.values()) URL.revokeObjectURL(url);
+  const entries = [...urlCache.values()];
   urlCache.clear();
+  for (const entry of entries) {
+    void entry.then((url) => {
+      if (url) URL.revokeObjectURL(url);
+    });
+  }
 }
 
 /**
@@ -310,6 +336,20 @@ export async function ensureCover(pattern: Pattern, bytes: Uint8Array): Promise<
 
 function normalize(path: string): string {
   return path.replace(/^\.\//, "").replace(/^\//, "");
+}
+
+/**
+ * Percent-decodes an EPUB manifest href. Zip entry names are stored decoded,
+ * so a href like `cover%20art.jpg` would otherwise never match its entry. A
+ * malformed escape makes decodeURIComponent throw; the raw href is kept then,
+ * which simply misses rather than breaking the whole read.
+ */
+function decodeHref(href: string): string {
+  try {
+    return decodeURIComponent(href);
+  } catch {
+    return href;
+  }
 }
 
 function resolvePath(baseDir: string, href: string): string {

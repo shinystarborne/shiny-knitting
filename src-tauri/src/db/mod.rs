@@ -230,10 +230,18 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // reads far better over a pattern: at 90% the text underneath was hard to
     // follow. Only rows still sitting on the old default are moved, so a line
     // someone has deliberately made more or less strong is left alone.
-    conn.execute(
-        "UPDATE highlights SET opacity = 0.3 WHERE ABS(opacity - 0.9) < 0.0001",
-        [],
-    )?;
+    //
+    // This runs once, recorded in app_settings. migrate() runs on every
+    // launch, and without the flag a line deliberately set to exactly 0.9
+    // after the migration would be rewritten to 0.3 on every start.
+    let opacity_migrated: bool = get_setting(conn, "highlight_opacity_0_3")?;
+    if !opacity_migrated {
+        conn.execute(
+            "UPDATE highlights SET opacity = 0.3 WHERE ABS(opacity - 0.9) < 0.0001",
+            [],
+        )?;
+        set_setting(conn, "highlight_opacity_0_3", &true)?;
+    }
     Ok(())
 }
 
@@ -341,16 +349,27 @@ pub struct Filter {
     pub sort: Option<String>,
 }
 
+/// Makes user text safe for a LIKE pattern: the wildcards `%` and `_`, and
+/// the escape character itself, are escaped so a search for "100%" matches
+/// that literal text rather than "100" followed by anything. The SQL using
+/// this must declare `ESCAPE '\'`.
+fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Pattern>> {
     // The free-text term is parameter ?1 and is always present, so an empty
     // search becomes "%%" and matches everything.
     let term = match filter.search.as_deref().filter(|s| !s.trim().is_empty()) {
-        Some(s) => format!("%{}%", s.trim()),
+        Some(s) => format!("%{}%", escape_like(s.trim())),
         None => "%".to_string(),
     };
     let mut sql = String::from(
         "SELECT * FROM patterns WHERE 1=1 \
-         AND (title LIKE ?1 OR designer LIKE ?1 OR notes LIKE ?1 OR tags LIKE ?1)",
+         AND (title LIKE ?1 ESCAPE '\\' OR designer LIKE ?1 ESCAPE '\\' \
+         OR notes LIKE ?1 ESCAPE '\\' OR tags LIKE ?1 ESCAPE '\\')",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(term)];
 
@@ -403,8 +422,8 @@ pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Patter
         for tag in tags {
             let idx = next_index;
             next_index += 1;
-            sql.push_str(&format!(" AND tags LIKE ?{}", idx));
-            args.push(Box::new(format!("%\"{}\"%", tag)));
+            sql.push_str(&format!(" AND tags LIKE ?{} ESCAPE '\\'", idx));
+            args.push(Box::new(format!("%\"{}\"%", escape_like(tag))));
         }
     }
 
@@ -613,20 +632,43 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
 
     let mut tags: Vec<String> = Vec::new();
     {
+        // Count each exact casing first, then merge spellings that differ
+        // only by case, or "Lace" and "lace" both end up in the sidebar. The
+        // display form is the most common casing, with ties going to the one
+        // seen first.
+        let mut exact: Vec<(String, usize)> = Vec::new();
         let mut stmt =
             conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]'")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         for r in rows {
             let list: Vec<String> = serde_json::from_str(&r?).unwrap_or_default();
             for t in list {
-                if !tags.contains(&t) {
-                    tags.push(t);
+                match exact.iter_mut().find(|(seen, _)| *seen == t) {
+                    Some((_, n)) => *n += 1,
+                    None => exact.push((t, 1)),
                 }
+            }
+        }
+        for (t, n) in &exact {
+            match tags
+                .iter()
+                .position(|seen: &String| seen.eq_ignore_ascii_case(t))
+            {
+                Some(pos) => {
+                    let kept = exact
+                        .iter()
+                        .find(|(seen, _)| seen == &tags[pos])
+                        .map(|(_, n)| *n)
+                        .unwrap_or(0);
+                    if *n > kept {
+                        tags[pos] = t.clone();
+                    }
+                }
+                None => tags.push(t.clone()),
             }
         }
     }
     tags.sort_by_key(|t| t.to_lowercase());
-    tags.dedup();
 
     Ok(Facets {
         designers: column("designer")?,
@@ -775,27 +817,51 @@ pub fn delete_counter(conn: &Connection, id: &str) -> AppResult<()> {
 /// The project total moves with it unless the counter is excluded, which is
 /// what the flag is for: a setup row or a side note that is not one of the
 /// project's rows.
+///
+/// One transaction, like count_rows: the counter and the total are written
+/// together or not at all.
 pub fn count_one(conn: &Connection, id: &str, delta: i64) -> AppResult<CountOutcome> {
-    let (pattern_id, current, target, excluded): (String, i64, i64, bool) = conn.query_row(
-        "SELECT pattern_id, current, target, excluded_from_total FROM counters WHERE id = ?1",
-        params![id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0)),
-    )?;
+    let tx = conn.unchecked_transaction()?;
+
+    let (pattern_id, current, target, excluded) = tx
+        .query_row(
+            "SELECT pattern_id, current, target, excluded_from_total FROM counters WHERE id = ?1",
+            params![id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)? != 0,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("No counter with id {id}.")))?;
 
     let next = clamp_count(current, delta, target);
     let applied = next - current;
-    conn.execute(
+    tx.execute(
         "UPDATE counters SET current = ?2 WHERE id = ?1",
         params![id, next],
     )?;
 
-    let total = get_progress(conn, &pattern_id)?.total_rows;
+    let total: i64 = tx
+        .query_row(
+            "SELECT total_rows FROM progress WHERE pattern_id = ?1",
+            params![pattern_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(0);
     let total = if excluded {
         total
     } else {
-        (total + applied).max(0)
+        total.saturating_add(applied).max(0)
     };
-    set_total_rows(conn, &pattern_id, total)?;
+    upsert_total(&tx, &pattern_id, total)?;
+    tx.commit()?;
+
     outcome(conn, &pattern_id, total)
 }
 
@@ -819,7 +885,7 @@ pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<
         )
         .optional()?
         .unwrap_or(0);
-    let next_total = (total + delta).max(0);
+    let next_total = total.saturating_add(delta).max(0);
 
     // Collect first, then write, so the reads are not interleaved with the
     // updates on a connection that is mid-transaction.
@@ -845,10 +911,7 @@ pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<
         )?;
     }
 
-    tx.execute(
-        "UPDATE progress SET total_rows = ?2, updated_at = ?3 WHERE pattern_id = ?1",
-        params![pattern_id, next_total, now_ms()],
-    )?;
+    upsert_total(&tx, pattern_id, next_total)?;
     tx.commit()?;
 
     outcome(conn, pattern_id, next_total)
@@ -858,12 +921,14 @@ pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<
 ///
 /// A target of zero means "no target", which is why an untargeted counter can
 /// count past any number; a targeted one stops at its target rather than
-/// running on and having to be corrected by hand.
+/// running on and having to be corrected by hand. The add saturates: a delta
+/// straight from IPC can be i64::MAX, and an overflow would panic a debug
+/// build rather than clamp.
 fn clamp_count(current: i64, delta: i64, target: i64) -> i64 {
     if target > 0 {
-        (current + delta).clamp(0, target)
+        current.saturating_add(delta).clamp(0, target)
     } else {
-        (current + delta).max(0)
+        current.saturating_add(delta).max(0)
     }
 }
 
@@ -899,8 +964,21 @@ pub fn get_progress(conn: &Connection, pattern_id: &str) -> AppResult<Progress> 
 }
 
 pub fn set_total_rows(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<()> {
+    upsert_total(conn, pattern_id, total)
+}
+
+/// Writes the project total, creating the progress row when none exists.
+///
+/// A bare UPDATE silently affects zero rows on a pattern whose progress row
+/// is missing -- reachable from a partially migrated database -- while the
+/// counting paths go on to report the new total, so the stored and reported
+/// numbers quietly disagree. The upsert makes the total always land.
+fn upsert_total(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<()> {
     conn.execute(
-        "UPDATE progress SET total_rows = ?2, updated_at = ?3 WHERE pattern_id = ?1",
+        "INSERT INTO progress (pattern_id, total_rows, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(pattern_id) DO UPDATE SET
+           total_rows = excluded.total_rows, updated_at = excluded.updated_at",
         params![pattern_id, total.max(0), now_ms()],
     )?;
     Ok(())

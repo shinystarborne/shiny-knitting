@@ -95,28 +95,58 @@ pub fn normalise_base_url(raw: &str) -> String {
     format!("{trimmed}/v1")
 }
 
-/// True when the address looks like this machine or a private network, which
+/// True when the address points at this machine or a private network, which
 /// is what the UI uses to reassure the user that nothing is being sent away.
 pub fn is_local_address(base_url: &str) -> bool {
-    let lower = base_url.to_lowercase();
-    if lower.contains("localhost") || lower.contains("127.0.0.1") || lower.contains("0.0.0.0") {
+    let host = host_of(base_url).to_lowercase();
+    if host == "localhost" || host.ends_with(".localhost") || host == "::1" {
         return true;
     }
-    if lower.contains("[::1]") {
+    // The names a home server usually answers to.
+    if host.ends_with(".local") || host.ends_with(".lan") {
         return true;
     }
-    // RFC1918 ranges, and the .local names a home server usually answers to.
-    lower.contains("192.168.")
-        || lower.contains("10.")
-        || lower.contains("172.16.")
-        || lower.contains("172.17.")
-        || lower.contains("172.18.")
-        || lower.contains("172.19.")
-        || lower.contains("172.2")
-        || lower.contains("172.30.")
-        || lower.contains("172.31.")
-        || lower.contains(".local")
-        || lower.contains(".lan")
+    match ipv4_octets(&host) {
+        Some([a, b, _, _]) => {
+            a == 0 || a == 10 || a == 127 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168)
+        }
+        None => false,
+    }
+}
+
+/// The host part of an address, with any scheme, credentials, port and path
+/// removed. The private-address check has to look at the host alone: matching
+/// substrings of the whole URL reads "evil10.com" as a private address and
+/// "172.2.x.x" as the 172.16/12 range.
+fn host_of(url: &str) -> &str {
+    let after_scheme = match url.split_once("://") {
+        Some((_, rest)) => rest,
+        None => url,
+    };
+    let after_auth = after_scheme.rsplit('@').next().unwrap_or(after_scheme);
+    let host_port = after_auth.split('/').next().unwrap_or("");
+    if let Some(rest) = host_port.strip_prefix('[') {
+        // An IPv6 literal, written [addr]:port.
+        return rest.split(']').next().unwrap_or("");
+    }
+    host_port.split(':').next().unwrap_or("")
+}
+
+/// The four octets of a dotted IPv4 address, or None when the host is a name.
+fn ipv4_octets(host: &str) -> Option<[u8; 4]> {
+    let mut octets = [0u8; 4];
+    let parts: Vec<&str> = host.split('.').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    for (slot, part) in octets.iter_mut().zip(parts) {
+        // A part with a leading zero or a sign is a name, not an octet.
+        if part.is_empty() || (part.len() > 1 && part.starts_with('0')) {
+            return None;
+        }
+        *slot = part.parse().ok()?;
+    }
+    Some(octets)
 }
 
 /// Attaches the key only when there is one; a local server usually has none
@@ -157,6 +187,36 @@ fn user_content(request: &CompletionRequest) -> serde_json::Value {
     serde_json::Value::Array(parts)
 }
 
+/// The chat completions payload.
+///
+/// JSON output is asked for on every call: the reply is always parsed as a
+/// JSON object, and whether the model *reasons* has nothing to do with the
+/// shape it answers in. The reasoning effort is separate, and only sent when
+/// one is chosen, so clearing the field leaves the model's own default alone.
+fn request_body(model: &str, settings: &AiSettings, request: &CompletionRequest) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content": request.system },
+            { "role": "user", "content": user_content(request) },
+        ],
+        "temperature": 0.1,
+        // Deliberately generous. A reasoning model spends part of this budget
+        // thinking before it writes anything, and if the cap lands first the
+        // reply comes back empty. Running out of room mid-answer is far more
+        // expensive than a few unused tokens.
+        "max_tokens": 4000,
+        "stream": false,
+        "response_format": { "type": "json_object" },
+    });
+
+    let effort = settings.reasoning_effort.trim();
+    if !effort.is_empty() {
+        body["reasoning"] = serde_json::json!({ "effort": effort });
+    }
+    body
+}
+
 pub async fn complete(
     settings: &AiSettings,
     request: &CompletionRequest,
@@ -171,28 +231,7 @@ pub async fn complete(
     }
 
     let url = format!("{base}/chat/completions");
-    let mut body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": request.system },
-            { "role": "user", "content": user_content(request) },
-        ],
-        "temperature": 0.1,
-        // Deliberately generous. A reasoning model spends part of this budget
-        // thinking before it writes anything, and if the cap lands first the
-        // reply comes back empty. Running out of room mid-answer is far more
-        // expensive than a few unused tokens.
-        "max_tokens": 4000,
-        "stream": false,
-    });
-
-    // Only ask for JSON where the server supports it: some self-hosted
-    // frontends reject an unknown `response_format` outright.
-    let effort = settings.reasoning_effort.trim();
-    if !effort.is_empty() {
-        body["response_format"] = serde_json::json!({ "type": "json_object" });
-        body["reasoning"] = serde_json::json!({ "effort": effort });
-    }
+    let body = request_body(&model, settings, request);
 
     let response = authorised(client()?.post(&url), settings)
         .json(&body)
@@ -373,6 +412,57 @@ mod tests {
         ] {
             assert!(!is_local_address(remote), "should be remote: {remote}");
         }
+    }
+
+    #[test]
+    fn lookalike_addresses_are_not_misread_as_local() {
+        // Substring matching would call all of these local: the digits of a
+        // private range inside a public host or address.
+        for remote in [
+            // "10." appears in the name.
+            "http://evil10.com/v1",
+            // 172.2.x.x is public; the private range starts at 172.16.
+            "http://172.2.3.4:8000/v1",
+            "http://172.15.0.1:8000/v1",
+            // "localhost" as a subdomain of someone else's domain.
+            "http://localhost.evil.com/v1",
+            // 192.168 inside a name is not the address.
+            "http://192.168.example.com/v1",
+        ] {
+            assert!(!is_local_address(remote), "should be remote: {remote}");
+        }
+        for local in [
+            // The edges of the private ranges.
+            "http://10.255.255.255/v1",
+            "http://172.16.0.1/v1",
+            "http://172.31.255.255/v1",
+            "http://192.168.0.1/v1",
+            "http://foo.localhost:8000/v1",
+            "http://0.0.0.0:8000/v1",
+        ] {
+            assert!(is_local_address(local), "should be local: {local}");
+        }
+    }
+
+    #[test]
+    fn json_mode_is_requested_regardless_of_reasoning_effort() {
+        // Clearing the effort field must not stop the request asking for a
+        // JSON object: the reply is parsed as one either way.
+        let settings = AiSettings {
+            reasoning_effort: String::new(),
+            ..Default::default()
+        };
+        let body = request_body("m", &settings, &request(vec![]));
+        assert_eq!(body["response_format"]["type"], "json_object");
+        assert!(body.get("reasoning").is_none());
+
+        let settings = AiSettings {
+            reasoning_effort: "low".to_string(),
+            ..Default::default()
+        };
+        let body = request_body("m", &settings, &request(vec![]));
+        assert_eq!(body["response_format"]["type"], "json_object");
+        assert_eq!(body["reasoning"]["effort"], "low");
     }
 
     #[test]

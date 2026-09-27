@@ -102,9 +102,22 @@ export class RowCounter {
   private async onClick(e: MouseEvent): Promise<void> {
     const btn = closestEl(e.target, "button[data-act]");
     if (!btn) return;
-    const act = btn.dataset.act;
-    const id = btn.dataset.id;
-    const step = e.shiftKey ? 10 : 1;
+    try {
+      await this.dispatch(btn, btn.dataset.act, btn.dataset.id, e.shiftKey);
+    } catch (err) {
+      // A rejected command must not surface as an unhandled rejection; the
+      // panel simply keeps showing the state it already has.
+      console.error("Counter action failed:", err);
+    }
+  }
+
+  private async dispatch(
+    btn: HTMLElement,
+    act: string | undefined,
+    id: string | undefined,
+    shift: boolean,
+  ): Promise<void> {
+    const step = shift ? 10 : 1;
 
     switch (act) {
       case "total-inc":
@@ -207,7 +220,13 @@ export class RowCounter {
    * progress from ever disagreeing.
    */
   async countRows(delta: number): Promise<void> {
-    await this.count(delta);
+    try {
+      await this.count(delta);
+    } catch (err) {
+      // Called fire-and-forget from the row keys, so a rejection here would
+      // otherwise be an unhandled promise rejection.
+      console.error("Counting failed:", err);
+    }
   }
 
   private apply(outcome: CountOutcome): void {
@@ -325,41 +344,44 @@ export class RowCounter {
   /**
    * Applies the number keys while the reader has focus.
    *
+   * The handled/not-handled decision is synchronous: the caller must be able
+   * to preventDefault in the same event dispatch, before the counting round
+   * trip, or an arrow key would scroll the page as well as count. PageDown and
+   * PageUp are deliberately absent -- the reader intercepts them first to
+   * scroll the pattern under a stationary line.
+   *
    * Every counting key goes through the one action, so the total and the
    * enabled counters always move together. There is deliberately no key that
    * counts a single counter: that is what the counter's own buttons are for,
    * and a keyboard route to one would make it too easy to move one number
    * without the other.
    */
-  async handleKey(e: KeyboardEvent): Promise<boolean> {
+  handleKey(e: KeyboardEvent): boolean {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       return false;
     }
     const step = e.shiftKey ? 10 : 1;
+    let delta: number | null = null;
     switch (e.key) {
       case "ArrowDown":
       case "ArrowRight":
-        await this.count(step);
-        return true;
+        delta = step;
+        break;
       case "ArrowUp":
       case "ArrowLeft":
-        await this.count(-step);
-        return true;
-      case "PageDown":
-        await this.count(10);
-        return true;
-      case "PageUp":
-        await this.count(-10);
-        return true;
+        delta = -step;
+        break;
       case "+":
       case "=":
-        await this.count(step);
-        return true;
+        delta = step;
+        break;
       case "-":
-        await this.count(-step);
-        return true;
+        delta = -step;
+        break;
     }
-    return false;
+    if (delta === null) return false;
+    void this.count(delta).catch((err) => console.error("Counting failed:", err));
+    return true;
   }
 }
 

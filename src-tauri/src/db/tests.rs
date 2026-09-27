@@ -83,7 +83,7 @@ fn the_yarn_family_is_derived_when_a_pattern_is_written() {
 
     // The family is derived, never taken on trust: a metre figure is read
     // into the family it belongs to.
-    let q = with_yarn(&conn, "Sock", "100 m/100g");
+    let q = with_yarn(&conn, "Sock", "230 m/100g");
     assert_eq!(q.yarn_weight_family, "dk");
 
     // Something unrecognisable leaves the family empty rather than guessing.
@@ -110,7 +110,7 @@ fn patterns_can_be_filtered_by_yarn_weight() {
     let conn = test_db();
     with_yarn(&conn, "A", "fingering");
     with_yarn(&conn, "B", "aran");
-    with_yarn(&conn, "C", "75 m/100g");
+    with_yarn(&conn, "C", "180 m/100g");
     // No weight at all, which must never be swept into a family's results.
     sample(&conn, "D", "Someone", "want-to-knit", &[]);
 
@@ -154,7 +154,7 @@ fn yarn_weight_filters_combine_with_the_others() {
 fn the_yarn_facets_list_every_family_with_its_count() {
     let conn = test_db();
     with_yarn(&conn, "A", "aran");
-    with_yarn(&conn, "B", "75 m/100g");
+    with_yarn(&conn, "B", "180 m/100g");
     with_yarn(&conn, "C", "fingering");
 
     let facets = list_facets(&conn).unwrap();
@@ -266,6 +266,24 @@ fn migration_moves_only_the_old_default_opacity() {
 }
 
 #[test]
+fn a_deliberate_old_default_opacity_survives_a_second_migrate() {
+    // The migration runs once, recorded in app_settings. A user who sets the
+    // opacity to exactly 0.9 afterwards must not have it rewritten to 0.3 on
+    // the next launch, which is what an unguarded UPDATE would do.
+    let conn = test_db();
+    let p = sample(&conn, "Chart", "A", "in-progress", &[]);
+    let mut h = get_highlight(&conn, &p.id).unwrap();
+    h.opacity = 0.9;
+    save_highlight(&conn, &h).unwrap();
+
+    migrate(&conn).expect("second migrate");
+    migrate(&conn).expect("third migrate");
+
+    let got = get_highlight(&conn, &p.id).unwrap();
+    assert!((got.opacity - 0.9).abs() < 0.0001, "was {}", got.opacity);
+}
+
+#[test]
 fn unknown_status_falls_back_to_default() {
     let conn = test_db();
     let p = sample(&conn, "Odd", "Nobody", "nonsense-status", &[]);
@@ -295,6 +313,27 @@ fn facets_collect_distinct_values() {
 }
 
 #[test]
+fn tag_facets_dedupe_case_insensitively() {
+    // "Lace" and "lace" are one tag with two spellings; showing both in the
+    // sidebar would offer two filters for the same thing. The display form is
+    // the most common casing.
+    let conn = test_db();
+    sample(&conn, "A", "X", "want-to-knit", &["Lace"]);
+    sample(&conn, "B", "Y", "want-to-knit", &["lace"]);
+    sample(&conn, "C", "Z", "want-to-knit", &["lace"]);
+
+    let facets = list_facets(&conn).unwrap();
+    assert_eq!(facets.tags, vec!["lace"]);
+
+    // A tie keeps the casing seen first.
+    let conn = test_db();
+    sample(&conn, "A", "X", "want-to-knit", &["Chunky"]);
+    sample(&conn, "B", "Y", "want-to-knit", &["chunky"]);
+    let facets = list_facets(&conn).unwrap();
+    assert_eq!(facets.tags, vec!["Chunky"]);
+}
+
+#[test]
 fn search_covers_title_designer_and_notes() {
     let conn = test_db();
     sample(&conn, "Featherweight Sock", "Jess Leslie", "want-to-knit", &[]);
@@ -317,6 +356,44 @@ fn search_covers_title_designer_and_notes() {
         ..Default::default()
     };
     assert!(list_patterns(&conn, &f).unwrap().is_empty());
+}
+
+#[test]
+fn search_treats_like_wildcards_as_literal_text() {
+    // % and _ are LIKE wildcards, so an unescaped search for "100%" would
+    // match "1000" and one for "k2_tog" would match "k2ptog".
+    let conn = test_db();
+    sample(&conn, "100% Wool Socks", "A", "want-to-knit", &[]);
+    sample(&conn, "1000 Lakes Shawl", "B", "want-to-knit", &[]);
+    sample(&conn, "k2_tog Scarf", "C", "want-to-knit", &[]);
+    sample(&conn, "k2ptog Hat", "D", "want-to-knit", &[]);
+
+    let titles = |term: &str| -> Vec<String> {
+        let f = Filter {
+            search: Some(term.to_string()),
+            ..Default::default()
+        };
+        let mut rows = list_patterns(&conn, &f).unwrap();
+        rows.sort_by(|a, b| a.title.cmp(&b.title));
+        rows.into_iter().map(|p| p.title).collect()
+    };
+    assert_eq!(titles("100%"), vec!["100% Wool Socks"]);
+    assert_eq!(titles("k2_tog"), vec!["k2_tog Scarf"]);
+}
+
+#[test]
+fn a_tag_with_wildcards_matches_only_itself() {
+    let conn = test_db();
+    sample(&conn, "Exact", "A", "want-to-knit", &["100% wool"]);
+    sample(&conn, "Other", "B", "want-to-knit", &["1000 wool"]);
+
+    let f = Filter {
+        tags: Some(vec!["100% wool".to_string()]),
+        ..Default::default()
+    };
+    let hits = list_patterns(&conn, &f).unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title, "Exact");
 }
 
 #[test]
@@ -588,6 +665,71 @@ fn a_missing_counter_is_an_error() {
     assert!(reset_counter(&conn, "gone").is_err());
     assert!(delete_counter(&conn, "gone").is_err());
     assert!(count_one(&conn, "gone", 1).is_err());
+}
+
+#[test]
+fn counting_a_missing_counter_reports_not_found() {
+    // The same NotFound style the other missing-row paths use, rather than a
+    // raw query error the frontend cannot tell apart from a real failure.
+    let conn = test_db();
+    let err = count_one(&conn, "gone", 1).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "got {err}");
+}
+
+#[test]
+fn the_total_is_stored_even_without_a_progress_row() {
+    // A partially migrated database can have a pattern with no progress row.
+    // A bare UPDATE would store nothing while the result went on to report
+    // the new total, leaving the two disagreeing.
+    let conn = test_db();
+    let p = sample(&conn, "Sock", "A", "in-progress", &[]);
+    let drop_progress = || {
+        conn.execute(
+            "DELETE FROM progress WHERE pattern_id = ?1",
+            params![&p.id],
+        )
+        .unwrap();
+    };
+
+    drop_progress();
+    let out = count_rows(&conn, &p.id, 3).unwrap();
+    assert_eq!(out.total_rows, 3);
+    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 3);
+
+    drop_progress();
+    set_total_rows(&conn, &p.id, 7).unwrap();
+    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 7);
+
+    drop_progress();
+    let c = enabled_counter(&conn, &p.id, "Front", 0);
+    let out = count_one(&conn, &c.id, 2).unwrap();
+    assert_eq!(out.total_rows, 2);
+    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 2);
+}
+
+#[test]
+fn extreme_deltas_saturate_instead_of_overflowing() {
+    // Deltas come straight from IPC, so i64::MAX must clamp rather than panic
+    // a debug build or wrap a release one.
+    let conn = test_db();
+    let p = sample(&conn, "Marathon", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Lots", 0);
+
+    let out = count_rows(&conn, &p.id, i64::MAX).unwrap();
+    assert_eq!(out.total_rows, i64::MAX);
+    assert_eq!(counter(&out, &c.id).current, i64::MAX);
+
+    let out = count_rows(&conn, &p.id, i64::MIN).unwrap();
+    assert_eq!(out.total_rows, 0);
+    assert_eq!(counter(&out, &c.id).current, 0);
+
+    let out = count_one(&conn, &c.id, i64::MAX).unwrap();
+    assert_eq!(counter(&out, &c.id).current, i64::MAX);
+    assert_eq!(out.total_rows, i64::MAX);
+
+    let out = count_one(&conn, &c.id, i64::MIN).unwrap();
+    assert_eq!(counter(&out, &c.id).current, 0);
+    assert_eq!(out.total_rows, 0);
 }
 
 #[test]

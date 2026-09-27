@@ -145,6 +145,9 @@ export class PinLayer {
     const start = this.normalised(e.clientX, e.clientY, page);
     if (!start) return;
     const shot = this.snapshot(page);
+    // The page is remembered now: the crop is of this page, and a scroll
+    // mid-drag must not file the pin under whatever page ends up on top.
+    const startPage = this.doc.currentPage();
 
     const band = document.createElement("div");
     band.className = "pin-band";
@@ -176,7 +179,7 @@ export class PinLayer {
       // A click, or a slip of the hand, is not a crop. Saying so beats storing
       // a sliver of white and calling it a chart.
       if (rect.w < MIN_CROP || rect.h < MIN_CROP) return;
-      await this.save(page, rect, shot);
+      await this.save(page, rect, shot, startPage);
     };
 
     const cancel = () => {
@@ -231,7 +234,7 @@ export class PinLayer {
     return { canvas: copy, shownWidth: shown.width, shownHeight: shown.height };
   }
 
-  private async save(page: HTMLElement, rect: Rect, shot: Shot | null): Promise<void> {
+  private async save(page: HTMLElement, rect: Rect, shot: Shot | null, startPage: number): Promise<void> {
     if (this.busy) return;
     const room = this.availability();
     if (!room.ok) {
@@ -250,13 +253,14 @@ export class PinLayer {
       const bytes = new Uint8Array(await blob.arrayBuffer());
 
       // Named after the words under it, which is the only thing that can say
-      // what the picture is. A chart has none, and gets a plain name.
-      const text = this.doc.textLayerFor(this.doc.currentPage());
+      // what the picture is. A chart has none, and gets a plain name. The page
+      // is the one the drag started on, not whatever is on top now.
+      const text = this.doc.textLayerFor(startPage);
       const quote = text ? textInRect(text, page, rect) : "";
-      const title = titleFor(quote, this.pins.length + 1);
+      const title = titleFor(quote, this.nextPinNumber());
 
       const pin = await api.addPin(this.patternId, {
-        page: this.doc.currentPage(),
+        page: startPage,
         geometry: JSON.stringify([round4(rect)]),
         quote: quote.slice(0, 400),
         title,
@@ -278,6 +282,22 @@ export class PinLayer {
     } finally {
       this.busy = false;
     }
+  }
+
+  /**
+   * The number for the next unnamed pin.
+   *
+   * Counting the existing pins would reuse a number after a deletion -- remove
+   * pin 2 of 3 and the next unnamed pin is "Pin 3" again. The highest number
+   * already taken, plus one, never collides with a surviving card.
+   */
+  private nextPinNumber(): number {
+    let max = 0;
+    for (const pin of this.pins) {
+      const match = /^Pin (\d+)$/.exec(pin.title);
+      if (match) max = Math.max(max, parseInt(match[1], 10));
+    }
+    return max + 1;
   }
 
   private async loadImage(pin: Pin): Promise<void> {

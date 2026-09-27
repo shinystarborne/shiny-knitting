@@ -14,13 +14,15 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: true,
-    // Test fixtures live in public/ so the harness can fetch them, but they
-    // have no business inside a shipped installer.
     assetsInlineLimit: 0,
   },
   // pdf.js ships its worker as a separate asset; Vite handles the ?url import.
   worker: {
     format: "es",
   },
-  publicDir: "public-app",
+  // Test fixtures live in public/ so the harness can fetch them, but they have
+  // no business inside a shipped installer. The app references no static public
+  // assets, so the app build copies no public directory at all; the harness
+  // config sets its own publicDir.
+  publicDir: false,
 });

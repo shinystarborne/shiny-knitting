@@ -51,8 +51,13 @@ pub fn build_pdf(images: &[ExportImage]) -> AppResult<Vec<u8>> {
     let mut sizes: Vec<(f64, f64)> = Vec::with_capacity(page_count);
 
     for image in images {
-        let (w, h) = jpeg_size(&image.bytes)
-            .ok_or_else(|| AppError::Message("One of the pages is not a readable image.".into()))?;
+        let (w, h) = jpeg_size(&image.bytes).ok_or_else(|| {
+            AppError::Message(format!(
+                "Page {} is not a JPEG image. Pages are exported as JPEG, \
+                 which a rendered canvas can always produce.",
+                image.page
+            ))
+        })?;
         sizes.push((w, h));
     }
 
@@ -155,7 +160,10 @@ pub fn build_pdf(images: &[ExportImage]) -> AppResult<Vec<u8>> {
         );
 
         // The image, embedded as a DCTDecode (JPEG) stream, which is stored
-        // as-is with no re-encoding.
+        // as-is with no re-encoding. JPEG only: a PNG cannot be declared as a
+        // PDF stream (its IDAT data has per-row filter bytes and is not raw
+        // RGB), so anything that is not a JPEG is refused above rather than
+        // written as a stream no reader could decode.
         //
         // The dictionary is written by hand rather than through `write`,
         // because the image data has to follow it before `endobj`, and the
@@ -165,10 +173,9 @@ pub fn build_pdf(images: &[ExportImage]) -> AppResult<Vec<u8>> {
         out.extend_from_slice(format!("{} 0 obj\n", image_obj(i)).as_bytes());
         out.extend_from_slice(
             format!(
-                "<< /Type /XObject /Subtype /Image /Width {iw} /Height {ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter {filter} /Length {len} >>\r\nstream\r\n",
+                "<< /Type /XObject /Subtype /Image /Width {iw} /Height {ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {len} >>\r\nstream\r\n",
                 iw = w as i64,
                 ih = h as i64,
-                filter = filter_for(&image.mime),
                 len = image.bytes.len()
             )
             .as_bytes(),
@@ -193,20 +200,6 @@ pub fn build_pdf(images: &[ExportImage]) -> AppResult<Vec<u8>> {
     );
 
     Ok(out)
-}
-
-/// How the image data is stored in the PDF. JPEG bytes are already compressed
-/// and go in untouched; anything else has to have been deflated by the caller.
-///
-/// The leading slash matters: in a PDF dictionary this is a *name*, and a name
-/// without its slash is not a name at all. A lenient reader will render the
-/// page anyway and a strict one rejects the file outright.
-fn filter_for(mime: &str) -> &'static str {
-    if mime.contains("png") {
-        "/FlateDecode"
-    } else {
-        "/DCTDecode"
-    }
 }
 
 /// Pulls the width and height out of a JPEG's start-of-frame marker.
@@ -402,7 +395,24 @@ mod tests {
             bytes: b"this is not a jpeg".to_vec(),
         }];
         let err = build_pdf(&bad).unwrap_err().to_string();
-        assert!(err.contains("not a readable image"), "got: {err}");
+        assert!(err.contains("not a JPEG"), "got: {err}");
+    }
+
+    #[test]
+    fn a_png_is_refused_rather_than_written_as_an_undecodable_stream() {
+        // A PNG's IDAT data has per-row filter bytes and is not raw RGB, so
+        // embedding it as a PDF image stream would produce a file no reader
+        // can decode. JPEG is the one supported format: a canvas can always
+        // produce it.
+        let png = vec![ExportImage {
+            page: 1,
+            label: "Page 1".to_string(),
+            mime: "image/png".to_string(),
+            bytes: vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0],
+        }];
+        let err = build_pdf(&png).unwrap_err().to_string();
+        assert!(err.contains("not a JPEG"), "got: {err}");
+        assert!(err.contains("Page 1"), "got: {err}");
     }
 
     #[test]

@@ -72,12 +72,19 @@ export class PdfView implements RenderedDoc {
     this.container.className = "pdf-pages";
     scroller.appendChild(this.container);
 
-    // A resize or column-width change needs a re-layout.
-    this.onResize = () => this.handleResize();
+    // A resize or column-width change needs a re-layout. Debounced: dragging
+    // the window border fires a resize per mouse step, and each one is a full
+    // re-render of every page.
+    this.onResize = () => {
+      clearTimeout(this.resizeTimer ?? undefined);
+      this.resizeTimer = window.setTimeout(() => void this.handleResize(), 200);
+    };
     window.addEventListener("resize", this.onResize);
   }
 
   private onResize: () => void;
+  /** Debounces resize re-renders, so dragging the window border is cheap. */
+  private resizeTimer: number | null = null;
 
   async load(bytes: Uint8Array): Promise<void> {
     // pdf.js takes ownership of a copy of the buffer.
@@ -169,6 +176,11 @@ export class PdfView implements RenderedDoc {
       const cssWidth = Math.floor(viewport.width / dpr);
       const cssHeight = Math.floor(viewport.height / dpr);
 
+      // pdf.js styles text-layer spans with calc(var(--scale-factor) * Npx);
+      // left unset, the spans inherit the document font size and every
+      // selection rectangle and text measurement on the page is wrong.
+      pageEl.style.setProperty("--scale-factor", String(scale));
+
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
       // CSS size stays in device-independent pixels.
@@ -219,6 +231,11 @@ export class PdfView implements RenderedDoc {
       container.className = "text-layer";
       pageEl.appendChild(container);
     }
+    // TextLayer.render() only appends spans, and a re-render after a resize
+    // reuses this container, so the previous layer has to be cancelled and its
+    // spans removed first -- otherwise every span doubles with each resize.
+    this.textLayers.get(page.pageNumber)?.cancel();
+    container.replaceChildren();
     const layer = new pdfjs.TextLayer({
       textContentSource: page.streamTextContent(),
       container,
@@ -333,6 +350,7 @@ export class PdfView implements RenderedDoc {
 
   destroy(): void {
     this.renderToken++;
+    clearTimeout(this.resizeTimer ?? undefined);
     window.removeEventListener("resize", this.onResize);
     this.observer?.disconnect();
     this.task?.destroy();

@@ -46,16 +46,17 @@ export interface AskOptions {
 export function say(message: string, title = ""): Promise<void> {
   return new Promise((resolve) => {
     const { overlay, card } = frame(title);
+    // OK, Escape and the backdrop all dismiss: there is nothing to decide
+    // here, so every way out of a dialog means the same thing.
+    const dismiss = () => {
+      close(overlay);
+      resolve();
+    };
     card.append(
       dom("p", { class: "dialog-message" }, [message]),
-      actions([
-        button("OK", "primary", () => {
-          close(overlay);
-          resolve();
-        }),
-      ]),
+      actions([button("OK", "primary", dismiss)]),
     );
-    show(overlay, card);
+    show(overlay, card, dismiss);
   });
 }
 
@@ -244,7 +245,8 @@ function frame(title: string | undefined): { overlay: HTMLElement; card: HTMLEle
  * already gone and left the visible one exactly where it was.
  *
  * One listener cannot have that problem. It cancels the topmost dialog, which
- * is the one the reader can see.
+ * is the one the reader can see. Entries leave the stack in `close`, the only
+ * way a dialog comes down.
  */
 const stack: { overlay: HTMLElement; cancel: () => void }[] = [];
 let listening = false;
@@ -257,24 +259,34 @@ function listenForKeys(): void {
     (e: KeyboardEvent) => {
       const top = stack[stack.length - 1];
       if (!top) return;
-      // `stopImmediatePropagation`, not `stopPropagation`. The app has another
-      // Escape handler on the document itself (main.ts, which backs out to the
-      // library) in the *bubble* phase, and a document is one node in the event
-      // path however many phases it has: the stop-propagation flag is only read
-      // between nodes, so a bubble listener on the same node still runs. That
-      // is why Escape closed the question *and* left the pattern. Stopping
-      // immediately ends the node's listener list, which is what a modal needs.
-      e.stopImmediatePropagation();
-      if (e.key !== "Escape") {
-        // Not prevented: the field still needs its keys, and a focused button
-        // still works with Enter and Space.
+      // A key aimed inside the dialog is left alone: the field's own Enter
+      // handler and the focused button's Space still need to fire, and
+      // stopping the event here — capture phase, on the document — would kill
+      // them before they ever ran. Escape is the exception: it always means
+      // "cancel the top dialog", wherever the focus happens to be.
+      if (e.key === "Escape") {
+        // `stopImmediatePropagation`, not `stopPropagation`. The app has
+        // another Escape handler on the document itself (main.ts, which backs
+        // out to the library) in the *bubble* phase, and a document is one
+        // node in the event path however many phases it has: the
+        // stop-propagation flag is only read between nodes, so a bubble
+        // listener on the same node still runs. That is why Escape closed the
+        // question *and* left the pattern. Stopping immediately ends the
+        // node's listener list, which is what a modal needs.
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        // Copied out first, because cancelling removes the dialog and so
+        // mutates the stack this is reading from.
+        const cancel = top.cancel;
+        cancel();
         return;
       }
-      e.preventDefault();
-      // Copied out first, because cancelling removes the dialog and so
-      // mutates the stack this is reading from.
-      const cancel = top.cancel;
-      cancel();
+      // A key aimed outside the dialog — a stray-focused app element behind
+      // the modal — must not answer the app's own shortcuts, so it is stopped
+      // the same way.
+      if (!(e.target instanceof Node) || !top.overlay.contains(e.target)) {
+        e.stopImmediatePropagation();
+      }
     },
     true,
   );
@@ -299,12 +311,6 @@ function show(
   });
   stack.push({ overlay, cancel: () => onCancel?.() });
   listenForKeys();
-  // Off the stack with the overlay, so a dialog that is answered cannot go on
-  // swallowing the keyboard on behalf of the next one.
-  overlay.addEventListener("remove", () => {
-    const at = stack.findIndex((d) => d.overlay === overlay);
-    if (at >= 0) stack.splice(at, 1);
-  });
   document.body.append(overlay);
   (focus ?? card.querySelector<HTMLButtonElement>("button"))?.focus();
 }
@@ -315,6 +321,10 @@ export function dialogOpen(): boolean {
 }
 
 function close(overlay: HTMLElement): void {
+  // Off the stack with the overlay, so a dialog that is answered cannot go on
+  // swallowing the keyboard on behalf of the next one.
+  const at = stack.findIndex((d) => d.overlay === overlay);
+  if (at >= 0) stack.splice(at, 1);
   overlay.remove();
 }
 

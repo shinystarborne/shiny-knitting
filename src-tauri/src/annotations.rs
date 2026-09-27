@@ -62,9 +62,6 @@ pub fn add_bookmark(
     position: Option<i64>,
 ) -> CmdResult<Bookmark> {
     let title = clean_title(&title);
-    if title.is_empty() {
-        return Err(AppError::Message("A bookmark needs a name.".into()));
-    }
     db::add_bookmark(&state.db(), &pattern_id, page, &title, position)
 }
 
@@ -75,9 +72,6 @@ pub fn rename_bookmark(
     title: String,
 ) -> CmdResult<Bookmark> {
     let title = clean_title(&title);
-    if title.is_empty() {
-        return Err(AppError::Message("A bookmark needs a name.".into()));
-    }
     db::rename_bookmark(&state.db(), &id, &title)?;
     let conn = state.db();
     let bookmark = conn.query_row(
@@ -112,7 +106,9 @@ pub fn delete_bookmark(state: State<'_, AppState>, id: String) -> CmdResult<()> 
 }
 
 /// Falls back to something usable when the user saves a bookmark without
-/// typing a name, which is otherwise a silent no-op.
+/// typing a name, which is otherwise a silent no-op. Never returns an empty
+/// string: pins route through this too, and a pin's title likewise becomes
+/// "Untitled" rather than blank.
 fn clean_title(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -295,7 +291,19 @@ pub struct ExportResult {
 }
 
 /// Builds a file name that is safe on Windows and says what is inside it.
+///
+/// A name the caller chose is honoured, reduced to a plain file name the same
+/// way cover names are, so it can never point outside the exports folder.
+/// Otherwise one is generated from the pattern's title and the chosen pages.
 fn export_file_name(request: &ExportRequest, title: &str) -> String {
+    let requested = request.file_name.trim();
+    if !requested.is_empty() {
+        let safe = crate::covers::safe_name(requested);
+        if safe.to_ascii_lowercase().ends_with(".pdf") {
+            return safe;
+        }
+        return format!("{safe}.pdf");
+    }
     let stem: String = title
         .chars()
         .map(|c| match c {
@@ -338,4 +346,35 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
         }
     }
     dir.join(format!("{stem} ({}).pdf", uuid::Uuid::new_v4()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(file_name: &str) -> ExportRequest {
+        ExportRequest {
+            pattern_id: "p".to_string(),
+            pages: vec![2, 3],
+            file_name: file_name.to_string(),
+        }
+    }
+
+    #[test]
+    fn an_empty_name_is_generated_from_the_title_and_pages() {
+        assert_eq!(export_file_name(&request(""), "Lace Sock"), "Lace Sock pages 2-3.pdf");
+        assert_eq!(export_file_name(&request("   "), "Lace Sock"), "Lace Sock pages 2-3.pdf");
+    }
+
+    #[test]
+    fn a_chosen_name_is_honoured_and_made_safe() {
+        assert_eq!(export_file_name(&request("chart.pdf"), "Lace Sock"), "chart.pdf");
+        // The extension is added when it is missing.
+        assert_eq!(export_file_name(&request("chart"), "Lace Sock"), "chart.pdf");
+        // Anything that could escape the exports folder is stripped out.
+        let name = export_file_name(&request("../../evil.pdf"), "Lace Sock");
+        assert!(!name.contains('/'), "{name} kept a separator");
+        assert!(!name.contains('\\'), "{name} kept a separator");
+        assert!(name.ends_with(".pdf"), "{name}");
+    }
 }

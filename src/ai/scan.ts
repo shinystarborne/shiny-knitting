@@ -163,5 +163,5 @@ export function summarise(outcomes: ScanOutcome[]): string {
   }
   if (unchanged.length) parts.push(`${unchanged.length} already complete`);
   if (failed.length) parts.push(`${failed.length} could not be read`);
-  return parts.join(" Â· ") || "Nothing to do";
+  return parts.join(" · ") || "Nothing to do";
 }

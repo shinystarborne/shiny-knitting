@@ -135,7 +135,7 @@ Keyboard, while the reader has focus:
 | `Alt`+`J`/`K` | moves the line a whole band without counting |
 | `↓` `→` | count a row (`Shift` for +10) |
 | `↑` `←` | uncount a row (`Shift` for −10) |
-| `PageDown` / `PageUp` | count ±10 |
+| `PageDown` / `PageUp` | scroll the pattern under a stationary line |
 | `+` / `-` | count ±1 (`Shift` for ±10) |
 
 Every one of those counting keys is the same single action: the project total
@@ -399,12 +399,13 @@ python make-long-fixture.py     # a 40-page PDF, for scrolling behaviour
 python make-scan-fixture.py     # a 3-page PDF with no text layer at all
 python make-icon.py             # regenerate src-tauri/icons/
 python check-ai.py              # exercise the model client against a live server
+python check-export.py          # verify a written export PDF with pypdf, an independent parser
 ```
 
 `make-fixtures.py` writes a two-page PDF with a chart grid and a three-chapter
 EPUB that declares a cover image, so you can exercise both readers and cover
-extraction without hunting for real patterns. The generated files are copied
-into `public/fixtures/` for the test harness. `make-long-fixture.py` writes a
+extraction without hunting for real patterns. The generated files are written
+to `fixtures/` and copied into `public/fixtures/` for the test harness. `make-long-fixture.py` writes a
 40-page pattern, which is what you want when testing scrolling, page-height
 reservation, and restoring your place. `make-scan-fixture.py` writes a PDF whose
 pages are pure images with no text layer, which is the only way to reach the
@@ -464,4 +465,9 @@ has ended up outside the visible box is dropped rather than clamped onto the
 page edge, and that a crop is named after the words inside it rather than a
 neighbouring paragraph. Together that is 78 checks: 7 layout, 13 row, 58
 annotation.
+
+`harness/run-checks.mjs` drives all three from a terminal: serve the built
+harness (`npm run harness:build && npm run harness:serve`), start Chrome with
+`--headless=new --remote-debugging-port=9222`, and `node harness/run-checks.mjs`
+prints every check's result and any page errors the stub collected.
 

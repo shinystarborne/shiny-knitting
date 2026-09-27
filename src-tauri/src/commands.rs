@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use rusqlite::OptionalExtension;
 use tauri::State;
 
 use crate::ai::{CompletionRequest, ModelInfo};
@@ -109,26 +110,58 @@ pub fn update_pattern(state: State<'_, AppState>, pattern: Pattern) -> CmdResult
 
 #[tauri::command]
 pub fn delete_pattern(state: State<'_, AppState>, id: String) -> CmdResult<()> {
-    let path = {
+    delete_pattern_from(&state, &id)
+}
+
+/// Deletes a pattern and every file the library kept for it: the document
+/// itself, its cover, and its pin images. Leaving any of them behind would
+/// fill the library with orphans nothing references.
+fn delete_pattern_from(state: &AppState, id: &str) -> CmdResult<()> {
+    let (file, cover, pin_images) = {
         let conn = state.db();
-        // Remove the file too, otherwise the library fills up with orphans.
-        match db::get_pattern(&conn, &id) {
-            Ok(pattern) => {
-                let p = PathBuf::from(&pattern.file_path);
-                // Guard against a malformed path escaping the library folder.
-                if p.starts_with(&state.library_dir) {
-                    Some(p)
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
+        let file = db::get_pattern(&conn, id).ok().map(|p| p.file_path);
+        let cover = db::get_cover(&conn, id).unwrap_or_default();
+        let pin_images = db::list_pins(&conn, id)
+            .map(|pins| {
+                pins.into_iter()
+                    .map(|p| p.image_file)
+                    .filter(|f| !f.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        (file, cover, pin_images)
+    };
+
+    db::delete_pattern(&state.db(), id)?;
+
+    // Best effort, like the pin delete: a file already gone is not a reason
+    // to fail, and the row is already removed either way.
+    let remove = |path: PathBuf| {
+        // Guard against a malformed path escaping the library folder.
+        if path.starts_with(&state.library_dir) {
+            let _ = std::fs::remove_file(path);
         }
     };
-    if let Some(path) = path {
-        let _ = std::fs::remove_file(path);
+    if let Some(file) = file {
+        remove(PathBuf::from(file));
     }
-    db::delete_pattern(&state.db(), &id)
+    if !cover.is_empty() {
+        remove(
+            state
+                .library_dir
+                .join("covers")
+                .join(crate::covers::safe_name(&cover)),
+        );
+    }
+    for image in pin_images {
+        remove(
+            state
+                .library_dir
+                .join("pins")
+                .join(crate::covers::safe_name(&image)),
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -202,12 +235,34 @@ pub fn set_counter_enabled(
     id: String,
     enabled: bool,
 ) -> CmdResult<db::CountOutcome> {
-    let conn = state.db();
-    db::set_counter_enabled(&conn, &id, enabled)?;
-    let total = db::get_progress(&conn, &pattern_id)?.total_rows;
-    let counters = db::list_counters(&conn, &pattern_id)?;
+    set_counter_enabled_on(&state.db(), &pattern_id, &id, enabled)
+}
+
+/// The body of `set_counter_enabled`, on a plain connection for tests.
+fn set_counter_enabled_on(
+    conn: &rusqlite::Connection,
+    pattern_id: &str,
+    id: &str,
+    enabled: bool,
+) -> CmdResult<db::CountOutcome> {
+    // The counter must belong to the pattern the outcome is reported against:
+    // a mismatched pair would toggle one pattern's counter while reporting
+    // another's totals, corrupting the sidebar's picture of both.
+    let owner: Option<String> = conn
+        .query_row(
+            "SELECT pattern_id FROM counters WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if owner.as_deref() != Some(pattern_id) {
+        return Err(AppError::NotFound(format!("No counter with id {id}.")));
+    }
+    db::set_counter_enabled(conn, id, enabled)?;
+    let total = db::get_progress(conn, pattern_id)?.total_rows;
+    let counters = db::list_counters(conn, pattern_id)?;
     Ok(db::CountOutcome {
-        pattern_id,
+        pattern_id: pattern_id.to_string(),
         total_rows: total,
         counters,
     })
@@ -597,20 +652,33 @@ pub fn apply_suggestion(
     pattern_id: String,
     after: Pattern,
 ) -> CmdResult<Pattern> {
-    let conn = state.db();
-    let before = db::get_pattern(&conn, &pattern_id)?;
+    apply_suggestion_to(&state.db(), &pattern_id, &after)
+}
+
+/// The body of `apply_suggestion`, on a plain connection so tests can reach
+/// it without a Tauri runtime.
+fn apply_suggestion_to(
+    conn: &rusqlite::Connection,
+    pattern_id: &str,
+    after: &Pattern,
+) -> CmdResult<Pattern> {
+    let before = db::get_pattern(conn, pattern_id)?;
     // Only the fields the AI is allowed to touch are taken from the caller, so
-    // a stale form cannot roll back a title or a file path.
+    // a stale form cannot roll back a title or a file path. The yarn weight is
+    // one of them: the review dialog shows a "Yarn weight" row, and dropping
+    // it here would discard the change the user just accepted. The family is
+    // not copied -- db::update_pattern re-derives it from the weight.
     let mut merged = before.clone();
-    merged.designer = after.designer;
-    merged.difficulty = after.difficulty;
-    merged.needle_size = after.needle_size;
-    merged.notes = after.notes;
-    merged.tags = after.tags;
+    merged.designer = after.designer.clone();
+    merged.difficulty = after.difficulty.clone();
+    merged.needle_size = after.needle_size.clone();
+    merged.yarn_weight = after.yarn_weight.clone();
+    merged.notes = after.notes.clone();
+    merged.tags = after.tags.clone();
     if merged == before {
         return Ok(before);
     }
-    crate::ai::metadata::commit(&conn, &before, &merged)
+    crate::ai::metadata::commit(conn, &before, &merged)
 }
 
 /// Restores a pattern's metadata to before the most recent AI change.
@@ -619,17 +687,35 @@ pub fn undo_last_ai_change(
     state: State<'_, AppState>,
     pattern_id: String,
 ) -> CmdResult<Option<Pattern>> {
-    let conn = state.db();
-    let entry = db::latest_ai_change(&conn, &pattern_id)?;
+    undo_last_ai_change_on(&state.db(), &pattern_id)
+}
+
+/// The body of `undo_last_ai_change`, on a plain connection for tests.
+fn undo_last_ai_change_on(
+    conn: &rusqlite::Connection,
+    pattern_id: &str,
+) -> CmdResult<Option<Pattern>> {
+    let entry = db::latest_ai_change(conn, pattern_id)?;
     let (_id, before) = match entry {
         Some(v) => v,
         None => return Ok(None),
     };
-    let current = db::get_pattern(&conn, &pattern_id)?;
+    let current = db::get_pattern(conn, pattern_id)?;
+    // Only the fields the AI can write are rolled back. The snapshot is a
+    // whole pattern, but restoring it wholesale would also roll back any
+    // title or status edits the user made after the AI change. Notes go back
+    // with the rest, since notes is one of the fields the AI writes.
+    let mut restored = current.clone();
+    restored.designer = before.designer;
+    restored.difficulty = before.difficulty;
+    restored.needle_size = before.needle_size;
+    restored.yarn_weight = before.yarn_weight;
+    restored.notes = before.notes;
+    restored.tags = before.tags;
     // Restoring the snapshot is itself a change, so it gets its own undo
     // point rather than erasing history.
-    let restored = db::update_pattern(&conn, &before)?;
-    db::record_ai_change(&conn, &current.id, &current, &restored)?;
+    let restored = db::update_pattern(conn, &restored)?;
+    db::record_ai_change(conn, &current.id, &current, &restored)?;
     Ok(Some(restored))
 }
 
@@ -655,4 +741,184 @@ pub fn patterns_missing_covers(state: State<'_, AppState>) -> CmdResult<Vec<Stri
 #[tauri::command]
 pub fn clear_ai_history(state: State<'_, AppState>, pattern_id: String) -> CmdResult<()> {
     db::clear_ai_history(&state.db(), &pattern_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{CounterInput, PatternInput, Suggestion};
+
+    /// A pattern on a throwaway in-memory database.
+    fn pattern(conn: &rusqlite::Connection, title: &str) -> Pattern {
+        let input = PatternInput {
+            title: title.to_string(),
+            designer: String::new(),
+            file_name: format!("{title}.pdf"),
+            bytes: Some(vec![]),
+            source_path: None,
+            status: "want-to-knit".to_string(),
+            difficulty: String::new(),
+            needle_size: String::new(),
+            yarn_weight: String::new(),
+            tags: vec![],
+            notes: String::new(),
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        db::insert_pattern(conn, &id, &input, &format!("C:/lib/{id}.pdf"), "pdf").unwrap()
+    }
+
+    #[test]
+    fn applying_a_suggestion_keeps_the_yarn_weight() {
+        // The review dialog shows a "Yarn weight" before/after row; accepting
+        // it must not silently drop the field.
+        let conn = db::open_test_db();
+        let before = pattern(&conn, "Sock");
+        let suggestion = Suggestion {
+            yarn_weight: "aran".to_string(),
+            ..Suggestion::default()
+        };
+        let after = crate::ai::metadata::apply_to(
+            &before,
+            &suggestion,
+            &crate::models::AiSettings::default(),
+        );
+        assert_eq!(after.yarn_weight, "aran");
+
+        let saved = apply_suggestion_to(&conn, &before.id, &after).unwrap();
+        assert_eq!(saved.yarn_weight, "aran");
+        // The family follows the weight, re-derived on write.
+        assert_eq!(saved.yarn_weight_family, "aran");
+
+        let fetched = db::get_pattern(&conn, &before.id).unwrap();
+        assert_eq!(fetched.yarn_weight, "aran");
+        assert_eq!(fetched.yarn_weight_family, "aran");
+    }
+
+    #[test]
+    fn undo_restores_only_the_fields_the_ai_can_write() {
+        // Manual edits made after the AI change must survive an undo.
+        let conn = db::open_test_db();
+        let before = pattern(&conn, "Cardigan");
+
+        // An AI change, committed the way the suggest command commits it.
+        let mut after = before.clone();
+        after.designer = "AI Designer".to_string();
+        after.yarn_weight = "dk".to_string();
+        after.notes = "Yarn: Shetland".to_string();
+        crate::ai::metadata::commit(&conn, &before, &after).unwrap();
+
+        // Manual edits afterwards, to fields the AI never touches.
+        let mut manual = db::get_pattern(&conn, &before.id).unwrap();
+        manual.title = "Renamed by hand".to_string();
+        manual.status = "finished".to_string();
+        db::update_pattern(&conn, &manual).unwrap();
+
+        let restored = undo_last_ai_change_on(&conn, &before.id)
+            .unwrap()
+            .expect("an undo point");
+        // The AI's changes are rolled back...
+        assert_eq!(restored.designer, before.designer);
+        assert_eq!(restored.yarn_weight, before.yarn_weight);
+        assert_eq!(restored.notes, before.notes);
+        // ...and the manual edits are kept.
+        assert_eq!(restored.title, "Renamed by hand");
+        assert_eq!(restored.status, "finished");
+    }
+
+    #[test]
+    fn a_counter_cannot_be_toggled_against_the_wrong_pattern() {
+        let conn = db::open_test_db();
+        let a = pattern(&conn, "A");
+        let b = pattern(&conn, "B");
+        let counter = db::add_counter(
+            &conn,
+            &a.id,
+            &CounterInput {
+                name: "Front".to_string(),
+                target: 0,
+                enabled: true,
+                excluded_from_total: false,
+            },
+        )
+        .unwrap();
+
+        let err = set_counter_enabled_on(&conn, &b.id, &counter.id, false).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "got {err}");
+        // The mismatched call must not have toggled anything.
+        assert!(db::list_counters(&conn, &a.id).unwrap()[0].enabled);
+
+        // The matching pair works and reports the right pattern.
+        let out = set_counter_enabled_on(&conn, &a.id, &counter.id, false).unwrap();
+        assert_eq!(out.pattern_id, a.id);
+        assert!(!out.counters[0].enabled);
+    }
+
+    /// A state rooted in a fresh temporary library folder.
+    fn state_in_temp_library() -> (AppState, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("shiny-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = AppState {
+            conn: std::sync::Mutex::new(db::open_test_db()),
+            library_dir: dir.clone(),
+        };
+        (state, dir)
+    }
+
+    #[test]
+    fn deleting_a_pattern_removes_its_file_cover_and_pin_images() {
+        let (state, dir) = state_in_temp_library();
+
+        // A pattern whose document sits in the library, as add_pattern leaves
+        // it, plus a cover and a pin image beside it.
+        let id = uuid::Uuid::new_v4().to_string();
+        let originals = dir.join("originals");
+        std::fs::create_dir_all(&originals).unwrap();
+        let document = originals.join(format!("{id}.pdf"));
+        std::fs::write(&document, b"pdf").unwrap();
+
+        let input = PatternInput {
+            title: "Doomed".to_string(),
+            designer: String::new(),
+            file_name: "doomed.pdf".to_string(),
+            bytes: Some(vec![]),
+            source_path: None,
+            status: "want-to-knit".to_string(),
+            difficulty: String::new(),
+            needle_size: String::new(),
+            yarn_weight: String::new(),
+            tags: vec![],
+            notes: String::new(),
+        };
+        {
+            let conn = state.db();
+            db::insert_pattern(&conn, &id, &input, &document.to_string_lossy(), "pdf").unwrap();
+
+            let covers = dir.join("covers");
+            std::fs::create_dir_all(&covers).unwrap();
+            std::fs::write(covers.join(format!("{id}.jpg")), b"jpg").unwrap();
+            db::set_cover(&conn, &id, &format!("{id}.jpg")).unwrap();
+
+            let pins = dir.join("pins");
+            std::fs::create_dir_all(&pins).unwrap();
+            std::fs::write(pins.join("pin-image.jpg"), b"jpg").unwrap();
+            let pin_input = crate::models::PinInput {
+                page: 1,
+                geometry: "[]".to_string(),
+                quote: String::new(),
+                title: String::new(),
+                image_bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
+                image_mime: "image/jpeg".to_string(),
+            };
+            db::insert_pin(&conn, &id, &pin_input, "pin-image.jpg").unwrap();
+        }
+
+        delete_pattern_from(&state, &id).unwrap();
+
+        assert!(!document.exists(), "the document leaked");
+        assert!(!dir.join("covers").join(format!("{id}.jpg")).exists(), "the cover leaked");
+        assert!(!dir.join("pins").join("pin-image.jpg").exists(), "the pin image leaked");
+        assert!(db::get_pattern(&state.db(), &id).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

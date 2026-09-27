@@ -17,6 +17,8 @@ import { closestEl } from "../dom";
 export class AiSettingsDialog {
   private root: HTMLElement;
   private settings: AiSettingsView;
+  /** What was saved when the dialog opened; a connection test rolls back to this. */
+  private savedSnapshot: AiSettingsView;
   private onSaved: (settings: AiSettingsView) => void;
 
   private modelList: ModelInfo[] = [];
@@ -29,6 +31,7 @@ export class AiSettingsDialog {
   ) {
     this.root = root;
     this.settings = settings;
+    this.savedSnapshot = settings;
     this.onSaved = onSaved;
   }
 
@@ -177,8 +180,12 @@ export class AiSettingsDialog {
     });
   }
 
-  /** Saves first, so the test runs against what the user typed, not the
-   * values that were there when the dialog opened. */
+  /**
+   * The backend can only test the saved settings, so the form values are
+   * saved for the duration of the test and rolled back afterwards. Testing
+   * must not persist anything: otherwise pressing Cancel could no longer
+   * cancel once a test had run.
+   */
   private async test(button: HTMLButtonElement): Promise<void> {
     const result = this.root.querySelector('[data-el="testresult"]') as HTMLElement;
     button.disabled = true;
@@ -194,12 +201,21 @@ export class AiSettingsDialog {
       result.className = "hint ok";
       this.modelList = test.models;
       this.fillModelPicker();
-      this.settings = await api.getAiSettings();
-      this.updatePrivacy();
     } catch (err) {
       result.textContent = message(err);
       result.className = "hint bad";
     } finally {
+      // Roll back the save made for the test; the Save button is what saves.
+      // One caveat: a freshly typed API key cannot be rolled back, because
+      // the saved key is never readable, so an empty key field always means
+      // "keep the current one".
+      try {
+        this.settings = await api.saveAiSettings(this.savedSnapshot);
+      } catch {
+        // A failed rollback leaves the tested values saved; reopening the
+        // dialog still shows what is really stored.
+      }
+      this.updatePrivacy();
       button.disabled = false;
       button.textContent = "Test connection";
     }
@@ -275,36 +291,67 @@ export class AiSettingsDialog {
  * their patterns somewhere.
  */
 function privacyNote(url: string): string {
-  const host = url.trim().toLowerCase();
-  if (!host) {
+  const raw = url.trim();
+  if (!raw) {
     return `<div class="privacy neutral">
       <strong>No server set.</strong>
       Until you enter an address, scanning is switched off.
     </div>`;
   }
-  const local =
-    host.includes("localhost") ||
-    host.includes("127.0.0.1") ||
-    host.includes("192.168.") ||
-    host.includes("10.") ||
-    /172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    host.includes(".local") ||
-    host.includes(".lan") ||
-    host.includes("[::1]");
 
-  if (local) {
+  if (isPrivateAddress(raw)) {
     return `<div class="privacy local">
       <strong>Private address.</strong>
-      The excerpt is sent to <code>${escapeHtml(host)}</code>, which is this
+      The excerpt is sent to <code>${escapeHtml(raw)}</code>, which is this
       machine or your own network. Nothing reaches the internet.
     </div>`;
   }
   return `<div class="privacy remote">
     <strong>This is outside your network.</strong>
-    The excerpt will be sent to <code>${escapeHtml(host)}</code> over the
+    The excerpt will be sent to <code>${escapeHtml(raw)}</code> over the
     internet. Only the first part of each pattern is sent, but it does leave
     this machine.
   </div>`;
+}
+
+/**
+ * Whether an address points at this machine or a private network.
+ *
+ * The hostname is parsed rather than substring-matched: "110.25.0.4"
+ * contains "10." but is a public address, and "192.168.example.com" only
+ * starts like a private one. Anything that cannot be classified with
+ * confidence is treated as the internet, so the notice never claims privacy
+ * it cannot guarantee.
+ */
+function isPrivateAddress(raw: string): boolean {
+  let host: string;
+  try {
+    host = new URL(raw.includes("://") ? raw : `http://${raw}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (!host) return false;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+
+  // IPv6 literals come back in brackets. Only ::1 (the loopback) is private;
+  // anything else in this family is not confidently local.
+  const bare = host.replace(/^\[|\]$/g, "");
+  if (bare === "::1") return true;
+  if (bare.includes(":")) return false;
+
+  const octets = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(bare);
+  if (octets) {
+    const parts = octets.slice(1).map(Number);
+    if (parts.some((o) => o > 255)) return false;
+    const [a, b] = parts;
+    return (
+      a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+    );
+  }
+
+  // A name with no dot never reaches DNS; it is a machine on the local
+  // network. Anything with a dot resolves publicly.
+  return !host.includes(".");
 }
 
 function message(err: unknown): string {

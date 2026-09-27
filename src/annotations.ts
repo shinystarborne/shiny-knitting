@@ -47,9 +47,12 @@ const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
  * Converts a rectangle from viewport pixels into normalised page coordinates.
  *
  * `page` is the element the page is painted into, which is what both
- * coordinate systems are relative to. Clamping to 0..1 matters: a selection
- * that runs past the edge of a page, which happens when a paragraph straddles
- * a page break, would otherwise store a rectangle that draws nowhere.
+ * coordinate systems are relative to. Clamping to 0..1 keeps a rectangle that
+ * overhangs the edge drawable, which happens when a paragraph straddles a page
+ * break. A rectangle that misses the page entirely is a different matter:
+ * clamping would pin it to the page's edge and paint a stray strip, so the
+ * caller must drop it instead -- `rectsForRanges` and `visibleRectsForRanges`
+ * both do.
  */
 export function toPageRect(rect: ClientRect, page: HTMLElement): Rect {
   const box = page.getBoundingClientRect();
@@ -150,21 +153,40 @@ export function findQuoteRanges(container: HTMLElement, quote: string, occurrenc
   if (!wanted) return [];
   const nth = Math.max(0, Math.floor(occurrence) || 0);
 
-  // Walk the text nodes in order, building a map from the collapsed string
-  // back to the node and offset it came from. Without this, an index into the
-  // string means nothing to the DOM.
+  // Walk the text nodes in order, building the collapsed text the reader sees
+  // alongside a map from each collapsed character back to the node and the
+  // offset in that node's ORIGINAL text it came from. Without the map an
+  // index into the collapsed string means nothing to the DOM, and collapsing
+  // per node would leave every offset shifted by the whitespace dropped
+  // before it.
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const pieces: { node: Text; start: number; text: string }[] = [];
-  let flat = "";
+  const nodes: Text[] = [];
+  let haystack = "";
+  // Parallel to haystack: which node, and where in its original text.
+  const origin: { node: number; offset: number }[] = [];
+  // The start of the whitespace run waiting to become one space. Held back so
+  // a run at a node boundary collapses with what follows it, and so leading
+  // whitespace never enters the haystack at all.
+  let pendingSpace: { node: number; offset: number } | null = null;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const text = node.textContent ?? "";
     if (!text) continue;
-    // Collapse the same way the comparison does, so the offsets line up.
-    const collapsed = text.replace(/\s+/g, " ");
-    pieces.push({ node: node as Text, start: flat.length, text: collapsed });
-    flat += collapsed;
+    const index = nodes.length;
+    nodes.push(node as Text);
+    for (let i = 0; i < text.length; i++) {
+      if (/\s/.test(text[i])) {
+        if (!pendingSpace && haystack) pendingSpace = { node: index, offset: i };
+        continue;
+      }
+      if (pendingSpace) {
+        haystack += " ";
+        origin.push(pendingSpace);
+        pendingSpace = null;
+      }
+      haystack += text[i];
+      origin.push({ node: index, offset: i });
+    }
   }
-  const haystack = flat.replace(/\s+/g, " ").trim();
   if (!haystack.includes(wanted)) return [];
 
   // Find the nth occurrence.
@@ -176,27 +198,37 @@ export function findQuoteRanges(container: HTMLElement, quote: string, occurrenc
     from = index + wanted.length;
   }
 
-  // Turn the character span into DOM ranges, splitting wherever the span
-  // crosses a text-node boundary.
+  // Turn the character span into DOM ranges. Consecutive collapsed characters
+  // from consecutive original offsets of one node merge into a single range; a
+  // whitespace run breaks the run, so a range never claims offsets inside text
+  // that was collapsed away.
   const ranges: Range[] = [];
-  let spanStart = index;
   const spanEnd = index + wanted.length;
-  for (const piece of pieces) {
-    const pieceStart = piece.start;
-    const pieceEnd = piece.start + piece.text.length;
-    if (pieceEnd <= spanStart || pieceStart >= spanEnd) continue;
-    const from_ = Math.max(0, spanStart - pieceStart);
-    const to = Math.min(piece.text.length, spanEnd - pieceStart);
+  let current: { node: Text; start: number; end: number } | null = null;
+  const flush = () => {
+    if (!current) return;
     try {
-      const range = document.createRange();
-      range.setStart(piece.node, from_);
-      range.setEnd(piece.node, to);
+      const range = current.node.ownerDocument.createRange();
+      range.setStart(current.node, current.start);
+      range.setEnd(current.node, current.end);
       ranges.push(range);
     } catch {
       // Offsets can fall outside a node whose text changed under us; skipping
       // that piece loses a fragment, not the mark.
     }
+    current = null;
+  };
+  for (let i = index; i < spanEnd; i++) {
+    const at = origin[i];
+    const node = nodes[at.node];
+    if (current && current.node === node && at.offset === current.end) {
+      current.end = at.offset + 1;
+      continue;
+    }
+    flush();
+    current = { node, start: at.offset, end: at.offset + 1 };
   }
+  flush();
   return ranges;
 }
 
@@ -285,6 +317,37 @@ export function textInRect(container: HTMLElement, page: HTMLElement, rect: Rect
 }
 
 /**
+ * A range's client rectangles in the page element's own coordinate space.
+ *
+ * A range inside an EPUB chapter reports coordinates in the iframe's viewport,
+ * while the iframe element's box -- which is what `toPageRect` measures
+ * against -- is in the outer viewport. Adding the frame's own top-left puts
+ * both in the same space, so a stored mark does not move when the outer
+ * document scrolls. A PDF page needs no translation: its ranges and its box
+ * already share one viewport, and its output is exactly what the browser
+ * reported.
+ */
+function pageClientRects(range: Range, page: HTMLElement): ClientRect[] {
+  const rects = range.getClientRects();
+  const offset = { left: 0, top: 0 };
+  if (page instanceof HTMLIFrameElement) {
+    const box = page.getBoundingClientRect();
+    offset.left = box.left;
+    offset.top = box.top;
+  }
+  const out: ClientRect[] = [];
+  for (const rect of rects) {
+    out.push({
+      left: rect.left + offset.left,
+      top: rect.top + offset.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  }
+  return out;
+}
+
+/**
  * The rectangles for a set of ranges that actually fall inside the page.
  *
  * Unlike `rectsForRanges`, a rectangle entirely outside the page is dropped
@@ -300,17 +363,14 @@ export function visibleRectsForRanges(ranges: Range[], page: HTMLElement): Rect[
   const box = page.getBoundingClientRect();
   const inside: Rect[] = [];
   for (const range of ranges) {
-    for (const rect of range.getClientRects()) {
+    for (const rect of pageClientRects(range, page)) {
       const overlaps =
         rect.left < box.right &&
-        rect.right > box.left &&
+        rect.left + rect.width > box.left &&
         rect.top < box.bottom &&
-        rect.bottom > box.top;
+        rect.top + rect.height > box.top;
       if (!overlaps) continue;
-      const r = toPageRect(
-        { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        page,
-      );
+      const r = toPageRect(rect, page);
       if (r.w > 0 && r.h > 0) inside.push(r);
     }
   }
@@ -323,15 +383,23 @@ export function visibleRectsForRanges(ranges: Range[], page: HTMLElement): Rect[
  * A range that spans a line break reports a rectangle covering both lines, so
  * ranges are split per client rect: that is what makes a highlight look like a
  * highlight rather than one tall block over the wrong words.
+ *
+ * A rectangle that misses the page entirely -- a selection continuing onto the
+ * next page -- is dropped rather than clamped into 0..1, which would pin it
+ * against the page's bottom edge as a stray strip.
  */
 export function rectsForRanges(ranges: Range[], page: HTMLElement): Rect[] {
+  const box = page.getBoundingClientRect();
   const out: Rect[] = [];
   for (const range of ranges) {
-    for (const rect of range.getClientRects()) {
-      const r = toPageRect(
-        { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
-        page,
-      );
+    for (const rect of pageClientRects(range, page)) {
+      const overlaps =
+        rect.left < box.right &&
+        rect.left + rect.width > box.left &&
+        rect.top < box.bottom &&
+        rect.top + rect.height > box.top;
+      if (!overlaps) continue;
+      const r = toPageRect(rect, page);
       // Zero-height rects come from collapsed whitespace and draw nothing.
       if (r.w > 0 && r.h > 0) out.push(r);
     }

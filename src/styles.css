@@ -739,10 +739,16 @@ kbd {
   inset: 0;
   pointer-events: none;
   z-index: 3;
+  /* Clips marks to the reading pane: a mark on a page that has scrolled half
+     out of view is cut at the pane edge rather than bleeding over the reader
+     bar. Clipping only works if the marks are the layer's own absolute
+     children -- fixed positioning would escape it -- so the layer measures
+     them against itself rather than the viewport. */
+  overflow: hidden;
 }
 
 .mark {
-  position: fixed;
+  position: absolute;
   pointer-events: auto;
 }
 

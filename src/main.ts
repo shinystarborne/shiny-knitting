@@ -4,6 +4,7 @@ import { LibraryView } from "./views/library";
 import { PatternForm } from "./views/pattern-form";
 import { AiSettingsDialog } from "./views/ai-settings";
 import { clearCoverCache, ensureCover } from "./covers";
+import { say } from "./dialogs";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
@@ -16,6 +17,8 @@ class App {
   private modal!: HTMLElement;
 
   private activeReader: ReaderView | null = null;
+  /** The mounted library, so background work can ask it to repaint a card. */
+  private activeLibrary: LibraryView | null = null;
   private layout: Layout = "split";
 
   /**
@@ -80,6 +83,7 @@ class App {
   private clearScreen(): void {
     this.activeReader?.destroy();
     this.activeReader = null;
+    this.activeLibrary = null;
     this.screen.innerHTML = "";
     // Cover object URLs are tied to the elements that showed them.
     clearCoverCache();
@@ -90,13 +94,27 @@ class App {
     this.navToken++;
     this.clearScreen();
     const view = new LibraryView(this.screen);
+    this.activeLibrary = view;
     await view.mount();
   }
 
   private async showReader(id: string): Promise<void> {
     const token = ++this.navToken;
     this.clearScreen();
-    const pattern = await api.getPattern(id);
+    let pattern: Pattern;
+    try {
+      pattern = await api.getPattern(id);
+    } catch (error) {
+      // The pattern may be gone — deleted while a stale card still showed it.
+      // The screen was already cleared, so leave a message and go back to the
+      // library rather than stranding the user on a blank screen.
+      if (token !== this.navToken) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      await say(`That pattern could not be opened. It may have been removed.\n\n${detail}`);
+      if (token !== this.navToken) return;
+      await this.showLibrary();
+      return;
+    }
     // A newer navigation started while this one was fetching; abandon it
     // rather than clobbering the screen it is replacing.
     if (token !== this.navToken) return;
@@ -125,7 +143,11 @@ class App {
   private async addCoverInBackground(pattern: Pattern): Promise<void> {
     try {
       const bytes = await api.readFile(pattern.id);
-      await ensureCover(pattern, toBytes(bytes));
+      if (await ensureCover(pattern, toBytes(bytes))) {
+        // The library mounted with a placeholder while this ran; repaint just
+        // that card now the cover exists.
+        await this.activeLibrary?.refreshCover(pattern.id);
+      }
     } catch {
       // No cover is a cosmetic loss, so it never surfaces as an error.
     }

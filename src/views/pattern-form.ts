@@ -71,7 +71,7 @@ export class PatternForm {
             <div class="cover-row">
               <div class="cover-preview" data-el="coverbox"></div>
               <div class="cover-actions">
-                <button class="ghost" data-act="cover-file">Choose an imageâ€¦</button>
+                <button class="ghost" data-act="cover-file">Choose an image…</button>
                 <button class="ghost" data-act="cover-reset">Read from the file</button>
                 <p class="hint">The cover is taken from the first page of a PDF, or the cover image of an EPUB.</p>
               </div>
@@ -290,7 +290,7 @@ export class PatternForm {
     holder.innerHTML = this.tagList
       .map(
         (t) =>
-          `<span class="tag">${escapeHtml(t)}<button data-act="remove-tag" data-tag="${escapeAttr(t)}">Ã—</button></span>`,
+          `<span class="tag">${escapeHtml(t)}<button data-act="remove-tag" data-tag="${escapeAttr(t)}">×</button></span>`,
       )
       .join("");
   }

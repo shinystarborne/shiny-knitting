@@ -150,14 +150,40 @@ def build_ico(path, sizes=(16, 24, 32, 48, 64, 128, 256)):
         f.write(bytes(out))
 
 
+def build_icns(path, blocks):
+    """Writes a minimal .icns. Since macOS 10.7 an icns block may hold a PNG
+    directly, so each entry is a type tag ('ic07' = 128px, 'ic08' = 256px)
+    plus the rendered PNG bytes."""
+    body = bytearray()
+    for tag, data in blocks:
+        body += tag + struct.pack(">I", len(data) + 8) + data
+    with open(path, "wb") as f:
+        f.write(b"icns" + struct.pack(">I", len(body) + 8) + bytes(body))
+
+
 if __name__ == "__main__":
     import os
 
     out = os.path.join(os.path.dirname(__file__), "src-tauri", "icons")
     os.makedirs(out, exist_ok=True)
+    rendered = {}
+
+    def pixels(size):
+        if size not in rendered:
+            rendered[size] = render(size)
+        return rendered[size]
+
     for s in SIZES:
         name = "icon.png" if s == 512 else f"{s}x{s}.png"
-        write_png(os.path.join(out, name), s, render(s))
+        write_png(os.path.join(out, name), s, pixels(s))
         print("wrote", name)
+    # The HiDPI variant of 128x128: the 256px image at double density.
+    write_png(os.path.join(out, "128x128@2x.png"), 256, pixels(256))
+    print("wrote 128x128@2x.png")
     build_ico(os.path.join(out, "icon.ico"))
     print("wrote icon.ico")
+    build_icns(
+        os.path.join(out, "icon.icns"),
+        [(b"ic07", png_bytes(128, pixels(128))), (b"ic08", png_bytes(256, pixels(256)))],
+    )
+    print("wrote icon.icns")

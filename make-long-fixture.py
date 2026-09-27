@@ -4,7 +4,6 @@ Usage: python make-long-fixture.py
 Output: public/fixtures/long-pattern.pdf (40 pages)
 """
 import os
-import struct
 
 PAGES = 40
 

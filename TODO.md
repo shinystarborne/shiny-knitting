@@ -17,6 +17,11 @@ and the others build on it.
 
 | Branch | Task |
 | --- | --- |
+| `feature/bulk-add` | Bulk add of patterns. Independent; good first task. |
+| `feature/yarn-stash` | Yarn stash tab. Land before plans: plans want stash yarns. |
+| `feature/plans` | Plans tab: what, when, and with what yarn. Needs the stash. |
+| `feature/finished-gallery` | Gallery of finished projects. |
+| `feature/inspiration-board` | Infinite pan/zoom inspiration board. |
 | `feature/marks` | Highlights, notes and drawings. Start here: the others need it. |
 | `feature/pins` | Cropped image pins, up to five per pattern. |
 | `feature/bookmarks` | Bookmarks and the document index. |
@@ -41,6 +46,70 @@ and the others build on it.
 | Named counters, multiple at once, with a click | shipped |
 | Highlights, notes, drawings, pins, bookmarks, index, PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
+| Bulk add, yarn stash, plans, finished gallery, inspiration board | not started |
+
+## Tabs: stash, plans, gallery, board
+
+A design note that applies to all of these: `src/main.ts` today swaps exactly
+two screens (library and reader). Four new top-level areas means real
+navigation — a tab bar beside or above the library — so whichever of these
+lands first also builds the shell the others reuse.
+
+**Bulk add.** Point at a folder (or multi-select files) and every PDF/EPUB in
+it joins the library, using the path-based copy that Browse already has, so
+bulk add is never slower than adding one file. Needs: a summary at the end
+(added / skipped as duplicates / rejected), duplicates detected by content
+rather than name, and progress you can cancel. Open question: recursive into
+subfolders, or one folder flat?
+
+**Yarn stash.** Every yarn you own: name, brand, colour, weight (the same
+family table as the library filter, so "could I knit this in something I
+have?" becomes a real query), metreage/yardage per ball, balls or grams in
+stash, where it lives, and a photo. Open questions: partial balls (weigh them?
+grams left?), and does a yarn get lots (same yarn bought twice, different
+dye lots) as first-class things or just a note?
+
+**Plans.** A queue of what to knit next: a pattern from the library (or a free
+text entry, because some plans have no pattern yet), a yarn from the stash
+(optional), a target date or season, and an order. Drag to reorder; marking
+one started/finished should move the pattern's own status along. Open
+question: dates as exact days, or coarse ("autumn", "before the baby comes")?
+
+**Finished gallery.** Cards with photos of finished objects: the pattern it
+came from (linked back into the library), the yarn used, needle size,
+start/finish dates, and notes on modifications. Multiple photos per object.
+Open question: does finishing a plan or flipping a pattern's status to
+"finished" offer to create a gallery entry, or is the gallery purely manual?
+
+**Inspiration board.** An infinite pan/zoom canvas: images, text notes, links
+to patterns, and colour swatches dropped anywhere and arranged freely, with
+several named boards. Stored as items with x/y/scale so a board survives
+restarts. This is the most novel UI of the set — no precedent in the codebase
+for a free canvas, so it is worth doing after one of the tab screens exists.
+Open question: images pasted from the clipboard too, or only from disk?
+
+## More ideas, not yet agreed
+
+Candidates, roughly most useful first. Pick from these when the list above
+runs out; none is agreed yet.
+
+- **Needle and hook inventory** — same idea as the stash but for tools, so a
+  plan can say "needs a 4 mm circular you don't own" and you stop buying a
+  third 5 mm. Cheap to build once the stash exists: same table shape.
+- **Gauge swatch log** — swatch results per yarn + needle, because the
+  calculators (raglan, yoke, colourwork) all want a gauge and your real
+  knitted gauge beats the ball band's.
+- **Shopping list** — yarn a plan needs that the stash can't cover. Falls out
+  of plans + stash almost for free.
+- **Project journal** — dated entries on a pattern while you knit it: what
+  you changed, where you stopped, what you'd do differently. The gallery
+  entry then writes itself.
+- **Recipient measurements** — named sets of measurements (you, family,
+  friends) feeding the calculators and gift plans.
+- **Ravelry import** — their export is a CSV/JSON of your library and stash;
+  a one-shot importer would seed both tabs.
+- **Backup/export** — the library folder is already self-contained; a one
+  click "back up to zip" would make that promise real.
 
 ## The big one: annotations, pins, bookmarks, export
 

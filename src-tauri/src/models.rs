@@ -348,17 +348,10 @@ pub struct ExportRequest {
     /// 1-based pages for a PDF, chapter indices for an EPUB. Order is kept and
     /// duplicates are removed, so "1,1,2" exports as pages 1 and 2.
     pub pages: Vec<i64>,
-    /// Roughly 150 is fine on screen and keeps the file small enough to email.
-    #[serde(default = "default_export_dpi")]
-    pub dpi: i64,
-    /// Where to write it. An empty name means one is generated beside the
-    /// library.
+    /// The file name to write, under the library's exports folder. An empty
+    /// name means one is generated from the pattern title and chosen pages.
     #[serde(default)]
     pub file_name: String,
-}
-
-fn default_export_dpi() -> i64 {
-    150
 }
 
 // ---------- AI metadata ----------

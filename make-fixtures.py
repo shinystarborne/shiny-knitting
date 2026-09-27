@@ -1,12 +1,11 @@
 """Creates a sample knitting pattern as PDF and EPUB for testing the app.
 
 Usage: python make-fixtures.py
-Output: fixtures/sample-pattern.pdf, fixtures/sample-pattern.epub
+Output: fixtures/ and public/fixtures/ — the first for direct inspection, the
+second because the harness serves its documents from public/.
 """
 import os
 import zipfile
-import zlib
-import struct
 
 # A tiny multi-page PDF with real text, including a chart-like grid, so the
 # reader and highlight line get exercised with representative content.
@@ -147,7 +146,7 @@ def build_pdf(path):
 XHTML = """<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>{title}</title><link rel="stylesheet" type="text/css" href="../style.css"/></head>
+<head><title>{title}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 {body}
 </body>
@@ -206,7 +205,7 @@ CHART_SVG = """<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="420" height="240" viewBox="0 0 420 240">
   <rect width="420" height="240" fill="#fff"/>
 """ + "".join(
-    f'  <line x1="{60 + c * 30}" y1="20" x2="{60 + c * 30}" y2="260" stroke="#ccc" stroke-width="1"/>'
+    f'  <line x1="{60 + c * 30}" y1="20" x2="{60 + c * 30}" y2="230" stroke="#ccc" stroke-width="1"/>'
     if c <= 12
     else ""
     for c in range(13)
@@ -309,9 +308,16 @@ def build_epub(path):
 
 
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(__file__), "fixtures")
+    here = os.path.dirname(__file__)
+    out = os.path.join(here, "fixtures")
     os.makedirs(out, exist_ok=True)
     build_pdf(os.path.join(out, "sample-pattern.pdf"))
     build_epub(os.path.join(out, "sample-pattern.epub"))
+    # The harness serves its documents from public/, so the same files land
+    # there too rather than being copied across by hand.
+    public = os.path.join(here, "public", "fixtures")
+    os.makedirs(public, exist_ok=True)
+    build_pdf(os.path.join(public, "sample-pattern.pdf"))
+    build_epub(os.path.join(public, "sample-pattern.epub"))
     for name in sorted(os.listdir(out)):
         print(name, os.path.getsize(os.path.join(out, name)), "bytes")

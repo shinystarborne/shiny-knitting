@@ -1,4 +1,4 @@
-import { api, toBytes, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
+import { api, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
 import { say } from "../dialogs";
 import { closestEl } from "../dom";
@@ -56,8 +56,16 @@ export class ReaderView {
 
   /** Guards against writing a stale scroll position after the user navigates. */
   private saveTimer: number | null = null;
+  /**
+   * Debounces writes of the notes textarea. Separate from `saveTimer`: sharing
+   * one timer meant typing then scrolling within the debounce window silently
+   * discarded the pending notes write.
+   */
+  private notesTimer: number | null = null;
   /** Throttles mark repainting while scrolling. */
   private markRepaintTimer: number | null = null;
+  /** Click-outside dismissal for the floating counter panel, while it is open. */
+  private fabDismiss: ((e: MouseEvent) => void) | null = null;
 
   /**
    * Set once the view is torn down. `mount` does real async work (reading a
@@ -101,6 +109,9 @@ export class ReaderView {
     if (this.destroyed) return;
     this.highlight = new HighlightLine(this.settings);
     this.highlight.attach(this.scroller);
+    // The attach resolved the stored fraction to a real position, but the
+    // readout still shows its initial "row 1" until something refreshes it.
+    this.refreshRowReadout();
     this.highlight.onChange = (s) => {
       void api.saveHighlight(s);
       // A drag ends here, so this is where the row readout catches up.
@@ -160,12 +171,12 @@ export class ReaderView {
     this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}`;
     this.root.innerHTML = `
       <header class="reader-bar">
-        <button class="ghost back" data-act="back">â† Library</button>
+        <button class="ghost back" data-act="back">← Library</button>
         <div class="reader-title">
           <h2>${escapeHtml(this.pattern.title)}</h2>
           <p>
-            ${this.pattern.designer ? escapeHtml(this.pattern.designer) + " Â· " : ""}
-            <span class="pill">${this.pattern.status.replace(/-/g, " ")}</span>
+            ${this.pattern.designer ? escapeHtml(this.pattern.designer) + " · " : ""}
+            <span class="pill">${statusLabel(this.pattern.status)}</span>
             ${this.pattern.needleSize ? `<span class="pill">${escapeHtml(this.pattern.needleSize)}</span>` : ""}
             ${this.pattern.difficulty ? `<span class="pill">${escapeHtml(this.pattern.difficulty)}</span>` : ""}
           </p>
@@ -264,7 +275,9 @@ export class ReaderView {
           sidePane.hidden = true;
           sidePane.classList.remove("peek");
           document.removeEventListener("click", dismiss);
+          this.fabDismiss = null;
         };
+        this.fabDismiss = dismiss;
         setTimeout(() => document.addEventListener("click", dismiss), 0);
       });
       this.root.querySelector(".reader-body")?.appendChild(fab);
@@ -273,8 +286,9 @@ export class ReaderView {
     const notes = this.root.querySelector(".notes-area") as HTMLTextAreaElement;
     notes.addEventListener("input", () => {
       this.pattern.notes = notes.value;
-      clearTimeout(this.saveTimer ?? undefined);
-      this.saveTimer = window.setTimeout(() => {
+      clearTimeout(this.notesTimer ?? undefined);
+      this.notesTimer = window.setTimeout(() => {
+        this.notesTimer = null;
         void api.updatePattern(this.pattern);
       }, 600);
     });
@@ -344,7 +358,7 @@ export class ReaderView {
     panel.innerHTML = `
       <div class="panel-head">
         <h3>What the model found</h3>
-        <button class="ghost" data-act="suggest-close">Ã—</button>
+        <button class="ghost" data-act="suggest-close">×</button>
       </div>
       <table class="suggest-table">
         <thead><tr><th>Field</th><th>Now</th><th>Proposed</th></tr></thead>
@@ -391,10 +405,10 @@ export class ReaderView {
   private subtitleHtml(pattern: Pattern): string {
     const parts: string[] = [];
     if (pattern.designer) parts.push(escapeHtml(pattern.designer));
-    parts.push(`<span class="pill">${pattern.status.replace(/-/g, " ")}</span>`);
+    parts.push(`<span class="pill">${statusLabel(pattern.status)}</span>`);
     if (pattern.needleSize) parts.push(`<span class="pill">${escapeHtml(pattern.needleSize)}</span>`);
     if (pattern.difficulty) parts.push(`<span class="pill">${escapeHtml(pattern.difficulty)}</span>`);
-    return parts.join(" Â· ");
+    return parts.join(" · ");
   }
 
   // ---------- covers ----------
@@ -451,7 +465,7 @@ export class ReaderView {
     panel.innerHTML = `
       <div class="panel-head">
         <h3>Highlight line</h3>
-        <button class="ghost" data-act="close-panel">Ã—</button>
+        <button class="ghost" data-act="close-panel">×</button>
       </div>
       <label class="row">
         <span>Show line</span>
@@ -735,7 +749,7 @@ export class ReaderView {
   }
 
   private bindKeys(): void {
-    this.scroller.addEventListener("keydown", async (e) => {
+    this.scroller.addEventListener("keydown", (e) => {
       // Marking keys first, so H reaches the highlight rather than falling
       // through to something that handles letters.
       if (this.handleMarkKey(e)) return;
@@ -758,7 +772,11 @@ export class ReaderView {
         this.highlight?.nudge(e.key === "PageDown" ? 600 : -600, true);
         return;
       }
-      if (this.counter && (await this.counter.handleKey(e))) {
+      // handleKey decides synchronously whether the key counts, so the
+      // preventDefault lands in this same event dispatch, before the default
+      // action -- an awaited decision would let an arrow key scroll as well
+      // as count.
+      if (this.counter && this.counter.handleKey(e)) {
         e.preventDefault();
       }
     });
@@ -788,7 +806,13 @@ export class ReaderView {
   /** Writes the reading position back to the database. */
   private savePosition = (): void => {
     if (!this.doc || this.destroyed) return;
-    void api.savePosition(this.pattern.id, this.doc.currentPage(), this.doc.scrollTop);
+    const page = this.doc.currentPage();
+    const el = this.doc.pageElement(page);
+    // The offset is saved relative to the page, not absolutely: goToPage()
+    // adds the page's own offsetTop back on restore, so an absolute value
+    // would be counted twice and reopening would land too far down.
+    const offset = el ? Math.max(0, Math.round(this.doc.scrollTop - el.offsetTop)) : 0;
+    void api.savePosition(this.pattern.id, page, offset);
   };
 
   private restorePosition(): void {
@@ -797,7 +821,9 @@ export class ReaderView {
     if (lastPage > 1) {
       this.doc.goToPage(lastPage, lastScroll);
     } else if (lastScroll > 0) {
-      this.doc.scrollTop = lastScroll;
+      // Page 1 goes through goToPage too: the saved offset is page-relative,
+      // and goToPage puts the page's own offsetTop back.
+      this.doc.goToPage(1, lastScroll);
     }
   }
 
@@ -815,6 +841,19 @@ export class ReaderView {
     this.destroyed = true;
     clearTimeout(this.saveTimer ?? undefined);
     clearTimeout(this.markRepaintTimer ?? undefined);
+    // A note typed within the debounce window has not been written yet; fire
+    // the save now rather than losing the text.
+    if (this.notesTimer !== null) {
+      clearTimeout(this.notesTimer);
+      this.notesTimer = null;
+      void api.updatePattern(this.pattern);
+    }
+    // The click-outside dismissal is a document listener, which outlives this
+    // view unless removed here.
+    if (this.fabDismiss) {
+      document.removeEventListener("click", this.fabDismiss);
+      this.fabDismiss = null;
+    }
     // A window listener outlives the element unless removed, so drop it here.
     window.removeEventListener("beforeunload", this.savePosition);
     this.marks?.detach();
@@ -833,6 +872,15 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * A pattern's status as display text. Known statuses use their label; anything
+ * else is shown as written, escaped, rather than interpolated raw into markup.
+ */
+function statusLabel(status: string): string {
+  const label = STATUSES.find((s) => s.value === status)?.label ?? status.replace(/-/g, " ");
+  return escapeHtml(label);
 }
 
 /** Reads one displayable value out of a pattern, by field name. */

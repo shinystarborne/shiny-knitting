@@ -118,7 +118,7 @@ function seed() {
   // with no name, an unusual name, and one pattern with none at all, so the
   // filter has something to separate and the "unrecognised" path is exercised.
   const filler = [
-    ["Honeycomb Cardigan", "Elizabeth Zimmermann", "colourwork", "beginner", ["colourwork", "socks"], "aran"],
+    ["Honeycomb Cardigan", "Elizabeth Zimmermann", "4.5mm", "beginner", ["colourwork", "socks"], "aran"],
     ["Cabled Pullover", "Jess Leslie", "5mm", "intermediate", ["cables", "sweater"], "DK"],
     ["Lace Camisole", "Larva", "3mm", "advanced", ["lace", "top"], "lace weight"],
     ["Ribbed Beanie", "Any", "4mm", "easy", ["ribbing", "hat"], "100 m/100g"],
@@ -276,13 +276,36 @@ function yarnFamily(text) {
     const re = new RegExp(`(^|[^a-z0-9])${word.replace(/[-]/g, "\\-")}([^a-z0-9]|$)`);
     if (re.test(lower)) return family;
   }
-  const m = lower.match(/(\d+(?:\.\d+)?)\s*m(?:etres|eters|trs)?\s*(?:\/|\s*per\s*)100\s*g/);
+  const m = lower.match(/(\d+(?:\.\d+)?)\s*m(?:etres|eters|trs)?\s*(?:\/|\s*per\s*|\s*at\s*)100\s*g/);
   if (m) {
     const metres = Math.round(parseFloat(m[1]));
     const row = YARN_FAMILIES.find(([, , min, max]) => metres >= min && metres < max);
     if (row) return row[0];
   }
   return "";
+}
+
+/**
+ * The image format a byte sequence actually is, by magic number, mirroring
+ * `covers.rs::sniff`: [extension, mime], or null for anything that is not a
+ * recognised image.
+ */
+function sniffImage(bytes) {
+  const starts = (sig) => sig.every((v, i) => bytes[i] === v);
+  if (starts([0xff, 0xd8, 0xff])) return ["jpg", "image/jpeg"];
+  if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return ["png", "image/png"];
+  // "GIF87a" / "GIF89a"
+  if (starts([0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || starts([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])) {
+    return ["gif", "image/gif"];
+  }
+  // "RIFF"...."WEBP"
+  if (bytes.length > 12 && starts([0x52, 0x49, 0x46, 0x46]) &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+    return ["webp", "image/webp"];
+  }
+  // "BM"
+  if (bytes.length > 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return ["bmp", "image/bmp"];
+  return null;
 }
 
 /**
@@ -350,11 +373,39 @@ const handlers = {
     if (filter?.tags?.length) {
       out = out.filter((p) => filter.tags.every((t) => p.tags.includes(t)));
     }
+    // The sort keys the library view offers, mirroring the ORDER BY the
+    // backend builds (db/mod.rs); anything unrecognised is newest first.
+    switch (filter?.sort) {
+      case "title":
+        out.sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
+        break;
+      case "oldest":
+        out.sort((a, b) => a.addedAt - b.addedAt);
+        break;
+      case "lastOpened":
+        // DESC NULLS LAST: never-opened patterns sort after opened ones.
+        out.sort((a, b) => {
+          if (a.lastOpenedAt == null && b.lastOpenedAt == null) return 0;
+          if (a.lastOpenedAt == null) return 1;
+          if (b.lastOpenedAt == null) return -1;
+          return b.lastOpenedAt - a.lastOpenedAt;
+        });
+        break;
+      default:
+        out.sort((a, b) => b.addedAt - a.addedAt);
+    }
     return clone(out);
   },
-  get_pattern: ({ id }) => clone(store.patterns.find((p) => p.id === id)),
+  get_pattern: ({ id }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    // The backend's NotFound serialises as this string; a missing row is an
+    // error there, not a null.
+    if (!p) throw new Error(`pattern not found: ${id}`);
+    return clone(p);
+  },
   update_pattern: ({ pattern }) => {
     const i = store.patterns.findIndex((p) => p.id === pattern.id);
+    if (i < 0) throw new Error(`pattern not found: ${pattern.id}`);
     // The family is derived on write by the real backend, not sent by the
     // client, so it is re-derived here. Otherwise a corrected weight would
     // keep filtering under the old family.
@@ -381,6 +432,9 @@ const handlers = {
   save_position: ({ id, page, scroll }) => {
     const p = store.patterns.find((x) => x.id === id);
     if (p) {
+      // touch_pattern records the open as well as the position, which is what
+      // the "recently read" sort reads.
+      p.lastOpenedAt = Date.now();
       p.lastPage = page;
       p.lastScroll = scroll;
     }
@@ -503,7 +557,8 @@ const handlers = {
   // right here and then fail against the real thing, which is the whole reason
   // this stub mirrors the rules rather than just the shapes.
   list_pins: ({ patternId }) =>
-    clone(store.pins.filter((p) => p.patternId === patternId).sort((a, b) => a.z - b.z)),
+    // Highest z first, so the pin just made is the one on top.
+    clone(store.pins.filter((p) => p.patternId === patternId).sort((a, b) => b.z - a.z)),
   pin_count: ({ patternId }) => store.pins.filter((p) => p.patternId === patternId).length,
   add_pin: ({ patternId, input }) => {
     if (store.pins.filter((p) => p.patternId === patternId).length >= 5) {
@@ -524,7 +579,11 @@ const handlers = {
       offsetY: 0.18,
       width: 0.24,
       hidden: false,
-      z: store.pins.reduce((top, p) => Math.max(top, p.z), -1) + 1,
+      // Above this pattern's existing pins; other patterns' z values are
+      // irrelevant, as in the backend's MAX(z) ... WHERE pattern_id.
+      z: store.pins
+        .filter((p) => p.patternId === patternId)
+        .reduce((top, p) => Math.max(top, p.z), -1) + 1,
       imageFile: `${id}.jpg`,
       createdAt: Date.now(),
     };
@@ -560,18 +619,33 @@ const handlers = {
     return Uint8Array.from(bytes).buffer;
   },
 
-  get_highlight: ({ patternId }) => clone(store.highlights.get(patternId)),
+  get_highlight: ({ patternId }) => {
+    const h = store.highlights.get(patternId);
+    if (!h) throw new Error(`pattern not found: ${patternId}`);
+    return clone(h);
+  },
   save_highlight: ({ settings }) => {
     store.highlights.set(settings.patternId, clone(settings));
     return clone(settings);
   },
 
   // ---------- covers ----------
+  //
+  // Content is checked rather than trusted, as covers.rs does: a renamed
+  // script must be refused, and the reported mime comes from the magic bytes.
   set_cover: ({ patternId, bytes }) => {
+    if (!bytes || bytes.length === 0) throw new Error("That file is empty.");
+    if (bytes.length > 20 * 1024 * 1024) {
+      throw new Error("That image is too large to be a cover (limit 20 MB).");
+    }
+    const found = sniffImage(bytes);
+    if (!found) throw new Error("That file does not look like an image.");
+    const [ext, mime] = found;
+    const fileName = `${patternId}.${ext}`;
     const p = store.patterns.find((x) => x.id === patternId);
-    if (p) p.coverPath = `cover-${patternId}.jpg`;
+    if (p) p.coverPath = fileName;
     store.covers.set(patternId, bytes);
-    return { patternId, fileName: p?.coverPath || "", bytes, mime: "image/jpeg" };
+    return { patternId, fileName, bytes, mime };
   },
   get_cover: ({ patternId }) => {
     const bytes = store.covers.get(patternId);
@@ -636,23 +710,60 @@ const handlers = {
       designer: "Jess Leslie",
       difficulty: "intermediate",
       needleSize: "2.25mm",
+      yarnWeight: "fingering",
       yarn: "Shetland wool",
       tags: ["lace", "socks", "chart"],
       summary: "A fine gauge lace sock worked from a chart.",
     };
+    // The merge below mirrors ai::metadata::apply_to exactly: with skipExisting
+    // on, a field the user already filled in is left alone; the yarn line and
+    // the tags are merged regardless, because they lose nothing.
+    const keepExisting = (current) => skip && String(current || "").trim() !== "";
     const after = clone(p);
-    if (!skip || !after.designer) after.designer = suggestion.designer;
-    if (!skip || !after.difficulty) after.difficulty = suggestion.difficulty;
-    if (!skip || !after.needleSize) after.needleSize = suggestion.needleSize;
-    if (!after.tags.length) after.tags = [...suggestion.tags];
-    if (!after.notes) after.notes = `Yarn: ${suggestion.yarn}`;
+    if (!keepExisting(p.designer) && suggestion.designer) after.designer = suggestion.designer;
+    if (!keepExisting(p.difficulty) && suggestion.difficulty) after.difficulty = suggestion.difficulty;
+    if (!keepExisting(p.needleSize) && suggestion.needleSize) after.needleSize = suggestion.needleSize;
+    if (!keepExisting(p.yarnWeight) && suggestion.yarnWeight) {
+      after.yarnWeight = suggestion.yarnWeight;
+      // The family is derived, so it follows the weight rather than being
+      // asked of the model.
+      after.yarnWeightFamily = yarnFamily(suggestion.yarnWeight);
+    }
+    // Yarn is folded into the notes, below anything already there.
+    if (suggestion.yarn && !p.notes.includes(suggestion.yarn)) {
+      after.notes = after.notes.trim() === ""
+        ? `Yarn: ${suggestion.yarn}`
+        : `${after.notes.trimEnd()}\nYarn: ${suggestion.yarn}`;
+    }
+    // Tags are a set, not a value: merge rather than replace, so a tag the
+    // user added is never lost.
+    if (suggestion.tags.length) {
+      const merged = [...after.tags];
+      for (const tag of suggestion.tags) {
+        if (!merged.some((t) => t.toLowerCase() === tag.toLowerCase())) merged.push(tag);
+      }
+      merged.sort();
+      after.tags = [...new Set(merged)];
+    }
+    // The summary becomes the notes only when there is nothing there yet.
+    if (suggestion.summary && !after.notes.includes(suggestion.summary.trim()) &&
+      after.notes.trim() === "") {
+      after.notes = suggestion.summary;
+    }
 
+    // Mirrors ai::metadata::changed_fields, including naming a notes change by
+    // what caused it.
     const changed = [];
     if (before.designer !== after.designer) changed.push("Designer");
     if (before.difficulty !== after.difficulty) changed.push("Difficulty");
     if (before.needleSize !== after.needleSize) changed.push("Needle size");
+    if (before.yarnWeight !== after.yarnWeight) changed.push("Yarn weight");
     if (JSON.stringify(before.tags) !== JSON.stringify(after.tags)) changed.push("Tags");
-    if (before.notes !== after.notes) changed.push("Yarn");
+    if (before.notes !== after.notes) {
+      changed.push(
+        after.notes.includes("Yarn:") && !before.notes.includes("Yarn:") ? "Yarn" : "Summary",
+      );
+    }
 
     let applied = false;
     if (store.aiSettings?.applyAutomatically !== false && changed.length) {
@@ -687,8 +798,16 @@ const handlers = {
     const entry = store.aiHistory.get(patternId);
     if (!entry) return null;
     const i = store.patterns.findIndex((x) => x.id === patternId);
-    store.patterns[i] = clone(entry.before);
-    return clone(entry.before);
+    const current = clone(store.patterns[i]);
+    const restored = clone(entry.before);
+    // The restore is written through the same path as any update, so the
+    // family is re-derived as the backend's update_pattern does.
+    restored.yarnWeightFamily = yarnFamily(restored.yarnWeight);
+    store.patterns[i] = restored;
+    // Restoring is itself a change and gets its own undo point (commands.rs),
+    // so a second undo re-applies the AI change rather than doing nothing.
+    store.aiHistory.set(patternId, { before: current, after: clone(restored) });
+    return clone(restored);
   },
   has_ai_history: ({ patternId }) => store.aiHistory.has(patternId),
   clear_ai_history: ({ patternId }) => {
@@ -696,14 +815,26 @@ const handlers = {
   },
 
   add_pattern: ({ input }) => {
+    // A source path is authoritative about the file's name, as the backend is.
+    let fileName = input.fileName;
+    if (input.sourcePath && input.sourcePath.trim()) {
+      fileName = input.sourcePath.split(/[\\/]/).pop() || fileName;
+    }
+    const dot = fileName.lastIndexOf(".");
+    const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : "";
+    if (ext !== "pdf" && ext !== "epub") {
+      throw new Error(
+        `could not determine the file type for .${ext} (only pdf and epub are supported)`,
+      );
+    }
     const id = `p${store.nextId++}`;
     const p = {
       id,
       title: input.title,
       designer: input.designer,
-      filePath: `library/originals/${id}`,
-      fileName: input.fileName,
-      format: (input.sourcePath || input.fileName).toLowerCase().endsWith(".epub") ? "epub" : "pdf",
+      filePath: `library/originals/${id}.${ext}`,
+      fileName,
+      format: ext,
       status: input.status,
       difficulty: input.difficulty,
       needleSize: input.needleSize,

@@ -14,8 +14,8 @@ interface ManifestItem {
  * An EPUB is a zip of XHTML chapters listed in a spine. Each chapter is
  * rendered into a sandboxed iframe so the book's own CSS and scripts cannot
  * reach the app around it, and so stylesheets are scoped to that chapter only.
- * Images and stylesheets are inlined as data URIs, because a sandboxed iframe
- * cannot fetch app-relative paths.
+ * Images are inlined as data URIs and stylesheets as text, because a sandboxed
+ * iframe cannot fetch app-relative paths.
  */
 export class EpubView implements RenderedDoc {
   pageCount = 0;
@@ -148,10 +148,13 @@ export class EpubView implements RenderedDoc {
         link.remove();
         return;
       }
-      const uri = this.dataUri(resolvePath(dir, target.split("#")[0]));
-      if (uri) {
+      const data = this.files.get(normalize(resolvePath(dir, target.split("#")[0])));
+      if (data) {
         const style = doc.createElement("style");
-        style.textContent = atob(uri.split(",")[1] || "");
+        // Decode the bytes as UTF-8 text. Routing through the base64 data URI
+        // and atob() produces a byte string, which mangles any multibyte
+        // character in the CSS into mojibake.
+        style.textContent = strFromU8(data);
         link.replaceWith(style);
       } else {
         link.remove();
@@ -189,7 +192,8 @@ export class EpubView implements RenderedDoc {
       pre, code { white-space: pre-wrap !important; }
     `;
     doc.head?.appendChild(style);
-    return `<!doctype html><html><head><meta charset="utf-8"></head><body>${doc.body.innerHTML}</body></html>`;
+    const head = doc.head?.innerHTML ?? "";
+    return `<!doctype html><html><head><meta charset="utf-8">${head}</head><body>${doc.body.innerHTML}</body></html>`;
   }
 
   async render(): Promise<void> {
@@ -214,9 +218,10 @@ export class EpubView implements RenderedDoc {
       });
 
       // Images and fonts can settle after the markup does, which changes the
-      // height, so re-fit once things have had a moment to load.
+      // height, so re-fit once things have had a moment to load. (A `load`
+      // listener on the document never fires -- load targets the window --
+      // so the timeout is the mechanism, not a fallback.)
       this.fitHeight(frame);
-      frame.contentDocument?.addEventListener("load", () => this.fitHeight(frame));
       window.setTimeout(() => this.fitHeight(frame), 150);
     }
   }
@@ -298,16 +303,24 @@ export class EpubView implements RenderedDoc {
     // iframe's, not this one.
     const view = frame.contentWindow as (Window & typeof globalThis) | null;
     if (!view) return;
-    const refit = () => this.fitHeight(frame);
-
-    // Content changing is the common case -- an image decoding, a stylesheet
-    // applying, a late webfont -- and a mutation is the only way to hear about
-    // most of them, since a chapter can grow while the container sits still.
-    // A ResizeObserver is kept alongside it for the purely geometric case, and
-    // `fitHeight` only writes a height that has really changed, so neither can
-    // set the other off in a loop.
+    // A mutation's target is a node inside the chapter's document, which is
+    // how it finds its way back to the frame that owns it above. Content
+    // changing is the common case -- an image decoding, a stylesheet
+    // applying, a late webfont -- and a mutation is the only way to hear
+    // about most of them, since a chapter can grow while the container sits
+    // still. A ResizeObserver is kept alongside it for the purely geometric
+    // case, and `fitHeight` only writes a height that has really changed, so
+    // neither can set the other off in a loop.
     const MutationCtor = view.MutationObserver ?? MutationObserver;
-    this.contentObserver ??= new MutationCtor(refit);
+    // The observer is shared by every chapter, so a mutation cannot be assumed
+    // to belong to the frame that happened to create the observer. Route each
+    // one back through its node's document to the frame that owns it.
+    this.contentObserver ??= new MutationCtor((mutations: MutationRecord[]) => {
+      for (const mutation of mutations) {
+        const owner = mutation.target.ownerDocument?.defaultView?.frameElement;
+        if (owner instanceof HTMLIFrameElement) this.fitHeight(owner);
+      }
+    });
     // The whole document rather than the body, because the change that
     // resizes a chapter as often comes from its head: a stylesheet arriving or
     // a webfont rule applying changes every line below it without touching the

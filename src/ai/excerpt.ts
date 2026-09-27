@@ -154,11 +154,11 @@ function excerptFromEpub(bytes: Uint8Array, maxChars: number): string {
   doc.querySelectorAll("spine > itemref").forEach((node) => {
     const idref = node.getAttribute("idref");
     const href = idref ? manifest.get(idref) : undefined;
-    if (href) order.push(resolvePath(opfDir, href.split("#")[0]));
+    if (href) order.push(resolvePath(opfDir, decodeHref(href.split("#")[0])));
   });
   if (!order.length) {
     for (const href of manifest.values()) {
-      if (/\.x?html?$/i.test(href)) order.push(resolvePath(opfDir, href.split("#")[0]));
+      if (/\.x?html?$/i.test(href)) order.push(resolvePath(opfDir, decodeHref(href.split("#")[0])));
     }
   }
 
@@ -193,6 +193,20 @@ function findOpf(files: Map<string, Uint8Array>): string | null {
 
 function normalize(path: string): string {
   return path.replace(/^\.\//, "").replace(/^\//, "");
+}
+
+/**
+ * Percent-decodes an EPUB manifest href. Zip entry names are stored decoded,
+ * so a href like `chapter%20one.xhtml` would otherwise never match its
+ * entry. A malformed escape makes decodeURIComponent throw; the raw href is
+ * kept then, which simply misses rather than breaking the whole read.
+ */
+function decodeHref(href: string): string {
+  try {
+    return decodeURIComponent(href);
+  } catch {
+    return href;
+  }
 }
 
 function resolvePath(baseDir: string, href: string): string {

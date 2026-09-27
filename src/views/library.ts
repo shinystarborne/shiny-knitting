@@ -64,7 +64,7 @@ export class LibraryView {
           <input class="search" type="search" placeholder="Search title, designer, notes..." />
           <select class="sort">
             <option value="recent">Newest first</option>
-            <option value="title">Title Aâ€“Z</option>
+            <option value="title">Title A–Z</option>
             <option value="oldest">Oldest first</option>
             <option value="lastOpened">Recently read</option>
           </select>
@@ -142,22 +142,14 @@ export class LibraryView {
       // the query handles that directly, so there is no need to fan out into
       // separate requests the way the single-valued groups do.
       if (field === "yarnWeight") {
-        const checked = [...this.root.querySelectorAll<HTMLInputElement>(
-          'input[data-filter="yarnWeight"]:checked',
-        )].map((i) => i.value);
+        const checked = this.checkedValues(field);
         this.filter.yarnWeight = checked.length ? checked : undefined;
-        void this.reload();
-        return;
-      }
-      if (field === "status" || field === "difficulty") {
-        const checked = [...this.root.querySelectorAll<HTMLInputElement>(
-          `input[data-filter="${field}"]:checked`,
-        )].map((i) => i.value);
+      } else {
+        // The other groups are single-valued in the query, so the first
+        // ticked value is kept here; reload() fans out over every ticked
+        // value, using the boxes themselves as the source of truth.
+        const checked = this.checkedValues(field);
         (this.filter as Record<string, unknown>)[field] = checked.length ? checked[0] : undefined;
-        if (checked.length > 1) {
-          void this.reloadMulti(field as "status" | "difficulty", checked);
-          return;
-        }
       }
       void this.reload();
     });
@@ -234,26 +226,28 @@ export class LibraryView {
       this.flash("Every pattern already has a cover.");
       return;
     }
-    const targets = this.patterns.filter((p) => missing.includes(p.id));
-    if (!targets.length) return;
 
     const label = button.textContent;
     let done = 0;
     button.disabled = true;
-    for (const pattern of targets) {
-      button.textContent = `Covers ${++done}/${targets.length}`;
+    // Every pattern missing a cover is tried, not just the ones the current
+    // filter happens to show: the filter is a view, not a selection.
+    for (const id of missing) {
       try {
-        const bytes = await api.readFile(pattern.id);
+        const bytes = await api.readFile(id);
+        const pattern = await api.getPattern(id);
         await ensureCover(pattern, toBytes(bytes));
-        forgetCover(pattern.id);
+        forgetCover(id);
+        button.textContent = `Covers ${++done}/${missing.length}`;
       } catch {
-        // A pattern that cannot be read simply keeps its placeholder.
+        // A pattern that cannot be read simply keeps its placeholder, and is
+        // not counted as done.
       }
     }
     button.disabled = false;
     button.textContent = label;
     await this.reload();
-    this.flash(`Checked ${targets.length} pattern${targets.length === 1 ? "" : "s"}.`);
+    this.flash(`Checked ${missing.length} pattern${missing.length === 1 ? "" : "s"}.`);
   }
 
   private async pickCoverFile(patternId: string): Promise<void> {
@@ -393,7 +387,7 @@ export class LibraryView {
     panel.className = "scan-panel";
     panel.innerHTML = `
       <div class="scan-head">
-        <strong>Reading your patternsâ€¦</strong>
+        <strong>Reading your patterns…</strong>
         <span data-el="count">0 / ${total}</span>
         <button class="ghost" data-act="stop-scan">Stop</button>
       </div>
@@ -421,12 +415,12 @@ export class LibraryView {
     const li = document.createElement("li");
     if (!outcome.ok) {
       li.className = "bad";
-      li.textContent = `${outcome.title} â€” ${outcome.error}`;
+      li.textContent = `${outcome.title} — ${outcome.error}`;
     } else if (outcome.changed.length) {
       li.className = "ok";
-      li.textContent = `${outcome.title} â€” added ${outcome.changed.join(", ")}`;
+      li.textContent = `${outcome.title} — added ${outcome.changed.join(", ")}`;
     } else {
-      li.textContent = `${outcome.title} â€” nothing to add`;
+      li.textContent = `${outcome.title} — nothing to add`;
     }
     log.appendChild(li);
     log.scrollTop = log.scrollHeight;
@@ -524,17 +518,56 @@ export class LibraryView {
       .forEach((i) => (i.checked = false));
   }
 
-  private async reloadMulti(field: "status" | "difficulty", values: string[]): Promise<void> {
-    const batches = await Promise.all(
-      values.map((v) => api.listPatterns({ ...this.filter, [field]: v })),
-    );
-    const seen = new Set<string>();
-    this.patterns = batches.flat().filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
-    this.paint();
+  /** The ticked values of one filter group; the boxes are the source of truth. */
+  private checkedValues(field: string): string[] {
+    return [...this.root.querySelectorAll<HTMLInputElement>(
+      `input[data-filter="${field}"]:checked`,
+    )].map((i) => i.value);
   }
 
+  /**
+   * Lists the patterns matching the current filter.
+   *
+   * Status, difficulty, designer and needle size are single-valued in the
+   * query, but their filters allow several boxes to be ticked, meaning "any
+   * of these". Each combination of ticked values gets its own request and the
+   * results are merged, so every reload honours all ticked boxes rather than
+   * only the first of each group.
+   */
+  private async queryPatterns(): Promise<Pattern[]> {
+    const groups = ["status", "difficulty", "designer", "needleSize"].map((field) => ({
+      field,
+      values: this.checkedValues(field),
+    }));
+    const base: Filter = { ...this.filter };
+    for (const g of groups) {
+      (base as Record<string, unknown>)[g.field] = g.values.length ? g.values[0] : undefined;
+    }
+    let queries: Filter[] = [base];
+    for (const g of groups) {
+      if (g.values.length > 1) {
+        queries = queries.flatMap((q) => g.values.map((v) => ({ ...q, [g.field]: v })));
+      }
+    }
+    const batches = await Promise.all(queries.map((q) => api.listPatterns(q)));
+    const seen = new Set<string>();
+    return batches.flat().filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+  }
+
+  /**
+   * Incremented on every reload. Listing is async, so two quick changes — a
+   * search keystroke while a filter query is still running, say — would
+   * otherwise resolve out of order and the older, slower response would
+   * paint over the newer one. Each reload captures this value and abandons
+   * its result if it is no longer current.
+   */
+  private listToken = 0;
+
   private async reload(): Promise<void> {
-    this.patterns = await api.listPatterns(this.filter);
+    const token = ++this.listToken;
+    const patterns = await this.queryPatterns();
+    if (token !== this.listToken) return;
+    this.patterns = patterns;
     this.paint();
     await this.loadCovers();
     void this.refreshUndoButtons();
@@ -542,7 +575,10 @@ export class LibraryView {
 
   /** Repaints without reloading from the database, used during a scan. */
   private async reloadQuietly(): Promise<void> {
-    this.patterns = await api.listPatterns(this.filter);
+    const token = ++this.listToken;
+    const patterns = await this.queryPatterns();
+    if (token !== this.listToken) return;
+    this.patterns = patterns;
     this.paint();
   }
 
@@ -581,7 +617,7 @@ export class LibraryView {
             <button class="card-tool" data-act="cover-reset" data-id="${p.id}"
               title="Read the cover from the file">From file</button>
             <button class="card-tool danger" data-act="cover-remove" data-id="${p.id}"
-              title="Remove the cover">Ã—</button>
+              title="Remove the cover">×</button>
           </div>
         </div>
         <div class="card-body">
@@ -620,6 +656,26 @@ export class LibraryView {
     }
   }
 
+  /**
+   * Repaints one card's cover after it was saved behind the view's back.
+   *
+   * Used when a cover arrives after the grid was painted — a new pattern's
+   * cover is read from its file in the background while the library is already
+   * on screen — so the card does not keep its placeholder until the next
+   * mount. Same idea as `loadCovers`, but for a single pattern.
+   */
+  async refreshCover(patternId: string): Promise<void> {
+    forgetCover(patternId);
+    const host = this.results.querySelector(
+      `.cover[data-id="${patternId}"] [data-el="photo"]`,
+    ) as HTMLElement | null;
+    if (!host) return;
+    const url = await coverUrl(patternId);
+    if (!url) return;
+    host.style.backgroundImage = `url("${url}")`;
+    host.parentElement?.classList.add("has-cover");
+  }
+
   private async confirmDelete(id: string): Promise<void> {
     const pattern = this.patterns.find((p) => p.id === id);
     const name = pattern ? `"${pattern.title}"` : "this pattern";
@@ -640,8 +696,11 @@ export class LibraryView {
 }
 
 function statusPill(status: string): string {
-  const label = STATUSES.find((s) => s.value === status)?.label ?? status;
-  return `<span class="pill status-${status}">${label}</span>`;
+  // Status is a free string in the database, so the label is escaped, and
+  // only a known value earns its own class; anything else gets the default.
+  const known = STATUSES.find((s) => s.value === status);
+  const cls = known ? `status-${status}` : "status-other";
+  return `<span class="pill ${cls}">${escapeHtml(known?.label ?? status)}</span>`;
 }
 
 /**
@@ -667,7 +726,9 @@ function yarnPill(p: Pattern): string {
   const stated = (p.yarnWeight ?? "").trim();
   if (!stated) return "";
   const family = p.yarnWeightFamily ?? "";
-  const label = YARN_LABELS.get(family) ?? (family ? "" : stated);
+  // A family the table does not recognise falls back to the stated weight:
+  // it is still the useful information, and hiding it helps no one.
+  const label = YARN_LABELS.get(family) ?? stated;
   if (!label) return "";
   // The stated weight goes in the tooltip when it says more than the family
   // label, so "75 m/100g" is recoverable from a card that reads "Aran". A

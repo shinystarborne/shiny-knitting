@@ -63,12 +63,41 @@ export class HighlightLine {
     if (this.host.parentElement !== scroller.parentElement) {
       scroller.parentElement?.appendChild(this.host);
     }
+    // The position is stored as a fraction of the viewport height precisely so
+    // it survives a window resize -- re-resolve it when the reading area
+    // changes size, or the line keeps a stale pixel top.
+    this.scrollerObserver?.disconnect();
+    this.scrollerObserver = new ResizeObserver(() => {
+      if (!this.dragging && this.scroller) {
+        this.position(resolveTop(this.settings, this.scroller));
+      }
+    });
+    this.scrollerObserver.observe(scroller);
+    // Wheel and touch are the user's own scrolling: cancel any smooth-scroll
+    // animation still in flight, or it keeps writing scrollTop over the
+    // user's position until it finishes.
+    scroller.addEventListener("wheel", this.cancelAnimation, { passive: true });
+    scroller.addEventListener("touchstart", this.cancelAnimation, { passive: true });
     this.apply();
   }
 
   detach(): void {
+    this.scrollerObserver?.disconnect();
+    this.scrollerObserver = null;
+    if (this.scroller) {
+      this.scroller.removeEventListener("wheel", this.cancelAnimation);
+      this.scroller.removeEventListener("touchstart", this.cancelAnimation);
+    }
     this.host.remove();
   }
+
+  /** Cancels an in-flight smooth scroll, so a direct write wins. */
+  private cancelAnimation = (): void => {
+    this.animToken++;
+  };
+
+  /** Re-resolves the stored fraction when the reading area resizes. */
+  private scrollerObserver: ResizeObserver | null = null;
 
   update(settings: HighlightSettings): void {
     this.settings = settings;
@@ -153,13 +182,14 @@ export class HighlightLine {
    * `minTop` exists because stepping to a row and dragging want different
    * limits. A drag keeps a small margin so the line cannot be lost off the
    * top edge, but stepping has to be able to reach the very first band, since
-   * marking row 1 at the top of a chart is the whole point.
+   * marking row 1 at the top of a chart is the whole point. The bottom clamp
+   * matches `resolveTop`'s, so a resize and a move agree about the limit.
    */
   commitTop(top: number, minTop = 8): number {
     const scroller = this.scroller;
     if (!scroller) return 0;
     const height = scroller.clientHeight || 1;
-    const clamped = Math.min(Math.max(top, minTop), height - 8);
+    const clamped = Math.min(Math.max(top, minTop), Math.max(minTop, height - 1));
     this.position(clamped);
     this.settings.offsetY = clamped / height;
     return clamped;
@@ -225,6 +255,10 @@ export class HighlightLine {
     if (this.settings.animate && smooth) {
       this.smoothScrollTo(target);
     } else {
+      // An instant write supersedes any smooth scroll still in flight;
+      // without bumping the token the animation keeps overwriting the
+      // position for up to a second afterwards.
+      this.animToken++;
       this.scroller.scrollTop = target;
     }
   }
@@ -233,7 +267,9 @@ export class HighlightLine {
   moveLineBy(delta: number, smooth: boolean): void {
     if (!this.scroller) return;
     const next = this.top + delta;
-    const landed = this.commitTop(next);
+    // minTop 0, like stepRow: Shift+Arrow has to reach the top band (row 1),
+    // which the drag margin would otherwise make unreachable by keys.
+    const landed = this.commitTop(next, 0);
     this.keepInView(landed, smooth);
   }
 
