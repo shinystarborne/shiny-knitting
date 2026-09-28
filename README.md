@@ -81,6 +81,13 @@ faster of the two for anything sizeable: it hands the app a path and the file is
 copied on the Rust side, whereas a dropped file's contents have to travel across
 the app boundary, which is slow for a PDF of any size.
 
+**Add folder…** adds a whole folder at once: every PDF and EPUB under it,
+subfolders included, is copied in with its title taken from the file name. A
+progress panel lists each file as it lands and can be stopped partway; anything
+already added stays. Files already in the library are skipped — duplicates are
+recognised by content, not name — and the panel ends with a count of what was
+added, skipped, and could not be read.
+
 **Finding a pattern.** The left sidebar filters. Status, difficulty, designer,
 needle size, and yarn weight are checkboxes; tags are buttons you can combine.
 The search box covers title, designer, notes, and tags.
@@ -463,8 +470,14 @@ It checks the coordinate mapping both ways, that a quote saved against one
 occurrence is redrawn over the words it was made from, and that a passage which
 has ended up outside the visible box is dropped rather than clamped onto the
 page edge, and that a crop is named after the words inside it rather than a
-neighbouring paragraph. Together that is 78 checks: 7 layout, 13 row, 58
-annotation.
+neighbouring paragraph.
+
+`harness/bulk-add-checks.js` covers Add folder…, via `window.__bulkAddChecks()`.
+It seeds a fake folder through the stub, clicks the real button, and asserts
+which patterns land and what the summary says — including a second run over the
+same folder being all skips, and Stop ending a long run early.
+
+Together that is 86 checks: 7 layout, 13 row, 58 annotation, 8 bulk add.
 
 `harness/run-checks.mjs` drives all three from a terminal: serve the built
 harness (`npm run harness:build && npm run harness:serve`), start Chrome with

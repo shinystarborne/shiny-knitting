@@ -281,6 +281,27 @@ export interface CoverImage {
   mime: string;
 }
 
+/** One pattern file found by `scan_pattern_folder`. */
+export interface ScannedFile {
+  /** Full path on disk; handed back to `add_pattern` as the source. */
+  path: string;
+  fileName: string;
+}
+
+/**
+ * Whether an `add_pattern` failure is the duplicate case.
+ *
+ * The backend rejects a content-duplicate with a message that starts
+ * `already in the library as "`, naming the pattern it matches. That is a
+ * skip, not a failure — anything else means the file genuinely could not be
+ * added. The message can arrive as a bare string or wrapped in an Error,
+ * depending on where the rejection surfaced.
+ */
+export function isAlreadyHave(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.startsWith('already in the library as "');
+}
+
 export const STATUSES = [
   { value: "want-to-knit", label: "Want to knit" },
   { value: "in-progress", label: "In progress" },
@@ -337,6 +358,12 @@ export const api = {
   }) => invoke<Pattern>("add_pattern", { input }),
 
   listPatterns: (filter: Filter = {}) => invoke<Pattern[]>("list_patterns", { filter }),
+  /**
+   * Recursively walks a folder for PDFs and EPUBs, sorted by path. Paths only,
+   * never contents: each one goes back to `addPattern` as a `sourcePath`, so no
+   * bytes cross the boundary until the backend copies the file itself.
+   */
+  scanPatternFolder: (path: string) => invoke<ScannedFile[]>("scan_pattern_folder", { path }),
   getPattern: (id: string) => invoke<Pattern>("get_pattern", { id }),
   updatePattern: (pattern: Pattern) => invoke<Pattern>("update_pattern", { pattern }),
   deletePattern: (id: string) => invoke<void>("delete_pattern", { id }),

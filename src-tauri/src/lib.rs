@@ -40,6 +40,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::add_pattern,
+            commands::scan_pattern_folder,
             commands::list_patterns,
             commands::get_pattern,
             commands::update_pattern,

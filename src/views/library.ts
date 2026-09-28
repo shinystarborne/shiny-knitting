@@ -72,6 +72,7 @@ export class LibraryView {
           <button data-act="scan" class="ghost" title="Describe patterns using your model">Describe</button>
           <button data-act="settings" class="ghost" title="Model settings">Settings</button>
           <button data-act="add" class="primary">+ Add pattern</button>
+          <button data-act="add-folder" class="ghost" title="Add every PDF and EPUB in a folder">Add folder…</button>
         </div>
       </header>
 
@@ -168,6 +169,8 @@ export class LibraryView {
       const act = btn.dataset.act;
       if (act === "add") {
         this.root.dispatchEvent(new CustomEvent("add-pattern", { bubbles: true }));
+      } else if (act === "add-folder") {
+        this.root.dispatchEvent(new CustomEvent("add-folder", { bubbles: true }));
       } else if (act === "clear") {
         this.clearFilters();
         await this.reload();

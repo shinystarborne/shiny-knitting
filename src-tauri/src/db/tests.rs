@@ -32,7 +32,7 @@ fn sample(conn: &Connection, title: &str, designer: &str, status: &str, tags: &[
         notes: String::new(),
     };
     let id = uuid::Uuid::new_v4().to_string();
-    insert_pattern(conn, &id, &input, &format!("C:/lib/{}.pdf", id), "pdf").expect("insert")
+    insert_pattern(conn, &id, &input, &format!("C:/lib/{}.pdf", id), "pdf", "").expect("insert")
 }
 
 /// A pattern with a stated yarn weight, for the weight filter tests.
@@ -1399,5 +1399,141 @@ fn every_highlight_field_persists() {
     assert_eq!(got.opacity, 0.42);
     assert!(!got.animate);
     assert_eq!(got.animation_ms, 555);
+}
+
+// ---------- file hashes ----------
+
+#[test]
+fn hash_bytes_is_sha256_in_hex() {
+    // The known SHA-256 of the empty input pins the encoding: 64 lowercase
+    // hex characters.
+    assert_eq!(
+        hash_bytes(b""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+    assert_ne!(hash_bytes(b"a"), hash_bytes(b"b"));
+}
+
+#[test]
+fn an_empty_hash_never_matches_anything() {
+    // Rows whose files could not be hashed sit on '', and two of them must
+    // never be read as duplicates of each other -- '' means "unknown", not
+    // "same file".
+    let conn = test_db();
+    sample(&conn, "One", "A", "want-to-knit", &[]);
+    sample(&conn, "Two", "A", "want-to-knit", &[]);
+    assert!(pattern_with_hash(&conn, "").unwrap().is_none());
+}
+
+#[test]
+fn a_pattern_is_found_by_its_content_hash() {
+    let conn = test_db();
+    let input = PatternInput {
+        title: "Hashed".to_string(),
+        designer: String::new(),
+        file_name: "hashed.pdf".to_string(),
+        bytes: Some(vec![]),
+        source_path: None,
+        status: "want-to-knit".to_string(),
+        difficulty: String::new(),
+        needle_size: String::new(),
+        yarn_weight: String::new(),
+        tags: vec![],
+        notes: String::new(),
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let hash = hash_bytes(b"the pattern bytes");
+    insert_pattern(&conn, &id, &input, "C:/lib/hashed.pdf", "pdf", &hash).expect("insert");
+
+    let found = pattern_with_hash(&conn, &hash)
+        .unwrap()
+        .expect("the row is found by its hash");
+    assert_eq!(found.id, id);
+    assert_eq!(found.title, "Hashed");
+
+    // A hash no row holds finds nothing rather than erroring.
+    assert!(pattern_with_hash(&conn, &hash_bytes(b"some other file"))
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn a_library_built_before_hashes_is_backfilled() {
+    // A database on disk shaped like a real pre-feature one, with the
+    // original file where the library would keep it: originals/ beside the
+    // database, the location the backfill derives from the db file itself.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let originals = dir.path().join("library").join("originals");
+    std::fs::create_dir_all(&originals).unwrap();
+    let document = originals.join("old1.pdf");
+    std::fs::write(&document, b"old pattern bytes").unwrap();
+    let missing = originals.join("gone.pdf").to_string_lossy().to_string();
+
+    let conn = Connection::open(dir.path().join("library.db")).expect("db file");
+    // The schema as it shipped in 0.1.0: no hash column, and no cover column
+    // either, so the older guarded migrations have to run alongside.
+    conn.execute_batch(&format!(
+        r#"
+        CREATE TABLE patterns (
+            id             TEXT PRIMARY KEY,
+            title          TEXT NOT NULL,
+            designer       TEXT NOT NULL DEFAULT '',
+            file_path      TEXT NOT NULL,
+            file_name      TEXT NOT NULL,
+            format         TEXT NOT NULL,
+            status         TEXT NOT NULL DEFAULT 'want-to-knit',
+            difficulty     TEXT NOT NULL DEFAULT '',
+            needle_size    TEXT NOT NULL DEFAULT '',
+            tags           TEXT NOT NULL DEFAULT '[]',
+            notes          TEXT NOT NULL DEFAULT '',
+            added_at       INTEGER NOT NULL,
+            last_opened_at INTEGER,
+            last_page      INTEGER NOT NULL DEFAULT 0,
+            last_scroll    REAL    NOT NULL DEFAULT 0
+        );
+        INSERT INTO patterns (id, title, file_path, file_name, format, added_at)
+        VALUES ('old1', 'Vintage Pattern', '{}', 'old1.pdf', 'pdf', 1);
+        INSERT INTO patterns (id, title, file_path, file_name, format, added_at)
+        VALUES ('gone', 'Lost Pattern', '{}', 'gone.pdf', 'pdf', 1);
+        "#,
+        document.to_string_lossy().replace('\\', "/"),
+        missing.replace('\\', "/"),
+    ))
+    .expect("seed old schema");
+
+    migrate(&conn).expect("migrate");
+
+    // The row whose file is on disk gains its content hash...
+    let stored: String = conn
+        .query_row("SELECT file_hash FROM patterns WHERE id = 'old1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(stored, hash_bytes(b"old pattern bytes"));
+    // ...and the hash answers duplicate lookups straight away.
+    let found = pattern_with_hash(&conn, &stored)
+        .unwrap()
+        .expect("found by the backfilled hash");
+    assert_eq!(found.id, "old1");
+
+    // A file that is not there keeps the empty hash rather than failing the
+    // migration, and stays outside duplicate detection.
+    let lost: String = conn
+        .query_row("SELECT file_hash FROM patterns WHERE id = 'gone'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(lost, "");
+    assert!(pattern_with_hash(&conn, "").unwrap().is_none());
+
+    // A second migrate leaves the hashes alone rather than failing or
+    // rewriting them.
+    migrate(&conn).expect("second migrate");
+    let again: String = conn
+        .query_row("SELECT file_hash FROM patterns WHERE id = 'old1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(again, stored);
 }
 

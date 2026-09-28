@@ -1,7 +1,9 @@
 import "./styles.css";
-import { api, toBytes, type AiSettingsView, type Pattern } from "./api";
+import { open } from "@tauri-apps/plugin-dialog";
+import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile } from "./api";
 import { LibraryView } from "./views/library";
 import { PatternForm } from "./views/pattern-form";
+import { runBulkAdd } from "./views/bulk-add";
 import { AiSettingsDialog } from "./views/ai-settings";
 import { clearCoverCache, ensureCover } from "./covers";
 import { say } from "./dialogs";
@@ -55,6 +57,7 @@ class App {
       }
     });
     this.screen.addEventListener("add-pattern", () => this.openForm(null));
+    this.screen.addEventListener("add-folder", () => void this.addFolder());
     this.screen.addEventListener("open-pattern", (e) => {
       void this.showReader((e as CustomEvent<string>).detail);
     });
@@ -151,6 +154,52 @@ class App {
     } catch {
       // No cover is a cosmetic loss, so it never surfaces as an error.
     }
+  }
+
+  /**
+   * Bulk add: pick a folder, take every PDF and EPUB under it, and add them
+   * one at a time behind a progress panel. Every failure path ends in a
+   * message or a quiet return — nothing here throws.
+   */
+  private async addFolder(): Promise<void> {
+    let path: string | null;
+    try {
+      path = await open({ directory: true });
+    } catch {
+      // The dialog plugin is absent (the browser harness answers the IPC
+      // itself, so a throw here only means cancel): nothing to do.
+      return;
+    }
+    // A cancelled dialog resolves null; a multi-pick is not offered.
+    if (typeof path !== "string") return;
+
+    let files: ScannedFile[];
+    try {
+      files = await api.scanPatternFolder(path);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await say(`That folder could not be scanned.\n\n${detail}`);
+      return;
+    }
+    if (!files.length) {
+      await say("No PDF or EPUB files found there.");
+      return;
+    }
+
+    // The same element the Describe scan's panel is appended to.
+    const host = this.screen.querySelector<HTMLElement>(".lib-body");
+    if (!host) return;
+    try {
+      await runBulkAdd(host, files, {
+        onAdded: (p) => void this.addCoverInBackground(p),
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await say(`The folder could not be added.\n\n${detail}`);
+      return;
+    }
+    // One repaint at the end, rather than one per file.
+    await this.showLibrary();
   }
 
   private async openAiSettings(current: AiSettingsView): Promise<void> {

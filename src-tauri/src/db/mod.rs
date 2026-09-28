@@ -48,7 +48,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             last_opened_at INTEGER,
             last_page      INTEGER NOT NULL DEFAULT 0,
             last_scroll    REAL    NOT NULL DEFAULT 0,
-            cover_path     TEXT    NOT NULL DEFAULT ''
+            cover_path     TEXT    NOT NULL DEFAULT '',
+            file_hash      TEXT    NOT NULL DEFAULT ''
         );
 
         -- Named counters: the places in a pattern that get counted separately,
@@ -205,6 +206,19 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         conn.execute("ALTER TABLE patterns ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
     }
 
+    // A content hash of the pattern's file, used to spot a duplicate before it
+    // is added. Empty for rows that predate the column until the backfill
+    // below hashes their files; an empty hash never counts as a match.
+    //
+    // The index is created here rather than in the batch above because an old
+    // database has no file_hash column until the ALTER runs, and CREATE INDEX
+    // on a missing column would fail.
+    if !column_exists(conn, "patterns", "file_hash")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN file_hash TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(file_hash)", [])?;
+    backfill_file_hashes(conn)?;
+
     // Yarn weight as the pattern states it, plus the standard family derived
     // from it. The family is a separate column because the filter matches on
     // it: deriving a family from free text inside SQL would mean either a
@@ -268,6 +282,83 @@ fn backfill_yarn_families(conn: &Connection) -> AppResult<()> {
         )?;
     }
     Ok(())
+}
+
+/// Fills in the content hash for any pattern added before hashing existed.
+///
+/// The originals folder is derived from the database's own location -- the db
+/// sits beside `library/originals` -- and each row's file is found there by
+/// the file name its `file_path` ends in, so both absolute and relative stored
+/// paths resolve. Best-effort: a file that is missing or unreadable keeps its
+/// empty hash rather than failing the launch, and an empty hash never matches
+/// anything, so the row simply stays outside duplicate detection.
+///
+/// Idempotent in the same way as `backfill_yarn_families`: the `WHERE` matches
+/// nothing once every readable row is done. An in-memory database has no file
+/// location, so there is nothing to derive and nothing to do.
+fn backfill_file_hashes(conn: &Connection) -> AppResult<()> {
+    let db_file: String = conn.query_row(
+        "SELECT file FROM pragma_database_list WHERE name = 'main'",
+        [],
+        |r| r.get(0),
+    )?;
+    if db_file.is_empty() {
+        return Ok(());
+    }
+    let originals = Path::new(&db_file)
+        .parent()
+        .map(|base| base.join("library").join("originals"));
+
+    let stale: Vec<(String, String)> = {
+        let mut stmt =
+            conn.prepare("SELECT id, file_path FROM patterns WHERE file_hash = ''")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    let Some(originals) = originals else { return Ok(()) };
+    for (id, file_path) in stale {
+        let Some(file_name) = Path::new(&file_path).file_name() else {
+            continue;
+        };
+        if let Ok(bytes) = std::fs::read(originals.join(file_name)) {
+            conn.execute(
+                "UPDATE patterns SET file_hash = ?2 WHERE id = ?1",
+                params![id, hash_bytes(&bytes)],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// The hex SHA-256 of a pattern file's contents, which is what duplicate
+/// detection compares: the same pattern under a different name hashes alike,
+/// while a renamed edit does not.
+pub fn hash_bytes(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(bytes);
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The pattern whose file has this content hash, if any.
+///
+/// An empty hash means "unknown" -- a row whose file could not be hashed -- so
+/// it returns `None` without querying: two files of unknown hash must never
+/// be treated as duplicates of each other.
+pub fn pattern_with_hash(conn: &Connection, hash: &str) -> AppResult<Option<Pattern>> {
+    if hash.is_empty() {
+        return Ok(None);
+    }
+    Ok(conn
+        .query_row(
+            "SELECT * FROM patterns WHERE file_hash = ?1 LIMIT 1",
+            params![hash],
+            row_to_pattern,
+        )
+        .optional()?)
 }
 
 /// Reports whether a table exists at all.
@@ -451,7 +542,8 @@ pub fn get_pattern(conn: &Connection, id: &str) -> AppResult<Pattern> {
         .ok_or_else(|| AppError::NotFound(id.to_string()))
 }
 
-/// Stores a new pattern. `file_path` is where the bytes were copied to.
+/// Stores a new pattern. `file_path` is where the bytes were copied to, and
+/// `file_hash` is the content hash duplicate detection matches on.
 #[allow(clippy::too_many_arguments)]
 pub fn insert_pattern(
     conn: &Connection,
@@ -459,6 +551,7 @@ pub fn insert_pattern(
     input: &PatternInput,
     file_path: &str,
     format: &str,
+    file_hash: &str,
 ) -> AppResult<Pattern> {
     let status = if STATUSES.contains(&input.status.as_str()) {
         input.status.as_str()
@@ -478,8 +571,8 @@ pub fn insert_pattern(
     conn.execute(
         "INSERT INTO patterns
          (id, title, designer, file_path, file_name, format, status, difficulty,
-          needle_size, yarn_weight, yarn_weight_family, tags, notes, added_at, cover_path)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'')",
+          needle_size, yarn_weight, yarn_weight_family, tags, notes, added_at, cover_path, file_hash)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'',?15)",
         params![
             id,
             input.title,
@@ -494,7 +587,8 @@ pub fn insert_pattern(
             crate::yarn::family_of(&input.yarn_weight),
             tags_json,
             input.notes,
-            added
+            added,
+            file_hash
         ],
     )?;
 

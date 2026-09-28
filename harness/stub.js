@@ -17,10 +17,42 @@ const store = {
   aiHistory: new Map(),
   aiSettings: null,
   apiKey: null,
+  // Pseudo content hashes of added patterns, for the duplicate rule in
+  // add_pattern (see below).
+  contentHashes: new Map(),
   nextId: 1,
 };
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
+
+// ---------- bulk add fixtures ----------
+//
+// A test seeds a fake folder tree with window.__seedFolder(path, entries),
+// where entries are relative file names using "/" for nesting, and sets
+// window.__nextDialogPick to the path the dialog should "return". The
+// scan_pattern_folder handler below then mirrors the backend: .pdf/.epub only
+// (case-insensitive), recursive, sorted by path. An unseeded path scans as
+// empty.
+const seededFolders = new Map();
+window.__seedFolder = (path, entries) => {
+  seededFolders.set(String(path).replace(/\/+$/, ""), entries.slice());
+};
+window.__nextDialogPick = null;
+
+/**
+ * A small deterministic string hash, used as a stand-in for the backend's
+ * content hash. Note what it hashes: the source PATH, not the file's
+ * contents, so the duplicate the stub can detect is same-path-twice. Real
+ * content duplicates with different paths are the backend's job and are not
+ * reproducible here.
+ */
+function pseudoHash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16);
+}
 
 function seed() {
   const now = Date.now();
@@ -814,7 +846,26 @@ const handlers = {
     store.aiHistory.delete(patternId);
   },
 
-  add_pattern: ({ input }) => {
+  // ---------- bulk add ----------
+  //
+  // The dialog plugin's open command. Returns whatever the test set on
+  // window.__nextDialogPick (a string path, an array, or null for cancel);
+  // the default is a cancelled dialog.
+  "plugin:dialog|open": () => window.__nextDialogPick ?? null,
+  scan_pattern_folder: ({ path }) => {
+    const base = String(path || "").replace(/\/+$/, "");
+    const entries = seededFolders.get(base) || [];
+    return entries
+      .filter((rel) => /\.(pdf|epub)$/i.test(rel))
+      .map((rel) => ({ path: `${base}/${rel}`, fileName: rel.split("/").pop() }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  },
+
+  add_pattern: async ({ input }) => {
+    // A real macrotask pause per add, so a bulk run yields between items and a
+    // click on the panel's Stop button is processed mid-run rather than after
+    // the last file — without this, a fast stub makes Stop untestable.
+    await new Promise((r) => setTimeout(r, 20));
     // A source path is authoritative about the file's name, as the backend is.
     let fileName = input.fileName;
     if (input.sourcePath && input.sourcePath.trim()) {
@@ -827,6 +878,15 @@ const handlers = {
         `could not determine the file type for .${ext} (only pdf and epub are supported)`,
       );
     }
+    // The duplicate rule, mirroring the backend's content-duplicate rejection.
+    // The hash is of the source path (see pseudoHash), so the duplicate case
+    // reproducible here is adding the same path twice.
+    const basis = input.sourcePath && input.sourcePath.trim()
+      ? `path:${input.sourcePath}`
+      : `bytes:${(input.bytes || []).length}`;
+    const contentHash = pseudoHash(basis);
+    const duplicate = store.contentHashes.get(contentHash);
+    if (duplicate) throw new Error(`already in the library as "${duplicate}"`);
     const id = `p${store.nextId++}`;
     const p = {
       id,
@@ -849,6 +909,7 @@ const handlers = {
       coverPath: "",
     };
     store.patterns.push(p);
+    store.contentHashes.set(contentHash, p.title);
     store.progress.set(id, { patternId: id, totalRows: 0, updatedAt: Date.now() });
     store.highlights.set(id, {
       patternId: id, enabled: true, offsetY: 0.35, thickness: 3, width: 0,

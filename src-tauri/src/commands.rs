@@ -7,7 +7,7 @@ use crate::ai::{CompletionRequest, ModelInfo};
 use crate::db;
 use crate::models::{
     AiSettings, AppError, CoverImage, Counter, CounterInput, HighlightSettings, Pattern,
-    PatternInput, Progress, Suggestion, SuggestionResult,
+    PatternInput, Progress, ScannedFile, Suggestion, SuggestionResult,
 };
 use crate::state::AppState;
 
@@ -30,6 +30,12 @@ type CmdResult<T> = Result<T, AppError>;
 /// freshly generated name — the original is never moved or modified.
 #[tauri::command]
 pub fn add_pattern(state: State<'_, AppState>, input: PatternInput) -> CmdResult<Pattern> {
+    add_pattern_to(&state, input)
+}
+
+/// The body of `add_pattern`, on a plain state reference so tests can reach it
+/// without a Tauri runtime.
+fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
     let mut input = input;
 
     // A path is authoritative about the file's name, so drop whatever the
@@ -62,35 +68,94 @@ pub fn add_pattern(state: State<'_, AppState>, input: PatternInput) -> CmdResult
         }
     };
 
+    // The bytes are needed in memory either way: the source file is read once
+    // and the copy is written from that read, and the drag-and-drop flow
+    // already has them in hand. Hashing before anything is written means a
+    // duplicate is rejected without leaving a file behind.
+    let from_disk;
+    let bytes: &[u8] = match &source {
+        Some(path) => {
+            from_disk = std::fs::read(path).map_err(|e| {
+                AppError::Message(format!("Could not read {}: {}", path.display(), e))
+            })?;
+            &from_disk
+        }
+        None => input
+            .bytes
+            .as_deref()
+            .ok_or_else(|| AppError::Message("No file was given to add.".into()))?,
+    };
+
+    let hash = db::hash_bytes(bytes);
+    if let Some(existing) = db::pattern_with_hash(&state.db(), &hash)? {
+        return Err(AppError::AlreadyHave(existing.title));
+    }
+
     let id = uuid::Uuid::new_v4().to_string();
     let dir = state.library_dir.join("originals");
     std::fs::create_dir_all(&dir)?;
     let dest = dir.join(format!("{}.{}", id, ext));
+    // Copy rather than move: the user's original is theirs to keep.
+    std::fs::write(&dest, bytes)?;
 
-    match source {
-        Some(path) => {
-            // Copy rather than move: the user's original is theirs to keep.
-            std::fs::copy(&path, &dest).map_err(|e| {
-                AppError::Message(format!("Could not read {}: {}", path.display(), e))
-            })?;
-        }
-        None => {
-            let bytes = input.bytes.as_deref().ok_or_else(|| {
-                AppError::Message("No file was given to add.".into())
-            })?;
-            std::fs::write(&dest, bytes)?;
+    let stored =
+        match db::insert_pattern(&state.db(), &id, &input, &dest.to_string_lossy(), format, &hash)
+        {
+            Ok(p) => p,
+            Err(e) => {
+                // Don't leave an orphan file behind if the insert failed.
+                let _ = std::fs::remove_file(&dest);
+                return Err(e);
+            }
+        };
+    Ok(stored)
+}
+
+/// Lists the pattern files under a folder, for picking several to add at once.
+///
+/// The walk is recursive and case-insensitive on the extension. A subfolder
+/// that cannot be read is skipped rather than failing the whole scan, since
+/// the files that can be seen are still worth offering. A root that is not a
+/// folder at all is the caller's mistake and is an error.
+#[tauri::command]
+pub fn scan_pattern_folder(path: String) -> CmdResult<Vec<ScannedFile>> {
+    let root = PathBuf::from(&path);
+    if !root.is_dir() {
+        return Err(AppError::Message(format!("Not a folder: {path}")));
+    }
+    let mut found = Vec::new();
+    scan_dir(&root, &mut found);
+    // Sorted by full path, so the picker reads the way the folders do on disk.
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(found)
+}
+
+fn scan_dir(dir: &Path, found: &mut Vec<ScannedFile>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let kind = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(_) => continue,
+        };
+        if kind.is_dir() {
+            scan_dir(&path, found);
+        } else if kind.is_file() {
+            let ext = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            if ext == "pdf" || ext == "epub" {
+                found.push(ScannedFile {
+                    path: path.to_string_lossy().to_string(),
+                    file_name: entry.file_name().to_string_lossy().to_string(),
+                });
+            }
         }
     }
-
-    let stored = match db::insert_pattern(&state.db(), &id, &input, &dest.to_string_lossy(), format) {
-        Ok(p) => p,
-        Err(e) => {
-            // Don't leave an orphan file behind if the insert failed.
-            let _ = std::fs::remove_file(&dest);
-            return Err(e);
-        }
-    };
-    Ok(stored)
 }
 
 #[tauri::command]
@@ -764,7 +829,7 @@ mod tests {
             notes: String::new(),
         };
         let id = uuid::Uuid::new_v4().to_string();
-        db::insert_pattern(conn, &id, &input, &format!("C:/lib/{id}.pdf"), "pdf").unwrap()
+        db::insert_pattern(conn, &id, &input, &format!("C:/lib/{id}.pdf"), "pdf", "").unwrap()
     }
 
     #[test]
@@ -891,7 +956,7 @@ mod tests {
         };
         {
             let conn = state.db();
-            db::insert_pattern(&conn, &id, &input, &document.to_string_lossy(), "pdf").unwrap();
+            db::insert_pattern(&conn, &id, &input, &document.to_string_lossy(), "pdf", "").unwrap();
 
             let covers = dir.join("covers");
             std::fs::create_dir_all(&covers).unwrap();
@@ -920,5 +985,142 @@ mod tests {
         assert!(db::get_pattern(&state.db(), &id).is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pattern as add_pattern receives it: bytes in hand, as drag and drop
+    /// delivers them.
+    fn dropped(title: &str, file_name: &str, bytes: &[u8]) -> PatternInput {
+        PatternInput {
+            title: title.to_string(),
+            designer: String::new(),
+            file_name: file_name.to_string(),
+            bytes: Some(bytes.to_vec()),
+            source_path: None,
+            status: "want-to-knit".to_string(),
+            difficulty: String::new(),
+            needle_size: String::new(),
+            yarn_weight: String::new(),
+            tags: vec![],
+            notes: String::new(),
+        }
+    }
+
+    #[test]
+    fn adding_the_same_file_twice_is_refused_with_the_existing_title() {
+        let (state, dir) = state_in_temp_library();
+
+        let first = add_pattern_to(&state, dropped("First Socks", "one.pdf", b"same bytes")).unwrap();
+
+        // The same contents under a different file name are the same pattern.
+        let err = add_pattern_to(&state, dropped("Second Copy", "two.pdf", b"same bytes"))
+            .unwrap_err();
+        assert!(matches!(err, AppError::AlreadyHave(_)), "got {err}");
+        // The frontend prefix-matches on this exact wording to offer opening
+        // the pattern that is already there.
+        assert!(
+            err.to_string()
+                .starts_with("already in the library as \"First Socks\""),
+            "got {err}"
+        );
+
+        // A different file that happens to share a name is not a duplicate.
+        let other = add_pattern_to(&state, dropped("Renamed", "one.pdf", b"new bytes")).unwrap();
+        assert_ne!(other.id, first.id);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_duplicate_is_spotted_across_the_two_add_flows() {
+        let (state, dir) = state_in_temp_library();
+
+        // Added from a path on disk, the way the native dialog hands one over.
+        let source = dir.join("downloads").join("Socks.pdf");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::write(&source, b"shared contents").unwrap();
+        let via_path = add_pattern_to(
+            &state,
+            PatternInput {
+                source_path: Some(source.to_string_lossy().to_string()),
+                ..dropped("Path Socks", "ignored.pdf", b"")
+            },
+        )
+        .unwrap();
+        // The name comes from the file on disk, and the original is copied,
+        // never moved.
+        assert_eq!(via_path.file_name, "Socks.pdf");
+        assert!(source.exists(), "the user's file must not be moved");
+
+        // The same contents dropped in as bytes are recognised as the same
+        // pattern, whichever way they arrived the first time.
+        let err = add_pattern_to(&state, dropped("Dropped Copy", "dropped.pdf", b"shared contents"))
+            .unwrap_err();
+        assert!(matches!(err, AppError::AlreadyHave(_)), "got {err}");
+        assert!(
+            err.to_string()
+                .starts_with("already in the library as \"Path Socks\""),
+            "got {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scanning_a_folder_finds_patterns_recursively_and_sorted() {
+        let dir = std::env::temp_dir().join(format!("shiny-scan-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("nested").join("deeper")).unwrap();
+        for (rel, contents) in [
+            ("b-sock.pdf", "pdf"),
+            // Extensions match case-insensitively.
+            ("A-Cardigan.PDF", "pdf"),
+            ("c-shawl.epub", "epub"),
+            ("notes.txt", "text"),
+            ("no-extension", "text"),
+            ("nested/d-hat.EPUB", "epub"),
+            ("nested/deeper/e-cowl.pdf", "pdf"),
+            ("nested/skip.md", "text"),
+        ] {
+            std::fs::write(dir.join(rel), contents).unwrap();
+        }
+
+        let found = scan_pattern_folder(dir.to_string_lossy().to_string()).unwrap();
+
+        // Sorted by full path, the order the picker shows them in.
+        let paths: Vec<&str> = found.iter().map(|f| f.path.as_str()).collect();
+        let mut sorted = paths.clone();
+        sorted.sort_unstable();
+        assert_eq!(paths, sorted);
+
+        // Every pdf and epub, nested ones included; nothing else.
+        let names: Vec<&str> = found.iter().map(|f| f.file_name.as_str()).collect();
+        assert_eq!(names.len(), 5, "got {names:?}");
+        for expected in ["b-sock.pdf", "A-Cardigan.PDF", "c-shawl.epub", "d-hat.EPUB", "e-cowl.pdf"]
+        {
+            assert!(names.contains(&expected), "missing {expected} in {names:?}");
+        }
+        assert!(!names.contains(&"notes.txt"));
+        assert!(!names.contains(&"no-extension"));
+        assert!(!names.contains(&"skip.md"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scanning_a_missing_folder_is_an_error() {
+        let missing = std::env::temp_dir().join(format!("shiny-scan-{}", uuid::Uuid::new_v4()));
+        let err = scan_pattern_folder(missing.to_string_lossy().to_string()).unwrap_err();
+        assert!(matches!(err, AppError::Message(_)), "got {err}");
+    }
+
+    #[test]
+    fn a_scanned_file_serialises_camel_case() {
+        // The frontend reads `fileName`; a snake_case leak would show blank.
+        let json = serde_json::to_value(ScannedFile {
+            path: "p".to_string(),
+            file_name: "f".to_string(),
+        })
+        .unwrap();
+        assert_eq!(json["fileName"], "f");
+        assert!(json.get("file_name").is_none());
     }
 }

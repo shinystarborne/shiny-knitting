@@ -46,7 +46,8 @@ and the others build on it.
 | Named counters, multiple at once, with a click | shipped |
 | Highlights, notes, drawings, pins, bookmarks, index, PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
-| Bulk add, yarn stash, plans, finished gallery, inspiration board | not started |
+| Bulk add | built |
+| Yarn stash, plans, finished gallery, inspiration board | not started |
 
 ## Tabs: stash, plans, gallery, board
 

@@ -19,6 +19,12 @@ pub enum AppError {
     #[error("pattern not found: {0}")]
     NotFound(String),
 
+    /// The same file is already in the library; carries its title. The
+    /// frontend prefix-matches on "already in the library as" to offer opening
+    /// the existing pattern instead.
+    #[error("already in the library as \"{0}\"")]
+    AlreadyHave(String),
+
     /// Settings and undo snapshots are stored as JSON, so serialising them can
     /// fail. Only reachable if a stored value stops being serialisable, which
     /// for the types in use here should not happen -- but a command must still
@@ -78,6 +84,17 @@ pub struct Pattern {
     pub last_scroll: f64,
     /// Cover image file inside `library/covers`, or empty when there is none.
     pub cover_path: String,
+}
+
+/// A pattern file found on disk by `scan_pattern_folder`, offered for adding
+/// to the library.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScannedFile {
+    /// Full path on disk, so it can be handed straight to `add_pattern`.
+    pub path: String,
+    /// Just the file's own name, for display in the picker.
+    pub file_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -164,7 +164,7 @@ mod tests {
             notes: String::new(),
         };
         let id = uuid::Uuid::new_v4().to_string();
-        db::insert_pattern(conn, &id, &input, "C:/x.pdf", "pdf").unwrap()
+        db::insert_pattern(conn, &id, &input, "C:/x.pdf", "pdf", "").unwrap()
     }
 
     /// A pattern on a throwaway database, for tests that never touch the db.
