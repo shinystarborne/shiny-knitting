@@ -1,12 +1,12 @@
-import { api, type AiSettingsView, type ModelInfo } from "../api";
+import { api, type AiSettingsView, type ModelInfo, type UpdateInfo, type UpdateSettings } from "../api";
 import { closestEl } from "../dom";
 
 /**
- * Settings for the metadata model.
+ * The app settings: updates first, then the metadata model.
  *
- * The form leads with the address rather than a provider choice, because that
- * is the only thing that actually varies: a model on your own machine, one on
- * another machine on your network, and a hosted service are all just an
+ * The model form leads with the address rather than a provider choice, because
+ * that is the only thing that actually varies: a model on your own machine, one
+ * on another machine on your network, and a hosted service are all just an
  * OpenAI-compatible endpoint.
  *
  * It states plainly where the pattern text goes. Whether that server is on
@@ -14,11 +14,14 @@ import { closestEl } from "../dom";
  * before pressing the button, so it is worked out from the address and shown
  * rather than left to be discovered later.
  */
-export class AiSettingsDialog {
+export class SettingsDialog {
   private root: HTMLElement;
   private settings: AiSettingsView;
   /** What was saved when the dialog opened; a connection test rolls back to this. */
   private savedSnapshot: AiSettingsView;
+  private updateSettings: UpdateSettings;
+  /** The update a check found, kept so a failed download can offer it again. */
+  private availableUpdate: UpdateInfo | null = null;
   private onSaved: (settings: AiSettingsView) => void;
 
   private modelList: ModelInfo[] = [];
@@ -27,24 +30,45 @@ export class AiSettingsDialog {
   constructor(
     root: HTMLElement,
     settings: AiSettingsView,
+    updateSettings: UpdateSettings,
     onSaved: (settings: AiSettingsView) => void,
   ) {
     this.root = root;
     this.settings = settings;
     this.savedSnapshot = settings;
+    this.updateSettings = updateSettings;
     this.onSaved = onSaved;
   }
 
   open(): void {
     const s = this.settings;
+    const u = this.updateSettings;
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal modal-wide" role="dialog" aria-modal="true">
         <div class="modal-head">
-          <h2>Metadata model</h2>
+          <h2>Settings</h2>
           <button class="ghost" data-act="close" aria-label="Close">×</button>
         </div>
 
+        <h3>Updates</h3>
+        <p class="modal-intro">You have ${escapeHtml(u.currentVersion)}.</p>
+
+        <label class="check">
+          <input type="checkbox" data-f="includeBeta" ${u.includeBeta ? "checked" : ""} />
+          <span>Include beta releases</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-f="checkOnStartup" ${u.checkOnStartup ? "checked" : ""} />
+          <span>Check automatically on startup</span>
+        </label>
+
+        <div class="model-row">
+          <button class="ghost" data-act="check-updates">Check for updates</button>
+        </div>
+        <em class="hint block" data-el="update-result"></em>
+
+        <h3>Metadata model</h3>
         <p class="modal-intro">
           Any model that serves an OpenAI-compatible API will work — Ollama,
           LM Studio, vLLM, llama.cpp, or a hosted service.
@@ -167,6 +191,8 @@ export class AiSettingsDialog {
       if (act === "close") this.close();
       if (act === "save") void this.save();
       if (act === "test") void this.test(btn as HTMLButtonElement);
+      if (act === "check-updates") void this.checkUpdates(btn as HTMLButtonElement);
+      if (act === "download-update") void this.downloadUpdate(btn as HTMLButtonElement);
     });
 
     // Clicking the backdrop dismisses; a click inside the form does not.
@@ -184,7 +210,9 @@ export class AiSettingsDialog {
    * The backend can only test the saved settings, so the form values are
    * saved for the duration of the test and rolled back afterwards. Testing
    * must not persist anything: otherwise pressing Cancel could no longer
-   * cancel once a test had run.
+   * cancel once a test had run. Only the model settings take part — the
+   * update settings are left alone entirely, so a test can neither save nor
+   * clobber them.
    */
   private async test(button: HTMLButtonElement): Promise<void> {
     const result = this.root.querySelector('[data-el="testresult"]') as HTMLElement;
@@ -193,7 +221,7 @@ export class AiSettingsDialog {
     result.textContent = "";
     result.className = "hint";
     try {
-      await this.persist();
+      await this.persistAi();
       const test = await api.testAiConnection();
       result.textContent = `Connected. ${test.modelCount} model${
         test.modelCount === 1 ? "" : "s"
@@ -255,13 +283,93 @@ export class AiSettingsDialog {
     };
   }
 
-  private async persist(): Promise<AiSettingsView> {
+  private collectUpdates(): { includeBeta: boolean; checkOnStartup: boolean } {
+    const get = (field: string) =>
+      (this.root.querySelector(`[data-f="${field}"]`) as HTMLInputElement).checked;
+    return { includeBeta: get("includeBeta"), checkOnStartup: get("checkOnStartup") };
+  }
+
+  /** Saves the model settings only; what a connection test saves and rolls back. */
+  private async persistAi(): Promise<AiSettingsView> {
     const keyField = this.root.querySelector('[data-f="apiKey"]') as HTMLInputElement;
     // An empty field means "keep the saved key", not "delete it".
     const typed = keyField.value.trim();
     this.settings = await api.saveAiSettings(this.collect(), typed || undefined);
     keyField.value = "";
     return this.settings;
+  }
+
+  /** Saves both groups. Save is the only path that should reach this. */
+  private async persist(): Promise<AiSettingsView> {
+    const saved = await this.persistAi();
+    await api.saveUpdateSettings(this.collectUpdates());
+    return saved;
+  }
+
+  /**
+   * A manual check, from the button. It reads the beta checkbox as it stands
+   * rather than the saved setting: asking "is there anything newer, betas
+   * included?" should not require saving that preference first.
+   */
+  private async checkUpdates(button: HTMLButtonElement): Promise<void> {
+    const result = this.root.querySelector('[data-el="update-result"]') as HTMLElement;
+    button.disabled = true;
+    result.className = "hint block";
+    result.textContent = "Checking…";
+    try {
+      const outcome = await api.checkForUpdate({ includeBeta: this.collectUpdates().includeBeta });
+      if (!outcome.update) {
+        this.availableUpdate = null;
+        result.textContent = "You're on the newest version.";
+      } else {
+        this.availableUpdate = outcome.update;
+        this.renderAvailable(result, outcome.update);
+      }
+    } catch (err) {
+      result.className = "hint block bad";
+      result.textContent = message(err);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  /** The result line for an available update, with its download button. */
+  private renderAvailable(result: HTMLElement, update: UpdateInfo): void {
+    result.textContent = `${update.name} is available${update.prerelease ? " (beta)" : ""}. `;
+    result.appendChild(this.downloadButton());
+  }
+
+  private downloadButton(): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = "ghost";
+    button.dataset.act = "download-update";
+    button.textContent = "Download and install";
+    return button;
+  }
+
+  /**
+   * Downloads the installer and hands it to the OS. `installUpdate` exits the
+   * app, so the "Starting the installer…" line after it is what the harness
+   * sees; in the real app the window is usually gone first.
+   */
+  private async downloadUpdate(button: HTMLButtonElement): Promise<void> {
+    const update = this.availableUpdate;
+    if (!update) return;
+    const result = this.root.querySelector('[data-el="update-result"]') as HTMLElement;
+    button.disabled = true;
+    button.textContent = "Downloading…";
+    try {
+      const path = await api.downloadUpdate({
+        assetApiUrl: update.assetApiUrl,
+        fileName: update.assetName,
+      });
+      await api.installUpdate({ path });
+      result.textContent = "Starting the installer…";
+    } catch (err) {
+      // Show the reason and offer the download again, as it was.
+      result.textContent = `${message(err)} `;
+      result.appendChild(this.downloadButton());
+    }
   }
 
   private async save(): Promise<void> {

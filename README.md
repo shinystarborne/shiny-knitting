@@ -190,6 +190,13 @@ over on first launch, and any opacity you have set deliberately is left alone.
 "Focus view" gives the pattern the full width; a "Counter" button brings the
 panel back for a quick check.
 
+**Updates.** **Settings → Updates** shows the version you have and checks for a
+newer one on request. Tick **Include beta releases** to be offered pre-releases
+as well as stable ones. With **Check automatically on startup** on, a quiet
+check runs once a day and an **Update available** button appears in the library
+toolbar only when there is something new. Downloading fetches the installer and
+runs it for you; your library is untouched.
+
 Your place in the document is saved as you scroll, so reopening a pattern
 returns you to the same page and position.
 
@@ -313,7 +320,7 @@ src/
   views/
     library.ts         search, filters, covers, scanning
     pattern-form.ts    add/edit dialog
-    ai-settings.ts     model settings, with the privacy notice
+    settings.ts        updates and model settings, with the privacy notice
   ai/
     scan.ts            running a scan, and undo
     excerpt.ts         pulling a short excerpt, or page images for a scan
@@ -477,9 +484,17 @@ It seeds a fake folder through the stub, clicks the real button, and asserts
 which patterns land and what the summary says — including a second run over the
 same folder being all skips, and Stop ending a long run early.
 
-Together that is 86 checks: 7 layout, 13 row, 58 annotation, 8 bulk add.
+`harness/update-checks.js` covers the in-app update check, via
+`window.__updateChecks()`. It drives the real Settings dialog: the up-to-date,
+available, and failed cases of a manual check, the beta tick reaching the
+backend unsaved, a download ending in the installer being started, the startup
+notice appearing only when a release is seeded, and the settings surviving a
+save and reopen.
 
-`harness/run-checks.mjs` drives all three from a terminal: serve the built
+Together that is 97 checks: 7 layout, 13 row, 58 annotation, 8 bulk add,
+11 update.
+
+`harness/run-checks.mjs` drives every suite from a terminal: serve the built
 harness (`npm run harness:build && npm run harness:serve`), start Chrome with
 `--headless=new --remote-debugging-port=9222`, and `node harness/run-checks.mjs`
 prints every check's result and any page errors the stub collected.

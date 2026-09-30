@@ -32,6 +32,7 @@ and the others build on it.
 | `feature/native-file-drop` | Native file drop, so dropping a large PDF is as fast as Browse. |
 | `feature/undo-delete` | A way to recover a removed pattern. |
 | `feature/keyboard-config` | Make the row keys configurable. |
+| `feature/updates` | In-app update check with beta toggle. |
 
 ## Status
 
@@ -47,6 +48,7 @@ and the others build on it.
 | Highlights, notes, drawings, pins, bookmarks, index, PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
 | Bulk add | built |
+| In-app update check | built |
 | Yarn stash, plans, finished gallery, inspiration board | not started |
 
 ## Tabs: stash, plans, gallery, board

@@ -16,6 +16,7 @@ const store = {
   pinImages: new Map(),
   aiHistory: new Map(),
   aiSettings: null,
+  updateSettings: null,
   apiKey: null,
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
@@ -846,6 +847,41 @@ const handlers = {
     store.aiHistory.delete(patternId);
   },
 
+  // ---------- updates ----------
+  //
+  // Test fixtures, all on window: __nextUpdate drives check_for_update (null =
+  // up to date, an object = the update payload, { error } = reject with that
+  // message), and __startupUpdate drives startup_update_check the same way,
+  // except unset means the check was skipped. __lastUpdateCheckBeta records
+  // the includeBeta a check was run with, and __installedUpdate the installer
+  // path install_update was handed.
+  get_update_settings: () => {
+    if (!store.updateSettings) {
+      store.updateSettings = { includeBeta: false, checkOnStartup: true };
+    }
+    return { ...clone(store.updateSettings), currentVersion: "0.2.1" };
+  },
+  save_update_settings: (args) => {
+    const s = args.settings ?? args;
+    store.updateSettings = { includeBeta: !!s.includeBeta, checkOnStartup: !!s.checkOnStartup };
+  },
+  check_for_update: ({ includeBeta }) => {
+    window.__lastUpdateCheckBeta = !!includeBeta;
+    const next = window.__nextUpdate ?? null;
+    if (next && next.error) throw new Error(next.error);
+    return { currentVersion: "0.2.1", checkedAt: Date.now(), update: next ? clone(next) : null };
+  },
+  startup_update_check: () => {
+    const next = window.__startupUpdate ?? null;
+    if (!next) return { skipped: true, currentVersion: null, checkedAt: null, update: null };
+    if (next.error) throw new Error(next.error);
+    return { skipped: false, currentVersion: "0.2.1", checkedAt: Date.now(), update: clone(next) };
+  },
+  download_update: () => "C:\\Temp\\ShinyKnitting-update-setup.exe",
+  install_update: ({ path }) => {
+    window.__installedUpdate = path;
+  },
+
   // ---------- bulk add ----------
   //
   // The dialog plugin's open command. Returns whatever the test set on
@@ -920,6 +956,12 @@ const handlers = {
 };
 
 seed();
+
+// Update fixtures, unset by default: no newer release, no startup update.
+window.__nextUpdate = null;
+window.__startupUpdate = null;
+window.__installedUpdate = null;
+window.__lastUpdateCheckBeta = null;
 
 // Expose the store for assertions from the test driver.
 window.__store = store;

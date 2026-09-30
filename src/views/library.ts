@@ -176,9 +176,9 @@ export class LibraryView {
         await this.reload();
       } else if (act === "scan") {
         await this.startScan();
-      } else if (act === "settings") {
+      } else if (act === "settings" || act === "update-available") {
         this.root.dispatchEvent(
-          new CustomEvent("open-ai-settings", { bubbles: true, detail: this.settings }),
+          new CustomEvent("open-settings", { bubbles: true, detail: this.settings }),
         );
       } else if (act === "fill-covers") {
         await this.fillMissingCovers(btn as HTMLButtonElement);
@@ -302,7 +302,7 @@ export class LibraryView {
     if (this.scanning) return;
     if (!this.settings.baseUrl.trim()) {
       this.root.dispatchEvent(
-        new CustomEvent("open-ai-settings", { bubbles: true, detail: this.settings }),
+        new CustomEvent("open-settings", { bubbles: true, detail: this.settings }),
       );
       return;
     }
@@ -452,6 +452,23 @@ export class LibraryView {
     el.textContent = message;
     this.root.querySelector(".lib-bar")?.appendChild(el);
     setTimeout(() => el.remove(), 4000);
+  }
+
+  /**
+   * Adds an "Update available" button to the toolbar, for when the startup
+   * check found a newer release. Clicking it opens Settings, where the
+   * download lives. Idempotent: a second check must not add a second button.
+   */
+  showUpdateNotice(tag: string): void {
+    if (this.root.querySelector('[data-act="update-available"]')) return;
+    const actions = this.root.querySelector(".lib-actions");
+    if (!actions) return;
+    const button = document.createElement("button");
+    button.className = "ghost";
+    button.dataset.act = "update-available";
+    button.title = `${tag} is available`;
+    button.textContent = "Update available";
+    actions.prepend(button);
   }
 
   // ---------- listing ----------

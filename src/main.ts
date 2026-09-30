@@ -4,7 +4,7 @@ import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile } fro
 import { LibraryView } from "./views/library";
 import { PatternForm } from "./views/pattern-form";
 import { runBulkAdd } from "./views/bulk-add";
-import { AiSettingsDialog } from "./views/ai-settings";
+import { SettingsDialog } from "./views/settings";
 import { clearCoverCache, ensureCover } from "./covers";
 import { say } from "./dialogs";
 import { ReaderView, type Layout } from "./reader/reader";
@@ -64,8 +64,13 @@ class App {
     this.screen.addEventListener("edit-pattern", (e) => {
       this.openForm((e as CustomEvent<Pattern>).detail);
     });
+    this.screen.addEventListener("open-settings", (e) => {
+      void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
+    });
+    // The reader still dispatches the old name from its single-pattern
+    // Describe flow; both names open the same dialog.
     this.screen.addEventListener("open-ai-settings", (e) => {
-      void this.openAiSettings((e as CustomEvent<AiSettingsView>).detail);
+      void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
     });
 
     document.addEventListener("keydown", (e) => {
@@ -81,6 +86,28 @@ class App {
     });
 
     await this.showLibrary();
+    // The quiet update check runs once the library is up; it never blocks
+    // startup and a failure says nothing.
+    void this.runStartupUpdateCheck();
+  }
+
+  /**
+   * The daily update check. Only a found update surfaces, as a ghost button on
+   * the library toolbar; "skipped" and errors both show nothing. Public so the
+   * browser harness can re-run it after seeding a release.
+   */
+  async runStartupUpdateCheck(): Promise<void> {
+    const token = this.navToken;
+    try {
+      const outcome = await api.startupUpdateCheck();
+      // The user may have opened a pattern while the check was in flight; a
+      // notice for a screen that is no longer up would be worse than none.
+      if (token !== this.navToken) return;
+      if (outcome.skipped || !outcome.update) return;
+      this.activeLibrary?.showUpdateNotice(outcome.update.tag);
+    } catch {
+      // A failed check is a missed convenience, never an interruption.
+    }
   }
 
   private clearScreen(): void {
@@ -202,11 +229,16 @@ class App {
     await this.showLibrary();
   }
 
-  private async openAiSettings(current: AiSettingsView): Promise<void> {
+  private async openSettings(current: AiSettingsView): Promise<void> {
     // Re-read rather than trusting whatever the view had cached, in case the
     // dialog was opened twice in one session.
     const settings = await api.getAiSettings().catch(() => current);
-    const dialog = new AiSettingsDialog(this.modal, settings, () => {
+    const updateSettings = await api.getUpdateSettings().catch(() => ({
+      includeBeta: false,
+      checkOnStartup: true,
+      currentVersion: "",
+    }));
+    const dialog = new SettingsDialog(this.modal, settings, updateSettings, () => {
       // The library reads settings on mount; a reload picks up the new values.
       void this.showLibrary();
     });
@@ -218,4 +250,8 @@ const root = document.getElementById("app");
 if (root) {
   const app = new App(root);
   void app.start();
+  // Test hook for the browser harness, so the startup update check can be
+  // re-run after a release is seeded (it normally fires once, at boot).
+  (window as unknown as Record<string, unknown>).__runStartupUpdateCheck = () =>
+    app.runStartupUpdateCheck();
 }

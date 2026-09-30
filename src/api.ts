@@ -274,6 +274,46 @@ export interface SuggestionResult {
   applied: boolean;
 }
 
+// ---------- updates ----------
+
+/** Mirrors `commands.rs::UpdateSettingsView`. */
+export interface UpdateSettings {
+  includeBeta: boolean;
+  checkOnStartup: boolean;
+  /** The running app's version, reported back so the dialog can show it. */
+  currentVersion: string;
+}
+
+/** One release that is newer than the running app. */
+export interface UpdateInfo {
+  tag: string;
+  name: string;
+  publishedAt: string;
+  prerelease: boolean;
+  assetName: string;
+  /** The API URL the installer is downloaded from; browsers cannot fetch it. */
+  assetApiUrl: string;
+  sizeBytes: number;
+}
+
+/** What a manual "Check for updates" found. */
+export interface UpdateOutcome {
+  currentVersion: string;
+  checkedAt: number;
+  update: UpdateInfo | null;
+}
+
+/**
+ * What the quiet startup check found. `skipped` means the check was switched
+ * off (or already ran today), and the frontend should show nothing at all.
+ */
+export interface StartupUpdateOutcome {
+  skipped: boolean;
+  currentVersion: string | null;
+  checkedAt: number | null;
+  update: UpdateInfo | null;
+}
+
 export interface CoverImage {
   patternId: string;
   fileName: string;
@@ -448,4 +488,22 @@ export const api = {
   }),
   hasAiHistory: (patternId: string) => invoke<boolean>("has_ai_history", { patternId }),
   clearAiHistory: (patternId: string) => invoke<void>("clear_ai_history", { patternId }),
+
+  // Updates. `startupUpdateCheck` is the quiet daily check; it answers
+  // `skipped` when there is nothing to say, and its errors are ignored rather
+  // than shown — a failed convenience check must never interrupt startup.
+  getUpdateSettings: () => invoke<UpdateSettings>("get_update_settings"),
+  saveUpdateSettings: (settings: { includeBeta: boolean; checkOnStartup: boolean }) =>
+    invoke<void>("save_update_settings", {
+      includeBeta: settings.includeBeta,
+      checkOnStartup: settings.checkOnStartup,
+    }),
+  checkForUpdate: (args: { includeBeta: boolean }) =>
+    invoke<UpdateOutcome>("check_for_update", args),
+  startupUpdateCheck: () => invoke<StartupUpdateOutcome>("startup_update_check"),
+  /** Resolves to the downloaded installer's path. */
+  downloadUpdate: (args: { assetApiUrl: string; fileName: string }) =>
+    invoke<string>("download_update", args),
+  /** Runs the installer; the app exits, so this normally never resolves. */
+  installUpdate: (args: { path: string }) => invoke<void>("install_update", args),
 };

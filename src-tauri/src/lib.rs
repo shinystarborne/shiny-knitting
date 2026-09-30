@@ -6,6 +6,7 @@ mod db;
 mod export;
 mod models;
 mod state;
+mod update;
 mod yarn;
 
 use std::path::PathBuf;
@@ -90,6 +91,12 @@ pub fn run() {
             annotations::get_pin_image,
             annotations::save_export_pdf,
             export::estimate_export_dpi,
+            update::get_update_settings,
+            update::save_update_settings,
+            update::check_for_update,
+            update::startup_update_check,
+            update::download_update,
+            update::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the knitting app");
