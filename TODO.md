@@ -45,7 +45,9 @@ and the others build on it.
 | Scroll-in-release bug, large-file speed, scanned-PDF AI | shipped |
 | Row keys: line and counter in step, one band per press | shipped |
 | Named counters, multiple at once, with a click | shipped |
-| Highlights, notes, drawings, pins, bookmarks, index, PDF export | **backend only, no UI** |
+| Highlights, notes, drawings, pins | shipped |
+| PDF zoom: fit-width default, +/-, Ctrl+wheel | shipped |
+| Bookmarks, index, PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
 | Bulk add | built |
 | In-app update check | built |
@@ -120,12 +122,14 @@ runs out; none is agreed yet.
 
 ## The big one: annotations, pins, bookmarks, export
 
-Everything below has a **finished, tested backend** — tables, migrations, CRUD,
-and 16 Tauri commands, all covered by tests — but **no frontend at all**. The
-commands are registered and callable; nothing calls them.
+Highlights, notes, drawings and pins are done and shipped, toolbar included —
+see §1 and §2. Bookmarks/index and PDF export still have a **finished, tested
+backend** — tables, migrations, CRUD, and 16 Tauri commands, all covered by
+tests — but **no frontend at all**. The commands are registered and callable;
+nothing calls them yet.
 
-This is the largest remaining piece of work and it is one coherent feature: the
-reader needs a toolbar, and the five things below hang off it.
+The reader toolbar the first two build on already exists; §3 and §4 hang off
+the same one.
 
 Start here:
 
@@ -160,6 +164,44 @@ Built on `feature/marks`. Done: PDF rects, EPUB quote + occurrence, notes that
 open for editing (emptying one removes it), freehand drawings, Select as the
 default tool, a colour picker, and `H` for highlight. Merged to `main`.
 
+Shipped but found broken by real use, and fixed:
+
+- **The Highlight toolbar button did nothing.** It only armed a visual "tool"
+  state; `MarkLayer.pointerDown()` had no case for `"highlight"` at all, and
+  nothing else called `highlightSelection()`. Only the `H` key ever worked.
+  Clicking it now acts on the current selection immediately, same as `H`.
+- **The row highlight-line silently ate every selection made near it.** Its
+  whole coloured band was `pointer-events: auto` so it could be dragged
+  anywhere along its length, and it sits above the text layer in z-index — so
+  a drag meant to select text at (or near) the current row was captured as
+  "move the line" instead, and nothing was ever selected. Since the line is
+  where a reader is most likely to be trying to highlight from, this made
+  highlighting look completely dead. Fixed by moving all pointer handling to
+  the small grip alone (`src/reader/highlight.ts`, `.highlight-line` /
+  `.highlight-grip` in `styles.css`) — the band now lets clicks pass through
+  to whatever is under it.
+- **A PDF wider than ~1100px silently broke selection accuracy.** `pdf.ts`
+  computed the render scale from the full pane width, but `.pdf-pages` capped
+  the *visible* width at 1100px and `.pdf-canvas{max-width:100%}` shrank the
+  canvas to fit — so the invisible text layer, sized for the uncapped scale,
+  drifted away from the glyphs actually on screen. Worse at a larger window,
+  worst once zoom (below) could push a page past the pane on purpose. Fixed
+  by making `pdf.ts` the single source of truth for the render width (capped
+  there, before height is computed from it) and removing the CSS clamps that
+  were fighting it. This was also why a maximized window looked visibly
+  wrong/stretched: canvas width and height stopped agreeing once only the
+  width was being squeezed by CSS.
+- Added real **PDF zoom** (`pdf.ts`, `.zoom-tools` in the reader bar): fit
+  width is still the default, `+`/`-`/fit buttons with a percentage readout,
+  `Ctrl` + `=`/`-`/`0`, `Ctrl`+wheel. Horizontal scroll now works so a
+  zoomed-in page isn't clipped. EPUB has no zoom UI — it reflows to the pane
+  instead, so there is nothing for it to do.
+- Toolbar is icons now (➤ 🖊 🅣 ✏️ 📌 ↶ 🗑) instead of text labels, to stop it
+  eating so much of the reader bar.
+- Added **Undo** (removes the last mark made, no confirmation) and **Clear**
+  (removes every mark on the pattern, one confirmation) to `MarkLayer`,
+  greyed out when there is nothing to act on.
+
 ### 2. Pins
 
 A cropped image of a region of the page, up to **5** per pattern. The limit is
@@ -177,6 +219,21 @@ button greying out first. EPUB is refused with a reason rather than faked.
 Not done, and would need a command: bringing a card to the front. `update_pin`
 only carries a placement, so `z` cannot be changed from the frontend. Cards stack
 in the order they were made.
+
+Found broken by real use, and fixed: `grab()` (drag/resize) took pointer
+capture and listened on `this.scroller`, a *sibling* of the card, not an
+ancestor — relying on capture to retarget events there for the whole drag
+rather than on the element that actually received the press. Rewritten to
+capture and listen on `e.currentTarget` instead (the bar or the grip), which
+needs no retargeting to work. Also added the guard a card's own buttons
+needed: pressing Hide/Rename/Remove bubbled through the bar's own `pointerdown`
+first, arming a drag before the click ever ran — now `bar` ignores a press
+that started on a `button`. Both fixes follow the same pattern an Electron
+reference app (Shelfmind) already uses for the same kind of floating panel.
+
+Also: hiding a pin now collapses it to just its number (1–5) instead of
+leaving the full title bar on screen — that bar was the one thing hiding a
+pin was supposed to get out of the way of. Click the number to bring it back.
 
 ### 3. Bookmarks and the index
 
@@ -334,3 +391,28 @@ forcing one model on both could get ugly.
 - The model server at `gen2.zeroval.eu` was returning **502 for every request**
   as of 26 Sep 2026, so the AI path could not be checked live. The user is
   verifying it themselves.
+- **`element.click()` is not a click.** It fires the `click` handler but skips
+  the `pointerdown`/`mouseup` the browser would otherwise dispatch, so it
+  cannot prove a button actually works by mouse — testing the Highlight button
+  this way passed while it was genuinely unclickable in real use. CDP's
+  `Input.dispatchMouseEvent` is closer, but on this box it only produces real
+  events when the target window is both foregrounded (`SetForegroundWindow`)
+  *and* `document.visibilityState` reads `"visible"` — check that before
+  trusting a "no events fired" result.
+- **An overlay that is draggable across its whole area will eat input meant
+  for whatever is under it**, at any real size. The row highlight-line was
+  `pointer-events: auto` across its entire coloured band so it could be
+  grabbed anywhere, which silently ate every text-selection drag started
+  near the current row — exactly where a reader is most likely to be
+  selecting from. Restricting pointer events to a small dedicated grip (and
+  letting the rest of the band pass clicks through) is the fix, and was
+  already the documented intent of the grip before this was noticed.
+- **A size computed in JS and a size clamped in CSS have to be the same
+  number, or something that depends on the JS size silently breaks.** `pdf.ts`
+  sized the text layer from the pane's full width; `.pdf-canvas{max-width:
+  100%}` then shrank what was actually painted to fit a narrower CSS cap. The
+  canvas still looked fine (proportionally scaled) — it was the *invisible*
+  text layer, sized for the wider number, that drifted out of alignment with
+  the glyphs on screen. Keep one source of truth for a size like this; don't
+  let a CSS clamp second-guess a JS layout decision another part of the code
+  depends on.

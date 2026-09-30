@@ -20,11 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.2)** — the
+  reader toolbar, fixed. The one to test.
 - **[v0.3.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.1)** — a
   pre-release with bulk add, in-app update checks, and the yarn stash, plus a
-  project-wide audit's worth of fixes. The one to test.
-- **[v0.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.2.0-beta.2)** — the
-  previous pre-release, if the new one misbehaves.
+  project-wide audit's worth of fixes. Superseded by `beta.2`.
+- **[v0.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.2.0-beta.2)** — an
+  earlier pre-release, if a newer one misbehaves.
 - **[v0.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.1.0)** — the
   last stable release.
 
@@ -37,6 +39,14 @@ untouched by either.
 > tool asked the browser for a dialog and a Tauri window has none. `beta.2` is
 > the fixed build. The installers are versioned `0.2.1` so Windows treats it as
 > an upgrade rather than a reinstall of the same version.
+
+> `v0.3.0-beta.1` had the same toolbar in worse shape: the Highlight button
+> was wired to nothing, the row highlight-line's whole band silently stole any
+> text-selection drag made near it (exactly where a reader is most likely to
+> be highlighting from), and a PDF wider than ~1100px drifted the invisible
+> text layer out of alignment with the page under it — worst on a maximized
+> window, where it also broke the page's own proportions. `beta.2` fixes all
+> three and adds PDF zoom. The installers are versioned `0.3.1`.
 
 ## Requirements
 
@@ -230,21 +240,28 @@ runs it for you; your library is untouched.
 Your place in the document is saved as you scroll, so reopening a pattern
 returns you to the same page and position.
 
+A PDF opens fit to the width of the pane. `+`/`-`/fit buttons in the reader
+bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
+the width of the window it scrolls sideways as well as down. An EPUB reflows
+to the pane instead, so there is nothing to zoom.
+
 ## Marking up a pattern
 
-Four tools, in the bar above the reading area. **Select** is the default, so
-reading and tidying up need no tool chosen at all.
+Four tools, as icons in the bar above the reading area. **Select** (➤) is the
+default, so reading and tidying up need no tool chosen at all.
 
-- **Select** — click a note to open it and change the wording, or click a
+- **Select** (➤) — click a note to open it and change the wording, or click a
   highlight or drawing to be offered its removal. Nothing is deleted without
   asking.
-- **Highlight** — select some text and it is marked in the current colour.
-  `H` does the same without leaving the keyboard.
-- **Note** — click anywhere to drop a note. Clearing the text and saving
+- **Highlight** (🖊) — select some text, then press this or `H` and it is
+  marked in the current colour.
+- **Note** (🅣) — click anywhere to drop a note. Clearing the text and saving
   removes the note rather than leaving an empty dot behind.
-- **Draw** — freehand, over charts and diagrams. Per page.
+- **Draw** (✏️) — freehand, over charts and diagrams. Per page.
 
-The colour button picks the highlight colour.
+The colour wheel picks the highlight colour. **Undo** (↶) removes the last
+mark made; **Clear** (🗑) removes every mark on the pattern, after asking once.
+Both grey out when there is nothing to act on.
 
 On a **PDF**, a mark is remembered as a rectangle on its page, because the page
 does not move. On an **EPUB**, the text does move — a wider window, a different
@@ -258,14 +275,16 @@ chapter rewraps, instead of drifting to wherever that text used to be.
 A pin keeps a picture of part of a page somewhere you can see it while you work,
 which is the point: a chart you have to keep scrolling back to is no help.
 
-Choose **Pin** and drag a box around anything — a chart, a stitch diagram, a run
-of instructions you will refer to again. Up to **5** per pattern; the button
-greys out at the limit and says so. Each pin becomes a card you can:
+Choose **Pin** (📌) and drag a box around anything — a chart, a stitch diagram,
+a run of instructions you will refer to again. Up to **5** per pattern; the
+button greys out at the limit and says so. Each pin becomes a card you can:
 
 - **drag** by its title bar, anywhere over the reading pane
 - **resize** by the corner grip
 - **rename** by clicking its title
-- **hide** and bring back, without losing it
+- **hide** — collapses the card to just its number (1–5), so the title bar it
+  would otherwise leave behind doesn't sit over the words you're reading;
+  click the number to bring the full card back
 - **remove** with the ×
 
 Cards stay where you put them — including across closing the pattern — and a new
