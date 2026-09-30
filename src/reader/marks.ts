@@ -80,6 +80,12 @@ export class MarkLayer {
    */
   onPinSelect: ((e: PointerEvent, page: HTMLElement) => void) | null = null;
 
+  /**
+   * Called whenever a mark is added or removed, so the toolbar can grey out
+   * Undo and Clear when there is nothing left to act on.
+   */
+  onChange: (() => void) | null = null;
+
   constructor(scroller: HTMLElement, patternId: string, doc: MarkTarget) {
     this.scroller = scroller;
     this.patternId = patternId;
@@ -151,6 +157,7 @@ export class MarkLayer {
       // A pattern with unreadable marks should still open.
       this.marks = [];
     }
+    this.onChange?.();
     this.repaint();
   }
 
@@ -284,6 +291,7 @@ export class MarkLayer {
       text: "",
     });
     this.marks.push(created);
+    this.onChange?.();
     const selection = this.selectionFor(range);
     selection?.removeAllRanges();
     this.repaint();
@@ -356,6 +364,7 @@ export class MarkLayer {
       text,
     });
     this.marks.push(created);
+    this.onChange?.();
     this.repaint();
     return true;
   }
@@ -372,8 +381,7 @@ export class MarkLayer {
     if (!hit) return false;
     const what = describeMark(hit);
     if (!(await askYesNo(`Remove ${what}?`, { okLabel: "Remove", danger: true }))) return false;
-    await api.deleteAnnotation(hit.id);
-    this.marks = this.marks.filter((m) => m.id !== hit.id);
+    await this.removeById(hit.id);
     this.repaint();
     return true;
   }
@@ -462,6 +470,49 @@ export class MarkLayer {
   private async removeById(id: string): Promise<void> {
     await api.deleteAnnotation(id);
     this.marks = this.marks.filter((m) => m.id !== id);
+    this.onChange?.();
+  }
+
+  /** Whether there is anything to undo or clear, for greying out the buttons. */
+  get hasMarks(): boolean {
+    return this.marks.length > 0;
+  }
+
+  /**
+   * Removes the most recently made mark, with no confirmation.
+   *
+   * Undo is the fast path for "that was a mistake", made right after making
+   * it, so asking first would defeat the point. `marks` is appended to in the
+   * order marks are created, so the last element is the last one made,
+   * regardless of which page it landed on.
+   */
+  async undoLast(): Promise<boolean> {
+    const last = this.marks[this.marks.length - 1];
+    if (!last) return false;
+    await this.removeById(last.id);
+    this.repaint();
+    return true;
+  }
+
+  /**
+   * Removes every highlight, note and drawing on this pattern, after asking.
+   *
+   * Asked once for the whole batch rather than once per mark: the point of a
+   * clean slate is that it is one action, not forty confirmations.
+   */
+  async clearAll(): Promise<boolean> {
+    const count = this.marks.length;
+    if (!count) return false;
+    const what = count === 1 ? "1 mark" : `${count} marks`;
+    if (!(await askYesNo(`Remove all ${what} on this pattern? This cannot be undone.`, { okLabel: "Remove all", danger: true }))) {
+      return false;
+    }
+    const ids = this.marks.map((m) => m.id);
+    this.marks = [];
+    this.onChange?.();
+    this.repaint();
+    await Promise.all(ids.map((id) => api.deleteAnnotation(id).catch(() => {})));
+    return true;
   }
 
   private closeNotePopover(): void {
@@ -564,6 +615,7 @@ export class MarkLayer {
       })
       .then((created) => {
         this.marks.push(created);
+        this.onChange?.();
         this.repaint();
       });
   };

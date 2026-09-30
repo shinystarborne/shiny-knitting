@@ -533,7 +533,7 @@ kbd {
 .doc-scroller {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   /* The reading surface: a slightly lighter shade reads as "paper". */
   background: #1a1d23;
   padding: 20px 0 60vh;
@@ -550,8 +550,13 @@ kbd {
   gap: 18px;
   padding: 0 20px;
   margin: 0 auto;
-  max-width: 1100px;
 }
+/* An EPUB chapter reflows to fit, so it is capped here to a readable line
+   width. A PDF page is a fixed image scaled in pdf.ts itself -- capped there,
+   at fit-width, so that the same number governs both the render and the
+   layout; a second cap here would fight it once a zoom makes the page wider
+   than this on purpose. */
+.epub-chapters { max-width: 1100px; }
 .pdf-page {
   position: relative;
   background: #fff;
@@ -560,7 +565,17 @@ kbd {
   overflow: hidden;
   line-height: 0;
 }
-.pdf-canvas { display: block; max-width: 100%; }
+/*
+  No max-width here: the canvas's CSS size is set explicitly in pdf.ts to
+  match the scale the text layer was built against pixel for pixel. A
+  max-width would shrink what is on screen without pdf.js knowing, so a
+  highlight would land somewhere the zoomed-in page no longer is -- which is
+  exactly what happened before this was noticed: zooming in past the width of
+  the window kept the picture in bounds but quietly broke every highlight and
+  selection past that point, because the text layer still thought the page
+  was as wide as it had actually been asked to render.
+*/
+.pdf-canvas { display: block; }
 
 /*
   The text layer sits over the painted canvas and carries the same characters
@@ -605,7 +620,16 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 999px;
 }
-.mark-tools button { font-size: 11px; padding: 3px 9px; }
+.icon-btn {
+  font-size: 14px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 /* The tool in use is shown, so it is obvious what a click on the page will do
    before it is clicked. */
 .mark-tools button.on {
@@ -621,6 +645,22 @@ kbd {
   border-radius: 50%;
   background: none;
   cursor: pointer;
+}
+
+/* The zoom toolbar, a PDF-only sibling of the marking one. */
+.zoom-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.zoom-pct {
+  min-width: 34px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 /* Pins ---------- */
@@ -647,9 +687,32 @@ kbd {
 }
 .pin-card.moving,
 .pin-card.resizing { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6); }
-.pin-card.hidden { width: auto !important; }
-.pin-card.hidden .pin-image,
-.pin-card.hidden .pin-grip { display: none; }
+.pin-card.hidden {
+  width: auto !important;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+/* A hidden pin: just its number, so it sits over the page without covering
+   the words underneath the way the full card's title bar would. */
+.pin-badge {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.pin-badge:hover { border-color: var(--accent); color: var(--accent); }
 
 .pin-bar {
   display: flex;
@@ -883,10 +946,12 @@ kbd {
   /* Thickness is set inline; this is a fallback before the first paint. */
   height: 3px;
   border-radius: 2px;
-  pointer-events: auto;
-  cursor: ns-resize;
+  /* The band itself does not take the pointer: at any real thickness it sits
+     over a lot of the chart, and a band that swallowed clicks would make the
+     words under it unselectable -- which is exactly what the grip exists to
+     avoid, so only the grip (below) takes pointer events. */
+  pointer-events: none;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
-  touch-action: none;
 }
 .highlight-line:focus-visible {
   outline: 2px solid #fff;
@@ -902,7 +967,11 @@ kbd {
   border-radius: 50%;
   background: inherit;
   border: 2px solid rgba(255, 255, 255, 0.85);
+  /* The one part of the line that does take the pointer -- see the note on
+     .highlight-line. */
+  pointer-events: auto;
   cursor: ns-resize;
+  touch-action: none;
 }
 body.dragging-highlight { cursor: ns-resize; user-select: none; }
 

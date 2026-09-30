@@ -97,6 +97,13 @@ export class ReaderView {
     // A chapter that changes height moves everything below it, and marks are
     // positioned against the text, so they have to be redrawn straight away.
     this.doc.onReflow = () => this.marks?.repaint();
+    // A zoom re-renders every page, which is also a reflow as far as marks
+    // are concerned: their pixel positions are worked out from the page
+    // boxes pdf.js just resized.
+    this.doc.onZoomChange = () => {
+      this.refreshZoomReadout();
+      this.marks?.repaint();
+    };
     try {
       await this.doc.load(data);
     } catch (e) {
@@ -104,6 +111,7 @@ export class ReaderView {
       return;
     }
     if (this.destroyed) return;
+    this.refreshZoomReadout();
 
     this.settings = await api.getHighlight(this.pattern.id);
     if (this.destroyed) return;
@@ -120,6 +128,7 @@ export class ReaderView {
     this.highlight.onConfigureRequest = () => this.openHighlightPanel();
 
     this.marks = new MarkLayer(this.scroller, this.pattern.id, this.doc);
+    this.marks.onChange = () => this.refreshMarkTools();
     this.marks.attach();
     this.marks.setTool("none");
     await this.marks.refresh();
@@ -187,13 +196,25 @@ export class ReaderView {
             >${this.rowLabel}</span
           >
           <div class="mark-tools" role="toolbar" aria-label="Marking">
-            <button data-mark="none" class="ghost" title="Select: click a mark to remove it">Select</button>
-            <button data-mark="highlight" class="ghost" title="Highlight: select text, then press this or H">Highlight</button>
-            <button data-mark="note" class="ghost" title="Note: click where it belongs">Note</button>
-            <button data-mark="draw" class="ghost" title="Draw: drag on the page">Draw</button>
-            <button data-mark="pin" class="ghost" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>Pin</button>
+            <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it">➤</button>
+            <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlight: select text, then press this or H">🖊</button>
+            <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click where it belongs">🅣</button>
+            <button data-mark="draw" class="ghost icon-btn" aria-label="Draw" title="Draw: drag on the page">✏️</button>
+            <button data-mark="pin" class="ghost icon-btn" aria-label="Pin" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>📌</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
+            <button data-act="mark-undo" class="ghost icon-btn" aria-label="Undo" title="Undo the last mark made" data-mark-undo>↶</button>
+            <button data-act="mark-clear" class="ghost icon-btn" aria-label="Clear all marks" title="Remove every highlight, note and drawing on this pattern" data-mark-clear>🗑</button>
           </div>
+          ${
+            this.pattern.format === "pdf"
+              ? `<div class="zoom-tools" role="toolbar" aria-label="Zoom">
+                  <button data-act="zoom-out" class="ghost icon-btn" aria-label="Zoom out" title="Zoom out (Ctrl+-)">−</button>
+                  <span class="zoom-pct" data-zoom-pct>100%</span>
+                  <button data-act="zoom-in" class="ghost icon-btn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
+                  <button data-act="zoom-fit" class="ghost icon-btn" aria-label="Fit width" title="Fit width (Ctrl+0)">⇔</button>
+                </div>`
+              : ""
+          }
           <button data-act="describe" class="ghost" title="Read this pattern's details with your model">Describe</button>
           <button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
@@ -233,7 +254,13 @@ export class ReaderView {
       // the other buttons are, and a tool button carries no data-act.
       const tool = closestEl(e.target, "[data-mark]");
       if (tool) {
-        this.setMarkTool(tool.dataset.mark as MarkTool);
+        const kind = tool.dataset.mark as MarkTool;
+        // Highlight is not a drag tool like Draw or Pin: it acts on the
+        // selection that is already made, the same as the H key does. Just
+        // arming it would leave the button looking on with nothing to click
+        // it into, since the mark layer has no drag behaviour for this tool.
+        if (kind === "highlight") void this.highlightSelection();
+        else this.setMarkTool(kind);
         return;
       }
       const btn = closestEl(e.target, "button[data-act]");
@@ -253,6 +280,11 @@ export class ReaderView {
       if (act === "describe") void this.describeWithModel(btn as HTMLButtonElement);
       if (act === "cover-file") void this.chooseCover();
       if (act === "cover-reset") void this.resetCover();
+      if (act === "mark-undo") void this.marks?.undoLast().then(() => this.refreshMarkTools());
+      if (act === "mark-clear") void this.marks?.clearAll().then(() => this.refreshMarkTools());
+      if (act === "zoom-in") this.doc?.zoomIn?.();
+      if (act === "zoom-out") this.doc?.zoomOut?.();
+      if (act === "zoom-fit") this.doc?.zoomToFit?.();
     });
 
     // The side pane is always in the DOM, so the counter keeps its state; the
@@ -735,6 +767,44 @@ export class ReaderView {
       : room.reason;
   }
 
+  /** Updates the zoom percentage readout, and disables Zoom out at the floor. */
+  private refreshZoomReadout(): void {
+    const pct = this.doc?.zoomPercent?.();
+    if (pct === undefined) return;
+    const readout = this.root.querySelector<HTMLElement>("[data-zoom-pct]");
+    if (readout) readout.textContent = `${pct}%`;
+  }
+
+  /** Greys Undo and Clear out when there is nothing on the pattern to act on. */
+  private refreshMarkTools(): void {
+    const has = this.marks?.hasMarks ?? false;
+    const undo = this.root.querySelector<HTMLButtonElement>("[data-mark-undo]");
+    if (undo) undo.disabled = !has;
+    const clear = this.root.querySelector<HTMLButtonElement>("[data-mark-clear]");
+    if (clear) clear.disabled = !has;
+  }
+
+  /** Ctrl/Cmd + =, -, or 0. Returns true when one matched and was handled. */
+  private handleZoomKey(e: KeyboardEvent): boolean {
+    if (!this.doc?.zoomIn) return false; // EPUB: nothing to zoom
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      this.doc.zoomIn();
+      return true;
+    }
+    if (e.key === "-") {
+      e.preventDefault();
+      this.doc.zoomOut?.();
+      return true;
+    }
+    if (e.key === "0") {
+      e.preventDefault();
+      this.doc.zoomToFit?.();
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Highlights whatever is selected, and reports whether it did.
    *
@@ -753,6 +823,11 @@ export class ReaderView {
       // Marking keys first, so H reaches the highlight rather than falling
       // through to something that handles letters.
       if (this.handleMarkKey(e)) return;
+
+      // Zoom next, and only with a modifier: plain +/-/0 are the counter's
+      // own keys, and Ctrl/Cmd is also the combination every other app uses
+      // for zoom, so it is the one combination guaranteed not to collide.
+      if ((e.ctrlKey || e.metaKey) && this.handleZoomKey(e)) return;
 
       // Row keys next: they are the synchronised action, and the counter
       // below must not swallow them.
@@ -793,6 +868,19 @@ export class ReaderView {
       line.flush();
       this.refreshRowReadout();
     });
+
+    // Ctrl/Cmd + wheel zooms, the same combination every other document
+    // viewer uses, so the bare wheel is left alone for ordinary scrolling.
+    this.scroller.addEventListener(
+      "wheel",
+      (e) => {
+        if (!(e.ctrlKey || e.metaKey) || !this.doc?.zoomIn) return;
+        e.preventDefault();
+        if (e.deltaY < 0) this.doc.zoomIn();
+        else this.doc.zoomOut?.();
+      },
+      { passive: false },
+    );
   }
 
   private bindPositionSaving(): void {

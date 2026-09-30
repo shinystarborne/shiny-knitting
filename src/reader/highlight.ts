@@ -137,18 +137,23 @@ export class HighlightLine {
   }
 
   private bindEvents(): void {
-    // Drag the line to reposition it.
-    this.el.addEventListener("pointerdown", (e) => {
+    // Drag the line to reposition it -- from the grip specifically, not the
+    // whole band. The band sits above the text layer, so at any real
+    // thickness it would otherwise swallow the mousedown a text selection
+    // needs to start, exactly over the row the reader is most likely trying
+    // to select from. The grip is small and to the side for the same reason
+    // the original comment on it says: grabbable without covering the chart.
+    this.grip.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       this.dragging = true;
       const rect = this.el.getBoundingClientRect();
       // Grab offset so the line does not jump to centre under the cursor.
       this.dragOffsetY = e.clientY - rect.top;
-      this.el.setPointerCapture(e.pointerId);
+      this.grip.setPointerCapture(e.pointerId);
       document.body.classList.add("dragging-highlight");
     });
 
-    this.el.addEventListener("pointermove", (e) => {
+    this.grip.addEventListener("pointermove", (e) => {
       if (!this.dragging || !this.scroller) return;
       const rect = this.scroller.getBoundingClientRect();
       const top = e.clientY - rect.top - this.dragOffsetY;
@@ -158,19 +163,19 @@ export class HighlightLine {
     const endDrag = (e: PointerEvent) => {
       if (!this.dragging) return;
       this.dragging = false;
-      if (this.el.hasPointerCapture(e.pointerId)) {
-        this.el.releasePointerCapture(e.pointerId);
+      if (this.grip.hasPointerCapture(e.pointerId)) {
+        this.grip.releasePointerCapture(e.pointerId);
       }
       document.body.classList.remove("dragging-highlight");
       // Persist once the drag is over rather than on every pointermove, which
       // would write to the database hundreds of times per second.
       this.flush();
     };
-    this.el.addEventListener("pointerup", endDrag);
-    this.el.addEventListener("pointercancel", endDrag);
+    this.grip.addEventListener("pointerup", endDrag);
+    this.grip.addEventListener("pointercancel", endDrag);
 
-    // Double-click opens the settings panel.
-    this.el.addEventListener("dblclick", () => {
+    // Double-click the grip opens the settings panel.
+    this.grip.addEventListener("dblclick", () => {
       this.onConfigureRequest?.();
     });
   }

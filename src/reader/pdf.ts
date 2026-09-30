@@ -6,6 +6,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 /** How many background pages to render concurrently. */
 const BATCH = 4;
 
+/**
+ * The widest a page renders at fit-width (zoom 1), so a page does not stretch
+ * uncomfortably wide on a large monitor. Zooming in is still free to go
+ * past it -- this bounds the default, not the maximum.
+ */
+const FIT_WIDTH_CAP = 1100;
+
 export interface RenderedDoc {
   pageCount: number;
   /** Parses the bytes and prepares content for display. */
@@ -35,7 +42,27 @@ export interface RenderedDoc {
    */
   onReflow: (() => void) | null;
   destroy(): void;
+
+  /**
+   * Zoom past (or below) the width the document was opened at.
+   *
+   * Optional: a PDF page is a fixed image that can be scaled arbitrarily, but
+   * an EPUB chapter is reflowing text that already fits the pane by wrapping,
+   * so there is nothing here for it to do. Left undefined rather than a no-op
+   * method, so the reader can tell whether to show zoom controls at all.
+   */
+  zoomIn?(): void;
+  zoomOut?(): void;
+  zoomToFit?(): void;
+  /** The current zoom as a percentage of fit-width, for the readout. */
+  zoomPercent?(): number;
+  /** Called after a zoom finishes re-rendering, so the readout can catch up. */
+  onZoomChange?: (() => void) | null;
 }
+
+/** How far zoomIn/zoomOut and the fit-width baseline may move, either way. */
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 4;
 
 /**
  * Renders a PDF into a continuous vertical strip of pages.
@@ -65,6 +92,13 @@ export class PdfView implements RenderedDoc {
   private container: HTMLDivElement;
   private renderToken = 0;
   private observer: IntersectionObserver | null = null;
+  /**
+   * The zoom, as a multiple of fit-width. 1 is fit-width itself, which is
+   * where every pattern opens: the common case is reading, not zooming, so
+   * the page should fill the pane without anyone having to ask for that.
+   */
+  private zoom = 1;
+  onZoomChange: (() => void) | null = null;
 
   constructor(scroller: HTMLElement) {
     this.scroller = scroller;
@@ -151,12 +185,73 @@ export class PdfView implements RenderedDoc {
     return this.pages[page - 1] ?? null;
   }
 
-  /** Width available for a page, minus padding and scrollbar allowance. */
+  /**
+   * Width available for a page at the current zoom.
+   *
+   * Fit-width (zoom 1) is the pane's own width, minus padding and scrollbar
+   * allowance; zooming multiplies that, so 200% is twice as wide as the pane
+   * and scrolls sideways as well as down, the same as any other PDF viewer.
+   */
   private targetWidth(): number {
     const styles = getComputedStyle(this.container);
     const padLeft = parseFloat(styles.paddingLeft || "0");
     const padRight = parseFloat(styles.paddingRight || "0");
-    return Math.max(320, this.scroller.clientWidth - padLeft - padRight - 2);
+    const available = Math.max(320, this.scroller.clientWidth - padLeft - padRight - 2);
+    // Capped before zoom is applied: the cap is what "fit-width" fits to, not
+    // a ceiling on how far zooming in can go. Without the cap here, the CSS
+    // side would have to repeat the same number to avoid stretching a page
+    // too wide on a large monitor, and the two would only agree by luck --
+    // this was exactly that bug: the container's own max-width shrank the
+    // canvas on screen to less than the width pdf.js had just measured and
+    // built the text layer against, so a selection landed on the wrong words
+    // by however far the two disagreed.
+    const fit = Math.min(available, FIT_WIDTH_CAP);
+    return fit * this.zoom;
+  }
+
+  zoomPercent(): number {
+    return Math.round(this.zoom * 100);
+  }
+
+  zoomIn(): void {
+    void this.setZoom(this.zoom * 1.2);
+  }
+
+  zoomOut(): void {
+    void this.setZoom(this.zoom / 1.2);
+  }
+
+  zoomToFit(): void {
+    void this.setZoom(1);
+  }
+
+  /**
+   * Applies a new zoom, keeping the same spot on the page under the pointer
+   * -- or the middle of the pane, lacking one -- rather than resetting to the
+   * top. Re-rendering at a new scale is the same work as a resize: every page
+   * is repainted, so this reuses that path rather than a second one.
+   */
+  private async setZoom(next: number): Promise<void> {
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+    if (Math.abs(clamped - this.zoom) < 0.001) return;
+    const ratio = clamped / this.zoom;
+    this.zoom = clamped;
+
+    const prevTop = this.scroller.scrollTop;
+    const prevLeft = this.scroller.scrollLeft;
+    const prevHeight = this.scroller.clientHeight;
+    const prevWidth = this.scroller.clientWidth;
+
+    this.rendered.clear();
+    for (const page of this.pages) page.style.height = "";
+    await this.reserveHeights();
+    await this.render();
+
+    // Scaled around the centre of the pane, so zooming in does not fling the
+    // reader off to whatever was at the top-left corner.
+    this.scroller.scrollTop = (prevTop + prevHeight / 2) * ratio - prevHeight / 2;
+    this.scroller.scrollLeft = (prevLeft + prevWidth / 2) * ratio - prevWidth / 2;
+    this.onZoomChange?.();
   }
 
   private async renderPage(n: number, width: number): Promise<void> {

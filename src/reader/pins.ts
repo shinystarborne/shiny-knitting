@@ -317,10 +317,39 @@ export class PinLayer {
     // a crop is loaded and are only released when the pin goes or the reader
     // closes, so re-rendering a card does not throw its own picture away.
     this.host.textContent = "";
-    for (const pin of this.pins) this.host.appendChild(this.card(pin));
+    this.pins.forEach((pin, index) => this.host.appendChild(this.card(pin, index)));
   }
 
-  private card(pin: Pin): HTMLElement {
+  /**
+   * A hidden pin, shown as its number rather than its card.
+   *
+   * A hidden card still had a full title bar, which is the one thing hiding a
+   * pin is supposed to get out of the way of the text underneath. The number
+   * is its position among this pattern's pins, capped at five, so it is
+   * always "1" through "5" and never an id or a growing count. Clicking it is
+   * the fastest way back: no separate menu to find it in.
+   */
+  private badge(pin: Pin, index: number): HTMLElement {
+    const card = document.createElement("div");
+    card.className = "pin-card hidden";
+    card.dataset.id = pin.id;
+    card.style.left = `${pin.offsetX * 100}%`;
+    card.style.top = `${pin.offsetY * 100}%`;
+    card.style.zIndex = String(10 + pin.z);
+
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "pin-badge";
+    badge.textContent = String(index + 1);
+    badge.title = `${pin.title || "Pin"}\nClick to bring it back.`;
+    badge.addEventListener("click", () => void this.setHidden(pin, false));
+    card.appendChild(badge);
+    return card;
+  }
+
+  private card(pin: Pin, index: number): HTMLElement {
+    if (pin.hidden) return this.badge(pin, index);
+
     const card = document.createElement("div");
     card.className = "pin-card";
     card.dataset.id = pin.id;
@@ -328,7 +357,6 @@ export class PinLayer {
     card.style.top = `${pin.offsetY * 100}%`;
     card.style.width = `${pin.width * 100}%`;
     card.style.zIndex = String(10 + pin.z);
-    if (pin.hidden) card.classList.add("hidden");
 
     const bar = document.createElement("div");
     bar.className = "pin-bar";
@@ -344,9 +372,9 @@ export class PinLayer {
     const hide = document.createElement("button");
     hide.className = "pin-btn";
     hide.type = "button";
-    hide.textContent = pin.hidden ? "Show" : "Hide";
-    hide.title = pin.hidden ? "Bring this pin back" : "Hide this pin without deleting it";
-    hide.addEventListener("click", () => void this.setHidden(pin, !pin.hidden));
+    hide.textContent = "Hide";
+    hide.title = "Hide this pin without deleting it";
+    hide.addEventListener("click", () => void this.setHidden(pin, true));
 
     const remove = document.createElement("button");
     remove.className = "pin-btn danger";
@@ -369,28 +397,42 @@ export class PinLayer {
     }));
     card.appendChild(picture);
 
-    if (!pin.hidden) {
-      const grip = document.createElement("div");
-      grip.className = "pin-grip";
-      grip.title = "Drag to make this pin bigger or smaller";
-      card.appendChild(grip);
-    }
+    const grip = document.createElement("div");
+    grip.className = "pin-grip";
+    grip.title = "Drag to make this pin bigger or smaller";
+    card.appendChild(grip);
 
     // The whole card moves by its title bar, so the picture is never in the
-    // way of a click that means something else.
-    bar.addEventListener("pointerdown", (e) => this.grab(e as PointerEvent, pin, card, "move"));
-    card
-      .querySelector(".pin-grip")
-      ?.addEventListener("pointerdown", (e) => this.grab(e as PointerEvent, pin, card, "size"));
+    // way of a click that means something else. Buttons in the bar (rename,
+    // hide, remove) must stay plain clicks: without this check, pressing one
+    // also armed a drag, which is wasted work at best and at worst a stray
+    // pointer capture that outlives the click.
+    bar.addEventListener("pointerdown", (e) => {
+      if ((e.target as Element).closest("button")) return;
+      this.grab(e as PointerEvent, pin, card, "move");
+    });
+    grip.addEventListener("pointerdown", (e) => this.grab(e as PointerEvent, pin, card, "size"));
     return card;
   }
 
+  /**
+   * Starts a card drag or resize.
+   *
+   * Capture is taken on the element that received the press -- the title bar
+   * or the resize grip -- rather than on the scroller. The two are siblings
+   * under the pane, not ancestor and descendant, so a capture or a listener
+   * placed on the scroller depends on pointer events being retargeted there
+   * for the whole drag; taking capture on the element already in the event's
+   * own path needs no such retargeting and is what a card drag should do
+   * regardless.
+   */
   private grab(e: PointerEvent, pin: Pin, card: HTMLElement, mode: "move" | "size"): void {
     if (e.button !== 0 || this.moving) return;
     const start = this.normalisedInPane(e.clientX, e.clientY);
     if (!start) return;
     e.preventDefault();
     e.stopPropagation();
+    const handle = e.currentTarget as Element;
     this.moving = {
       pin,
       pointer: e.pointerId,
@@ -421,9 +463,9 @@ export class PinLayer {
     };
 
     const finish = async () => {
-      this.scroller.removeEventListener("pointermove", move);
-      this.scroller.removeEventListener("pointerup", finish);
-      this.scroller.removeEventListener("pointercancel", finish);
+      handle.removeEventListener("pointermove", move as EventListener);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
       card.classList.remove("moving", "resizing");
       const live = this.moving;
       this.moving = null;
@@ -432,13 +474,13 @@ export class PinLayer {
     };
 
     try {
-      this.scroller.setPointerCapture(e.pointerId);
+      handle.setPointerCapture(e.pointerId);
     } catch {
       // As with cropping: the drag just stops at the edge of the pane.
     }
-    this.scroller.addEventListener("pointermove", move);
-    this.scroller.addEventListener("pointerup", finish);
-    this.scroller.addEventListener("pointercancel", finish);
+    handle.addEventListener("pointermove", move as EventListener);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
   }
 
   private async savePlacement(pin: Pin): Promise<void> {
