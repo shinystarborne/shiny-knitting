@@ -20,10 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
-- **[v0.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.2.0-beta.2)** — a
-  pre-release with everything, including pins. The one to test.
+- **[v0.3.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.1)** — a
+  pre-release with bulk add, in-app update checks, and the yarn stash, plus a
+  project-wide audit's worth of fixes. The one to test.
+- **[v0.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.2.0-beta.2)** — the
+  previous pre-release, if the new one misbehaves.
 - **[v0.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.1.0)** — the
-  last release without pins, if the beta misbehaves.
+  last stable release.
 
 Each has an `.exe` (installs per user, no administrator rights) and an `.msi`.
 Both install to the same place, so running the older one afterwards puts you

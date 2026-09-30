@@ -1,6 +1,6 @@
 [package]
 name = "shiny-knitting-app"
-version = "0.2.1"
+version = "0.3.0"
 description = "A reading app for knitting patterns with row counters and a moving highlight line."
 authors = ["Shiny"]
 edition = "2021"
