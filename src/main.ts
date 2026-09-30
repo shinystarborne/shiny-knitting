@@ -1,20 +1,25 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
+import { StashView } from "./views/stash";
 import { PatternForm } from "./views/pattern-form";
+import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearCoverCache, ensureCover } from "./covers";
+import { clearCoverCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { say } from "./dialogs";
+import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
- * App shell. Two screens, swapped in place: the library and the reader.
- * The current layout choice is remembered for the session.
+ * App shell. A tab bar picks the top-level screen — Patterns or Stash — and
+ * the reader covers the Patterns tab when a pattern is open. The current
+ * layout choice is remembered for the session.
  */
 class App {
   private root: HTMLElement;
+  private tabBar!: HTMLElement;
   private screen!: HTMLElement;
   private modal!: HTMLElement;
 
@@ -36,12 +41,31 @@ class App {
   }
 
   async start(): Promise<void> {
+    // The tab bar is a fixed-height sibling above the screen; #app is a flex
+    // column, so the screen keeps its own class and its flex/min-height chain
+    // exactly as it was, and the scrolling panes are none the wiser.
+    this.tabBar = document.createElement("nav");
+    this.tabBar.className = "tab-bar";
+    this.tabBar.innerHTML = `
+      <button class="tab active" data-tab="patterns">Patterns</button>
+      <button class="tab" data-tab="stash">Stash</button>
+    `;
     this.screen = document.createElement("div");
     this.screen.className = "screen";
     this.modal = document.createElement("div");
     this.modal.className = "modal-backdrop hidden";
 
-    this.root.append(this.screen, this.modal);
+    this.root.append(this.tabBar, this.screen, this.modal);
+
+    this.tabBar.addEventListener("click", (e) => {
+      const tab = closestEl(e.target, "button[data-tab]");
+      if (!tab) return;
+      if (tab.dataset.tab === "stash") {
+        void this.showStash();
+      } else {
+        void this.showLibrary();
+      }
+    });
 
     // Reading events bubble up from whichever view is on screen.
     this.screen.addEventListener("navigate-back", () => void this.showLibrary());
@@ -63,6 +87,10 @@ class App {
     });
     this.screen.addEventListener("edit-pattern", (e) => {
       this.openForm((e as CustomEvent<Pattern>).detail);
+    });
+    this.screen.addEventListener("add-yarn", () => this.openYarnForm(null));
+    this.screen.addEventListener("edit-yarn", (e) => {
+      this.openYarnForm((e as CustomEvent<Yarn>).detail);
     });
     this.screen.addEventListener("open-settings", (e) => {
       void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
@@ -115,16 +143,34 @@ class App {
     this.activeReader = null;
     this.activeLibrary = null;
     this.screen.innerHTML = "";
-    // Cover object URLs are tied to the elements that showed them.
+    // Cover and photo object URLs are tied to the elements that showed them.
     clearCoverCache();
+    clearYarnPhotoCache();
+  }
+
+  /** Marks the tab that owns the current screen; the reader counts as Patterns. */
+  private setActiveTab(name: "patterns" | "stash"): void {
+    for (const tab of this.tabBar.querySelectorAll<HTMLElement>(".tab")) {
+      tab.classList.toggle("active", tab.dataset.tab === name);
+    }
   }
 
   private async showLibrary(): Promise<void> {
     // The library has no async gap after clearScreen, so no token is needed.
     this.navToken++;
     this.clearScreen();
+    this.setActiveTab("patterns");
     const view = new LibraryView(this.screen);
     this.activeLibrary = view;
+    await view.mount();
+  }
+
+  private async showStash(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("stash");
+    const view = new StashView(this.screen);
     await view.mount();
   }
 
@@ -149,6 +195,7 @@ class App {
     // rather than clobbering the screen it is replacing.
     if (token !== this.navToken) return;
 
+    this.setActiveTab("patterns");
     const reader = new ReaderView(this.screen, pattern, this.layout);
     this.activeReader = reader;
     await reader.mount();
@@ -165,6 +212,15 @@ class App {
         void this.addCoverInBackground(saved);
         void this.showLibrary();
       }
+    });
+    form.open();
+  }
+
+  private openYarnForm(yarn: Yarn | null): void {
+    const form = new YarnForm(this.modal, yarn, () => {
+      // A save re-mounts the stash, so the card picks up the new figures and
+      // any photo the form uploaded afterwards.
+      void this.showStash();
     });
     form.open();
   }

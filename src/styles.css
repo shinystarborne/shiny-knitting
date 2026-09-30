@@ -83,6 +83,39 @@ button.ghost {
   background: transparent;
 }
 
+/* ---------- tab bar ---------- */
+
+/*
+  The top-level navigation: Patterns and Stash. A fixed-height sibling above
+  `.screen` inside #app's flex column, so the screen's own flex/min-height
+  chain — the thing that lets a pane scroll — is untouched by it.
+*/
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 20px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.tab-bar .tab {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 8px 8px 0 0;
+  padding: 7px 16px;
+  color: var(--text-dim);
+}
+.tab-bar .tab:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
+}
+.tab-bar .tab.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
 input,
 select,
 textarea {
@@ -319,6 +352,8 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 }
 .cover-fallback.format-pdf span { background: rgba(229, 72, 77, 0.2); color: #ff9b9e; }
 .cover-fallback.format-epub span { background: rgba(70, 167, 88, 0.2); color: #8fdca0; }
+/* A yarn with no photo shows its weight family instead of a file format. */
+.cover-fallback.format-yarn span { background: rgba(90, 140, 220, 0.2); color: #a8c6f0; }
 .cover.has-cover .cover-fallback { opacity: 0; }
 
 /* Cover actions stay out of the way until the card is hovered or focused. */
@@ -1398,6 +1433,27 @@ body.dragging-highlight { cursor: ns-resize; user-select: none; }
 
 .field { display: flex; flex-direction: column; }
 .field-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+/* ---------- stash ---------- */
+
+.card-qty { margin: 0; font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.card-lots { margin: 0; font-size: 11px; color: var(--text-dim); }
+
+/*
+  One lot in the yarn form: dye lot, balls, grams left, where it lives, when
+  it was bought, and its remove button.
+*/
+.lot-list { display: flex; flex-direction: column; gap: 8px; }
+.lot-list:empty { display: none; }
+.lot-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr 1.2fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+.lot-row input { padding: 6px 8px; font-size: 12px; }
+.lot-row button { padding: 4px 9px; }
+.lot-row button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .tag-editor { display: flex; flex-direction: column; gap: 6px; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag-list:empty { display: none; }

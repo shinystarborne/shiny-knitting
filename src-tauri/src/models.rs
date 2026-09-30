@@ -224,6 +224,106 @@ pub struct CoverImage {
     pub mime: String,
 }
 
+// ---------- yarn stash ----------
+
+/// One purchase of a yarn: a dye lot with the number of balls bought and what
+/// is left of them. Partial balls are tracked as grams left, weighed.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnLot {
+    pub id: String,
+    pub yarn_id: String,
+    pub dye_lot: String,
+    /// Balls bought; halves and quarters are allowed, hence a float.
+    pub balls: f64,
+    /// Grams left across the lot, partial balls included.
+    pub grams_left: i64,
+    pub location: String,
+    pub bought_at: Option<i64>,
+}
+
+/// A yarn in the stash, with its lots and the quantities derived from them.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Yarn {
+    pub id: String,
+    pub name: String,
+    pub brand: String,
+    pub colourway: String,
+    /// Weight as the ball band states it, e.g. "DK" or "400 m/100g". Free
+    /// text, like a pattern's `yarn_weight`.
+    pub yarn_weight: String,
+    /// The standard family derived from `yarn_weight` on write by
+    /// `yarn::family_of`; empty when the weight is blank or unrecognised.
+    pub yarn_weight_family: String,
+    pub metres_per_ball: i64,
+    pub grams_per_ball: i64,
+    /// Photo file inside `library/yarn-photos`, or empty when there is none.
+    pub photo_path: String,
+    pub notes: String,
+    pub added_at: i64,
+    pub lots: Vec<YarnLot>,
+    /// Grams left, summed over the lots.
+    pub grams_left: i64,
+    /// Balls bought, summed over the lots.
+    pub balls_total: f64,
+    /// What `grams_left` works out to in metres. Zero when either per-ball
+    /// figure is missing, since it cannot be known then.
+    pub metres_left: i64,
+}
+
+/// What the add dialog sends. Everything but the name is optional.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnInput {
+    pub name: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub colourway: String,
+    #[serde(default)]
+    pub yarn_weight: String,
+    #[serde(default)]
+    pub metres_per_ball: i64,
+    #[serde(default)]
+    pub grams_per_ball: i64,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub lots: Vec<YarnLotInput>,
+}
+
+/// A lot as the dialog sends it. An `id` names an existing lot to keep; a lot
+/// without one is new.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnLotInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub dye_lot: String,
+    #[serde(default)]
+    pub balls: f64,
+    #[serde(default)]
+    pub grams_left: i64,
+    #[serde(default)]
+    pub location: String,
+    #[serde(default)]
+    pub bought_at: Option<i64>,
+}
+
+/// A photo belonging to a yarn. Bytes are stored under
+/// `library/yarn-photos/<yarn id>.<ext>`, mirroring `CoverImage`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PhotoInfo {
+    pub yarn_id: String,
+    /// File name inside the yarn-photos folder, not a full path.
+    pub file_name: String,
+    pub bytes: Vec<u8>,
+    pub mime: String,
+}
+
 // ---------- annotations, bookmarks, pins ----------
 
 /// What a mark on a page represents.

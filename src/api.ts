@@ -321,6 +321,91 @@ export interface CoverImage {
   mime: string;
 }
 
+/** Mirrors `models.rs::YarnLot`. */
+/**
+ * One purchase of a yarn. The same yarn bought twice lives here twice, because
+ * dye lots differ between purchases and mixing them shows in the knitting.
+ */
+export interface YarnLot {
+  id: string;
+  yarnId: string;
+  dyeLot: string;
+  balls: number;
+  /** Grams left, weighed; a partial ball is how much of it remains. */
+  gramsLeft: number;
+  /** Where it is kept, e.g. "under-bed box". */
+  location: string;
+  boughtAt: number | null;
+}
+
+/** Mirrors `models.rs::Yarn`. */
+export interface Yarn {
+  id: string;
+  name: string;
+  brand: string;
+  colourway: string;
+  /**
+   * Yarn weight as stated, e.g. "DK" or "100 m/100g". Free text; the family
+   * below is derived from it on write, exactly as for a pattern.
+   */
+  yarnWeight: string;
+  /** Standard weight family key, e.g. "dk". Empty when unrecognised. */
+  yarnWeightFamily: string;
+  /** Per-ball figures off the ball band; 0 when unknown. */
+  metresPerBall: number;
+  gramsPerBall: number;
+  /** File name of the photo inside the library's covers folder, or "". */
+  photoPath: string;
+  notes: string;
+  addedAt: number;
+  lots: YarnLot[];
+  // The last three are derived by the backend from the lots; they are sent
+  // on every read so a card never adds them up for itself.
+  /** Total grams left across every lot. */
+  gramsLeft: number;
+  /** Total balls across every lot. */
+  ballsTotal: number;
+  /** gramsLeft ÷ gramsPerBall × metresPerBall; 0 when the per-ball figures are unknown. */
+  metresLeft: number;
+}
+
+export interface YarnLotInput {
+  /** Present means "keep this lot"; absent means it is new. */
+  id?: string | null;
+  dyeLot: string;
+  balls: number;
+  gramsLeft: number;
+  location: string;
+  boughtAt: number | null;
+}
+
+/** What the yarn form sends; ids and derived figures are the backend's. */
+export interface YarnInput {
+  name: string;
+  brand: string;
+  colourway: string;
+  /** Yarn weight as stated; the family is derived from it on write. */
+  yarnWeight: string;
+  metresPerBall: number;
+  gramsPerBall: number;
+  notes: string;
+  lots: YarnLotInput[];
+}
+
+export interface YarnFilter {
+  search?: string;
+  /** Yarn weight families. Several means "any of these". */
+  yarnWeight?: string[];
+}
+
+/** Same shape as `CoverImage`, keyed to a yarn. */
+export interface YarnPhoto {
+  yarnId: string;
+  fileName: string;
+  bytes: number[];
+  mime: string;
+}
+
 /** One pattern file found by `scan_pattern_folder`. */
 export interface ScannedFile {
   /** Full path on disk; handed back to `add_pattern` as the source. */
@@ -466,6 +551,25 @@ export const api = {
   getCover: (patternId: string) => invoke<ArrayBuffer | ArrayBufferView>("get_cover", { patternId }),
   removeCover: (patternId: string) => invoke<void>("remove_cover", { patternId }),
   patternsMissingCovers: () => invoke<string[]>("patterns_missing_covers"),
+
+  // The yarn stash. Lots go in whole on every write: an id the backend knows
+  // is kept, one it does not is new, and a stored lot missing from the list is
+  // gone. The derived totals come back on the returned yarn.
+  listYarns: (filter: YarnFilter = {}) => invoke<Yarn[]>("list_yarns", { filter }),
+  getYarn: (id: string) => invoke<Yarn>("get_yarn", { id }),
+  addYarn: (input: YarnInput) => invoke<Yarn>("add_yarn", { input }),
+  updateYarn: (yarn: Yarn) => invoke<Yarn>("update_yarn", { yarn }),
+  deleteYarn: (id: string) => invoke<void>("delete_yarn", { id }),
+  /** Every family in the weight table, in order, with a count of yarns in it. */
+  yarnFacets: () => invoke<YarnWeightFacet[]>("yarn_facets"),
+
+  // Yarn photos. Stored in the same covers folder as pattern covers.
+  setYarnPhoto: (yarnId: string, bytes: number[]) =>
+    invoke<YarnPhoto>("set_yarn_photo", { yarnId, bytes }),
+  /** Raw binary, as `getCover` returns it. */
+  getYarnPhoto: (yarnId: string) =>
+    invoke<ArrayBuffer | ArrayBufferView>("get_yarn_photo", { yarnId }),
+  removeYarnPhoto: (yarnId: string) => invoke<void>("remove_yarn_photo", { yarnId }),
 
   // AI metadata.
   getAiSettings: () => invoke<AiSettingsView>("get_ai_settings"),

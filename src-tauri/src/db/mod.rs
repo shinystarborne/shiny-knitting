@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    DIFFICULTIES, STATUSES,
+    Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES,
 };
 
 #[cfg(test)]
@@ -161,6 +161,37 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             created_at  INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_pins_pattern ON pins(pattern_id);
+
+        -- A yarn in the stash. The weight is kept as written, with the
+        -- standard family derived from it on every write, exactly like
+        -- patterns; the family is a column because the filter matches on it.
+        CREATE TABLE IF NOT EXISTS yarns (
+            id                 TEXT PRIMARY KEY,
+            name               TEXT NOT NULL,
+            brand              TEXT NOT NULL DEFAULT '',
+            colourway          TEXT NOT NULL DEFAULT '',
+            yarn_weight        TEXT NOT NULL DEFAULT '',
+            yarn_weight_family TEXT NOT NULL DEFAULT '',
+            metres_per_ball    INTEGER NOT NULL DEFAULT 0,
+            grams_per_ball     INTEGER NOT NULL DEFAULT 0,
+            photo_path         TEXT NOT NULL DEFAULT '',
+            notes              TEXT NOT NULL DEFAULT '',
+            added_at           INTEGER NOT NULL
+        );
+
+        -- One purchase of a yarn: the dye lot, how many balls it was, and how
+        -- much is left. Partial balls are kept as grams left, weighed, rather
+        -- than as a fraction of a ball.
+        CREATE TABLE IF NOT EXISTS yarn_lots (
+            id         TEXT PRIMARY KEY,
+            yarn_id    TEXT NOT NULL REFERENCES yarns(id) ON DELETE CASCADE,
+            dye_lot    TEXT NOT NULL DEFAULT '',
+            balls      REAL NOT NULL DEFAULT 0,
+            grams_left INTEGER NOT NULL DEFAULT 0,
+            location   TEXT NOT NULL DEFAULT '',
+            bought_at  INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_yarn_lots_yarn ON yarn_lots(yarn_id);
 
         CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
         CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
@@ -1622,4 +1653,346 @@ pub fn set_cover(conn: &Connection, pattern_id: &str, file_name: &str) -> AppRes
         params![pattern_id, file_name],
     )?;
     Ok(())
+}
+
+// ---------- yarn stash ----------
+
+/// Optional filters for the stash view. All fields are optional; empty means
+/// "do not filter on this".
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnFilter {
+    pub search: Option<String>,
+    /// Standard yarn weight family, e.g. "dk". Several may be given to widen
+    /// the filter, which is an OR within the group like the pattern filter.
+    pub yarn_weight: Option<Vec<String>>,
+}
+
+fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
+    Ok(YarnLot {
+        id: row.get("id")?,
+        yarn_id: row.get("yarn_id")?,
+        dye_lot: row.get("dye_lot")?,
+        balls: row.get("balls")?,
+        grams_left: row.get("grams_left")?,
+        location: row.get("location")?,
+        bought_at: row.get("bought_at")?,
+    })
+}
+
+/// The yarn row alone: no lots, and the derived figures left at zero for
+/// `with_lots` to fill in.
+fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
+    Ok(Yarn {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        brand: row.get("brand")?,
+        colourway: row.get("colourway")?,
+        yarn_weight: row.get("yarn_weight")?,
+        yarn_weight_family: row.get("yarn_weight_family")?,
+        metres_per_ball: row.get("metres_per_ball")?,
+        grams_per_ball: row.get("grams_per_ball")?,
+        photo_path: row.get("photo_path")?,
+        notes: row.get("notes")?,
+        added_at: row.get("added_at")?,
+        lots: Vec::new(),
+        grams_left: 0,
+        balls_total: 0.0,
+        metres_left: 0,
+    })
+}
+
+/// Attaches a yarn's lots and fills in the figures derived from them: the
+/// grams left across every lot, the total ball count, and the metres that
+/// much yarn works out to. The metres need both per-ball figures; with either
+/// missing the honest answer is zero rather than a guess.
+fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
+    yarn.lots = list_yarn_lots(conn, &yarn.id)?;
+    yarn.grams_left = yarn.lots.iter().map(|l| l.grams_left).sum();
+    yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
+    yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
+        (yarn.grams_left as f64 / yarn.grams_per_ball as f64 * yarn.metres_per_ball as f64).round()
+            as i64
+    } else {
+        0
+    };
+    Ok(yarn)
+}
+
+pub fn list_yarn_lots(conn: &Connection, yarn_id: &str) -> AppResult<Vec<YarnLot>> {
+    let mut stmt =
+        conn.prepare("SELECT * FROM yarn_lots WHERE yarn_id = ?1 ORDER BY rowid ASC")?;
+    let rows = stmt.query_map(params![yarn_id], row_to_lot)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn get_yarn(conn: &Connection, id: &str) -> AppResult<Yarn> {
+    let yarn = conn
+        .query_row("SELECT * FROM yarns WHERE id = ?1", params![id], row_to_yarn)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(id.to_string()))?;
+    with_lots(conn, yarn)
+}
+
+pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>> {
+    // The free-text term is parameter ?1 and is always present, so an empty
+    // search becomes "%%" and matches everything.
+    let term = match filter.search.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(s) => format!("%{}%", escape_like(s.trim())),
+        None => "%".to_string(),
+    };
+    let mut sql = String::from(
+        "SELECT * FROM yarns WHERE 1=1 \
+         AND (name LIKE ?1 ESCAPE '\\' OR brand LIKE ?1 ESCAPE '\\' \
+         OR colourway LIKE ?1 ESCAPE '\\' OR notes LIKE ?1 ESCAPE '\\')",
+    );
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(term)];
+
+    // Yarn weight is an OR within itself, the same as the pattern filter:
+    // picking DK and Aran means "either", not "both".
+    if let Some(families) = filter.yarn_weight.as_ref().filter(|f| !f.is_empty()) {
+        let mut placeholders = Vec::new();
+        for family in families.iter().filter(|f| !f.is_empty()) {
+            args.push(Box::new(family.clone()));
+            placeholders.push(format!("?{}", args.len()));
+        }
+        if !placeholders.is_empty() {
+            sql.push_str(&format!(
+                " AND yarn_weight_family IN ({})",
+                placeholders.join(", ")
+            ));
+        }
+    }
+    sql.push_str(" ORDER BY added_at DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt.query_map(refs.as_slice(), row_to_yarn)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(with_lots(conn, r?)?);
+    }
+    Ok(out)
+}
+
+/// Stores a new yarn with its lots, in one transaction so a failure halfway
+/// cannot leave a yarn with only some of its lots.
+pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<Yarn> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO yarns
+         (id, name, brand, colourway, yarn_weight, yarn_weight_family,
+          metres_per_ball, grams_per_ball, photo_path, notes, added_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10)",
+        params![
+            id,
+            input.name,
+            input.brand,
+            input.colourway,
+            input.yarn_weight,
+            crate::yarn::family_of(&input.yarn_weight),
+            input.metres_per_ball,
+            input.grams_per_ball,
+            input.notes,
+            now_ms()
+        ],
+    )?;
+    for lot in &input.lots {
+        insert_lot(&tx, id, lot)?;
+    }
+    tx.commit()?;
+    get_yarn(conn, id)
+}
+
+fn insert_lot(
+    conn: &Connection,
+    yarn_id: &str,
+    lot: &crate::models::YarnLotInput,
+) -> AppResult<()> {
+    let id = lot
+        .id
+        .clone()
+        .filter(|i| !i.is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    conn.execute(
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![
+            id,
+            yarn_id,
+            lot.dye_lot,
+            lot.balls,
+            lot.grams_left,
+            lot.location,
+            lot.bought_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// Writes the whole yarn back, lots included.
+///
+/// The lots are reconciled rather than rewritten wholesale: an id the stash
+/// already knows is updated in place, an id that is gone from what the caller
+/// sent is deleted, and a lot with a new or empty id is inserted. One
+/// transaction, so the yarn and its lots are written together or not at all.
+pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
+    let tx = conn.unchecked_transaction()?;
+    let changed = tx.execute(
+        "UPDATE yarns SET name=?2, brand=?3, colourway=?4, yarn_weight=?5,
+         yarn_weight_family=?6, metres_per_ball=?7, grams_per_ball=?8, notes=?9
+         WHERE id=?1",
+        params![
+            yarn.id,
+            yarn.name,
+            yarn.brand,
+            yarn.colourway,
+            yarn.yarn_weight,
+            // Re-derived on every write, like patterns, so correcting the
+            // stated weight also corrects the family the filter matches on.
+            crate::yarn::family_of(&yarn.yarn_weight),
+            yarn.metres_per_ball,
+            yarn.grams_per_ball,
+            yarn.notes
+        ],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(yarn.id.clone()));
+    }
+
+    let existing: Vec<String> = {
+        let mut stmt = tx.prepare("SELECT id FROM yarn_lots WHERE yarn_id = ?1")?;
+        let rows = stmt.query_map(params![yarn.id], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    let mut kept: Vec<&String> = Vec::new();
+    for lot in &yarn.lots {
+        if !lot.id.is_empty() && existing.contains(&lot.id) {
+            // Scoped to the yarn as well as the id, so a lot can never be
+            // rewritten through another yarn's update.
+            tx.execute(
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7
+                 WHERE id=?1 AND yarn_id=?2",
+                params![
+                    lot.id,
+                    yarn.id,
+                    lot.dye_lot,
+                    lot.balls,
+                    lot.grams_left,
+                    lot.location,
+                    lot.bought_at
+                ],
+            )?;
+            kept.push(&lot.id);
+        } else {
+            let id = if lot.id.is_empty() {
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                lot.id.clone()
+            };
+            tx.execute(
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![
+                    id,
+                    yarn.id,
+                    lot.dye_lot,
+                    lot.balls,
+                    lot.grams_left,
+                    lot.location,
+                    lot.bought_at
+                ],
+            )?;
+        }
+    }
+    for stale in existing.iter().filter(|id| !kept.contains(id)) {
+        tx.execute("DELETE FROM yarn_lots WHERE id = ?1", params![stale])?;
+    }
+    tx.commit()?;
+    get_yarn(conn, &yarn.id)
+}
+
+pub fn delete_yarn(conn: &Connection, id: &str) -> AppResult<()> {
+    // Lots go with it via ON DELETE CASCADE.
+    let changed = conn.execute("DELETE FROM yarns WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(id.to_string()));
+    }
+    Ok(())
+}
+
+/// The photo file name recorded against a yarn, or an empty string when it
+/// has none.
+pub fn get_yarn_photo(conn: &Connection, yarn_id: &str) -> AppResult<String> {
+    let found = conn
+        .query_row(
+            "SELECT photo_path FROM yarns WHERE id = ?1",
+            params![yarn_id],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .unwrap_or_default();
+    Ok(found)
+}
+
+/// Records a photo file name against a yarn. An empty name clears it, which
+/// is how a photo is removed.
+pub fn set_yarn_photo(conn: &Connection, yarn_id: &str, file_name: &str) -> AppResult<()> {
+    conn.execute(
+        "UPDATE yarns SET photo_path = ?2 WHERE id = ?1",
+        params![yarn_id, file_name],
+    )?;
+    Ok(())
+}
+
+/// One entry in the stash's weight filter: a family from the standard table,
+/// with the number of yarns that fall into it. The same shape `list_facets`
+/// uses for patterns, so the sidebar code can treat them alike.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnFamilyFacet {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
+pub fn yarn_facets(conn: &Connection) -> AppResult<Vec<YarnFamilyFacet>> {
+    let mut counts: Vec<(String, i64)> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT yarn_weight_family, COUNT(*) FROM yarns
+             WHERE yarn_weight_family <> '' GROUP BY yarn_weight_family",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        for r in rows {
+            counts.push(r?);
+        }
+    }
+    // Yarn weights come from the fixed table rather than from the data, so
+    // the filter reads the same whether or not you happen to own a jumbo
+    // yarn, and the counts line up with the table's own order.
+    let mut out: Vec<YarnFamilyFacet> = Vec::new();
+    for (key, _, _, _) in crate::yarn::FAMILIES {
+        let count = counts
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, n)| *n)
+            .unwrap_or(0);
+        out.push(YarnFamilyFacet {
+            key: key.to_string(),
+            label: crate::yarn::label_for(key).to_string(),
+            count,
+        });
+    }
+    Ok(out)
 }

@@ -3,6 +3,7 @@
 use super::*;
 use crate::models::{
     AnnotationInput, Counter, CounterInput, HighlightSettings, Pattern, PinInput, PinPlacement,
+    Yarn, YarnInput, YarnLot, YarnLotInput,
 };
 
 /// A connection against a throwaway in-memory database.
@@ -1537,3 +1538,306 @@ fn a_library_built_before_hashes_is_backfilled() {
     assert_eq!(again, stored);
 }
 
+
+// ---------- yarn stash ----------
+
+/// A lot as the add dialog sends it: dye lot, ball count, grams left.
+fn lot(dye_lot: &str, balls: f64, grams_left: i64) -> YarnLotInput {
+    YarnLotInput {
+        dye_lot: dye_lot.to_string(),
+        balls,
+        grams_left,
+        ..YarnLotInput::default()
+    }
+}
+
+/// A yarn in the stash with the given lots, for the yarn tests.
+fn stash(conn: &Connection, name: &str, weight: &str, lots: Vec<YarnLotInput>) -> Yarn {
+    let input = YarnInput {
+        name: name.to_string(),
+        yarn_weight: weight.to_string(),
+        lots,
+        ..YarnInput::default()
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    insert_yarn(conn, &id, &input).expect("insert yarn")
+}
+
+/// A filter with only the fields given set.
+fn stash_filter(search: Option<&str>, weights: &[&str]) -> YarnFilter {
+    YarnFilter {
+        search: search.map(|s| s.to_string()),
+        yarn_weight: if weights.is_empty() {
+            None
+        } else {
+            Some(weights.iter().map(|w| w.to_string()).collect())
+        },
+    }
+}
+
+#[test]
+fn the_stash_yarn_family_is_derived_and_corrected_on_update() {
+    let conn = test_db();
+    let y = stash(&conn, "Socks", "aran", vec![]);
+    assert_eq!(y.yarn_weight, "aran");
+    assert_eq!(y.yarn_weight_family, "aran");
+
+    // Correcting the stated weight re-derives the family, like patterns, or
+    // the yarn would keep filtering under the old weight.
+    let mut edited = y.clone();
+    edited.yarn_weight = "lace weight".to_string();
+    let saved = update_yarn(&conn, &edited).unwrap();
+    assert_eq!(saved.yarn_weight_family, "lace");
+    let fetched = get_yarn(&conn, &y.id).unwrap();
+    assert_eq!(fetched.yarn_weight_family, "lace");
+}
+
+#[test]
+fn updating_a_yarn_reconciles_its_lots() {
+    let conn = test_db();
+    let y = stash(
+        &conn,
+        "Cardigan",
+        "dk",
+        vec![lot("A1", 2.0, 200), lot("B2", 3.0, 300), lot("C3", 1.0, 100)],
+    );
+    assert_eq!(y.lots.len(), 3);
+
+    let mut edited = get_yarn(&conn, &y.id).unwrap();
+    let kept = edited.lots[0].clone();
+    let mut changed = edited.lots[1].clone();
+    changed.grams_left = 250;
+    changed.location = "attic".to_string();
+    // Keep the first lot as it is, edit the second, drop the third, and add
+    // one the database has never seen (no id yet).
+    edited.lots = vec![
+        kept.clone(),
+        changed.clone(),
+        YarnLot {
+            id: String::new(),
+            yarn_id: y.id.clone(),
+            dye_lot: "D4".to_string(),
+            balls: 0.5,
+            grams_left: 45,
+            location: String::new(),
+            bought_at: None,
+        },
+    ];
+
+    let saved = update_yarn(&conn, &edited).unwrap();
+    assert_eq!(saved.lots.len(), 3);
+    let by_id = |id: &str| saved.lots.iter().find(|l| l.id == id);
+
+    // The kept lot is unchanged, id and all.
+    let still_there = by_id(&kept.id).expect("kept lot survives");
+    assert_eq!(still_there.dye_lot, "A1");
+    assert_eq!(still_there.grams_left, 200);
+
+    // The edited lot kept its id and took the new values.
+    let updated = by_id(&changed.id).expect("edited lot survives");
+    assert_eq!(updated.grams_left, 250);
+    assert_eq!(updated.location, "attic");
+
+    // The dropped lot is gone, and the new one was inserted with a fresh id.
+    assert!(by_id(&y.lots[2].id).is_none(), "the dropped lot must go");
+    let added = saved
+        .lots
+        .iter()
+        .find(|l| l.dye_lot == "D4")
+        .expect("the new lot is inserted");
+    assert!(!added.id.is_empty());
+    assert_eq!(added.balls, 0.5);
+
+    // Nothing but those three rows exists for the yarn.
+    assert_eq!(list_yarn_lots(&conn, &y.id).unwrap().len(), 3);
+}
+
+#[test]
+fn the_derived_quantities_sum_over_the_lots() {
+    let conn = test_db();
+    let input = YarnInput {
+        name: "Shawl".to_string(),
+        yarn_weight: "fingering".to_string(),
+        metres_per_ball: 400,
+        grams_per_ball: 100,
+        lots: vec![lot("A", 2.5, 150), lot("B", 1.0, 30)],
+        ..YarnInput::default()
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let y = insert_yarn(&conn, &id, &input).unwrap();
+
+    assert_eq!(y.grams_left, 180);
+    assert_eq!(y.balls_total, 3.5);
+    // 180 g at 100 g per 400 m ball is 720 m.
+    assert_eq!(y.metres_left, 720);
+
+    // Without a per-ball gram figure the metres cannot be known, and zero is
+    // more honest than a guess. The other sums still stand.
+    let mut no_grams = get_yarn(&conn, &y.id).unwrap();
+    no_grams.grams_per_ball = 0;
+    let saved = update_yarn(&conn, &no_grams).unwrap();
+    assert_eq!(saved.metres_left, 0);
+    assert_eq!(saved.grams_left, 180);
+    assert_eq!(saved.balls_total, 3.5);
+
+    // The same goes for a missing metre figure.
+    let mut no_metres = get_yarn(&conn, &y.id).unwrap();
+    no_metres.metres_per_ball = 0;
+    let saved = update_yarn(&conn, &no_metres).unwrap();
+    assert_eq!(saved.metres_left, 0);
+}
+
+#[test]
+fn yarns_can_be_filtered_by_family_and_search() {
+    let conn = test_db();
+    let a = stash(&conn, "Alpaca Cloud", "aran", vec![]);
+    let _b = stash(&conn, "Shetland", "180 m/100g", vec![]);
+    let _c = stash(&conn, "Sock Set", "fingering", vec![]);
+    // No weight at all, which must never be swept into a family's results.
+    let _d = stash(&conn, "Mystery Bag", "", vec![]);
+
+    let names = |f: YarnFilter| -> Vec<String> {
+        let mut rows = list_yarns(&conn, &f).unwrap();
+        rows.sort_by(|x, y| x.name.cmp(&y.name));
+        rows.into_iter().map(|y| y.name).collect()
+    };
+
+    assert_eq!(names(stash_filter(None, &["aran"])), vec!["Alpaca Cloud", "Shetland"]);
+    // Several families are an OR within the group.
+    assert_eq!(
+        names(stash_filter(None, &["aran", "fingering"])),
+        vec!["Alpaca Cloud", "Shetland", "Sock Set"]
+    );
+    // Search and family combine: the term narrows the family's matches.
+    assert_eq!(
+        names(stash_filter(Some("alpaca"), &["aran", "fingering"])),
+        vec!["Alpaca Cloud"]
+    );
+    // The lots and derived figures come along on a list, not just on a get.
+    let listed = list_yarns(&conn, &stash_filter(None, &[])).unwrap();
+    assert_eq!(listed.len(), 4);
+    assert!(listed.iter().any(|y| y.id == a.id));
+
+    // Newest first, so the stash reads as "recently added" by default. Every
+    // row gets a pinned timestamp: the real ones are all "now" and would
+    // outrank the small values used here.
+    for (name, at) in [
+        ("Alpaca Cloud", 1),
+        ("Shetland", 2),
+        ("Sock Set", 3),
+        ("Mystery Bag", 4),
+    ] {
+        conn.execute(
+            "UPDATE yarns SET added_at = ?2 WHERE name = ?1",
+            rusqlite::params![name, at],
+        )
+        .unwrap();
+    }
+    let ordered = list_yarns(&conn, &stash_filter(None, &[])).unwrap();
+    let order: Vec<&str> = ordered.iter().map(|y| y.name.as_str()).collect();
+    assert_eq!(order, vec!["Mystery Bag", "Sock Set", "Shetland", "Alpaca Cloud"]);
+}
+
+#[test]
+fn yarn_search_treats_like_wildcards_as_literal_text() {
+    let conn = test_db();
+    stash(&conn, "100% Merino", "dk", vec![]);
+    // Would match a wildcard "100%" read as "100 followed by anything".
+    stash(&conn, "1000 Miles", "dk", vec![]);
+
+    let found = list_yarns(&conn, &stash_filter(Some("100%"), &[])).unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].name, "100% Merino");
+}
+
+#[test]
+fn the_stash_facets_list_every_family_with_its_count() {
+    let conn = test_db();
+    stash(&conn, "A", "aran", vec![]);
+    stash(&conn, "B", "180 m/100g", vec![]);
+    stash(&conn, "C", "fingering", vec![]);
+
+    let facets = yarn_facets(&conn).unwrap();
+    // Every family in the table is present whether or not it is used, so the
+    // sidebar reads the same for everyone.
+    assert_eq!(facets.len(), crate::yarn::FAMILIES.len());
+    let count = |key: &str| -> i64 {
+        facets
+            .iter()
+            .find(|f| f.key == key)
+            .unwrap_or_else(|| panic!("no facet for {key}"))
+            .count
+    };
+    assert_eq!(count("aran"), 2, "the named one and the 180 m one");
+    assert_eq!(count("fingering"), 1);
+    assert_eq!(count("jumbo"), 0, "unused but still listed");
+    // Table order, lightest first, so the filter reads as a scale.
+    let keys: Vec<&str> = facets.iter().map(|f| f.key.as_str()).collect();
+    assert_eq!(keys[0], "lace");
+    assert_eq!(*keys.last().unwrap(), "jumbo");
+}
+
+#[test]
+fn deleting_a_yarn_removes_its_lots() {
+    let conn = test_db();
+    let y = stash(&conn, "Doomed", "dk", vec![lot("A", 1.0, 100), lot("B", 2.0, 200)]);
+    delete_yarn(&conn, &y.id).unwrap();
+    assert!(get_yarn(&conn, &y.id).is_err());
+    assert!(list_yarn_lots(&conn, &y.id).unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_yarn_is_not_found() {
+    let conn = test_db();
+    let err = get_yarn(&conn, "nope").unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "got {err}");
+
+    // Updating a yarn that is not there is NotFound, not a silent insert.
+    let mut ghost = stash(&conn, "Ghost", "dk", vec![]);
+    ghost.id = "nope".to_string();
+    let err = update_yarn(&conn, &ghost).unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "got {err}");
+
+    let err = delete_yarn(&conn, "nope").unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "got {err}");
+}
+
+#[test]
+fn a_yarn_round_trips_every_field() {
+    let conn = test_db();
+    let input = YarnInput {
+        name: "Woolfolk Tynd".to_string(),
+        brand: "Woolfolk".to_string(),
+        colourway: "11 - grey".to_string(),
+        yarn_weight: "fingering".to_string(),
+        metres_per_ball: 223,
+        grams_per_ball: 50,
+        notes: "For the shop sample.".to_string(),
+        lots: vec![YarnLotInput {
+            dye_lot: "L22".to_string(),
+            balls: 4.0,
+            grams_left: 173,
+            location: "stash box 2".to_string(),
+            bought_at: Some(1_700_000_000_000),
+            ..YarnLotInput::default()
+        }],
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let y = insert_yarn(&conn, &id, &input).unwrap();
+
+    let fetched = get_yarn(&conn, &y.id).unwrap();
+    assert_eq!(fetched.name, "Woolfolk Tynd");
+    assert_eq!(fetched.brand, "Woolfolk");
+    assert_eq!(fetched.colourway, "11 - grey");
+    assert_eq!(fetched.yarn_weight_family, "fingering");
+    assert_eq!(fetched.metres_per_ball, 223);
+    assert_eq!(fetched.grams_per_ball, 50);
+    assert_eq!(fetched.notes, "For the shop sample.");
+    assert_eq!(fetched.photo_path, "");
+    assert!(fetched.added_at > 0);
+    assert_eq!(fetched.lots.len(), 1);
+    assert_eq!(fetched.lots[0].yarn_id, y.id);
+    assert_eq!(fetched.lots[0].dye_lot, "L22");
+    assert_eq!(fetched.lots[0].location, "stash box 2");
+    assert_eq!(fetched.lots[0].bought_at, Some(1_700_000_000_000));
+}

@@ -18,6 +18,9 @@ const store = {
   aiSettings: null,
   updateSettings: null,
   apiKey: null,
+  // Yarn stash. Photos share the `covers` blob store — yarn and pattern ids
+  // never collide (`y…` vs `p…`).
+  yarns: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -252,6 +255,61 @@ function seed() {
       position: 3,
     },
   ];
+
+  // The stash, seeded to cover the cases worth seeing side by side: a yarn
+  // bought twice (two dye lots), a partial lot where the weighed grams are
+  // less than balls × grams-per-ball, and one with no per-ball figures at
+  // all, so the metres line has nothing to derive from. The derived totals
+  // are computed on read (see withYarnTotals), as the backend does.
+  store.yarns = [
+    {
+      id: "y1",
+      name: "Shetland Sock",
+      brand: "Jamieson's",
+      colourway: "Peat",
+      yarnWeight: "fingering",
+      metresPerBall: 400,
+      gramsPerBall: 100,
+      photoPath: "",
+      notes: "For colourwork yokes.",
+      addedAt: now - 4000,
+      lots: [
+        { id: "l1", yarnId: "y1", dyeLot: "L42", balls: 3, gramsLeft: 300, location: "Cedar chest", boughtAt: now - 90 * 86400000 },
+        { id: "l2", yarnId: "y1", dyeLot: "L57", balls: 2, gramsLeft: 200, location: "Cedar chest", boughtAt: now - 30 * 86400000 },
+      ],
+    },
+    {
+      id: "y2",
+      name: "Merino DK",
+      brand: "Cascade",
+      colourway: "Heather",
+      yarnWeight: "DK",
+      metresPerBall: 220,
+      gramsPerBall: 100,
+      photoPath: "",
+      notes: "",
+      addedAt: now - 3000,
+      lots: [
+        // A partial lot: four balls bought, 240 g weighed left.
+        { id: "l3", yarnId: "y2", dyeLot: "8042", balls: 4, gramsLeft: 240, location: "Under-bed box", boughtAt: null },
+      ],
+    },
+    {
+      id: "y3",
+      name: "Handspun",
+      brand: "",
+      colourway: "Natural grey",
+      yarnWeight: "handspun",
+      metresPerBall: 0,
+      gramsPerBall: 0,
+      photoPath: "",
+      notes: "Gift from Mo; no ball band.",
+      addedAt: now - 2000,
+      lots: [
+        { id: "l4", yarnId: "y3", dyeLot: "", balls: 1, gramsLeft: 87, location: "Basket by the sofa", boughtAt: null },
+      ],
+    },
+  ];
 }
 
 /**
@@ -362,6 +420,23 @@ function clampCount(current, delta, target) {
 
 function newProgress(patternId) {
   return { patternId, totalRows: 0, updatedAt: Date.now() };
+}
+
+/**
+ * A stored yarn with the derived figures the backend computes on every read:
+ * the family, the totals over the lots, and the metres left, which is weighed
+ * grams scaled by the ball band — 0 when the per-ball figures are unknown.
+ */
+function withYarnTotals(yarn) {
+  const out = clone(yarn);
+  out.yarnWeightFamily = yarnFamily(yarn.yarnWeight);
+  out.gramsLeft = out.lots.reduce((n, l) => n + (l.gramsLeft || 0), 0);
+  out.ballsTotal = out.lots.reduce((n, l) => n + (l.balls || 0), 0);
+  out.metresLeft =
+    out.gramsPerBall > 0 && out.metresPerBall > 0
+      ? Math.round((out.gramsLeft / out.gramsPerBall) * out.metresPerBall)
+      : 0;
+  return out;
 }
 
 function requireCounter(id) {
@@ -693,6 +768,133 @@ const handlers = {
   },
   patterns_missing_covers: () =>
     store.patterns.filter((p) => !p.coverPath).map((p) => p.id),
+
+  // ---------- yarn stash ----------
+  //
+  // The lot reconcile, the family derivation and the cascade delete live in
+  // the backend, so the stub reimplements them rather than trusting what it
+  // is sent. A stored lot keeps only what the backend owns; derived figures
+  // and ids are recomputed here.
+  list_yarns: ({ filter }) => {
+    let out = store.yarns.slice();
+    if (filter?.search) {
+      const t = filter.search.toLowerCase();
+      out = out.filter(
+        (y) =>
+          y.name.toLowerCase().includes(t) ||
+          y.brand.toLowerCase().includes(t) ||
+          y.colourway.toLowerCase().includes(t) ||
+          y.notes.toLowerCase().includes(t),
+      );
+    }
+    // Several families mean "any of these", as in list_patterns.
+    if (filter?.yarnWeight?.length) {
+      out = out.filter((y) => filter.yarnWeight.includes(yarnFamily(y.yarnWeight)));
+    }
+    out.sort((a, b) => b.addedAt - a.addedAt);
+    return out.map(withYarnTotals);
+  },
+  get_yarn: ({ id }) => {
+    const y = store.yarns.find((x) => x.id === id);
+    // As with patterns: a missing row is an error, not a null.
+    if (!y) throw new Error(`yarn not found: ${id}`);
+    return withYarnTotals(y);
+  },
+  add_yarn: ({ input }) => {
+    const id = `y${store.nextId++}`;
+    const y = {
+      id,
+      name: input.name,
+      brand: input.brand || "",
+      colourway: input.colourway || "",
+      yarnWeight: input.yarnWeight || "",
+      metresPerBall: input.metresPerBall || 0,
+      gramsPerBall: input.gramsPerBall || 0,
+      photoPath: "",
+      notes: input.notes || "",
+      addedAt: Date.now(),
+      lots: (input.lots || []).map((lot) => ({
+        id: `l${store.nextId++}`,
+        yarnId: id,
+        dyeLot: lot.dyeLot || "",
+        balls: lot.balls || 0,
+        gramsLeft: lot.gramsLeft || 0,
+        location: lot.location || "",
+        boughtAt: lot.boughtAt ?? null,
+      })),
+    };
+    store.yarns.push(y);
+    return withYarnTotals(y);
+  },
+  update_yarn: ({ yarn }) => {
+    const i = store.yarns.findIndex((x) => x.id === yarn.id);
+    if (i < 0) throw new Error(`yarn not found: ${yarn.id}`);
+    const existing = store.yarns[i];
+    // The lot reconcile: an id that comes back is kept, a stored lot missing
+    // from the list is gone, and a lot without an id is new.
+    const lots = (yarn.lots || []).map((lot) => ({
+      id: lot.id || `l${store.nextId++}`,
+      yarnId: yarn.id,
+      dyeLot: lot.dyeLot || "",
+      balls: lot.balls || 0,
+      gramsLeft: lot.gramsLeft || 0,
+      location: lot.location || "",
+      boughtAt: lot.boughtAt ?? null,
+    }));
+    const next = {
+      ...clone(yarn),
+      lots,
+      // addedAt and photoPath are the backend's, not the client's to rewrite.
+      addedAt: existing.addedAt,
+      photoPath: existing.photoPath,
+    };
+    // The store holds no derived fields; they are computed on read.
+    delete next.yarnWeightFamily;
+    delete next.gramsLeft;
+    delete next.ballsTotal;
+    delete next.metresLeft;
+    store.yarns[i] = next;
+    return withYarnTotals(next);
+  },
+  delete_yarn: ({ id }) => {
+    store.yarns = store.yarns.filter((y) => y.id !== id);
+    // The photo goes too, as deleting a pattern takes its cover.
+    store.covers.delete(id);
+  },
+  yarn_facets: () =>
+    // Every family in the table, whether or not it is used, in table order.
+    YARN_FAMILIES.map(([key, label]) => ({
+      key,
+      label,
+      count: store.yarns.filter((y) => yarnFamily(y.yarnWeight) === key).length,
+    })),
+  set_yarn_photo: ({ yarnId, bytes }) => {
+    // Same rules as set_cover: content is checked, not trusted.
+    if (!bytes || bytes.length === 0) throw new Error("That file is empty.");
+    if (bytes.length > 20 * 1024 * 1024) {
+      throw new Error("That image is too large to be a photo (limit 20 MB).");
+    }
+    const found = sniffImage(bytes);
+    if (!found) throw new Error("That file does not look like an image.");
+    const y = store.yarns.find((x) => x.id === yarnId);
+    if (!y) throw new Error(`yarn not found: ${yarnId}`);
+    const [ext, mime] = found;
+    const fileName = `${yarnId}.${ext}`;
+    y.photoPath = fileName;
+    store.covers.set(yarnId, bytes);
+    return { yarnId, fileName, bytes, mime };
+  },
+  get_yarn_photo: ({ yarnId }) => {
+    const bytes = store.covers.get(yarnId);
+    if (!bytes) throw new Error("This yarn has no photo.");
+    // Raw bytes, as the real command returns them.
+    return Uint8Array.from(bytes).buffer;
+  },
+  remove_yarn_photo: ({ yarnId }) => {
+    store.covers.delete(yarnId);
+    const y = store.yarns.find((x) => x.id === yarnId);
+    if (y) y.photoPath = "";
+  },
 
   // ---------- AI metadata ----------
   get_ai_settings: () => {

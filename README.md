@@ -105,6 +105,33 @@ something I have?".
 **Removing a pattern.** Every card has a **Remove** button. It asks first, and
 says plainly that the file and its cover go too and that it cannot be undone.
 
+## Yarn stash
+
+The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A
+card shows the name, brand and colourway, the weight, a photo, and what is
+left of it: "4 × 100 g · 240 g left · ~528 m".
+
+**Partial balls are weighed, not guessed.** Put the grams left on a lot and
+the metres left are worked out from the ball band (metres per ball ÷ grams
+per ball × grams left), so a half-used ball counts as what it actually is.
+When the per-ball figures are unknown the metres line simply stays off rather
+than being invented.
+
+**Lots are first-class.** The same yarn bought twice is two lots, because dye
+lots differ between purchases and mixing them shows in the knitting. Each lot
+keeps its dye lot, balls, grams left, where it lives, and when it was bought;
+a yarn's totals add up over all of them. A new yarn starts with one empty lot
+row, and the **+ Add lot** button adds another.
+
+The weight filter down the side is the same standard scale the library
+filters patterns on — Lace through Jumbo, with a count beside each — so
+"could I knit this in something I have?" reads off one table. Families you
+own nothing in are dimmed rather than hidden.
+
+A photo can be chosen in the add/edit form; it is downscaled in the app
+before it is stored, as covers are. Removing a yarn asks first and takes its
+photo with it.
+
 **The row counter.** One total, and any number of named counters.
 
 - ***Project total*** — every row you finish, across the whole project. It
@@ -313,13 +340,15 @@ Two settings worth knowing about, both under *More options*:
 
 ```
 src/
-  main.ts              app shell, swaps library and reader
+  main.ts              app shell: the tab bar, swapping library, stash and reader
   api.ts               typed wrapper over the Tauri commands
-  covers.ts            cover extraction, downscaling, storage
+  covers.ts            cover and yarn-photo extraction, downscaling, storage
   annotations.ts       mark coordinates, quote anchoring, rectangle merging
   views/
     library.ts         search, filters, covers, scanning
-    pattern-form.ts    add/edit dialog
+    stash.ts           the yarn stash: cards, quantities, the weight filter
+    pattern-form.ts    add/edit pattern dialog
+    yarn-form.ts       add/edit yarn dialog, with lots and a photo
     settings.ts        updates and model settings, with the privacy notice
   ai/
     scan.ts            running a scan, and undo
@@ -491,8 +520,15 @@ backend unsaved, a download ending in the installer being started, the startup
 notice appearing only when a release is seeded, and the settings surviving a
 save and reopen.
 
-Together that is 97 checks: 7 layout, 13 row, 58 annotation, 8 bulk add,
-11 update.
+`harness/yarn-stash-checks.js` covers the stash tab, via
+`window.__yarnStashChecks()`. It drives the real UI: the tab switch there and
+back (re-running the layout checks after it), the seeded cards' derived
+quantities, adding a yarn through the real form, editing a lot's weighed grams
+and watching the metres line move, the weight-family filter, adding a second
+dye lot, and a removal staying removed across a tab round trip.
+
+Together that is 117 checks: 7 layout, 13 row, 58 annotation, 8 bulk add,
+11 update, 20 yarn stash.
 
 `harness/run-checks.mjs` drives every suite from a terminal: serve the built
 harness (`npm run harness:build && npm run harness:serve`), start Chrome with

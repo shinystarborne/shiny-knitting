@@ -9,7 +9,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 const COVER_SIZE = 900;
 
 /**
- * Cover image handling.
+ * Image handling for pattern covers and yarn photos.
  *
  * All image work happens here in the webview, where a canvas already exists,
  * and the backend only ever stores finished bytes. That keeps a native image
@@ -225,23 +225,20 @@ export async function removeCover(patternId: string): Promise<void> {
   await api.removeCover(patternId);
 }
 
-/**
- * Object URLs for covers, cached per pattern as the promise that produces
- * them.
- *
- * Reading a cover is a round trip to the backend, and the library view asks
- * for the same cover every time it repaints, so each one is fetched once and
- * the URL is reused. Caching the in-flight promise, not just the resolved
- * URL, means two calls for one pattern share a single read instead of each
- * creating an object URL that only one of them can keep. Revoked by
- * `clearCoverCache` when the library changes.
- */
-const urlCache = new Map<string, Promise<string | null>>();
+/** Uploads a prepared photo and records it against the yarn. */
+export async function saveYarnPhoto(yarnId: string, blob: Blob): Promise<void> {
+  const buffer = new Uint8Array(await blob.arrayBuffer());
+  await api.setYarnPhoto(yarnId, Array.from(buffer));
+}
+
+export async function removeYarnPhoto(yarnId: string): Promise<void> {
+  await api.removeYarnPhoto(yarnId);
+}
 
 /**
  * Works out an image's type from its first bytes.
  *
- * The backend returns cover bytes as a raw payload and does not send a MIME
+ * The backend returns image bytes as a raw payload and does not send a MIME
  * type alongside, because covers are only ever JPEG or PNG and the type is
  * already in the data. This mirrors the backend's own sniffing.
  */
@@ -261,58 +258,88 @@ export function imageMime(bytes: Uint8Array): string {
   return "application/octet-stream";
 }
 
-export function coverUrl(patternId: string): Promise<string | null> {
-  const cached = urlCache.get(patternId);
-  if (cached) return cached;
-  // Declared separately: the body below compares the cache entry against the
-  // promise itself, and a const cannot be named inside its own initializer.
-  let promise!: Promise<string | null>;
-  promise = (async () => {
-    let url: string | null = null;
-    try {
-      const raw = await api.getCover(patternId);
-      const bytes = toBytes(raw);
-      if (bytes.length > 0) {
-        const blob = new Blob([bytes], { type: imageMime(bytes) });
-        url = URL.createObjectURL(blob);
+/**
+ * Object URLs for stored images, cached per id as the promise that produces
+ * them.
+ *
+ * Reading an image is a round trip to the backend, and a view asks for the
+ * same one every time it repaints, so each is fetched once and the URL is
+ * reused. Caching the in-flight promise, not just the resolved URL, means two
+ * calls for one id share a single read instead of each creating an object URL
+ * that only one of them can keep. Revoked by `clear` when the view changes.
+ *
+ * The fetch-bytes function is the only thing that differs between pattern
+ * covers and yarn photos, so both caches are made from this one factory.
+ */
+function makeImageCache(fetchBytes: (id: string) => Promise<ArrayBuffer | ArrayBufferView>) {
+  const urlCache = new Map<string, Promise<string | null>>();
+
+  const url = (id: string): Promise<string | null> => {
+    const cached = urlCache.get(id);
+    if (cached) return cached;
+    // Declared separately: the body below compares the cache entry against
+    // the promise itself, and a const cannot be named inside its own
+    // initializer.
+    let promise!: Promise<string | null>;
+    promise = (async () => {
+      let objectUrl: string | null = null;
+      try {
+        const raw = await fetchBytes(id);
+        const bytes = toBytes(raw);
+        if (bytes.length > 0) {
+          const blob = new Blob([bytes], { type: imageMime(bytes) });
+          objectUrl = URL.createObjectURL(blob);
+        }
+      } catch {
+        // No image, or the file went missing. Not an error worth surfacing.
       }
-    } catch {
-      // No cover, or the file went missing. Not an error worth surfacing.
-    }
-    // Only a URL that is still the current entry is kept. One produced after
-    // the cache was cleared or replaced belongs to a dead screen: nothing
-    // will revoke it, so it is revoked here rather than leaked. Misses are
-    // not cached either, so a later call can retry.
-    if (urlCache.get(patternId) !== promise) {
-      if (url) URL.revokeObjectURL(url);
-      return null;
-    }
-    if (!url) urlCache.delete(patternId);
-    return url;
-  })();
-  urlCache.set(patternId, promise);
-  return promise;
-}
+      // Only a URL that is still the current entry is kept. One produced
+      // after the cache was cleared or replaced belongs to a dead screen:
+      // nothing will revoke it, so it is revoked here rather than leaked.
+      // Misses are not cached either, so a later call can retry.
+      if (urlCache.get(id) !== promise) {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        return null;
+      }
+      if (!objectUrl) urlCache.delete(id);
+      return objectUrl;
+    })();
+    urlCache.set(id, promise);
+    return promise;
+  };
 
-/** Drops cached URLs so the next read fetches fresh bytes. */
-export function forgetCover(patternId: string): void {
-  const entry = urlCache.get(patternId);
-  if (!entry) return;
-  urlCache.delete(patternId);
-  void entry.then((url) => {
-    if (url) URL.revokeObjectURL(url);
-  });
-}
-
-export function clearCoverCache(): void {
-  const entries = [...urlCache.values()];
-  urlCache.clear();
-  for (const entry of entries) {
-    void entry.then((url) => {
-      if (url) URL.revokeObjectURL(url);
+  /** Drops one cached URL so the next read fetches fresh bytes. */
+  const forget = (id: string): void => {
+    const entry = urlCache.get(id);
+    if (!entry) return;
+    urlCache.delete(id);
+    void entry.then((u) => {
+      if (u) URL.revokeObjectURL(u);
     });
-  }
+  };
+
+  const clear = (): void => {
+    const entries = [...urlCache.values()];
+    urlCache.clear();
+    for (const entry of entries) {
+      void entry.then((u) => {
+        if (u) URL.revokeObjectURL(u);
+      });
+    }
+  };
+
+  return { url, forget, clear };
 }
+
+const coverCache = makeImageCache((id) => api.getCover(id));
+export const coverUrl = coverCache.url;
+export const forgetCover = coverCache.forget;
+export const clearCoverCache = coverCache.clear;
+
+const yarnPhotoCache = makeImageCache((id) => api.getYarnPhoto(id));
+export const yarnPhotoUrl = yarnPhotoCache.url;
+export const forgetYarnPhoto = yarnPhotoCache.forget;
+export const clearYarnPhotoCache = yarnPhotoCache.clear;
 
 /**
  * Extracts and stores a cover if the pattern does not already have one.

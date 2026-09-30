@@ -7,7 +7,7 @@ use crate::ai::{CompletionRequest, ModelInfo};
 use crate::db;
 use crate::models::{
     AiSettings, AppError, CoverImage, Counter, CounterInput, HighlightSettings, Pattern,
-    PatternInput, Progress, ScannedFile, Suggestion, SuggestionResult,
+    PatternInput, PhotoInfo, Progress, ScannedFile, Suggestion, SuggestionResult, Yarn, YarnInput,
 };
 use crate::state::AppState;
 
@@ -434,6 +434,86 @@ pub fn get_cover(
 #[tauri::command]
 pub fn remove_cover(state: State<'_, AppState>, pattern_id: String) -> CmdResult<()> {
     crate::covers::remove_cover(&state, &pattern_id)
+}
+
+// ---------- yarn stash ----------
+
+#[tauri::command]
+pub fn list_yarns(state: State<'_, AppState>, filter: db::YarnFilter) -> CmdResult<Vec<Yarn>> {
+    db::list_yarns(&state.db(), &filter)
+}
+
+#[tauri::command]
+pub fn get_yarn(state: State<'_, AppState>, id: String) -> CmdResult<Yarn> {
+    db::get_yarn(&state.db(), &id)
+}
+
+#[tauri::command]
+pub fn add_yarn(state: State<'_, AppState>, input: YarnInput) -> CmdResult<Yarn> {
+    let id = uuid::Uuid::new_v4().to_string();
+    db::insert_yarn(&state.db(), &id, &input)
+}
+
+#[tauri::command]
+pub fn update_yarn(state: State<'_, AppState>, yarn: Yarn) -> CmdResult<Yarn> {
+    db::update_yarn(&state.db(), &yarn)
+}
+
+#[tauri::command]
+pub fn delete_yarn(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    delete_yarn_from(&state, &id)
+}
+
+/// Deletes a yarn and the photo the library kept for it. The lots go with the
+/// row via ON DELETE CASCADE; the photo file is removed best effort, like the
+/// pattern delete: a file already gone is not a reason to fail.
+fn delete_yarn_from(state: &AppState, id: &str) -> CmdResult<()> {
+    let photo = db::get_yarn_photo(&state.db(), id).unwrap_or_default();
+
+    db::delete_yarn(&state.db(), id)?;
+
+    if !photo.is_empty() {
+        let path = state
+            .library_dir
+            .join("yarn-photos")
+            .join(crate::covers::safe_name(&photo));
+        // Guard against a malformed path escaping the library folder.
+        if path.starts_with(&state.library_dir) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn yarn_facets(state: State<'_, AppState>) -> CmdResult<Vec<db::YarnFamilyFacet>> {
+    db::yarn_facets(&state.db())
+}
+
+/// Stores image bytes as a yarn's photo.
+#[tauri::command]
+pub fn set_yarn_photo(
+    state: State<'_, AppState>,
+    yarn_id: String,
+    bytes: Vec<u8>,
+) -> CmdResult<PhotoInfo> {
+    crate::covers::set_yarn_photo(&state, &yarn_id, bytes)
+}
+
+/// The photo's bytes, as a raw IPC payload like `get_cover`: a JSON array of
+/// numbers costs roughly three characters per byte, which shows on a photo.
+#[tauri::command]
+pub fn get_yarn_photo(
+    state: State<'_, AppState>,
+    yarn_id: String,
+) -> CmdResult<tauri::ipc::Response> {
+    let (_mime, bytes) = crate::covers::read_yarn_photo(&state, &yarn_id)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+pub fn remove_yarn_photo(state: State<'_, AppState>, yarn_id: String) -> CmdResult<()> {
+    crate::covers::remove_yarn_photo(&state, &yarn_id)
 }
 
 // ---------- AI metadata ----------
@@ -1122,5 +1202,111 @@ mod tests {
         .unwrap();
         assert_eq!(json["fileName"], "f");
         assert!(json.get("file_name").is_none());
+    }
+
+    /// A yarn on the test database, with one lot.
+    fn test_yarn(conn: &rusqlite::Connection, name: &str) -> Yarn {
+        let input = YarnInput {
+            name: name.to_string(),
+            yarn_weight: "dk".to_string(),
+            grams_per_ball: 100,
+            lots: vec![crate::models::YarnLotInput {
+                dye_lot: "A1".to_string(),
+                balls: 2.0,
+                grams_left: 150,
+                ..crate::models::YarnLotInput::default()
+            }],
+            ..YarnInput::default()
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        db::insert_yarn(conn, &id, &input).unwrap()
+    }
+
+    #[test]
+    fn deleting_a_yarn_removes_its_lots_and_photo() {
+        let (state, dir) = state_in_temp_library();
+
+        let id = {
+            let conn = state.db();
+            let yarn = test_yarn(&conn, "Doomed");
+            let photos = dir.join("yarn-photos");
+            std::fs::create_dir_all(&photos).unwrap();
+            std::fs::write(photos.join(format!("{}.jpg", yarn.id)), b"jpg").unwrap();
+            db::set_yarn_photo(&conn, &yarn.id, &format!("{}.jpg", yarn.id)).unwrap();
+            yarn.id
+        };
+
+        delete_yarn_from(&state, &id).unwrap();
+
+        assert!(
+            !dir.join("yarn-photos").join(format!("{id}.jpg")).exists(),
+            "the photo leaked"
+        );
+        assert!(db::get_yarn(&state.db(), &id).is_err());
+        assert!(db::list_yarn_lots(&state.db(), &id).unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_yarn_photo_round_trips_and_rejects_non_images() {
+        let (state, dir) = state_in_temp_library();
+        let yarn = test_yarn(&state.db(), "Photogenic");
+
+        // Real magic bytes: the name means nothing, the content everything.
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+        let info = crate::covers::set_yarn_photo(&state, &yarn.id, png.to_vec()).unwrap();
+        assert_eq!(info.yarn_id, yarn.id);
+        assert_eq!(info.file_name, format!("{}.png", yarn.id));
+        assert_eq!(info.mime, "image/png");
+        assert_eq!(info.bytes, png);
+
+        let (mime, bytes) = crate::covers::read_yarn_photo(&state, &yarn.id).unwrap();
+        assert_eq!(mime, "image/png");
+        assert_eq!(bytes, png);
+
+        // A PDF is not a photo, and a rejected replacement leaves the old one.
+        let err = crate::covers::set_yarn_photo(&state, &yarn.id, b"%PDF-1.4".to_vec())
+            .unwrap_err();
+        assert!(matches!(err, AppError::Message(_)), "got {err}");
+        let (_, bytes) = crate::covers::read_yarn_photo(&state, &yarn.id).unwrap();
+        assert_eq!(bytes, png);
+
+        crate::covers::remove_yarn_photo(&state, &yarn.id).unwrap();
+        assert!(!dir.join("yarn-photos").join(&info.file_name).exists());
+        assert!(crate::covers::read_yarn_photo(&state, &yarn.id).is_err());
+        assert_eq!(db::get_yarn(&state.db(), &yarn.id).unwrap().photo_path, "");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_yarn_serialises_camel_case() {
+        // The frontend reads yarnWeightFamily, gramsLeft and friends; a
+        // snake_case leak would show blanks all over the stash.
+        let conn = db::open_test_db();
+        let yarn = test_yarn(&conn, "Case Check");
+        let json = serde_json::to_value(&yarn).unwrap();
+        for key in [
+            "yarnWeight",
+            "yarnWeightFamily",
+            "metresPerBall",
+            "gramsPerBall",
+            "photoPath",
+            "addedAt",
+            "gramsLeft",
+            "ballsTotal",
+            "metresLeft",
+        ] {
+            assert!(json.get(key).is_some(), "missing {key}");
+        }
+        assert!(json.get("yarn_weight_family").is_none());
+        assert!(json.get("grams_left").is_none());
+
+        let lot = &json["lots"][0];
+        for key in ["yarnId", "dyeLot", "gramsLeft", "boughtAt"] {
+            assert!(lot.get(key).is_some(), "missing lot.{key}");
+        }
+        assert!(lot.get("yarn_id").is_none());
     }
 }

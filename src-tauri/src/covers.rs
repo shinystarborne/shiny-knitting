@@ -1,17 +1,18 @@
-//! Storing cover images.
+//! Storing cover images and yarn photos.
 //!
 //! The frontend does all image work — extracting a page from a PDF, decoding
 //! an EPUB's cover, downscaling a photo the user picked — and sends finished
 //! JPEG or PNG bytes. This side only decides where the file lives and refuses
 //! anything that is not an image.
 //!
-//! Files go in `library/covers/<pattern id>.<ext>`, so removing a pattern can
-//! never leave a cover behind, and two patterns can never share one.
+//! Covers go in `library/covers/<pattern id>.<ext>` and yarn photos in
+//! `library/yarn-photos/<yarn id>.<ext>`, so removing a pattern or a yarn can
+//! never leave its image behind, and two can never share one.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::db;
-use crate::models::{AppError, AppResult, CoverImage};
+use crate::models::{AppError, AppResult, CoverImage, PhotoInfo};
 
 use super::state::AppState;
 
@@ -61,16 +62,54 @@ pub fn covers_dir(state: &AppState) -> PathBuf {
     state.library_dir.join("covers")
 }
 
+/// Checks the bytes really are an image of a sane size, returning the
+/// extension and MIME type. Anything else is refused.
+fn validate(bytes: &[u8]) -> AppResult<(&'static str, &'static str)> {
+    if bytes.is_empty() {
+        return Err(AppError::Message("That file is empty.".into()));
+    }
+    if bytes.len() > MAX_BYTES {
+        return Err(AppError::Message(
+            "That image is too large to be a cover (limit 20 MB).".into(),
+        ));
+    }
+    sniff(bytes).ok_or_else(|| AppError::Message("That file does not look like an image.".into()))
+}
+
+/// The full path of a stored image inside `dir`, if a name is recorded and
+/// the file still exists.
+///
+/// Only ever resolves a bare file name we wrote ourselves, so a tampered
+/// database cannot point the read at somewhere else on disk.
+fn existing_file(dir: &Path, stored_name: &str) -> Option<PathBuf> {
+    if stored_name.is_empty() {
+        return None;
+    }
+    let path = dir.join(safe_name(stored_name));
+    if path.exists() { Some(path) } else { None }
+}
+
+/// Writes image bytes as `<id>.<ext>` inside `dir`, returning the file name.
+fn write_file(dir: &Path, id: &str, ext: &str, bytes: &[u8]) -> AppResult<String> {
+    std::fs::create_dir_all(dir)?;
+    let file_name = format!("{}.{}", safe_name(id), ext);
+    std::fs::write(dir.join(&file_name), bytes)?;
+    Ok(file_name)
+}
+
+/// Reads an image back, reporting its MIME type from the extension.
+fn read_file(path: PathBuf) -> AppResult<(String, Vec<u8>)> {
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_else(|| "jpg".to_string());
+    Ok((mime_for(&ext).to_string(), std::fs::read(path)?))
+}
+
 /// The full path of a pattern's cover, if it has one that still exists.
 pub fn cover_path(state: &AppState, pattern_id: &str) -> AppResult<Option<PathBuf>> {
     let name = db::get_cover(&state.db(), pattern_id)?;
-    if name.is_empty() {
-        return Ok(None);
-    }
-    // Only ever resolve a bare file name we wrote ourselves, so a tampered
-    // database cannot point the read at somewhere else on disk.
-    let path = covers_dir(state).join(safe_name(&name));
-    Ok(if path.exists() { Some(path) } else { None })
+    Ok(existing_file(&covers_dir(state), &name))
 }
 
 /// Reduces a stored name to something that can only ever be a plain file
@@ -91,26 +130,11 @@ pub fn safe_name(name: &str) -> String {
 
 /// Saves image bytes as a pattern's cover, replacing any previous one.
 pub fn set_cover(state: &AppState, pattern_id: &str, bytes: Vec<u8>) -> AppResult<CoverImage> {
-    if bytes.is_empty() {
-        return Err(AppError::Message("That file is empty.".into()));
-    }
-    if bytes.len() > MAX_BYTES {
-        return Err(AppError::Message(
-            "That image is too large to be a cover (limit 20 MB).".into(),
-        ));
-    }
-    let (ext, mime) = sniff(&bytes).ok_or_else(|| {
-        AppError::Message("That file does not look like an image.".into())
-    })?;
-
-    let dir = covers_dir(state);
-    std::fs::create_dir_all(&dir)?;
+    let (ext, mime) = validate(&bytes)?;
 
     // Clear the old file first so a replaced cover does not linger.
     remove_cover(state, pattern_id).ok();
-    let file_name = format!("{}.{}", safe_name(pattern_id), ext);
-    let path = dir.join(&file_name);
-    std::fs::write(&path, &bytes)?;
+    let file_name = write_file(&covers_dir(state), pattern_id, ext, &bytes)?;
     db::set_cover(&state.db(), pattern_id, &file_name)?;
 
     Ok(CoverImage {
@@ -134,24 +158,60 @@ pub fn remove_cover(state: &AppState, pattern_id: &str) -> AppResult<()> {
 pub fn read_cover(state: &AppState, pattern_id: &str) -> AppResult<(String, Vec<u8>)> {
     let path = cover_path(state, pattern_id)?
         .ok_or_else(|| AppError::Message("This pattern has no cover.".into()))?;
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_string())
-        .unwrap_or_else(|| "jpg".to_string());
-    let mime = match ext.as_str() {
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => "image/jpeg",
-    };
-    Ok((mime.to_string(), std::fs::read(path)?))
+    read_file(path)
 }
 
 /// Whether a pattern already has a cover file on disk. Used to offer a scan
 /// only for the patterns that still need one.
 pub fn has_cover(state: &AppState, pattern_id: &str) -> bool {
     cover_path(state, pattern_id).ok().flatten().is_some()
+}
+
+// ---------- yarn photos ----------
+
+/// Yarn photos live beside the covers, one file per yarn, so removing a yarn
+/// can never leave a photo behind.
+pub fn yarn_photos_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("yarn-photos")
+}
+
+/// The full path of a yarn's photo, if it has one that still exists.
+pub fn yarn_photo_path(state: &AppState, yarn_id: &str) -> AppResult<Option<PathBuf>> {
+    let name = db::get_yarn_photo(&state.db(), yarn_id)?;
+    Ok(existing_file(&yarn_photos_dir(state), &name))
+}
+
+/// Saves image bytes as a yarn's photo, replacing any previous one.
+pub fn set_yarn_photo(state: &AppState, yarn_id: &str, bytes: Vec<u8>) -> AppResult<PhotoInfo> {
+    let (ext, mime) = validate(&bytes)?;
+
+    // Clear the old file first so a replaced photo does not linger.
+    remove_yarn_photo(state, yarn_id).ok();
+    let file_name = write_file(&yarn_photos_dir(state), yarn_id, ext, &bytes)?;
+    db::set_yarn_photo(&state.db(), yarn_id, &file_name)?;
+
+    Ok(PhotoInfo {
+        yarn_id: yarn_id.to_string(),
+        file_name,
+        bytes,
+        mime: mime.to_string(),
+    })
+}
+
+/// Deletes a yarn's photo file and clears the reference.
+pub fn remove_yarn_photo(state: &AppState, yarn_id: &str) -> AppResult<()> {
+    if let Some(path) = yarn_photo_path(state, yarn_id)? {
+        let _ = std::fs::remove_file(path);
+    }
+    db::set_yarn_photo(&state.db(), yarn_id, "")?;
+    Ok(())
+}
+
+/// Reads a yarn's photo bytes, or an error when it has none.
+pub fn read_yarn_photo(state: &AppState, yarn_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let path = yarn_photo_path(state, yarn_id)?
+        .ok_or_else(|| AppError::Message("This yarn has no photo.".into()))?;
+    read_file(path)
 }
 
 #[cfg(test)]

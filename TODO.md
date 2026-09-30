@@ -49,7 +49,8 @@ and the others build on it.
 | Raglan calculator, colourwork designer, lopapeysa | not started |
 | Bulk add | built |
 | In-app update check | built |
-| Yarn stash, plans, finished gallery, inspiration board | not started |
+| Yarn stash | built |
+| Plans, finished gallery, inspiration board | not started |
 
 ## Tabs: stash, plans, gallery, board
 
@@ -57,6 +58,9 @@ A design note that applies to all of these: `src/main.ts` today swaps exactly
 two screens (library and reader). Four new top-level areas means real
 navigation — a tab bar beside or above the library — so whichever of these
 lands first also builds the shell the others reuse.
+
+Done: the tab bar now exists in `src/main.ts` (Patterns and Stash), built
+with the yarn stash; the remaining tabs add a button and a `show…` method.
 
 **Bulk add.** Point at a folder (or multi-select files) and every PDF/EPUB in
 it joins the library, using the path-based copy that Browse already has, so
