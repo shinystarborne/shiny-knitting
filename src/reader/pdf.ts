@@ -35,10 +35,12 @@ export interface RenderedDoc {
   /** The element a page is painted into, for placing a mark. */
   pageElement(page: number): HTMLElement | null;
   /**
-   * Called when the document's own layout shifts under the reader.
-   *
-   * A PDF's pages are fixed sizes, so nothing calls it; an EPUB's chapters are
-   * not, and one growing pushes everything below it down.
+   * Called when the document's own layout shifts under the reader: an EPUB
+   * chapter growing and pushing everything below it down, or a PDF page
+   * being repainted at a different pixel size (a zoom, or the window being
+   * resized). Whatever positioned itself against the old geometry -- marks,
+   * chiefly -- has to be told to measure again, or it is left sitting where
+   * the page used to be rather than where it now is.
    */
   onReflow: (() => void) | null;
   destroy(): void;
@@ -56,8 +58,6 @@ export interface RenderedDoc {
   zoomToFit?(): void;
   /** The current zoom as a percentage of fit-width, for the readout. */
   zoomPercent?(): number;
-  /** Called after a zoom finishes re-rendering, so the readout can catch up. */
-  onZoomChange?: (() => void) | null;
 }
 
 /** How far zoomIn/zoomOut and the fit-width baseline may move, either way. */
@@ -73,7 +73,8 @@ const MAX_ZOOM = 4;
  */
 export class PdfView implements RenderedDoc {
   pageCount = 0;
-  /** A PDF's pages are fixed, so its layout never shifts on its own. */
+  /** Fired after a zoom, or a window resize, finishes re-rendering every
+   * page at the new size -- see the doc comment on RenderedDoc.onReflow. */
   onReflow: (() => void) | null = null;
   private pages: HTMLDivElement[] = [];
   private rendered = new Set<number>();
@@ -98,7 +99,6 @@ export class PdfView implements RenderedDoc {
    * the page should fill the pane without anyone having to ask for that.
    */
   private zoom = 1;
-  onZoomChange: (() => void) | null = null;
 
   constructor(scroller: HTMLElement) {
     this.scroller = scroller;
@@ -251,7 +251,7 @@ export class PdfView implements RenderedDoc {
     // reader off to whatever was at the top-left corner.
     this.scroller.scrollTop = (prevTop + prevHeight / 2) * ratio - prevHeight / 2;
     this.scroller.scrollLeft = (prevLeft + prevWidth / 2) * ratio - prevWidth / 2;
-    this.onZoomChange?.();
+    this.onReflow?.();
   }
 
   private async renderPage(n: number, width: number): Promise<void> {
@@ -414,6 +414,14 @@ export class PdfView implements RenderedDoc {
     // scroll height stays roughly right throughout the re-render.
     await this.reserveHeights();
     await this.render();
+    // Every page just repainted at a different pixel size -- a window
+    // resize is a fit-width zoom in every way that matters to a mark's
+    // position, it just was not asked for. Without this, a mark stays
+    // exactly where it was drawn before the resize while the page itself
+    // moves out from under it: found by actually maximizing the window with
+    // a mark already on screen, where the mark was left sitting over blank
+    // pane while the page reflowed to a completely different spot.
+    this.onReflow?.();
   }
 
   get scrollTop(): number {

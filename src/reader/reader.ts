@@ -94,15 +94,14 @@ export class ReaderView {
     const data = toBytes(bytes);
 
     this.doc = this.pattern.format === "epub" ? new EpubView(this.scroller) : new PdfView(this.scroller);
-    // A chapter that changes height moves everything below it, and marks are
-    // positioned against the text, so they have to be redrawn straight away.
-    this.doc.onReflow = () => this.marks?.repaint();
-    // A zoom re-renders every page, which is also a reflow as far as marks
-    // are concerned: their pixel positions are worked out from the page
-    // boxes pdf.js just resized.
-    this.doc.onZoomChange = () => {
-      this.refreshZoomReadout();
+    // A chapter that changes height moves everything below it; a PDF page
+    // repaints at a different pixel size on a zoom or a window resize. Either
+    // way, marks are positioned against the page's current box and have to be
+    // redrawn, and the zoom readout (a no-op for EPUB, which has none) has to
+    // catch up to whatever the new scale actually is.
+    this.doc.onReflow = () => {
       this.marks?.repaint();
+      this.refreshZoomReadout();
     };
     try {
       await this.doc.load(data);
