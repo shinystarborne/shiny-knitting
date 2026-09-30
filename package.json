@@ -1,7 +1,7 @@
 {
   "name": "shiny-knitting-app",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "A reading app for knitting patterns with row counters and a moving highlight line.",
   "scripts": {
