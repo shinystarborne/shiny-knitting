@@ -201,6 +201,19 @@ Shipped but found broken by real use, and fixed:
 - Added **Undo** (removes the last mark made, no confirmation) and **Clear**
   (removes every mark on the pattern, one confirmation) to `MarkLayer`,
   greyed out when there is nothing to act on.
+- **A mark stayed exactly where it was drawn after the window resized**,
+  including maximizing it, while the page itself reflowed to a new width
+  under it — so an existing highlight was left sitting over blank pane,
+  nowhere near the words it was made on. `PdfView` already re-rendered every
+  page on both a zoom *and* a plain window resize, but only zoom told the
+  mark layer to repaint; resize did not, on the leftover assumption (still
+  the doc comment on `RenderedDoc.onReflow` until this was noticed) that a
+  PDF's pages never change size on their own. They do now, on either trigger,
+  so `onReflow` fires for both. Verified by actually maximizing the harness's
+  real OS window over CDP with a mark already on screen — a plain resize
+  event dispatched in JS would not have caught this, since it is the
+  *debounced re-render that follows a real resize* that was never reported,
+  not the resize event itself.
 
 ### 2. Pins
 

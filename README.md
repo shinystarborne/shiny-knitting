@@ -20,8 +20,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.3)** — a
+  mark left behind by a window resize, fixed. The one to test.
 - **[v0.3.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.2)** — the
-  reader toolbar, fixed. The one to test.
+  reader toolbar, fixed. Superseded by `beta.3`.
 - **[v0.3.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.1)** — a
   pre-release with bulk add, in-app update checks, and the yarn stash, plus a
   project-wide audit's worth of fixes. Superseded by `beta.2`.
@@ -47,6 +49,12 @@ untouched by either.
 > text layer out of alignment with the page under it — worst on a maximized
 > window, where it also broke the page's own proportions. `beta.2` fixes all
 > three and adds PDF zoom. The installers are versioned `0.3.1`.
+
+> `v0.3.0-beta.2` still left an existing mark stuck exactly where it was drawn
+> after the window resized, maximizing included: the page reflowed to a new
+> width under it, but nothing told the mark layer to repaint, so a highlight
+> ended up sitting over blank pane nowhere near the text it was made on.
+> `beta.3` fixes it. The installers are versioned `0.3.2`.
 
 ## Requirements
 
