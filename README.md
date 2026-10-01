@@ -127,6 +127,45 @@ something I have?".
 **Removing a pattern.** Every card has a **Remove** button. It asks first, and
 says plainly that the file and its cover go too and that it cannot be undone.
 
+## Needles & hooks
+
+The **Needles & hooks** tab is everything in your needle box, and what each
+thing is on. A card shows the size big, what it is, its lengths, the brand and
+material, and either **Free** (green edge) or the project it is on (red edge).
+
+**What can be recorded.** Straight needles, fixed circulars, double-pointed
+sets, interchangeable tips, interchangeable cables, and crochet hooks. Each
+kind asks only for what it has:
+
+| Kind | Size | Length | Cable length | Cable size |
+| --- | :-: | :-: | :-: | :-: |
+| Straight, double-pointed, crochet hook | ✓ | ✓ | | |
+| Circular (fixed) | ✓ | | ✓ | |
+| Interchangeable tips | ✓ | ✓ | | ✓ |
+| Interchangeable cable | | | ✓ | ✓ |
+
+Cable size is the connector — **mini, small, standard or large** — which is
+what decides which tips fit which cables. A circular's cable length is the
+length as sold, tip to tip. Every tool also has a brand, a material (**metal,
+aluminium, copper, bamboo, wood**, or other) and notes. A double-pointed set is
+one entry.
+
+**Adding a run of them.** **Save and add another** keeps the form filled in, so
+a box of tips is entered by changing the size each time.
+
+**What it is on.** *In use for* is a pattern from your library (the ones you are
+knitting are listed first), or *something not in the library*, named in words.
+The pattern's name on a card opens it. **Free it** on the card takes a tool off
+its project. Removing a pattern frees its tools; the tools themselves stay.
+
+With a pattern open, the side pane lists its needles and hooks. Choose a free
+one and press **Use** to put it on the pattern, or ✕ to take one off.
+
+**Filters.** **Free** shows only what is not on a project. There are also
+**In use**, kind, size, material, cable size and brand. Boxes in one group widen
+the list (4 mm *or* 4.5 mm); different groups narrow it (4 mm *and* free). The
+search box matches size ("4mm"), brand, kind, material, project and notes.
+
 ## Yarn stash
 
 The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A
@@ -404,13 +443,16 @@ Two settings worth knowing about, both under *More options*:
 
 ```
 src/
-  main.ts              app shell: the tab bar, swapping library, stash and reader
+  main.ts              app shell: the tab bar, swapping library, stash, tools and reader
   api.ts               typed wrapper over the Tauri commands
   covers.ts            cover and yarn-photo extraction, downscaling, storage
   annotations.ts       mark coordinates, quote anchoring, rectangle merging
   views/
     library.ts         search, filters, covers, scanning
     stash.ts           the yarn stash: cards, quantities, the weight filter
+    tools.ts           needles and hooks: cards, filters, Free it
+    tool-form.ts       add/edit needle or hook dialog
+    tool-filter.ts     filtering, facet counts and naming for needles and hooks
     pattern-form.ts    add/edit pattern dialog
     yarn-form.ts       add/edit yarn dialog, with lots and a photo
     settings.ts        updates and model settings, with the privacy notice
@@ -426,6 +468,7 @@ src/
     click.ts           the mechanical-counter click, synthesised
     marks.ts           highlights, notes, drawings, and the note editor
     pins.ts            cropping part of a page, and the floating cards
+    tool-panel.ts      the pattern's needles and hooks, in the side pane
 src-tauri/src/
   db/                  schema, queries, counter arithmetic, and their tests
   ai/                  the model client, prompting, parsing, and merge rules
@@ -433,6 +476,7 @@ src-tauri/src/
   commands.rs          the commands exposed to the frontend
   models.rs            shared types
   yarn.rs              the standard yarn weight table, and reading a weight
+  tools.rs             needles and hooks: what each kind keeps, and the commands
   annotations.rs        storing and editing marks
 ```
 

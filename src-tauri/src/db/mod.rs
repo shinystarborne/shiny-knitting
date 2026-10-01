@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES,
+    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES,
 };
 
 #[cfg(test)]
@@ -161,6 +161,26 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             created_at  INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_pins_pattern ON pins(pattern_id);
+
+        -- A needle, a set of needles, a cable, or a hook. Which measurements
+        -- apply depends on the kind; the others are kept at 0 or empty. A
+        -- tool is in use while it has a pattern or a named project, and
+        -- removing the pattern frees it rather than removing the tool.
+        CREATE TABLE IF NOT EXISTS tools (
+            id          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            size_mm     REAL NOT NULL DEFAULT 0,
+            length_cm   REAL NOT NULL DEFAULT 0,
+            cable_cm    REAL NOT NULL DEFAULT 0,
+            cable_size  TEXT NOT NULL DEFAULT '',
+            brand       TEXT NOT NULL DEFAULT '',
+            material    TEXT NOT NULL DEFAULT '',
+            pattern_id  TEXT REFERENCES patterns(id) ON DELETE SET NULL,
+            project     TEXT NOT NULL DEFAULT '',
+            notes       TEXT NOT NULL DEFAULT '',
+            added_at    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_tools_pattern ON tools(pattern_id);
 
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
@@ -1406,6 +1426,146 @@ pub fn delete_annotation(conn: &Connection, id: &str) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM annotations WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("No annotation with id {id}.")));
+    }
+    Ok(())
+}
+
+// ---------- needles and hooks ----------
+
+const TOOL_SELECT: &str = "SELECT t.*, COALESCE(p.title, '') AS pattern_title
+     FROM tools t LEFT JOIN patterns p ON p.id = t.pattern_id";
+
+fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
+    Ok(Tool {
+        id: row.get("id")?,
+        kind: row.get("kind")?,
+        size_mm: row.get("size_mm")?,
+        length_cm: row.get("length_cm")?,
+        cable_cm: row.get("cable_cm")?,
+        cable_size: row.get("cable_size")?,
+        brand: row.get("brand")?,
+        material: row.get("material")?,
+        pattern_id: row.get("pattern_id")?,
+        pattern_title: row.get("pattern_title")?,
+        project: row.get("project")?,
+        notes: row.get("notes")?,
+        added_at: row.get("added_at")?,
+    })
+}
+
+/// Every tool, smallest first, so a needle size reads down the list in order.
+pub fn list_tools(conn: &Connection) -> AppResult<Vec<Tool>> {
+    let mut stmt = conn.prepare(&format!(
+        "{TOOL_SELECT} ORDER BY t.size_mm ASC, t.kind ASC, t.added_at ASC"
+    ))?;
+    let rows = stmt.query_map([], row_to_tool)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn get_tool(conn: &Connection, id: &str) -> AppResult<Tool> {
+    conn.query_row(&format!("{TOOL_SELECT} WHERE t.id = ?1"), params![id], row_to_tool)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("No needle or hook with id {id}.")))
+}
+
+/// Refuses a project pattern that is not in the library, in words rather than
+/// as a foreign-key failure.
+fn check_tool_pattern(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
+    let Some(id) = pattern_id else { return Ok(()) };
+    let found: Option<i64> = conn
+        .query_row("SELECT 1 FROM patterns WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()?;
+    if found.is_none() {
+        return Err(AppError::Message(
+            "That pattern is no longer in the library.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Stores a new tool. The input is expected to have been through
+/// `tools::clean` already, which is what keeps the measurements consistent.
+pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<Tool> {
+    check_tool_pattern(conn, input.pattern_id.as_deref())?;
+    conn.execute(
+        "INSERT INTO tools
+         (id, kind, size_mm, length_cm, cable_cm, cable_size, brand, material,
+          pattern_id, project, notes, added_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+        params![
+            id,
+            input.kind,
+            input.size_mm,
+            input.length_cm,
+            input.cable_cm,
+            input.cable_size,
+            input.brand,
+            input.material,
+            input.pattern_id,
+            input.project,
+            input.notes,
+            now_ms()
+        ],
+    )?;
+    get_tool(conn, id)
+}
+
+/// Replaces a tool's details, project included.
+pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<Tool> {
+    check_tool_pattern(conn, input.pattern_id.as_deref())?;
+    let changed = conn.execute(
+        "UPDATE tools SET kind = ?2, size_mm = ?3, length_cm = ?4, cable_cm = ?5,
+         cable_size = ?6, brand = ?7, material = ?8, pattern_id = ?9, project = ?10,
+         notes = ?11
+         WHERE id = ?1",
+        params![
+            id,
+            input.kind,
+            input.size_mm,
+            input.length_cm,
+            input.cable_cm,
+            input.cable_size,
+            input.brand,
+            input.material,
+            input.pattern_id,
+            input.project,
+            input.notes
+        ],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
+    }
+    get_tool(conn, id)
+}
+
+/// Puts a tool to use on a project, or frees it with neither given. A pattern
+/// wins over a named project: a tool is in one project at a time.
+pub fn set_tool_project(
+    conn: &Connection,
+    id: &str,
+    pattern_id: Option<&str>,
+    project: &str,
+) -> AppResult<Tool> {
+    check_tool_pattern(conn, pattern_id)?;
+    let project = if pattern_id.is_some() { "" } else { project.trim() };
+    let changed = conn.execute(
+        "UPDATE tools SET pattern_id = ?2, project = ?3 WHERE id = ?1",
+        params![id, pattern_id, project],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
+    }
+    get_tool(conn, id)
+}
+
+pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM tools WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
     Ok(())
 }

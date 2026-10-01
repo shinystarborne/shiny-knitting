@@ -467,6 +467,63 @@ export const DIFFICULTIES = [
   { value: "advanced", label: "Advanced" },
 ];
 
+// ---------- needles and hooks ----------
+
+/** What a tool is. The same list, in the same spelling, as the backend's. */
+export const TOOL_KINDS = [
+  { key: "straight", label: "Straight needles" },
+  { key: "circular", label: "Circular needle" },
+  { key: "dpn", label: "Double-pointed needles" },
+  { key: "tips", label: "Interchangeable tips" },
+  { key: "cable", label: "Interchangeable cable" },
+  { key: "hook", label: "Crochet hook" },
+] as const;
+
+export type ToolKind = (typeof TOOL_KINDS)[number]["key"];
+
+export const TOOL_MATERIALS = [
+  { key: "metal", label: "Metal" },
+  { key: "aluminium", label: "Aluminium" },
+  { key: "copper", label: "Copper" },
+  { key: "bamboo", label: "Bamboo" },
+  { key: "wood", label: "Wood" },
+  { key: "other", label: "Other" },
+] as const;
+
+/** An interchangeable tip's or cable's connector size, smallest first. */
+export const CABLE_SIZES = [
+  { key: "mini", label: "Mini" },
+  { key: "small", label: "Small" },
+  { key: "standard", label: "Standard" },
+  { key: "large", label: "Large" },
+] as const;
+
+/** A needle, a set of needles, a cable, or a hook. */
+export interface Tool {
+  id: string;
+  kind: ToolKind;
+  /** Millimetres; 0 for a cable. */
+  sizeMm: number;
+  /** Needle, tip or hook length in cm; 0 when not recorded or not applicable. */
+  lengthCm: number;
+  /** Circular needle (tip to tip) or cable length in cm. */
+  cableCm: number;
+  /** Connector size of tips or a cable, or "". */
+  cableSize: string;
+  brand: string;
+  material: string;
+  /** The library pattern it is being used for. */
+  patternId: string | null;
+  /** That pattern's title, or "". */
+  patternTitle: string;
+  /** A project not in the library, named in words. */
+  project: string;
+  notes: string;
+  addedAt: number;
+}
+
+export type ToolInput = Omit<Tool, "id" | "patternTitle" | "addedAt">;
+
 /**
  * Suggestions for the yarn weight field.
  *
@@ -604,6 +661,16 @@ export const api = {
   // The yarn stash. Lots go in whole on every write: an id the backend knows
   // is kept, one it does not is new, and a stored lot missing from the list is
   // gone. The derived totals come back on the returned yarn.
+  // Needles and hooks. Listed whole and filtered here: even a large
+  // collection is a few hundred rows.
+  listTools: () => invoke<Tool[]>("list_tools"),
+  addTool: (input: ToolInput) => invoke<Tool>("add_tool", { input }),
+  updateTool: (id: string, input: ToolInput) => invoke<Tool>("update_tool", { id, input }),
+  /** Puts a tool on a pattern or a named project; neither frees it. */
+  setToolProject: (id: string, patternId: string | null, project = "") =>
+    invoke<Tool>("set_tool_project", { id, patternId, project }),
+  deleteTool: (id: string) => invoke<void>("delete_tool", { id }),
+
   listYarns: (filter: YarnFilter = {}) => invoke<Yarn[]>("list_yarns", { filter }),
   getYarn: (id: string) => invoke<Yarn>("get_yarn", { id }),
   addYarn: (input: YarnInput) => invoke<Yarn>("add_yarn", { input }),

@@ -7,6 +7,7 @@ mod export;
 mod external;
 mod models;
 mod state;
+mod tools;
 mod update;
 mod yarn;
 
@@ -97,6 +98,11 @@ pub fn run() {
             annotations::delete_bookmark,
             annotations::list_page_rotations,
             annotations::set_page_rotation,
+            tools::list_tools,
+            tools::add_tool,
+            tools::update_tool,
+            tools::set_tool_project,
+            tools::delete_tool,
             annotations::list_pins,
             annotations::pin_count,
             annotations::add_pin,

@@ -57,6 +57,7 @@ and the others build on it.
 | Bulk add | built |
 | In-app update check | built |
 | Yarn stash | built |
+| Needle and hook inventory, with what each is on and a Free filter | built |
 | Plans, finished gallery, inspiration board | not started |
 
 ## Tabs: stash, plans, gallery, board
@@ -107,9 +108,9 @@ Open question: images pasted from the clipboard too, or only from disk?
 Candidates, roughly most useful first. Pick from these when the list above
 runs out; none is agreed yet.
 
-- **Needle and hook inventory** — same idea as the stash but for tools, so a
-  plan can say "needs a 4 mm circular you don't own" and you stop buying a
-  third 5 mm. Cheap to build once the stash exists: same table shape.
+- ~~**Needle and hook inventory**~~ — built: the Needles & hooks tab. Still
+  open: when plans exist, a plan could say "needs a 4 mm circular you don't
+  own" by checking it against the tools that are free.
 - **Gauge swatch log** — swatch results per yarn + needle, because the
   calculators (raglan, yoke, colourwork) all want a gauge and your real
   knitted gauge beats the ball band's.

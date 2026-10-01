@@ -1938,3 +1938,88 @@ fn a_patterns_rotations_go_with_it() {
         .unwrap();
     assert_eq!(left, 0);
 }
+
+fn tool(kind: &str, size: f64) -> crate::models::ToolInput {
+    crate::models::ToolInput {
+        kind: kind.to_string(),
+        size_mm: size,
+        brand: "Addi".to_string(),
+        material: "metal".to_string(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn tools_are_listed_smallest_first_with_their_project() {
+    let conn = test_db();
+    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    insert_tool(&conn, "big", &tool("hook", 6.0)).unwrap();
+    insert_tool(
+        &conn,
+        "small",
+        &crate::models::ToolInput { pattern_id: Some(p.id.clone()), ..tool("dpn", 2.5) },
+    )
+    .unwrap();
+    insert_tool(
+        &conn,
+        "gift",
+        &crate::models::ToolInput { project: "Gift hat".into(), ..tool("circular", 4.0) },
+    )
+    .unwrap();
+
+    let list = list_tools(&conn).unwrap();
+    let ids: Vec<&str> = list.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, vec!["small", "gift", "big"]);
+    assert_eq!(list[0].pattern_title, "Socks", "the pattern's title comes with it");
+    assert_eq!(list[1].project, "Gift hat");
+    assert_eq!(list[2].pattern_id, None);
+    assert_eq!(list[2].pattern_title, "");
+}
+
+#[test]
+fn removing_a_pattern_frees_its_tools_and_keeps_them() {
+    let conn = test_db();
+    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    insert_tool(
+        &conn,
+        "t1",
+        &crate::models::ToolInput { pattern_id: Some(p.id.clone()), ..tool("dpn", 2.5) },
+    )
+    .unwrap();
+    delete_pattern(&conn, &p.id).unwrap();
+    let t = get_tool(&conn, "t1").unwrap();
+    assert_eq!(t.pattern_id, None);
+    assert_eq!(t.pattern_title, "");
+}
+
+#[test]
+fn a_tool_can_be_put_on_a_project_and_freed() {
+    let conn = test_db();
+    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    insert_tool(&conn, "t1", &tool("hook", 4.0)).unwrap();
+
+    let on = set_tool_project(&conn, "t1", Some(&p.id), "ignored").unwrap();
+    assert_eq!(on.pattern_id.as_deref(), Some(p.id.as_str()));
+    assert_eq!(on.project, "", "a pattern wins over a name");
+
+    let named = set_tool_project(&conn, "t1", None, "  Blanket ").unwrap();
+    assert_eq!((named.pattern_id, named.project.as_str()), (None, "Blanket"));
+
+    let free = set_tool_project(&conn, "t1", None, "").unwrap();
+    assert_eq!((free.pattern_id, free.project.as_str()), (None, ""));
+
+    assert!(set_tool_project(&conn, "t1", Some("gone"), "").is_err(), "an unknown pattern is refused");
+    assert!(set_tool_project(&conn, "nope", None, "").is_err());
+}
+
+#[test]
+fn a_tool_is_updated_and_removed() {
+    let conn = test_db();
+    insert_tool(&conn, "t1", &tool("hook", 4.0)).unwrap();
+    let t = update_tool(&conn, "t1", &crate::models::ToolInput { brand: "Clover".into(), ..tool("hook", 4.5) }).unwrap();
+    assert_eq!((t.brand.as_str(), t.size_mm), ("Clover", 4.5));
+    assert!(insert_tool(&conn, "t2", &crate::models::ToolInput { pattern_id: Some("gone".into()), ..tool("hook", 3.0) }).is_err());
+    delete_tool(&conn, "t1").unwrap();
+    assert!(list_tools(&conn).unwrap().is_empty());
+    assert!(delete_tool(&conn, "t1").is_err());
+}

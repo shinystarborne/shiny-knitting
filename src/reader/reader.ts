@@ -9,6 +9,7 @@ import { ContentsPanel } from "./contents";
 import { SearchBar } from "./search";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
+import { ToolPanel } from "./tool-panel";
 import { isCapturing } from "./keys";
 import { normalRotation } from "./rotation";
 import { scanOne } from "../ai/scan";
@@ -202,6 +203,9 @@ export class ReaderView {
     await this.counter.refresh();
     if (this.destroyed) return;
 
+    const toolHost = this.root.querySelector<HTMLElement>("[data-tool-panel]");
+    if (toolHost) void new ToolPanel(toolHost, this.pattern.id).refresh();
+
     this.bindKeys();
     this.bindPositionSaving();
     this.restorePosition();
@@ -287,6 +291,7 @@ export class ReaderView {
             )}</textarea>
             <p class="hint">Saved automatically.</p>
           </div>
+          <div class="side-section" data-tool-panel></div>
           <div class="side-section">
             <h3>Tags</h3>
             <div class="tag-row">${this.pattern.tags

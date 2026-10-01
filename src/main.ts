@@ -1,8 +1,10 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile, type Yarn } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile, type Tool, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
+import { ToolsView } from "./views/tools";
+import { ToolForm } from "./views/tool-form";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
@@ -13,7 +15,8 @@ import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
- * App shell. A tab bar picks the top-level screen — Patterns or Stash — and
+ * App shell. A tab bar picks the top-level screen — Patterns, Stash, or
+ * Needles & hooks — and
  * the reader covers the Patterns tab when a pattern is open. The current
  * layout choice is remembered for the session.
  */
@@ -49,6 +52,7 @@ class App {
     this.tabBar.innerHTML = `
       <button class="tab active" data-tab="patterns">Patterns</button>
       <button class="tab" data-tab="stash">Stash</button>
+      <button class="tab" data-tab="tools">Needles &amp; hooks</button>
     `;
     this.screen = document.createElement("div");
     this.screen.className = "screen";
@@ -62,6 +66,8 @@ class App {
       if (!tab) return;
       if (tab.dataset.tab === "stash") {
         void this.showStash();
+      } else if (tab.dataset.tab === "tools") {
+        void this.showTools();
       } else {
         void this.showLibrary();
       }
@@ -91,6 +97,10 @@ class App {
     this.screen.addEventListener("add-yarn", () => this.openYarnForm(null));
     this.screen.addEventListener("edit-yarn", (e) => {
       this.openYarnForm((e as CustomEvent<Yarn>).detail);
+    });
+    this.screen.addEventListener("add-tool", () => void this.openToolForm(null));
+    this.screen.addEventListener("edit-tool", (e) => {
+      void this.openToolForm((e as CustomEvent<Tool>).detail);
     });
     this.screen.addEventListener("open-settings", (e) => {
       void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
@@ -149,7 +159,7 @@ class App {
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
-  private setActiveTab(name: "patterns" | "stash"): void {
+  private setActiveTab(name: "patterns" | "stash" | "tools"): void {
     for (const tab of this.tabBar.querySelectorAll<HTMLElement>(".tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
     }
@@ -171,6 +181,15 @@ class App {
     this.clearScreen();
     this.setActiveTab("stash");
     const view = new StashView(this.screen);
+    await view.mount();
+  }
+
+  private async showTools(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("tools");
+    const view = new ToolsView(this.screen);
     await view.mount();
   }
 
@@ -223,6 +242,14 @@ class App {
       void this.showStash();
     });
     form.open();
+  }
+
+  private async openToolForm(tool: Tool | null): Promise<void> {
+    // Every save re-mounts the tab behind the form, so the grid and its
+    // counts are current -- including after "Save and add another", whose
+    // form stays open over it.
+    const form = new ToolForm(this.modal, tool, () => void this.showTools());
+    await form.open();
   }
 
   /** Reads the cover out of a newly added file without holding up the library. */

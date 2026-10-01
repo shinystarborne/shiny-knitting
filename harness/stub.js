@@ -23,6 +23,9 @@ const store = {
   // Yarn stash. Photos share the `covers` blob store — yarn and pattern ids
   // never collide (`y…` vs `p…`).
   yarns: [],
+  // Needles and hooks. `patternTitle` is not stored; it is joined in on read,
+  // as the backend's LEFT JOIN does.
+  tools: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -320,6 +323,80 @@ function seed() {
     },
   ];
 
+  // Needles and hooks, seeded with one of each state worth seeing: on a
+  // library pattern, on a project named in words, and free, across kinds that
+  // each keep different measurements.
+  const tool = (id, fields) => ({
+    id,
+    kind: "circular",
+    sizeMm: 0,
+    lengthCm: 0,
+    cableCm: 0,
+    cableSize: "",
+    brand: "",
+    material: "",
+    patternId: null,
+    project: "",
+    notes: "",
+    addedAt: now,
+    ...fields,
+  });
+  store.tools = [
+    tool("t1", { kind: "dpn", sizeMm: 2.5, lengthCm: 20, brand: "HiyaHiya", material: "metal", patternId: pdfId }),
+    tool("t2", { kind: "circular", sizeMm: 4, cableCm: 80, brand: "ChiaoGoo", material: "metal", project: "Gift hat" }),
+    tool("t3", { kind: "circular", sizeMm: 4, cableCm: 40, brand: "Addi", material: "bamboo" }),
+    tool("t4", { kind: "hook", sizeMm: 5, lengthCm: 15, brand: "Clover", material: "aluminium" }),
+    tool("t5", { kind: "tips", sizeMm: 3.5, lengthCm: 13, cableSize: "small", brand: "chiaogoo", material: "metal" }),
+    tool("t6", { kind: "cable", cableCm: 60, cableSize: "small", brand: "ChiaoGoo" }),
+  ];
+}
+
+// The rules of `tools::clean`, so the harness refuses what the app would.
+const TOOL_KINDS = ["straight", "circular", "dpn", "tips", "cable", "hook"];
+const TOOL_MATERIALS = ["metal", "aluminium", "copper", "bamboo", "wood", "other"];
+const CABLE_SIZES = ["mini", "small", "standard", "large"];
+function cleanTool(input) {
+  const kind = String(input.kind || "").trim().toLowerCase();
+  if (!TOOL_KINDS.includes(kind)) throw new Error("Choose what kind of needle or hook this is.");
+  const round = (n, places) => Math.round(n * 10 ** places) / 10 ** places;
+  const measure = (v, places, max, what, unit) => {
+    const n = Number(v || 0);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`The ${what} has to be a number of ${unit}.`);
+    if (n > max) throw new Error(`${n} ${unit} is more than any ${what} — is it in the right unit?`);
+    return round(n, places);
+  };
+  const oneOf = (v, allowed, what) => {
+    const w = String(v || "").trim().toLowerCase();
+    if (w && !allowed.includes(w)) throw new Error(`“${String(v).trim()}” is not a ${what} this knows.`);
+    return w;
+  };
+  let sizeMm = 0;
+  if (kind !== "cable") {
+    sizeMm = measure(input.sizeMm, 2, 50, "size", "mm");
+    if (sizeMm <= 0) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
+  }
+  const patternId = input.patternId && String(input.patternId).trim() ? String(input.patternId).trim() : null;
+  if (patternId && !store.patterns.some((p) => p.id === patternId)) {
+    throw new Error("That pattern is no longer in the library.");
+  }
+  return {
+    kind,
+    sizeMm,
+    lengthCm: ["straight", "dpn", "tips", "hook"].includes(kind) ? measure(input.lengthCm, 1, 200, "length", "cm") : 0,
+    cableCm: ["circular", "cable"].includes(kind) ? measure(input.cableCm, 1, 500, "cable length", "cm") : 0,
+    cableSize: ["tips", "cable"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
+    brand: String(input.brand || "").trim().slice(0, 80),
+    material: oneOf(input.material, TOOL_MATERIALS, "material"),
+    patternId,
+    project: patternId ? "" : String(input.project || "").trim().slice(0, 120),
+    notes: String(input.notes || ""),
+  };
+}
+/** A stored tool as the backend returns it: the pattern's title joined in, and
+ * a pattern that no longer exists treated as gone (ON DELETE SET NULL). */
+function toolOut(t) {
+  const p = t.patternId ? store.patterns.find((x) => x.id === t.patternId) : null;
+  return clone({ ...t, patternId: p ? t.patternId : null, patternTitle: p ? p.title : "" });
 }
 
 /**
@@ -534,6 +611,8 @@ const handlers = {
   },
   delete_pattern: ({ id }) => {
     store.patterns = store.patterns.filter((p) => p.id !== id);
+    // ON DELETE SET NULL: the pattern's needles and hooks become free.
+    for (const t of store.tools) if (t.patternId === id) t.patternId = null;
   },
   get_facets: () => ({
     designers: [...new Set(store.patterns.map((p) => p.designer).filter(Boolean))].sort(),
@@ -845,6 +924,39 @@ const handlers = {
   },
   patterns_missing_covers: () =>
     store.patterns.filter((p) => !p.coverPath).map((p) => p.id),
+
+  // ---------- needles and hooks ----------
+  list_tools: () =>
+    store.tools
+      .slice()
+      .sort((a, b) => a.sizeMm - b.sizeMm || a.kind.localeCompare(b.kind) || a.addedAt - b.addedAt)
+      .map(toolOut),
+  add_tool: ({ input }) => {
+    // Not `t${n}`: that would collide with the seeded t1..t6.
+    const t = { id: `tool-${store.nextId++}`, ...cleanTool(input), addedAt: Date.now() };
+    store.tools.push(t);
+    return toolOut(t);
+  },
+  update_tool: ({ id, input }) => {
+    const i = store.tools.findIndex((t) => t.id === id);
+    if (i < 0) throw new Error(`No needle or hook with id ${id}.`);
+    store.tools[i] = { ...store.tools[i], ...cleanTool(input) };
+    return toolOut(store.tools[i]);
+  },
+  set_tool_project: ({ id, patternId, project }) => {
+    const t = store.tools.find((x) => x.id === id);
+    if (!t) throw new Error(`No needle or hook with id ${id}.`);
+    const pid = patternId && String(patternId).trim() ? String(patternId).trim() : null;
+    if (pid && !store.patterns.some((p) => p.id === pid)) throw new Error("That pattern is no longer in the library.");
+    t.patternId = pid;
+    t.project = pid ? "" : String(project || "").trim();
+    return toolOut(t);
+  },
+  delete_tool: ({ id }) => {
+    const before = store.tools.length;
+    store.tools = store.tools.filter((t) => t.id !== id);
+    if (store.tools.length === before) throw new Error(`No needle or hook with id ${id}.`);
+  },
 
   // ---------- yarn stash ----------
   //

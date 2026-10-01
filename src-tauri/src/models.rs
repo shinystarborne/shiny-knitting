@@ -591,3 +591,81 @@ pub struct SuggestionResult {
     /// True when the result was written to the database.
     pub applied: bool,
 }
+
+// ---------- needles and hooks ----------
+
+/// What a tool is. Kept as one list so the form, the filter and the backend
+/// agree on the spelling.
+///
+/// - `straight`: a pair of straight needles
+/// - `circular`: a fixed circular needle, tips and cable in one
+/// - `dpn`: a set of double-pointed needles
+/// - `tips`: a pair of interchangeable tips
+/// - `cable`: an interchangeable cable
+/// - `hook`: a crochet hook
+pub const TOOL_KINDS: &[&str] = &["straight", "circular", "dpn", "tips", "cable", "hook"];
+
+/// What a tool is made of. Empty is allowed: not everyone knows.
+pub const TOOL_MATERIALS: &[&str] = &["metal", "aluminium", "copper", "bamboo", "wood", "other"];
+
+/// The connector size of an interchangeable tip or cable, which is what decides
+/// whether a tip fits a cable. Empty is allowed, for a set that has only one.
+pub const CABLE_SIZES: &[&str] = &["mini", "small", "standard", "large"];
+
+/// A needle, a set of needles, a cable, or a hook.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Tool {
+    pub id: String,
+    /// One of `TOOL_KINDS`.
+    pub kind: String,
+    /// Needle or hook size in millimetres. 0 for a cable, which has none.
+    pub size_mm: f64,
+    /// Length of the needle, tips or hook, in centimetres. 0 when not recorded,
+    /// and for a circular needle or a cable, whose length is `cable_cm`.
+    pub length_cm: f64,
+    /// Length of a circular needle (tip to tip) or of a cable, in centimetres.
+    pub cable_cm: f64,
+    /// One of `CABLE_SIZES`, or empty. Only interchangeable tips and cables
+    /// have one.
+    pub cable_size: String,
+    pub brand: String,
+    /// One of `TOOL_MATERIALS`, or empty.
+    pub material: String,
+    /// The pattern the tool is being used for. Cleared when that pattern is
+    /// removed, which frees the tool.
+    pub pattern_id: Option<String>,
+    /// That pattern's title, for display; empty when there is none.
+    #[serde(default)]
+    pub pattern_title: String,
+    /// A project that is not in the library, named in words. A tool is in use
+    /// when it has a pattern or this; free when it has neither.
+    pub project: String,
+    pub notes: String,
+    pub added_at: i64,
+}
+
+/// A tool as the form sends it, for adding or for replacing one's details.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolInput {
+    pub kind: String,
+    #[serde(default)]
+    pub size_mm: f64,
+    #[serde(default)]
+    pub length_cm: f64,
+    #[serde(default)]
+    pub cable_cm: f64,
+    #[serde(default)]
+    pub cable_size: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub material: String,
+    #[serde(default)]
+    pub pattern_id: Option<String>,
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub notes: String,
+}
