@@ -92,7 +92,7 @@ export async function verifyYarnWeights() {
     type("yarnWeight", "Worsted");
     type("metresPerBall", "90");
     check(results, "a typed weight is kept", f("yarnWeight").value === "Worsted");
-    check(results, "…with the figures' weight said beside it", /: Aran/.test(hint().textContent ?? "") && /“Worsted” is filed as Worsted/.test(hint().textContent ?? ""), hint().textContent ?? "");
+    check(results, "…with the figures' weight said beside it", /: Aran/.test(hint().textContent ?? "") && /stays filed as Worsted, as you wrote it/.test(hint().textContent ?? ""), hint().textContent ?? "");
 
     type("metresPerBall", "");
     type("gramsPerBall", "500");
@@ -121,6 +121,60 @@ export async function verifyYarnWeights() {
 
     (modal()!.querySelector('[data-act="cancel"]') as HTMLElement).click();
     await waitFor(() => !modal(), "the form to close");
+
+    // Another colour of a yarn already in the stash, from its card.
+    const store = (window as unknown as { __store: { yarns: { id: string; name: string; brand: string; colourway: string; yarnWeight: string; metresPerBall: number; gramsPerBall: number }[] } }).__store;
+    const card = (id: string) => document.querySelector<HTMLElement>(`.stash .card[data-open="${id}"]`);
+    await waitFor(() => !!card("y1"), "the stash cards");
+    (card("y1")!.querySelector("[data-colour]") as HTMLElement).click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="colourway"]'), "the colour form");
+    check(results, "+ Colour opens a new yarn, saying of which", /Another colour of Shetland Sock/.test(modal()!.querySelector("h2")?.textContent ?? ""));
+    check(results, "…with the brand, name, weight and ball band filled in", f("brand").value === "Jamieson's" && f("name").value === "Shetland Sock" && f("yarnWeight").value === "fingering" && f("metresPerBall").value === "400" && f("gramsPerBall").value === "100");
+    check(results, "…the colourway empty and ready to type", f("colourway").value === "" && document.activeElement === f("colourway"));
+    f("colourway").value = "Moorit";
+    const count = store.yarns.length;
+    (modal()!.querySelector('[data-act="save"]') as HTMLElement).click();
+    await waitFor(() => !modal() && store.yarns.length === count + 1, "the new colour to save");
+    const moorit = store.yarns[store.yarns.length - 1];
+    check(results, "it is saved as a yarn of its own", moorit.name === "Shetland Sock" && moorit.colourway === "Moorit" && moorit.metresPerBall === 400 && moorit.id !== "y1");
+    await waitFor(() => !!card(moorit.id) && !!card("y1"), "both colours on the stash");
+    check(results, "both colours are on the stash", true);
+
+    // Brand and name picked from what is there, the rest filled in.
+    (document.querySelector('.stash [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal()?.querySelector(".combo-toggle"), "the yarn form again");
+    const listOf = (field: string) => {
+      const toggle = f(field).parentElement!.querySelector<HTMLButtonElement>(".combo-toggle")!;
+      toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      const items = [...f(field).parentElement!.querySelectorAll<HTMLElement>(".combo-list:not([hidden]) li")].map((li) => li.textContent);
+      toggle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      return items;
+    };
+    await waitFor(() => listOf("brand").length > 0, "the stash's brands to load");
+    check(results, "▾ on Brand lists the brands in the stash", listOf("brand").join("|") === "Cascade|Jamieson's", listOf("brand").join("|"));
+    check(results, "▾ on Name lists every yarn with no brand chosen", listOf("name").join("|") === "Handspun|Merino DK|Shetland Sock", listOf("name").join("|"));
+    f("brand").value = "Cascade";
+    check(results, "…and that brand's yarns once one is", listOf("name").join("|") === "Merino DK", listOf("name").join("|"));
+    f("brand").value = "";
+    f("name").value = "merino dk";
+    f("name").dispatchEvent(new Event("change", { bubbles: true }));
+    check(results, "a name already in the stash fills in its brand, weight and ball band", f("brand").value === "Cascade" && f("yarnWeight").value === "DK" && f("metresPerBall").value === "220" && f("gramsPerBall").value === "100");
+    check(results, "…and says from which", /from your Merino DK \(Heather\)/.test(modal()!.querySelector('[data-el="known-hint"]')?.textContent ?? ""));
+    f("colourway").value = "Teal";
+    const count2 = store.yarns.length;
+    (modal()!.querySelector('[data-act="save"]') as HTMLElement).click();
+    await waitFor(() => !modal() && store.yarns.length === count2 + 1, "the picked yarn to save");
+    check(results, "a name typed in another case is filed under the one there", store.yarns[store.yarns.length - 1].name === "Merino DK");
+
+    // Something new is still fine, and nothing is filled in for it.
+    (document.querySelector('.stash [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="name"]'), "the yarn form once more");
+    f("name").value = "Brand new yarn";
+    f("name").dispatchEvent(new Event("change", { bubbles: true }));
+    check(results, "a new name fills in nothing", f("brand").value === "" && f("metresPerBall").value === "" && modal()!.querySelector<HTMLElement>('[data-el="known-hint"]')!.hidden);
+    (modal()!.querySelector('[data-act="cancel"]') as HTMLElement).click();
+    await waitFor(() => !modal(), "the form to close again");
+
     const after = new DataTransfer();
     after.items.add(await pngFile());
     const late = new ClipboardEvent("paste", { clipboardData: after, bubbles: true, cancelable: true });

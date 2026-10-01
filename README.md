@@ -228,6 +228,14 @@ which ("In use: Gift hat"), and one holding a project's leftover is tagged
 **Leftover**; **Availability** down the side filters on Free, In use and
 Leftover. A lot's **Leftover** box can also be ticked or cleared by hand.
 
+**Another colour of the same yarn** is quick: **+ Colour** on a card opens a new
+yarn with its brand, name, weight and ball band filled in, so only the
+colourway is typed; each colour is its own card. In the form, **Brand** and
+**Name** are typed or picked — **▾** lists the brands and yarns already in the
+stash (a chosen brand narrows the names) — and picking a name you have fills in
+the rest of that yarn, leaving anything already typed alone. A name or brand
+typed in another case files with the one already there.
+
 **Partial balls are weighed, not guessed.** Put the grams left on a lot and
 the metres left are worked out from the ball band (metres per ball ÷ grams
 per ball × grams left), so a half-used ball counts as what it actually is.

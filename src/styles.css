@@ -2170,3 +2170,18 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 /* Wide enough for a lot row: dye lot, balls, grams, place, date, Leftover. */
 .modal.yarn-form { max-width: 700px; }
 .modal.project-form { max-width: 640px; }
+
+/* "+ Colour" sits on the left of a stash card's bottom row, Remove on the right. */
+.card-tools-row .card-colour { margin-left: 0; margin-right: auto; }
+.yarn-form .yarn-name-field { grid-column: span 2; }
+
+/* A stash card: a square photo -- a ball of yarn is not a book cover -- so the
+   name, brand and colourway, the tags, what it is on and how much is left
+   all have room below it. */
+.stash .results > .card .cover { aspect-ratio: 1 / 1; }
+.stash .cover-photo { background-position: center; }
+.stash .card-body { gap: 5px; }
+.stash .card-use { white-space: normal; line-height: 1.35; }
+/* A card's lines keep their height and the card clips at its foot, rather
+   than every line being squeezed until they draw over each other. */
+.results > .card .card-body > * { flex-shrink: 0; }

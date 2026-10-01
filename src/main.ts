@@ -100,7 +100,10 @@ class App {
     this.screen.addEventListener("edit-pattern", (e) => {
       this.openForm((e as CustomEvent<Pattern>).detail);
     });
-    this.screen.addEventListener("add-yarn", () => this.openYarnForm(null));
+    this.screen.addEventListener("add-yarn", (e) => {
+      // A yarn in the detail is one to add another colour of.
+      this.openYarnForm(null, (e as CustomEvent<Yarn | undefined>).detail ?? null);
+    });
     this.screen.addEventListener("edit-yarn", (e) => {
       this.openYarnForm((e as CustomEvent<Yarn>).detail);
     });
@@ -277,12 +280,12 @@ class App {
     form.open();
   }
 
-  private openYarnForm(yarn: Yarn | null): void {
+  private openYarnForm(yarn: Yarn | null, template: Yarn | null = null): void {
     const form = new YarnForm(this.freshModal(), yarn, () => {
       // A save re-mounts the stash, so the card picks up the new figures and
       // any photo the form uploaded afterwards.
       void this.showStash();
-    });
+    }, template);
     form.open();
   }
 

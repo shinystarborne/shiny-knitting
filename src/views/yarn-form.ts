@@ -13,6 +13,8 @@ import {
   saveYarnPhoto,
   yarnPhotoUrl,
 } from "../covers";
+import { makeCombo } from "./combo";
+import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 
 /** One lot row in the editor, kept as strings while the form is open. */
@@ -53,11 +55,20 @@ export class YarnForm {
   private weightAuto = false;
 
   private onDone: (yarn: Yarn) => void;
+  /**
+   * A yarn to start a new one from: another colour of the same yarn, so its
+   * brand, name, weight and ball band are filled in and only the colourway is
+   * new.
+   */
+  private template: Yarn | null;
+  /** Every yarn in the stash, for the brand and name lists and filling in. */
+  private known: Yarn[] = [];
 
-  constructor(root: HTMLElement, editing: Yarn | null, onDone: (y: Yarn) => void) {
+  constructor(root: HTMLElement, editing: Yarn | null, onDone: (y: Yarn) => void, template: Yarn | null = null) {
     this.root = root;
     this.editing = editing;
     this.onDone = onDone;
+    this.template = editing ? null : template;
     // A new yarn starts with one empty lot row: a yarn you own is at least
     // one purchase, and the row is where that is said.
     this.lots = editing
@@ -75,10 +86,13 @@ export class YarnForm {
 
   open(): void {
     const e = this.editing;
+    // What the shared fields start from: the yarn being edited, or the one
+    // this is another colour of.
+    const base = e ?? this.template;
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal yarn-form" role="dialog" aria-modal="true">
-        <h2>${e ? "Edit yarn" : "Add a yarn"}</h2>
+        <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : "Add a yarn"}</h2>
 
         <div class="field">
           <span>Photo</span>
@@ -92,15 +106,18 @@ export class YarnForm {
           </div>
         </div>
 
-        <label class="field">
-          <span>Name</span>
-          <input data-f="name" value="${escapeAttr(e?.name ?? "")}" placeholder="e.g. Felted Tweed" />
-        </label>
         <div class="field-row">
-          <label class="field">
+          <div class="field">
             <span>Brand</span>
-            <input data-f="brand" value="${escapeAttr(e?.brand ?? "")}" placeholder="e.g. Rowan" />
-          </label>
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(base?.brand ?? "")}" placeholder="Type, or pick one you have" />
+          </div>
+          <div class="field yarn-name-field">
+            <span>Name</span>
+            <input data-f="name" aria-label="Name" value="${escapeAttr(base?.name ?? "")}" placeholder="e.g. Felted Tweed — or pick one you have" />
+          </div>
+        </div>
+        <p class="hint" data-el="known-hint" hidden></p>
+        <div class="field-row">
           <label class="field">
             <span>Colourway</span>
             <input data-f="colourway" value="${escapeAttr(e?.colourway ?? "")}" placeholder="e.g. Peat" />
@@ -112,7 +129,7 @@ export class YarnForm {
             <input
               data-f="yarnWeight"
               list="yarn-weight-options"
-              value="${escapeAttr(e?.yarnWeight ?? "")}"
+              value="${escapeAttr(base?.yarnWeight ?? "")}"
               placeholder="e.g. DK, 100 m/100g, or 2/28"
             />
             <datalist id="yarn-weight-options">
@@ -123,11 +140,11 @@ export class YarnForm {
         <div class="field-row">
           <label class="field">
             <span>Metres per ball</span>
-            <input data-f="metresPerBall" type="number" min="0" value="${e?.metresPerBall || ""}" placeholder="e.g. 175" />
+            <input data-f="metresPerBall" type="number" min="0" value="${base?.metresPerBall || ""}" placeholder="e.g. 175" />
           </label>
           <label class="field">
             <span>Grams per ball</span>
-            <input data-f="gramsPerBall" type="number" min="0" value="${e?.gramsPerBall || ""}" placeholder="e.g. 50" />
+            <input data-f="gramsPerBall" type="number" min="0" value="${base?.gramsPerBall || ""}" placeholder="e.g. 50" />
           </label>
         </div>
         <p class="hint weight-hint" data-el="weight-hint" hidden></p>
@@ -175,11 +192,75 @@ export class YarnForm {
     this.renderLots();
     void this.paintPhoto();
     this.weightHint();
+
+    // Brand and name are typed, or picked from what is already in the stash;
+    // picking a name fills in the rest of that yarn (see fillFromKnown).
+    makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="brand"]')!, () =>
+      mostUsedSpellings(this.known.map((y) => y.brand)),
+    );
+    makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="name"]')!, () => this.knownNames());
+    void api
+      .listYarns({})
+      .then((yarns) => (this.known = yarns.filter((y) => y.id !== this.editing?.id)))
+      .catch(() => {});
+    if (this.template) {
+      this.showKnownHint(`Filled in from ${this.template.name}${this.template.colourway ? ` (${this.template.colourway})` : ""}. Add the colourway, and its lots.`);
+      (this.root.querySelector('[data-f="colourway"]') as HTMLInputElement | null)?.focus();
+    }
+  }
+
+  /** The yarn names to offer: that brand's, once a brand is given; else every one. */
+  private knownNames(): string[] {
+    const brand = this.value("brand").trim().toLowerCase();
+    const ofBrand = brand ? this.known.filter((y) => y.brand.trim().toLowerCase() === brand) : [];
+    return mostUsedSpellings((ofBrand.length ? ofBrand : this.known).map((y) => y.name));
+  }
+
+  /**
+   * A name that is already in the stash fills in the rest of that yarn --
+   * brand, weight, metres and grams per ball -- so a new colour of it is only
+   * its colourway. Only empty fields are filled: anything typed is kept.
+   */
+  private fillFromKnown(): void {
+    if (this.editing) return;
+    const name = this.value("name").trim().toLowerCase();
+    if (!name) return;
+    const brand = this.value("brand").trim().toLowerCase();
+    const same = this.known
+      .filter((y) => y.name.trim().toLowerCase() === name && (!brand || y.brand.trim().toLowerCase() === brand))
+      .sort((a, b) => b.addedAt - a.addedAt);
+    const from = same[0];
+    if (!from) return;
+    const filled: string[] = [];
+    const fill = (field: string, value: string | number, what: string) => {
+      const input = this.root.querySelector<HTMLInputElement>(`[data-f="${field}"]`);
+      if (!input || input.value.trim() || !value) return;
+      input.value = String(value);
+      filled.push(what);
+    };
+    fill("brand", from.brand, "brand");
+    fill("yarnWeight", from.yarnWeight, "weight");
+    fill("metresPerBall", from.metresPerBall, "metres");
+    fill("gramsPerBall", from.gramsPerBall, "grams per ball");
+    if (filled.length) {
+      this.weightAuto = false;
+      this.weightHint();
+      const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled[filled.length - 1]}` : filled[0];
+      this.showKnownHint(`Filled in the ${list} from your ${from.name}${from.colourway ? ` (${from.colourway})` : ""}.`);
+    }
+  }
+
+  private showKnownHint(text: string): void {
+    const hint = this.root.querySelector<HTMLElement>('[data-el="known-hint"]');
+    if (!hint) return;
+    hint.textContent = text;
+    hint.hidden = !text;
   }
 
   private bind(): void {
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("input", this.onInput);
+    this.root.querySelector('[data-f="name"]')?.addEventListener("change", () => this.fillFromKnown());
     // On the document: a paste with nothing focused goes to the body, not to
     // the form, and pasting a picture should work wherever the focus is.
     document.addEventListener("paste", this.onPaste);
@@ -260,7 +341,9 @@ export class YarnForm {
         this.weightAuto = true;
       } else {
         const stated = familyOf(typed);
-        if (stated && stated !== family.key) parts.push(`(“${typed}” is filed as ${weightLabel(stated)}.)`);
+        // The ball band and the stated weight disagree -- common at the edges:
+        // Drops Paris is sold as Aran at 150 m/100 g. The stated one is kept.
+        if (stated && stated !== family.key) parts.push(`It stays filed as ${weightLabel(stated)}, as you wrote it.`);
       }
     } else if (this.weightAuto) {
       weight.value = "";
@@ -415,8 +498,10 @@ export class YarnForm {
         );
 
       const shared = {
-        name,
-        brand: this.value("brand").trim(),
+        // The same brand or yarn typed in another case files with the one
+        // already there, so the lists do not fill with near-twins.
+        name: canonical(name, mostUsedSpellings(this.known.map((y) => y.name))),
+        brand: canonical(this.value("brand"), mostUsedSpellings(this.known.map((y) => y.brand))),
         colourway: this.value("colourway").trim(),
         yarnWeight: this.value("yarnWeight").trim(),
         metresPerBall: num(this.value("metresPerBall")),

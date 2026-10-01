@@ -80,8 +80,11 @@ export function materialValue(typed: string): string {
   return known ? known.key : t;
 }
 
-/** One spelling per word compared without case, the most used first in a tie. */
-function mostUsedSpellings(values: string[]): string[] {
+/**
+ * One spelling per word compared without case -- the one used most -- sorted.
+ * Shared with the yarn form, for its brands and names.
+ */
+export function mostUsedSpellings(values: string[]): string[] {
   const byKey = new Map<string, Map<string, number>>();
   for (const raw of values) {
     const v = raw.trim();

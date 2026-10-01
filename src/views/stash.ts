@@ -119,6 +119,14 @@ export class StashView {
     // Checked before the card itself, because the Remove button lives inside
     // the card: with this the other way round, clicking Remove opens the edit
     // form instead of removing, and the delete handler is never reached.
+    const colour = closestEl(e.target, "[data-colour]");
+    if (colour) {
+      e.stopPropagation();
+      const yarn = this.yarns.find((y) => y.id === colour.dataset.colour);
+      if (yarn) this.root.dispatchEvent(new CustomEvent("add-yarn", { bubbles: true, detail: yarn }));
+      return;
+    }
+
     const del = closestEl(e.target, "[data-delete]");
     if (del) {
       e.stopPropagation();
@@ -248,6 +256,8 @@ export class StashView {
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
           <div class="card-tools-row">
+            <button class="card-remove card-colour" data-colour="${y.id}"
+              title="Add another colour of this yarn: brand, weight and ball band filled in">+ Colour</button>
             <button class="card-remove" data-delete="${y.id}"
               title="Remove this yarn from your stash">Remove</button>
           </div>
