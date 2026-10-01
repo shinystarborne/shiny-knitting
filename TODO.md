@@ -69,6 +69,22 @@ Open questions:
 - A shop or link and a price on each item?
 - Something to copy or print to take to the shop?
 
+### Shops
+
+The shops you buy from, as links with your own comments.
+
+- A shop: name, web address, and a **comment**, e.g. "Drops is the cheapest
+  here" or "great prices on deadstock".
+- Click to open the shop in the browser.
+- Search or filter by what the comments say (find "deadstock" or "Drops").
+- Fits with the Shopping list: an item can say which shop to buy it from.
+
+Open questions:
+
+- Tags as well as a comment (yarn, needles, deadstock, sale)?
+- A country or shipping note per shop?
+- Its own tab, or a part of the Shopping list?
+
 ### Recipient measurements
 
 The people you knit for, with their measurements.
