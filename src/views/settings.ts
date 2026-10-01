@@ -320,7 +320,11 @@ export class SettingsDialog {
       const outcome = await api.checkForUpdate({ includeBeta: this.collectUpdates().includeBeta });
       if (!outcome.update) {
         this.availableUpdate = null;
-        result.textContent = "You're on the newest version.";
+        // The version and the time, so a second click visibly answers again
+        // rather than leaving the same sentence there as if nothing happened.
+        // checkedAt is in seconds, as the backend stores it.
+        const at = new Date(outcome.checkedAt ? outcome.checkedAt * 1000 : Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        result.textContent = `You're on the newest version (${outcome.currentVersion}). Checked at ${at}.`;
       } else {
         this.availableUpdate = outcome.update;
         this.renderAvailable(result, outcome.update);

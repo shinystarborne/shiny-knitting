@@ -325,6 +325,7 @@ export interface UpdateInfo {
 /** What a manual "Check for updates" found. */
 export interface UpdateOutcome {
   currentVersion: string;
+  /** Unix seconds. */
   checkedAt: number;
   update: UpdateInfo | null;
 }

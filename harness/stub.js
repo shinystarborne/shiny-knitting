@@ -1260,13 +1260,13 @@ const handlers = {
     window.__lastUpdateCheckBeta = !!includeBeta;
     const next = window.__nextUpdate ?? null;
     if (next && next.error) throw new Error(next.error);
-    return { currentVersion: "0.2.1", checkedAt: Date.now(), update: next ? clone(next) : null };
+    return { currentVersion: "0.2.1", checkedAt: Math.floor(Date.now() / 1000), update: next ? clone(next) : null };
   },
   startup_update_check: () => {
     const next = window.__startupUpdate ?? null;
     if (!next) return { skipped: true, currentVersion: null, checkedAt: null, update: null };
     if (next.error) throw new Error(next.error);
-    return { skipped: false, currentVersion: "0.2.1", checkedAt: Date.now(), update: clone(next) };
+    return { skipped: false, currentVersion: "0.2.1", checkedAt: Math.floor(Date.now() / 1000), update: clone(next) };
   },
   download_update: () => "C:\\Temp\\ShinyKnitting-update-setup.exe",
   install_update: ({ path }) => {
