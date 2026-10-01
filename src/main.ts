@@ -115,8 +115,7 @@ class App {
       // Escape backs out of a form or leaves the reader.
       if (e.key === "Escape") {
         if (!this.modal.classList.contains("hidden")) {
-          this.modal.className = "modal-backdrop hidden";
-          this.modal.innerHTML = "";
+          this.freshModal();
         } else if (this.activeReader) {
           void this.showLibrary();
         }
@@ -146,6 +145,23 @@ class App {
     } catch {
       // A failed check is a missed convenience, never an interruption.
     }
+  }
+
+  /**
+   * Swaps in a new, empty modal element, and returns it.
+   *
+   * Every dialog is drawn into the one modal element, and each attaches its
+   * listeners to it. A dialog closed some way other than its own close() --
+   * Escape, which empties the element from here -- left those listeners on
+   * it, still answering clicks in whichever dialog came next. A new element
+   * per dialog means nothing from an earlier one can be listening.
+   */
+  private freshModal(): HTMLElement {
+    const fresh = document.createElement("div");
+    fresh.className = "modal-backdrop hidden";
+    this.modal.replaceWith(fresh);
+    this.modal = fresh;
+    return fresh;
   }
 
   private clearScreen(): void {
@@ -221,7 +237,7 @@ class App {
   }
 
   private openForm(pattern: Pattern | null): void {
-    const form = new PatternForm(this.modal, pattern, (saved) => {
+    const form = new PatternForm(this.freshModal(), pattern, (saved) => {
       if (pattern) {
         // Re-open the reader so metadata edits show immediately.
         void this.showReader(saved.id);
@@ -236,7 +252,7 @@ class App {
   }
 
   private openYarnForm(yarn: Yarn | null): void {
-    const form = new YarnForm(this.modal, yarn, () => {
+    const form = new YarnForm(this.freshModal(), yarn, () => {
       // A save re-mounts the stash, so the card picks up the new figures and
       // any photo the form uploaded afterwards.
       void this.showStash();
@@ -248,7 +264,7 @@ class App {
     // Every save re-mounts the tab behind the form, so the grid and its
     // counts are current -- including after "Save and add another", whose
     // form stays open over it.
-    const form = new ToolForm(this.modal, tool, () => void this.showTools());
+    const form = new ToolForm(this.freshModal(), tool, () => void this.showTools());
     await form.open();
   }
 
@@ -321,7 +337,7 @@ class App {
       checkOnStartup: true,
       currentVersion: "",
     }));
-    const dialog = new SettingsDialog(this.modal, settings, updateSettings, () => {
+    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, () => {
       // The library reads settings on mount; a reload picks up the new values.
       void this.showLibrary();
     });
