@@ -25,6 +25,9 @@ export class ProjectPanel {
       if (btn.dataset.act === "project-open") {
         root.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: btn.dataset.id }));
       }
+      if (btn.dataset.act === "project-page") {
+        root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: btn.dataset.id }));
+      }
     });
   }
 
@@ -60,7 +63,7 @@ export class ProjectPanel {
           ];
           return `
             <div class="project-panel-item">
-              <button class="link project-panel-name" data-act="project-open" data-id="${p.id}" title="Open the project: needles, yarn, finishing">${escapeHtml(p.name)}</button>
+              <button class="link project-panel-name" data-act="project-page" data-id="${p.id}" title="Open the project's page and board">${escapeHtml(p.name)}</button>
               ${
                 lines.length
                   ? `<ul class="tool-list">${lines.map((l) => `<li><span>${escapeHtml(l)}</span></li>`).join("")}</ul>`

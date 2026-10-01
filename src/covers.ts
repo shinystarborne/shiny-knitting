@@ -341,6 +341,58 @@ export const yarnPhotoUrl = yarnPhotoCache.url;
 export const forgetYarnPhoto = yarnPhotoCache.forget;
 export const clearYarnPhotoCache = yarnPhotoCache.clear;
 
+const projectCoverCache = makeImageCache((id) => api.getProjectCover(id));
+export const projectCoverUrl = projectCoverCache.url;
+export const forgetProjectCover = projectCoverCache.forget;
+
+const boardImageCache = makeImageCache((id) => api.getBoardImage(id));
+export const boardImageUrl = boardImageCache.url;
+export const forgetBoardImage = boardImageCache.forget;
+export const clearBoardImageCache = () => {
+  boardImageCache.clear();
+  projectCoverCache.clear();
+};
+
+/** The longest side a picture on a board is kept at: big enough to fill a screen. */
+const BOARD_IMAGE_SIZE = 1600;
+
+/**
+ * A picture for a board or a project cover, downscaled to `maxSide` and
+ * returned with its size, so the board can give it the right shape. PNGs stay
+ * PNG, so a screenshot or a chart with transparency is not turned to JPEG.
+ */
+export async function prepareBoardImage(
+  file: Blob,
+  maxSide = BOARD_IMAGE_SIZE,
+): Promise<{ blob: Blob; width: number; height: number } | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return null;
+  }
+  try {
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const png = file.type === "image/png";
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), png ? "image/png" : "image/jpeg", 0.88),
+    );
+    return blob ? { blob, width: canvas.width, height: canvas.height } : null;
+  } finally {
+    bitmap.close();
+  }
+}
+
+export async function blobBytes(blob: Blob): Promise<number[]> {
+  return Array.from(new Uint8Array(await blob.arrayBuffer()));
+}
+
 /**
  * Extracts and stores a cover if the pattern does not already have one.
  * Failures are swallowed: a missing cover is a cosmetic problem, never a

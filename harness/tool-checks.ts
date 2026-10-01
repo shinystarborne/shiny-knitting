@@ -287,16 +287,16 @@ export async function verifyTools() {
     await waitFor(() => !card("t4"), "the removal");
     check(results, "the tool is gone", !store.tools.some((t) => t.id === "t4"));
 
-    // The project link on a card opens that project.
-    const pform = () => document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) .project-form");
+    // The project link on a card opens that project's page.
     (card("t1")!.querySelector('[data-act="open-project"]') as HTMLElement).click();
-    await waitFor(() => !!pform()?.querySelector('[data-el="tools"] .tool-list'), "the project form");
-    check(results, "the card's project link opens the project", (pform()!.querySelector<HTMLSelectElement>('[data-f="pattern"]')?.value ?? "") === "p1");
-    check(results, "…listing the needle on it", /2\.5 mm double-pointed needles, 20 cm \(HiyaHiya\)/.test(pform()!.querySelector('[data-el="tools"]')?.textContent ?? ""));
+    const side = () => document.querySelector<HTMLElement>(".project-page .project-side");
+    await waitFor(() => !!side()?.querySelector(".tool-list"), "the project page");
+    check(results, "the card's project link opens the project's page", side()!.querySelector<HTMLInputElement>('[data-f="name"]')?.value === "Featherweight Lace Sock");
+    check(results, "…listing the needle on it", /2\.5 mm double-pointed needles, 20 cm \(HiyaHiya\)/.test(side()!.textContent ?? ""));
 
-    // A form closed with Escape leaves nothing listening for the next one.
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await waitFor(() => !pform(), "Escape to close it");
+    // Forms opened after others leave nothing listening for the next one.
+    tab("tools");
+    await waitFor(() => cards().length > 0, "the tools again");
     (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
     await waitFor(() => !!modal(), "the needle form");
     set("sizeMm", "7");

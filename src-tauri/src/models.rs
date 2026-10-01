@@ -701,6 +701,9 @@ pub struct Project {
     pub finished_at: Option<i64>,
     pub notes: String,
     pub created_at: i64,
+    /// The cover's file inside `library/project-covers`, or empty.
+    #[serde(default)]
+    pub cover_path: String,
     /// The tools on it: while active, those in use; once finished, those it used.
     pub tool_ids: Vec<String>,
     pub yarns: Vec<ProjectYarn>,
@@ -746,6 +749,9 @@ pub struct ProjectInput {
     pub notes: String,
     #[serde(default)]
     pub started_at: Option<i64>,
+    /// Kept only once the project is finished: an active one has no end yet.
+    #[serde(default)]
+    pub finished_at: Option<i64>,
     #[serde(default)]
     pub tool_ids: Vec<String>,
     #[serde(default)]
@@ -769,4 +775,75 @@ pub struct FinishInput {
     pub finished_at: Option<i64>,
     #[serde(default)]
     pub leftovers: Vec<YarnLeftover>,
+}
+
+// ---------- a project's board ----------
+
+/// What can go on a project's board.
+///
+/// - `note`: a sticky note
+/// - `text`: words on the board itself
+/// - `link`: a web address, opened in the browser
+/// - `image`: a picture, stored as a file
+/// - `pattern`: a pattern from the library
+/// - `yarn`: a yarn from the stash
+/// - `tool`: a needle, hook or cable
+/// - `swatch`: a colour
+pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch"];
+
+/// One thing on a project's board, where it sits, and what it holds.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItem {
+    pub id: String,
+    pub project_id: String,
+    pub kind: String,
+    /// Position and size on the board, in board units (pixels at 100%).
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    /// Stacking: higher is on top.
+    pub z: i64,
+    /// What it holds, by kind: `{ "text": .. }`, `{ "url": .., "title": .. }`,
+    /// `{ "patternId": .. }`, `{ "colour": .., "label": .. }` and so on.
+    pub data: serde_json::Value,
+    /// Whether an image file is stored for it.
+    pub has_image: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItemInput {
+    pub kind: String,
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+    #[serde(default)]
+    pub w: f64,
+    #[serde(default)]
+    pub h: f64,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
+}
+
+/// A change to an item: only the fields given are changed.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItemPatch {
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub w: Option<f64>,
+    #[serde(default)]
+    pub h: Option<f64>,
+    /// True puts it on top of everything else on the board.
+    #[serde(default)]
+    pub to_front: bool,
+    #[serde(default)]
+    pub data: Option<serde_json::Value>,
 }

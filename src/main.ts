@@ -8,11 +8,12 @@ import { ToolForm } from "./views/tool-form";
 import { ProjectsView } from "./views/projects";
 import { ProjectForm } from "./views/project-form";
 import { FinishProjectDialog } from "./views/finish-project";
+import { ProjectPage } from "./views/project-page";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearCoverCache, clearYarnPhotoCache, ensureCover } from "./covers";
+import { clearBoardImageCache, clearCoverCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
@@ -30,6 +31,8 @@ class App {
   private modal!: HTMLElement;
 
   private activeReader: ReaderView | null = null;
+  /** The project page on screen, so a dialog saved over it can refresh it. */
+  private activeProjectPage: ProjectPage | null = null;
   /** The mounted library, so background work can ask it to repaint a card. */
   private activeLibrary: LibraryView | null = null;
   private layout: Layout = "split";
@@ -111,6 +114,9 @@ class App {
       const detail = (e as CustomEvent<{ patternId?: string }>).detail ?? {};
       void this.openProjectForm(null, detail.patternId ?? null);
     });
+    this.screen.addEventListener("open-project-page", (e) => {
+      void this.showProjectPage((e as CustomEvent<string>).detail);
+    });
     this.screen.addEventListener("edit-project", (e) => {
       void this.editProject((e as CustomEvent<string>).detail);
     });
@@ -183,6 +189,9 @@ class App {
   private clearScreen(): void {
     this.activeReader?.destroy();
     this.activeReader = null;
+    this.activeProjectPage?.destroy();
+    this.activeProjectPage = null;
+    clearBoardImageCache();
     this.activeLibrary = null;
     this.screen.innerHTML = "";
     // Cover and photo object URLs are tied to the elements that showed them.
@@ -227,6 +236,22 @@ class App {
     this.setActiveTab("projects");
     const view = new ProjectsView(this.screen);
     await view.mount();
+  }
+
+  private async showProjectPage(id: string): Promise<void> {
+    const token = ++this.navToken;
+    this.clearScreen();
+    this.setActiveTab("projects");
+    const page = new ProjectPage(this.screen, id, {
+      back: () => void this.showProjects(),
+      openPattern: (patternId) => void this.showReader(patternId),
+      editLinks: (project) => void this.openProjectForm(project, null),
+      finish: (project) => void this.openFinish(project),
+      removed: () => void this.showProjects(),
+    });
+    this.activeProjectPage = page;
+    await page.mount();
+    if (token !== this.navToken) page.destroy();
   }
 
   private async showTools(): Promise<void> {
@@ -300,7 +325,12 @@ class App {
 
   private async openProjectForm(project: Project | null, patternId: string | null): Promise<void> {
     const form = new ProjectForm(this.freshModal(), project, { patternId }, {
-      onDone: () => this.afterProjectChange(),
+      onDone: (saved) => {
+        // A project started from the Projects tab opens on its own page,
+        // ready for its board; one started from a pattern stays with it.
+        if (!project && saved && this.currentTab === "projects" && !this.activeProjectPage) void this.showProjectPage(saved.id);
+        else this.afterProjectChange();
+      },
       onFinish: (saved) => void this.openFinish(saved),
     });
     await form.open();
@@ -319,6 +349,10 @@ class App {
   private afterProjectChange(): void {
     if (this.activeReader) {
       this.activeReader.refreshProject();
+      return;
+    }
+    if (this.activeProjectPage) {
+      void this.activeProjectPage.refresh();
       return;
     }
     if (this.currentTab === "projects") void this.showProjects();

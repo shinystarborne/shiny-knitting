@@ -6,7 +6,7 @@ use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
     Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES, FinishInput, Project,
-    ProjectInput, ProjectYarn,
+    ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
 };
 
 #[cfg(test)]
@@ -220,6 +220,24 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_project_yarns_yarn ON project_yarns(yarn_id);
 
+        -- A project's board: notes, pictures, links and the rest, laid out
+        -- freely. `data` is the item's own content as JSON; a picture's file
+        -- lives in library/project-images.
+        CREATE TABLE IF NOT EXISTS board_items (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL,
+            x           REAL NOT NULL DEFAULT 0,
+            y           REAL NOT NULL DEFAULT 0,
+            w           REAL NOT NULL DEFAULT 220,
+            h           REAL NOT NULL DEFAULT 160,
+            z           INTEGER NOT NULL DEFAULT 0,
+            data        TEXT NOT NULL DEFAULT '{}',
+            image_file  TEXT NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_board_items_project ON board_items(project_id);
+
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
         CREATE TABLE IF NOT EXISTS page_rotations (
@@ -372,6 +390,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
     }
     move_tools_into_projects(conn)?;
+    // A project's cover picture.
+    if !column_exists(conn, "projects", "cover_path")? {
+        conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
 
     // The line is now off by default: most patterns are read rather than
     // counted against a chart, and for those it was in the way. Lines still on
@@ -1672,6 +1694,7 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         finished_at: row.get("finished_at")?,
         notes: row.get("notes")?,
         created_at: row.get("created_at")?,
+        cover_path: row.get("cover_path")?,
         tool_ids: Vec::new(),
         yarns: Vec::new(),
     })
@@ -1779,9 +1802,15 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
     check_pattern(conn, input.pattern_id.as_deref())?;
     let name = project_name(conn, input)?;
     let tx = conn.unchecked_transaction()?;
+    // A finished project's end date can be corrected; an active one has none.
+    let finished_at = if current.status == "finished" {
+        input.finished_at.or(current.finished_at)
+    } else {
+        None
+    };
     tx.execute(
-        "UPDATE projects SET name = ?2, pattern_id = ?3, started_at = ?4, notes = ?5 WHERE id = ?1",
-        params![id, name, input.pattern_id, input.started_at.unwrap_or(current.started_at), input.notes],
+        "UPDATE projects SET name = ?2, pattern_id = ?3, started_at = ?4, notes = ?5, finished_at = ?6 WHERE id = ?1",
+        params![id, name, input.pattern_id, input.started_at.unwrap_or(current.started_at), input.notes, finished_at],
     )?;
     if current.status == "active" {
         sync_links(&tx, id, input)?;
@@ -1930,6 +1959,174 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
 /// the needles and yarn stay.
 pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+// ---------- a project's board ----------
+
+fn row_to_item(row: &rusqlite::Row) -> rusqlite::Result<BoardItem> {
+    let data: String = row.get("data")?;
+    let image: String = row.get("image_file")?;
+    Ok(BoardItem {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        kind: row.get("kind")?,
+        x: row.get("x")?,
+        y: row.get("y")?,
+        w: row.get("w")?,
+        h: row.get("h")?,
+        z: row.get("z")?,
+        data: serde_json::from_str(&data).unwrap_or_else(|_| serde_json::json!({})),
+        has_image: !image.is_empty(),
+        created_at: row.get("created_at")?,
+    })
+}
+
+/// The longest an item's content may be, as JSON: a long note is a few
+/// thousand characters; anything far past that is not a note.
+const MAX_ITEM_DATA: usize = 20_000;
+
+/// An item's content as stored: a JSON object, of a sane size.
+fn item_data(data: &serde_json::Value) -> AppResult<String> {
+    if !data.is_object() {
+        return Err(AppError::Message("A board item holds an object.".to_string()));
+    }
+    let text = data.to_string();
+    if text.len() > MAX_ITEM_DATA {
+        return Err(AppError::Message("That is too much for one item on the board.".to_string()));
+    }
+    Ok(text)
+}
+
+/// A position: any finite number, kept within a reach no one scrolls past.
+fn board_coord(v: f64) -> f64 {
+    if v.is_finite() { v.clamp(-1_000_000.0, 1_000_000.0) } else { 0.0 }
+}
+
+/// A size: from a small sticker to a large picture.
+fn board_size(v: f64, fallback: f64) -> f64 {
+    if v.is_finite() && v > 0.0 { v.clamp(40.0, 4000.0) } else { fallback }
+}
+
+pub fn list_board_items(conn: &Connection, project_id: &str) -> AppResult<Vec<BoardItem>> {
+    let mut stmt = conn.prepare("SELECT * FROM board_items WHERE project_id = ?1 ORDER BY z, created_at")?;
+    let rows = stmt.query_map(params![project_id], row_to_item)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_board_item(conn: &Connection, id: &str) -> AppResult<BoardItem> {
+    conn.query_row("SELECT * FROM board_items WHERE id = ?1", params![id], row_to_item)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That is no longer on the board.".to_string()))
+}
+
+/// Adds an item, on top of everything already on the board.
+pub fn insert_board_item(conn: &Connection, id: &str, project_id: &str, input: &BoardItemInput) -> AppResult<BoardItem> {
+    get_project(conn, project_id)?;
+    if !BOARD_KINDS.contains(&input.kind.as_str()) {
+        return Err(AppError::Message(format!("A board cannot hold a “{}”.", input.kind)));
+    }
+    let data = item_data(input.data.as_ref().unwrap_or(&serde_json::json!({})))?;
+    let top: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE project_id = ?1",
+        params![project_id],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "INSERT INTO board_items (id, project_id, kind, x, y, w, h, z, data, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            id,
+            project_id,
+            input.kind,
+            board_coord(input.x),
+            board_coord(input.y),
+            board_size(input.w, 220.0),
+            board_size(input.h, 160.0),
+            top + 1,
+            data,
+            now_ms()
+        ],
+    )?;
+    get_board_item(conn, id)
+}
+
+/// Moves, resizes, raises or rewrites an item: only what is given changes.
+pub fn update_board_item(conn: &Connection, id: &str, patch: &BoardItemPatch) -> AppResult<BoardItem> {
+    let current = get_board_item(conn, id)?;
+    let data = match &patch.data {
+        Some(d) => item_data(d)?,
+        None => current.data.to_string(),
+    };
+    let z = if patch.to_front {
+        let top: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE project_id = ?1",
+            params![current.project_id],
+            |r| r.get(0),
+        )?;
+        if top == current.z { current.z } else { top + 1 }
+    } else {
+        current.z
+    };
+    conn.execute(
+        "UPDATE board_items SET x = ?2, y = ?3, w = ?4, h = ?5, z = ?6, data = ?7 WHERE id = ?1",
+        params![
+            id,
+            patch.x.map(board_coord).unwrap_or(current.x),
+            patch.y.map(board_coord).unwrap_or(current.y),
+            patch.w.map(|v| board_size(v, current.w)).unwrap_or(current.w),
+            patch.h.map(|v| board_size(v, current.h)).unwrap_or(current.h),
+            z,
+            data
+        ],
+    )?;
+    get_board_item(conn, id)
+}
+
+/// Removes an item, returning its picture's file name for the caller to delete.
+pub fn delete_board_item(conn: &Connection, id: &str) -> AppResult<String> {
+    let image: String = conn
+        .query_row("SELECT image_file FROM board_items WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That is no longer on the board.".to_string()))?;
+    conn.execute("DELETE FROM board_items WHERE id = ?1", params![id])?;
+    Ok(image)
+}
+
+pub fn board_item_image(conn: &Connection, id: &str) -> AppResult<String> {
+    Ok(conn
+        .query_row("SELECT image_file FROM board_items WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()?
+        .unwrap_or_default())
+}
+
+pub fn set_board_item_image(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE board_items SET image_file = ?2 WHERE id = ?1", params![id, file])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That is no longer on the board.".to_string()));
+    }
+    Ok(())
+}
+
+/// Every picture file a project holds -- its cover and its board's -- so
+/// removing the project can take them with it.
+pub fn project_files(conn: &Connection, project_id: &str) -> AppResult<(String, Vec<String>)> {
+    let cover: String = conn
+        .query_row("SELECT cover_path FROM projects WHERE id = ?1", params![project_id], |r| r.get(0))
+        .optional()?
+        .unwrap_or_default();
+    let images: Vec<String> = conn
+        .prepare("SELECT image_file FROM board_items WHERE project_id = ?1 AND image_file <> ''")?
+        .query_map(params![project_id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    Ok((cover, images))
+}
+
+pub fn set_project_cover(conn: &Connection, project_id: &str, file: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE projects SET cover_path = ?2 WHERE id = ?1", params![project_id, file])?;
     if changed == 0 {
         return Err(AppError::NotFound("That project is no longer there.".to_string()));
     }

@@ -32,6 +32,9 @@ const store = {
   projects: [],
   projectTools: [],
   projectYarns: [],
+  // Each project's board. Pictures and covers share the `covers` blob store,
+  // under "board:<id>" and "project:<id>".
+  boardItems: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -444,6 +447,7 @@ function projectOut(pr) {
     ...pr,
     patternId: pattern ? pr.patternId : null,
     patternTitle: pattern ? pattern.title : "",
+    coverPath: pr.coverPath || "",
     toolIds: store.projectTools.filter((l) => l.projectId === pr.id).map((l) => l.toolId),
     yarns: store.projectYarns
       .filter((e) => e.projectId === pr.id)
@@ -1034,6 +1038,8 @@ const handlers = {
     pr.patternId = input.patternId || null;
     pr.startedAt = input.startedAt ?? pr.startedAt;
     pr.notes = input.notes || "";
+    // A finished project's end can be corrected; an active one has none.
+    if (pr.status === "finished" && input.finishedAt != null) pr.finishedAt = input.finishedAt;
     if (pr.status === "active") syncLinks(id, input);
     return projectOut(pr);
   },
@@ -1069,9 +1075,83 @@ const handlers = {
   },
   delete_project: ({ id }) => {
     if (!store.projects.some((x) => x.id === id)) throw new Error("That project is no longer there.");
+    for (const item of store.boardItems.filter((i) => i.projectId === id)) store.covers.delete(`board:${item.id}`);
+    store.boardItems = store.boardItems.filter((i) => i.projectId !== id);
+    store.covers.delete(`project:${id}`);
     store.projects = store.projects.filter((x) => x.id !== id);
     store.projectTools = store.projectTools.filter((l) => l.projectId !== id);
     store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id);
+  },
+
+  set_project_cover: ({ projectId, bytes }) => {
+    const pr = store.projects.find((x) => x.id === projectId);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    pr.coverPath = `${projectId}.${sniffImage(bytes)[0]}`;
+    store.covers.set(`project:${projectId}`, bytes);
+  },
+  get_project_cover: ({ projectId }) => {
+    const bytes = store.covers.get(`project:${projectId}`);
+    if (!bytes) throw new Error("This project has no cover.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  remove_project_cover: ({ projectId }) => {
+    const pr = store.projects.find((x) => x.id === projectId);
+    if (pr) pr.coverPath = "";
+    store.covers.delete(`project:${projectId}`);
+  },
+
+  // ---------- a project's board ----------
+  list_board_items: ({ projectId }) =>
+    clone(store.boardItems.filter((i) => i.projectId === projectId).sort((a, b) => a.z - b.z || a.createdAt - b.createdAt)),
+  add_board_item: ({ projectId, input }) => {
+    if (!store.projects.some((x) => x.id === projectId)) throw new Error("That project is no longer there.");
+    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch"];
+    if (!kinds.includes(input.kind)) throw new Error(`A board cannot hold a “${input.kind}”.`);
+    const data = input.data ?? {};
+    if (typeof data !== "object" || Array.isArray(data)) throw new Error("A board item holds an object.");
+    const top = Math.max(0, ...store.boardItems.filter((i) => i.projectId === projectId).map((i) => i.z));
+    const size = (v, f) => (Number.isFinite(v) && v > 0 ? Math.min(4000, Math.max(40, v)) : f);
+    const item = {
+      id: `b${store.nextId++}`, projectId, kind: input.kind,
+      x: input.x || 0, y: input.y || 0, w: size(input.w, 220), h: size(input.h, 160),
+      z: top + 1, data: clone(data), hasImage: false, createdAt: Date.now(),
+    };
+    store.boardItems.push(item);
+    return clone(item);
+  },
+  update_board_item: ({ id, patch }) => {
+    const item = store.boardItems.find((i) => i.id === id);
+    if (!item) throw new Error("That is no longer on the board.");
+    const size = (v, f) => (Number.isFinite(v) && v > 0 ? Math.min(4000, Math.max(40, v)) : f);
+    if (patch.x != null) item.x = patch.x;
+    if (patch.y != null) item.y = patch.y;
+    if (patch.w != null) item.w = size(patch.w, item.w);
+    if (patch.h != null) item.h = size(patch.h, item.h);
+    if (patch.data) item.data = clone(patch.data);
+    if (patch.toFront) {
+      const top = Math.max(0, ...store.boardItems.filter((i) => i.projectId === item.projectId).map((i) => i.z));
+      if (top !== item.z) item.z = top + 1;
+    }
+    return clone(item);
+  },
+  delete_board_item: ({ id }) => {
+    if (!store.boardItems.some((i) => i.id === id)) throw new Error("That is no longer on the board.");
+    store.boardItems = store.boardItems.filter((i) => i.id !== id);
+    store.covers.delete(`board:${id}`);
+  },
+  set_board_image: ({ id, bytes }) => {
+    const item = store.boardItems.find((i) => i.id === id);
+    if (!item) throw new Error("That is no longer on the board.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    store.covers.set(`board:${id}`, bytes);
+    item.hasImage = true;
+    return clone(item);
+  },
+  get_board_image: ({ id }) => {
+    const bytes = store.covers.get(`board:${id}`);
+    if (!bytes) throw new Error("That picture is no longer there.");
+    return Uint8Array.from(bytes).buffer;
   },
 
   // ---------- yarn stash ----------

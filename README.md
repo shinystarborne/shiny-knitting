@@ -206,6 +206,31 @@ over. A yarn bought in more than one dye lot asks which lot, since that is the
 one knitted from and the one its leftover goes back to. Left without a name, a
 project takes its pattern's.
 
+**A project's page.** Opening a project — from its card, a needle's card, or
+the name in a pattern's side pane — goes to its own page. Down the side: a
+**cover** (click the box and paste a picture with `Ctrl`+`V`, drop one on it, or
+choose one), the name, the pattern, **Started** and **Finished** dates (the
+finished date can be corrected once it is finished), its needles and yarn, and
+notes. Everything there saves as it is changed.
+
+The rest of the page is the project's **board**, an endless surface to gather
+what it is made of and what it should look like, as on a Miro board:
+
+- **Note** — a sticky note, in five colours; double-click to write
+- **Text** — words on the board itself, for headings
+- **Link** — a web address, opened in your browser
+- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder
+- **Pattern**, **Yarn**, **Needle** — cards for things already in the app,
+  this project's own listed first; a pattern's card opens it
+- **Colour** — a swatch, with a name; double-click to change the colour
+
+Drag the board to move around, scroll to pan, `Ctrl`+scroll to zoom; **Fit**
+shows everything. Drag an item to move it and its corner to resize it (a picture
+keeps its shape unless `Shift` is held); `Delete` removes the one selected, after
+asking. Pasting a web address makes a link and pasting words makes a note. New
+things go into free space near the middle of the view, and the board remembers
+where it was looked at.
+
 **While knitting.** An open pattern's side pane shows its project at the top —
 what is on it, and **Needles, yarn, finish…** to change any of it.
 
@@ -536,6 +561,8 @@ src/
     projects.ts        the projects tab
     project-form.ts    a project: its pattern, needles and yarn
     finish-project.ts  finishing one: releasing needles, recording leftovers
+    project-page.ts    a project's own page: cover, details, and its board
+    board.ts           the board: notes, pictures, links and cards, laid out freely
     yarn-picker.ts     choosing a project's yarn, and its lot
     yarn-weight.ts     the weight table and cheat sheet, mirroring yarn.rs
     pattern-form.ts    add/edit pattern dialog

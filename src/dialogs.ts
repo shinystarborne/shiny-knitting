@@ -127,6 +127,79 @@ export function askText(message: string, options: AskOptions = {}): Promise<stri
   });
 }
 
+/** One choice in a pick-one dialog; `group` puts it under a heading. */
+export interface Choice {
+  value: string;
+  label: string;
+  group?: string;
+}
+
+/**
+ * Pick one from a list: a pattern for the board, a yarn, a needle. Resolves
+ * the chosen value, or `null` if cancelled. A filter field above the list
+ * narrows it, since a library can be long.
+ */
+export function askChoice(message: string, choices: Choice[], options: AskOptions = {}): Promise<string | null> {
+  return new Promise((resolve) => {
+    const { overlay, card } = frame(options.title);
+    const finish = (answer: string | null) => {
+      close(overlay);
+      resolve(answer);
+    };
+    const filter = dom("input", { class: "dialog-input", type: "search", placeholder: "Filter…" }) as HTMLInputElement;
+    const list = dom("select", { class: "dialog-input dialog-choices", size: "8" }) as HTMLSelectElement;
+    const paint = () => {
+      const term = filter.value.trim().toLowerCase();
+      list.innerHTML = "";
+      const groups = new Map<string, HTMLElement>();
+      for (const c of choices) {
+        if (term && !c.label.toLowerCase().includes(term)) continue;
+        const option = dom("option", { value: c.value }, [c.label]);
+        if (c.group) {
+          let g = groups.get(c.group);
+          if (!g) {
+            g = dom("optgroup", { label: c.group });
+            groups.set(c.group, g);
+            list.append(g);
+          }
+          g.append(option);
+        } else {
+          list.append(option);
+        }
+      }
+      if (list.options.length) list.selectedIndex = 0;
+    };
+    paint();
+    filter.addEventListener("input", paint);
+    const confirm = () => {
+      if (list.value) finish(list.value);
+    };
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        confirm();
+      }
+      if (e.key === "ArrowDown" && e.target === filter) {
+        e.preventDefault();
+        list.focus();
+      }
+    };
+    filter.addEventListener("keydown", keys);
+    list.addEventListener("keydown", keys);
+    list.addEventListener("dblclick", confirm);
+    card.append(
+      dom("p", { class: "dialog-message" }, [message]),
+      ...(choices.length > 8 ? [filter] : []),
+      list,
+      actions([
+        button(options.cancelLabel ?? "Cancel", "ghost", () => finish(null)),
+        button(options.okLabel ?? "Add", "primary", confirm),
+      ]),
+    );
+    show(overlay, card, () => finish(null), choices.length > 8 ? filter : list);
+  });
+}
+
 /** One box in a form dialog. */
 export interface Field {
   label: string;

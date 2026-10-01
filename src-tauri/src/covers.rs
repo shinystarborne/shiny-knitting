@@ -214,6 +214,71 @@ pub fn read_yarn_photo(state: &AppState, yarn_id: &str) -> AppResult<(String, Ve
     read_file(path)
 }
 
+// ---------- projects: a cover, and the board's pictures ----------
+
+pub fn project_covers_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("project-covers")
+}
+
+pub fn board_images_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("project-images")
+}
+
+/// Saves a project's cover, replacing any previous one.
+pub fn set_project_cover(state: &AppState, project_id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    remove_project_cover(state, project_id).ok();
+    let file_name = write_file(&project_covers_dir(state), project_id, ext, &bytes)?;
+    db::set_project_cover(&state.db(), project_id, &file_name)
+}
+
+pub fn remove_project_cover(state: &AppState, project_id: &str) -> AppResult<()> {
+    let name = db::get_project(&state.db(), project_id)?.cover_path;
+    if let Some(path) = existing_file(&project_covers_dir(state), &name) {
+        let _ = std::fs::remove_file(path);
+    }
+    db::set_project_cover(&state.db(), project_id, "")
+}
+
+pub fn read_project_cover(state: &AppState, project_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::get_project(&state.db(), project_id)?.cover_path;
+    let path = existing_file(&project_covers_dir(state), &name)
+        .ok_or_else(|| AppError::Message("This project has no cover.".into()))?;
+    read_file(path)
+}
+
+/// Saves a board item's picture, replacing any previous one.
+pub fn set_board_image(state: &AppState, item_id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    let old = db::board_item_image(&state.db(), item_id)?;
+    if let Some(path) = existing_file(&board_images_dir(state), &old) {
+        let _ = std::fs::remove_file(path);
+    }
+    let file_name = write_file(&board_images_dir(state), item_id, ext, &bytes)?;
+    db::set_board_item_image(&state.db(), item_id, &file_name)
+}
+
+pub fn read_board_image(state: &AppState, item_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::board_item_image(&state.db(), item_id)?;
+    let path = existing_file(&board_images_dir(state), &name)
+        .ok_or_else(|| AppError::Message("That picture is no longer there.".into()))?;
+    read_file(path)
+}
+
+/// Deletes a stored board picture by its file name, best effort.
+pub fn delete_board_image_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&board_images_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Deletes a stored project cover by its file name, best effort.
+pub fn delete_project_cover_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&project_covers_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

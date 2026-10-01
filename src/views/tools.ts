@@ -118,7 +118,7 @@ export class ToolsView {
       if (act === "free") await this.free(btn.dataset.id!);
       if (act === "remove") await this.remove(btn.dataset.id!);
       if (act === "open-project") {
-        this.root.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: btn.dataset.project }));
+        this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: btn.dataset.project }));
       }
       return;
     }

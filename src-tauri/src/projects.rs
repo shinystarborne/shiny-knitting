@@ -7,7 +7,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, FinishInput, Project, ProjectInput};
+use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, Project, ProjectInput};
 
 use super::state::AppState;
 
@@ -46,7 +46,71 @@ pub fn finish_project(state: State<'_, AppState>, id: String, input: FinishInput
     db::finish_project(&state.db(), &id, &input)
 }
 
+/// Removes a project, and its cover and board pictures with it.
 #[tauri::command]
 pub fn delete_project(state: State<'_, AppState>, id: String) -> CmdResult<()> {
-    db::delete_project(&state.db(), &id)
+    let (cover, images) = db::project_files(&state.db(), &id)?;
+    db::delete_project(&state.db(), &id)?;
+    crate::covers::delete_project_cover_file(&state, &cover);
+    for image in images {
+        crate::covers::delete_board_image_file(&state, &image);
+    }
+    Ok(())
+}
+
+// ---------- the cover ----------
+
+#[tauri::command]
+pub fn set_project_cover(state: State<'_, AppState>, project_id: String, bytes: Vec<u8>) -> CmdResult<()> {
+    crate::covers::set_project_cover(&state, &project_id, bytes)
+}
+
+/// The cover's bytes, as a raw payload, like a pattern's cover.
+#[tauri::command]
+pub fn get_project_cover(state: State<'_, AppState>, project_id: String) -> CmdResult<tauri::ipc::Response> {
+    let (_mime, bytes) = crate::covers::read_project_cover(&state, &project_id)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+pub fn remove_project_cover(state: State<'_, AppState>, project_id: String) -> CmdResult<()> {
+    crate::covers::remove_project_cover(&state, &project_id)
+}
+
+// ---------- the board ----------
+
+#[tauri::command]
+pub fn list_board_items(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<BoardItem>> {
+    db::list_board_items(&state.db(), &project_id)
+}
+
+#[tauri::command]
+pub fn add_board_item(state: State<'_, AppState>, project_id: String, input: BoardItemInput) -> CmdResult<BoardItem> {
+    let id = uuid::Uuid::new_v4().to_string();
+    db::insert_board_item(&state.db(), &id, &project_id, &input)
+}
+
+#[tauri::command]
+pub fn update_board_item(state: State<'_, AppState>, id: String, patch: BoardItemPatch) -> CmdResult<BoardItem> {
+    db::update_board_item(&state.db(), &id, &patch)
+}
+
+#[tauri::command]
+pub fn delete_board_item(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let image = db::delete_board_item(&state.db(), &id)?;
+    crate::covers::delete_board_image_file(&state, &image);
+    Ok(())
+}
+
+/// Stores a picture for an image item.
+#[tauri::command]
+pub fn set_board_image(state: State<'_, AppState>, id: String, bytes: Vec<u8>) -> CmdResult<BoardItem> {
+    crate::covers::set_board_image(&state, &id, bytes)?;
+    db::get_board_item(&state.db(), &id)
+}
+
+#[tauri::command]
+pub fn get_board_image(state: State<'_, AppState>, id: String) -> CmdResult<tauri::ipc::Response> {
+    let (_mime, bytes) = crate::covers::read_board_image(&state, &id)?;
+    Ok(tauri::ipc::Response::new(bytes))
 }

@@ -2157,3 +2157,51 @@ fn needles_on_patterns_and_named_projects_move_onto_projects_once() {
     migrate(&conn).unwrap();
     assert_eq!(list_projects(&conn).unwrap().len(), 2, "and not again");
 }
+
+#[test]
+fn a_board_holds_items_and_puts_each_new_one_on_top() {
+    let conn = test_db();
+    let pr = project(&conn, "Jumper", None);
+    let note = crate::models::BoardItemInput {
+        kind: "note".into(),
+        x: 10.0,
+        y: 20.0,
+        w: 0.0,
+        h: 0.0,
+        data: Some(serde_json::json!({ "text": "Try the cabled hem", "colour": "yellow" })),
+    };
+    let a = insert_board_item(&conn, "a", &pr.id, &note).unwrap();
+    assert_eq!((a.w, a.h), (220.0, 160.0), "no size given is the default");
+    assert_eq!(a.data["text"], "Try the cabled hem");
+    let b = insert_board_item(&conn, "b", &pr.id, &crate::models::BoardItemInput { kind: "link".into(), ..note.clone() }).unwrap();
+    assert!(b.z > a.z, "a new item goes on top");
+    assert_eq!(list_board_items(&conn, &pr.id).unwrap().iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["a", "b"]);
+
+    let moved = update_board_item(&conn, "a", &crate::models::BoardItemPatch { x: Some(300.0), to_front: true, ..Default::default() }).unwrap();
+    assert_eq!((moved.x, moved.y), (300.0, 20.0), "only what is given changes");
+    assert!(moved.z > b.z, "brought to the front");
+    assert_eq!(moved.data["text"], "Try the cabled hem");
+    let tiny = update_board_item(&conn, "a", &crate::models::BoardItemPatch { w: Some(1.0), h: Some(f64::NAN), ..Default::default() }).unwrap();
+    assert_eq!((tiny.w, tiny.h), (40.0, 160.0), "sizes are kept sensible");
+
+    assert!(insert_board_item(&conn, "c", &pr.id, &crate::models::BoardItemInput { kind: "spaceship".into(), ..note.clone() }).is_err());
+    assert!(insert_board_item(&conn, "d", &pr.id, &crate::models::BoardItemInput { data: Some(serde_json::json!("not an object")), ..note.clone() }).is_err());
+    assert!(insert_board_item(&conn, "e", "no-such-project", &note).is_err());
+
+    assert_eq!(delete_board_item(&conn, "b").unwrap(), "");
+    delete_project(&conn, &pr.id).unwrap();
+    assert!(get_board_item(&conn, "a").is_err(), "the board goes with its project");
+}
+
+#[test]
+fn a_finished_projects_end_date_can_be_corrected_and_an_active_one_has_none() {
+    let conn = test_db();
+    let pr = project(&conn, "Hat", None);
+    let set = |finished_at: Option<i64>| crate::models::ProjectInput { name: "Hat".into(), finished_at, ..Default::default() };
+    assert_eq!(update_project(&conn, &pr.id, &set(Some(5))).unwrap().finished_at, None, "active: no end yet");
+    finish_project(&conn, &pr.id, &crate::models::FinishInput { finished_at: Some(100), ..Default::default() }).unwrap();
+    assert_eq!(update_project(&conn, &pr.id, &set(Some(200))).unwrap().finished_at, Some(200));
+    assert_eq!(update_project(&conn, &pr.id, &set(None)).unwrap().finished_at, Some(200), "not given, kept");
+    set_project_cover(&conn, &pr.id, "x.jpg").unwrap();
+    assert_eq!(get_project(&conn, &pr.id).unwrap().cover_path, "x.jpg");
+}

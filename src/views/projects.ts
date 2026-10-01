@@ -1,4 +1,5 @@
 import { api, type Project } from "../api";
+import { coverUrl, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { longDate } from "./project-form";
 
@@ -85,7 +86,7 @@ export class ProjectsView {
       return;
     }
     const card = closestEl(e.target, "[data-open]");
-    if (card) this.root.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: card.dataset.open }));
+    if (card) this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: card.dataset.open }));
   }
 
   private renderFacets(): void {
@@ -119,6 +120,20 @@ export class ProjectsView {
       return;
     }
     this.results.innerHTML = shown.map((p) => this.cardHtml(p)).join("");
+    void this.paintCovers(shown);
+  }
+
+  /** Each card's picture: the project's own cover, else its pattern's. */
+  private async paintCovers(shown: Project[]): Promise<void> {
+    for (const p of shown) {
+      const box = this.results.querySelector<HTMLElement>(`.project-card[data-open="${p.id}"] .project-card-cover`);
+      if (!box) continue;
+      const url = p.coverPath ? await projectCoverUrl(p.id) : p.patternId ? await coverUrl(p.patternId) : null;
+      if (url) {
+        box.style.backgroundImage = `url("${url}")`;
+        box.classList.add("filled");
+      }
+    }
   }
 
   private cardHtml(p: Project): string {
@@ -135,6 +150,7 @@ export class ProjectsView {
       : `Started ${longDate(p.startedAt)}`;
     return `
       <article class="project-card${finished ? " finished" : " active"}" data-open="${p.id}">
+        <div class="project-card-cover"><span>${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span></div>
         <div class="project-head">
           <h3>${escapeHtml(p.name)}</h3>
           <span class="pill ${finished ? "project-finished" : "project-active"}">${finished ? "Finished" : "Active"}</span>

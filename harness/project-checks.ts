@@ -7,6 +7,8 @@
  *   window.__projectChecks()
  */
 
+import { fitView, freeSpot, linkFrom, toBoard, zoomAt } from "../src/views/board";
+
 interface CheckResult {
   name: string;
   ok: boolean;
@@ -49,6 +51,25 @@ export async function verifyProjects() {
   };
   const activeOn = (toolId: string) =>
     store.projectTools.find((l) => l.toolId === toolId && store.projects.find((p) => p.id === l.projectId)?.status === "active")?.projectId ?? null;
+
+  // The board's arithmetic.
+  const v = { x: 100, y: 50, scale: 2 };
+  const at = toBoard(v, 300, 250);
+  check(results, "a screen point maps to the board", at.x === 100 && at.y === 100, JSON.stringify(at));
+  const z = zoomAt(v, 1.5, 300, 250);
+  const still = toBoard(z, 300, 250);
+  check(results, "zooming keeps the point under the pointer", Math.abs(still.x - 100) < 1e-9 && Math.abs(still.y - 100) < 1e-9 && z.scale === 3, JSON.stringify(z));
+  check(results, "zoom stops at its limits", zoomAt(v, 100, 0, 0).scale === 3 && zoomAt(v, 0.001, 0, 0).scale === 0.2);
+  const fit = fitView([{ x: 0, y: 0, w: 1000, h: 500 }], 600, 400, 50);
+  check(results, "Fit shows everything", fit.scale === 0.5 && toBoard(fit, 300, 200).x === 500, JSON.stringify(fit));
+  check(results, "Fit never zooms past 100%", fitView([{ x: 0, y: 0, w: 10, h: 10 }], 600, 400).scale === 1);
+  const taken = [{ x: -100, y: -80, w: 200, h: 160 }];
+  const spot = freeSpot(taken, 200, 160, 0, 0);
+  check(results, "a new item goes beside, not on top of, what is there", spot.x + 200 + 24 <= -100 || spot.x >= 124 || spot.y + 160 + 24 <= -80 || spot.y >= 104, JSON.stringify(spot));
+  check(results, "an empty board puts it in the middle", JSON.stringify(freeSpot([], 200, 160, 0, 0)) === '{"x":-100,"y":-80}');
+  check(results, "an address without https is taken as https", linkFrom("ravelry.com/patterns") === "https://ravelry.com/patterns");
+  check(results, "a full address is kept", linkFrom("http://example.com/a?b=1") === "http://example.com/a?b=1");
+  check(results, "words are not a link", linkFrom("cast on 64") === null && linkFrom("javascript:alert(1)") === null && linkFrom("hello") === null);
 
   try {
     tab("projects");
@@ -97,6 +118,12 @@ export async function verifyProjects() {
     check(results, "its needles are in use on it", activeOn("t3") === made.id && activeOn("t2") === made.id);
     check(results, "the one taken from another project left it", !store.projectTools.some((l) => l.projectId === "pr2" && l.toolId === "t2"));
     check(results, "its yarn is on it, from the lot chosen", store.projectYarns.filter((e) => e.projectId === made.id).map((e) => `${e.yarnId}:${e.lotId}`).join(" ") === "y1:l2 y3:l4");
+    // Started from the tab, it opens on its own page.
+    const page = () => document.querySelector<HTMLElement>(".project-page");
+    const side = () => page()!.querySelector<HTMLElement>(".project-side")!;
+    await waitFor(() => !!page()?.querySelector(".board"), "the new project's page");
+    check(results, "a project started from the tab opens on its page", side().querySelector<HTMLInputElement>('[data-f="name"]')?.value === "Long socks for Mum");
+    tab("projects");
     await waitFor(() => cards().length === n + 1, "the new card");
 
     // The stash shows the yarn in use.
@@ -115,8 +142,8 @@ export async function verifyProjects() {
     tab("projects");
     await waitFor(() => cards().length > 0, "the projects again");
     cards().find((c) => c.dataset.open === made.id)!.click();
-    await waitFor(() => !!form()?.querySelector('[data-act="finish"]'), "the project form");
-    (form()!.querySelector('[data-act="finish"]') as HTMLElement).click();
+    await waitFor(() => !!page()?.querySelector('.project-side [data-act="finish"]'), "the project page");
+    (side().querySelector('[data-act="finish"]') as HTMLElement).click();
     await waitFor(() => !!finish(), "the finish dialog");
     check(results, "finishing lists the needles that go back to free", /4 mm circular needle, 40 cm/.test(finish()!.textContent ?? "") && /80 cm/.test(finish()!.textContent ?? ""));
     const grams = [...finish()!.querySelectorAll<HTMLInputElement>("input[data-entry]")];
@@ -151,11 +178,11 @@ export async function verifyProjects() {
     const done = cards().find((c) => c.dataset.open === made.id)!;
     check(results, "the card says Finished", !!done.querySelector(".project-finished"));
     done.click();
-    await waitFor(() => !!form(), "the finished project");
-    check(results, "a finished project shows what was left", /35 g left/.test(form()!.textContent ?? "") && /used up/.test(form()!.textContent ?? ""));
-    check(results, "…and offers no Finish or pickers", !form()!.querySelector('[data-act="finish"]') && !form()!.querySelector('[data-el="tool-add"]'));
-    (form()!.querySelector('[data-act="cancel"]') as HTMLElement).click();
-    await waitFor(() => !form(), "the form to close");
+    await waitFor(() => !!page()?.querySelector(".project-side .tool-list"), "the finished project's page");
+    check(results, "a finished project shows what was left", /35 g left/.test(side().textContent ?? "") && /used up/.test(side().textContent ?? ""));
+    check(results, "…and offers no Finish, but a finished date", !side().querySelector('[data-act="finish"]') && !side().querySelector('[data-act="edit-links"]') && !!side().querySelector('[data-f="finished"]'));
+    tab("projects");
+    await waitFor(() => cards().length > 0, "the projects after the record");
 
     // The reader's project pane.
     (cards().find((c) => c.dataset.open === "pr1")!.querySelector('[data-act="open-pattern"]') as HTMLElement).click();
@@ -187,8 +214,8 @@ export async function verifyProjects() {
     tab("projects");
     await waitFor(() => cards().length > 0, "the projects for removal");
     cards().find((c) => c.dataset.open === "pr1")!.click();
-    await waitFor(() => !!form()?.querySelector('[data-act="remove"]'), "the project to remove");
-    (form()!.querySelector('[data-act="remove"]') as HTMLElement).click();
+    await waitFor(() => !!page()?.querySelector('.project-side [data-act="remove"]'), "the project to remove");
+    (side().querySelector('[data-act="remove"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector(".dialog-card"), "the confirm");
     check(results, "removing asks, and says the needles go back to free", /go back to free/.test(document.querySelector(".dialog-card .dialog-message")?.textContent ?? ""));
     [...document.querySelectorAll<HTMLButtonElement>(".dialog-card button")].find((b) => b.textContent === "Remove")!.click();
