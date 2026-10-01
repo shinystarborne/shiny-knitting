@@ -173,6 +173,68 @@ pub fn update_pattern(state: State<'_, AppState>, pattern: Pattern) -> CmdResult
     db::update_pattern(&state.db(), &pattern)
 }
 
+/// Only the status, as the card's "Want to knit" sets it.
+#[tauri::command]
+pub fn set_pattern_status(state: State<'_, AppState>, id: String, status: String) -> CmdResult<Pattern> {
+    db::set_pattern_status(&state.db(), &id, &status)
+}
+
+/// The patterns that look like copies of one another, grouped.
+#[tauri::command]
+pub fn find_duplicate_patterns(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::DuplicateGroup>> {
+    let groups = db::duplicate_groups(&state.db())?;
+    Ok(groups
+        .into_iter()
+        .map(|(exact, entries)| {
+            let entries: Vec<crate::models::DuplicateEntry> = entries
+                .into_iter()
+                .map(|(pattern, projects, marks, rows, path)| crate::models::DuplicateEntry {
+                    file_size: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                    pattern,
+                    projects,
+                    marks,
+                    rows,
+                })
+                .collect();
+            let keep = suggested_keep(&entries);
+            crate::models::DuplicateGroup { exact, keep, patterns: entries }
+        })
+        .collect())
+}
+
+/// The copy to keep: the one with the most attached to it -- projects, then
+/// highlights and pins, then rows counted, then the one read last, then the
+/// first added.
+fn suggested_keep(entries: &[crate::models::DuplicateEntry]) -> String {
+    entries
+        .iter()
+        .enumerate()
+        .max_by_key(|(i, e)| {
+            (
+                e.projects,
+                e.marks,
+                e.rows,
+                !e.pattern.notes.trim().is_empty(),
+                e.pattern.last_opened_at.unwrap_or(0),
+                std::cmp::Reverse(*i),
+            )
+        })
+        .map(|(_, e)| e.pattern.id.clone())
+        .unwrap_or_default()
+}
+
+/// Keeps one pattern and removes its copies, folding what can be folded into
+/// the one kept first (see db::merge_patterns).
+#[tauri::command]
+pub fn merge_duplicate_patterns(state: State<'_, AppState>, keep: String, remove: Vec<String>) -> CmdResult<Pattern> {
+    let remove: Vec<String> = remove.into_iter().filter(|id| id != &keep).collect();
+    let kept = db::merge_patterns(&state.db(), &keep, &remove)?;
+    for id in &remove {
+        delete_pattern_from(&state, id)?;
+    }
+    Ok(kept)
+}
+
 #[tauri::command]
 pub fn delete_pattern(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     delete_pattern_from(&state, &id)
@@ -207,8 +269,15 @@ fn delete_pattern_from(state: &AppState, id: &str) -> CmdResult<()> {
             let _ = std::fs::remove_file(path);
         }
     };
+    // The file goes unless another pattern still reads from it.
     if let Some(file) = file {
-        remove(PathBuf::from(file));
+        let shared: bool = state
+            .db()
+            .query_row("SELECT EXISTS(SELECT 1 FROM patterns WHERE file_path = ?1)", rusqlite::params![file], |r| r.get(0))
+            .unwrap_or(true);
+        if !shared {
+            remove(PathBuf::from(file));
+        }
     }
     if !cover.is_empty() {
         remove(

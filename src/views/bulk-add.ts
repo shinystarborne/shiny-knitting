@@ -59,7 +59,7 @@ export async function runBulkAdd(
         // Always the path: the backend copies the file itself, and no bytes
         // cross the boundary.
         sourcePath: f.path,
-        status: "want-to-knit",
+        status: "",
         difficulty: "",
         needleSize: "",
         tags: [],

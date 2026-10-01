@@ -7,7 +7,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, Project, ProjectInput};
+use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, InspirationBoard, Project, ProjectInput};
 
 use super::state::AppState;
 
@@ -77,17 +77,20 @@ pub fn remove_project_cover(state: State<'_, AppState>, project_id: String) -> C
     crate::covers::remove_project_cover(&state, &project_id)
 }
 
-// ---------- the board ----------
+// ---------- boards ----------
+//
+// A board belongs to a project, by the project's id, or is an inspiration
+// board of its own; the items work the same either way.
 
 #[tauri::command]
-pub fn list_board_items(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<BoardItem>> {
-    db::list_board_items(&state.db(), &project_id)
+pub fn list_board_items(state: State<'_, AppState>, board_id: String) -> CmdResult<Vec<BoardItem>> {
+    db::list_board_items(&state.db(), &board_id)
 }
 
 #[tauri::command]
-pub fn add_board_item(state: State<'_, AppState>, project_id: String, input: BoardItemInput) -> CmdResult<BoardItem> {
+pub fn add_board_item(state: State<'_, AppState>, board_id: String, input: BoardItemInput) -> CmdResult<BoardItem> {
     let id = uuid::Uuid::new_v4().to_string();
-    db::insert_board_item(&state.db(), &id, &project_id, &input)
+    db::insert_board_item(&state.db(), &id, &board_id, &input)
 }
 
 #[tauri::command]
@@ -113,4 +116,37 @@ pub fn set_board_image(state: State<'_, AppState>, id: String, bytes: Vec<u8>) -
 pub fn get_board_image(state: State<'_, AppState>, id: String) -> CmdResult<tauri::ipc::Response> {
     let (_mime, bytes) = crate::covers::read_board_image(&state, &id)?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+// ---------- inspiration boards ----------
+
+#[tauri::command]
+pub fn list_inspiration_boards(state: State<'_, AppState>) -> CmdResult<Vec<InspirationBoard>> {
+    db::list_inspiration_boards(&state.db())
+}
+
+#[tauri::command]
+pub fn get_inspiration_board(state: State<'_, AppState>, id: String) -> CmdResult<InspirationBoard> {
+    db::get_inspiration_board(&state.db(), &id)
+}
+
+#[tauri::command]
+pub fn add_inspiration_board(state: State<'_, AppState>, name: String) -> CmdResult<InspirationBoard> {
+    let id = uuid::Uuid::new_v4().to_string();
+    db::insert_inspiration_board(&state.db(), &id, &name)
+}
+
+#[tauri::command]
+pub fn rename_inspiration_board(state: State<'_, AppState>, id: String, name: String) -> CmdResult<InspirationBoard> {
+    db::rename_inspiration_board(&state.db(), &id, &name)
+}
+
+/// Removes a board, with its pictures.
+#[tauri::command]
+pub fn delete_inspiration_board(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let images = db::delete_inspiration_board(&state.db(), &id)?;
+    for image in images {
+        crate::covers::delete_board_image_file(&state, &image);
+    }
+    Ok(())
 }

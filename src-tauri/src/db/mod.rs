@@ -5,8 +5,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES, FinishInput, Project,
+    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
+    tidy_status, BoardPicture, InspirationBoard,
 };
 
 #[cfg(test)]
@@ -29,6 +30,31 @@ pub fn open(path: &Path) -> AppResult<Connection> {
 }
 
 fn migrate(conn: &Connection) -> AppResult<()> {
+    // Board items were first keyed to a project, with a foreign key to it;
+    // they now belong to a board, which an inspiration board can be too. A
+    // database from before has its items moved across, before the table below
+    // is made (its index would not find the new column otherwise).
+    if column_exists(conn, "board_items", "project_id")? {
+        conn.execute_batch(
+            "ALTER TABLE board_items RENAME TO board_items_by_project;
+             CREATE TABLE board_items (
+                 id          TEXT PRIMARY KEY,
+                 board_id    TEXT NOT NULL,
+                 kind        TEXT NOT NULL,
+                 x           REAL NOT NULL DEFAULT 0,
+                 y           REAL NOT NULL DEFAULT 0,
+                 w           REAL NOT NULL DEFAULT 220,
+                 h           REAL NOT NULL DEFAULT 160,
+                 z           INTEGER NOT NULL DEFAULT 0,
+                 data        TEXT NOT NULL DEFAULT '{}',
+                 image_file  TEXT NOT NULL DEFAULT '',
+                 created_at  INTEGER NOT NULL
+             );
+             INSERT INTO board_items (id, board_id, kind, x, y, w, h, z, data, image_file, created_at)
+                 SELECT id, project_id, kind, x, y, w, h, z, data, image_file, created_at FROM board_items_by_project;
+             DROP TABLE board_items_by_project;",
+        )?;
+    }
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS patterns (
@@ -38,7 +64,7 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             file_path      TEXT NOT NULL,
             file_name      TEXT NOT NULL,
             format         TEXT NOT NULL,
-            status         TEXT NOT NULL DEFAULT 'want-to-knit',
+            status         TEXT NOT NULL DEFAULT '',
             difficulty     TEXT NOT NULL DEFAULT '',
             needle_size    TEXT NOT NULL DEFAULT '',
             yarn_weight     TEXT NOT NULL DEFAULT '',
@@ -220,12 +246,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_project_yarns_yarn ON project_yarns(yarn_id);
 
-        -- A project's board: notes, pictures, links and the rest, laid out
-        -- freely. `data` is the item's own content as JSON; a picture's file
-        -- lives in library/project-images.
+        -- A board: notes, pictures, links and the rest, laid out freely.
+        -- `board_id` is a project's id for a project's board, or an
+        -- inspiration board's. It has no foreign key because it can be either,
+        -- so whatever owns a board removes its items itself. `data` is the
+        -- item's own content as JSON; a picture's file lives in
+        -- library/project-images.
         CREATE TABLE IF NOT EXISTS board_items (
             id          TEXT PRIMARY KEY,
-            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            board_id    TEXT NOT NULL,
             kind        TEXT NOT NULL,
             x           REAL NOT NULL DEFAULT 0,
             y           REAL NOT NULL DEFAULT 0,
@@ -236,7 +265,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             image_file  TEXT NOT NULL DEFAULT '',
             created_at  INTEGER NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_board_items_project ON board_items(project_id);
+        CREATE INDEX IF NOT EXISTS idx_board_items_board ON board_items(board_id);
+
+        -- A board of its own, for ideas not yet a project.
+        CREATE TABLE IF NOT EXISTS inspiration_boards (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
 
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
@@ -393,6 +430,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // A project's cover picture.
     if !column_exists(conn, "projects", "cover_path")? {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+
+    // Every pattern used to start as "want to knit", so in a large library the
+    // status said nothing. Now a pattern starts with none, and "want to knit"
+    // is for the ones actually planned; the ones that only had it by default
+    // lose it, once.
+    let status_reset: bool = get_setting(conn, "patterns_no_default_status")?;
+    if !status_reset {
+        conn.execute("UPDATE patterns SET status = '' WHERE status = 'want-to-knit'", [])?;
+        set_setting(conn, "patterns_no_default_status", &true)?;
     }
 
     // The line is now off by default: most patterns are read rather than
@@ -726,11 +773,7 @@ pub fn insert_pattern(
     format: &str,
     file_hash: &str,
 ) -> AppResult<Pattern> {
-    let status = if STATUSES.contains(&input.status.as_str()) {
-        input.status.as_str()
-    } else {
-        "want-to-knit"
-    };
+    let status = tidy_status(&input.status);
     // Difficulty is optional; an unrecognised value is dropped rather than
     // stored, so the filter list stays meaningful.
     let difficulty = if DIFFICULTIES.contains(&input.difficulty.as_str()) {
@@ -779,11 +822,7 @@ pub fn insert_pattern(
 
 pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern> {
     let tags_json = serde_json::to_string(&pattern.tags).unwrap_or_else(|_| "[]".to_string());
-    let status = if STATUSES.contains(&pattern.status.as_str()) {
-        pattern.status.as_str()
-    } else {
-        "want-to-knit"
-    };
+    let status = tidy_status(&pattern.status);
     let difficulty = if DIFFICULTIES.contains(&pattern.difficulty.as_str()) {
         pattern.difficulty.as_str()
     } else {
@@ -809,6 +848,173 @@ pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern
         ],
     )?;
     get_pattern(conn, &pattern.id)
+}
+
+/// Sets only a pattern's status, as the card's "Want to knit" does.
+pub fn set_pattern_status(conn: &Connection, id: &str, status: &str) -> AppResult<Pattern> {
+    let changed = conn.execute("UPDATE patterns SET status = ?2 WHERE id = ?1", params![id, tidy_status(status)])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(id.to_string()));
+    }
+    get_pattern(conn, id)
+}
+
+// ---------- duplicates ----------
+
+/// A title as two copies of a pattern would share it: case, punctuation, a
+/// file extension, and the "(1)" or "copy" a download adds all left out.
+pub fn title_key(title: &str) -> String {
+    let lower = title.to_lowercase();
+    let stem = ["pdf", "epub"]
+        .iter()
+        .find_map(|ext| lower.strip_suffix(&format!(".{ext}")))
+        .unwrap_or(&lower)
+        .to_string();
+    let words: Vec<String> = stem
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    // A trailing copy number or "copy" is how a second download is named.
+    let mut end = words.len();
+    while end > 1 {
+        let w = &words[end - 1];
+        if w == "copy" || w == "kopie" || w == "kopia" || (w.len() <= 2 && w.chars().all(|c| c.is_ascii_digit())) {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    words[..end].join(" ")
+}
+
+/// The patterns that look like copies of each other: the same file, or the
+/// same title by the same designer (or with one of them unnamed). Each group
+/// comes with what is attached to each copy, for choosing which to keep.
+pub fn duplicate_groups(conn: &Connection) -> AppResult<Vec<(bool, Vec<(Pattern, i64, i64, i64, String)>)>> {
+    let patterns: Vec<(Pattern, String)> = conn
+        .prepare("SELECT * FROM patterns ORDER BY added_at")?
+        .query_map([], |r| Ok((row_to_pattern(r)?, r.get::<_, String>("file_hash")?)))?
+        .collect::<Result<_, _>>()?;
+
+    // Union-find over the two ways of matching, so a pattern is in one group.
+    let n = patterns.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    let join = |parent: &mut Vec<usize>, a: usize, b: usize| {
+        let (ra, rb) = (root(parent, a), root(parent, b));
+        if ra != rb {
+            parent[rb] = ra;
+        }
+    };
+    let mut by_hash: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut by_title: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
+    for (i, (p, hash)) in patterns.iter().enumerate() {
+        if !hash.is_empty() {
+            match by_hash.get(hash.as_str()) {
+                Some(&first) => join(&mut parent, first, i),
+                None => {
+                    by_hash.insert(hash.as_str(), i);
+                }
+            }
+        }
+        let key = title_key(&p.title);
+        if !key.is_empty() {
+            by_title.entry(key).or_default().push(i);
+        }
+    }
+    for members in by_title.values() {
+        for (a_at, &a) in members.iter().enumerate() {
+            for &b in &members[a_at + 1..] {
+                let (da, db) = (patterns[a].0.designer.trim().to_lowercase(), patterns[b].0.designer.trim().to_lowercase());
+                if da.is_empty() || db.is_empty() || da == db {
+                    join(&mut parent, a, b);
+                }
+            }
+        }
+    }
+
+    let mut groups: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+    for i in 0..n {
+        let r = root(&mut parent, i);
+        groups.entry(r).or_default().push(i);
+    }
+    let count = |sql: &str, id: &str| -> AppResult<i64> { Ok(conn.query_row(sql, params![id], |r| r.get(0))?) };
+    let mut out = Vec::new();
+    for members in groups.into_values().filter(|m| m.len() > 1) {
+        let first_hash = &patterns[members[0]].1;
+        let exact = !first_hash.is_empty() && members.iter().all(|&i| &patterns[i].1 == first_hash);
+        let mut entries = Vec::new();
+        for i in members {
+            let (p, _) = &patterns[i];
+            let projects = count("SELECT COUNT(*) FROM projects WHERE pattern_id = ?1", &p.id)?;
+            let marks = count(
+                "SELECT (SELECT COUNT(*) FROM annotations WHERE pattern_id = ?1)
+                      + (SELECT COUNT(*) FROM bookmarks WHERE pattern_id = ?1)
+                      + (SELECT COUNT(*) FROM pins WHERE pattern_id = ?1)",
+                &p.id,
+            )?;
+            let rows = count("SELECT COALESCE((SELECT total_rows FROM progress WHERE pattern_id = ?1), 0)", &p.id)?;
+            entries.push((p.clone(), projects, marks, rows, p.file_path.clone()));
+        }
+        out.push((exact, entries));
+    }
+    Ok(out)
+}
+
+/// Folds the copies into the one kept, before they are removed: projects,
+/// needles and board cards made from a copy now point at the kept pattern;
+/// tags are joined; a status, notes or details the kept one lacks are taken
+/// from a copy. Highlights, pins and counters stay with their copy and go
+/// with it, which is why the copy with the most of them is the one suggested.
+pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppResult<Pattern> {
+    let mut kept = get_pattern(conn, keep)?;
+    for copy_id in copies.iter().filter(|c| c.as_str() != keep) {
+        let copy = get_pattern(conn, copy_id)?;
+        conn.execute("UPDATE projects SET pattern_id = ?1 WHERE pattern_id = ?2", params![keep, copy_id])?;
+        conn.execute("UPDATE tools SET pattern_id = ?1 WHERE pattern_id = ?2", params![keep, copy_id])?;
+        let cards: Vec<(String, String)> = conn
+            .prepare("SELECT id, data FROM board_items WHERE kind = 'pattern'")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        for (item, data) in cards {
+            let mut value: serde_json::Value = serde_json::from_str(&data).unwrap_or_default();
+            if value.get("patternId").and_then(|v| v.as_str()) == Some(copy_id.as_str()) {
+                value["patternId"] = serde_json::Value::String(keep.to_string());
+                conn.execute("UPDATE board_items SET data = ?2 WHERE id = ?1", params![item, value.to_string()])?;
+            }
+        }
+
+        for tag in copy.tags {
+            if !kept.tags.iter().any(|t| t.eq_ignore_ascii_case(&tag)) {
+                kept.tags.push(tag);
+            }
+        }
+        if kept.status.is_empty() {
+            kept.status = copy.status;
+        }
+        let note = copy.notes.trim();
+        if !note.is_empty() && !kept.notes.contains(note) {
+            kept.notes = if kept.notes.trim().is_empty() { note.to_string() } else { format!("{}\n\n{}", kept.notes.trim_end(), note) };
+        }
+        for (mine, theirs) in [
+            (&mut kept.designer, copy.designer),
+            (&mut kept.difficulty, copy.difficulty),
+            (&mut kept.needle_size, copy.needle_size),
+            (&mut kept.yarn_weight, copy.yarn_weight),
+        ] {
+            if mine.trim().is_empty() {
+                *mine = theirs;
+            }
+        }
+    }
+    update_pattern(conn, &kept)
 }
 
 pub fn delete_pattern(conn: &Connection, id: &str) -> AppResult<()> {
@@ -1962,17 +2168,116 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound("That project is no longer there.".to_string()));
     }
+    conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
     Ok(())
 }
 
-// ---------- a project's board ----------
+// ---------- inspiration boards ----------
+
+/// How many pictures a board's card shows, and how many colours.
+const CARD_PICTURES: usize = 4;
+const CARD_COLOURS: usize = 6;
+
+fn row_to_inspiration(conn: &Connection, id: String, name: String, created_at: i64, updated_at: i64) -> AppResult<InspirationBoard> {
+    let items: Vec<(String, String, String, String)> = conn
+        .prepare(
+            "SELECT id, kind, data, image_file FROM board_items WHERE board_id = ?1
+             ORDER BY created_at DESC",
+        )?
+        .query_map(params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut pictures = Vec::new();
+    let mut colours = Vec::new();
+    for (item, kind, data, image) in &items {
+        let data: serde_json::Value = serde_json::from_str(data).unwrap_or_default();
+        let field = |k: &str| data.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        // Only what has a picture to show: a pattern with a cover, a yarn with a photo.
+        let has = |sql: &str, id: &str| -> bool {
+            conn.query_row(sql, params![id], |r| r.get::<_, String>(0)).map(|f| !f.is_empty()).unwrap_or(false)
+        };
+        let picture = match kind.as_str() {
+            "image" if !image.is_empty() => Some(item.clone()),
+            "pattern" => field("patternId").filter(|id| has("SELECT cover_path FROM patterns WHERE id = ?1", id)),
+            "yarn" => field("yarnId").filter(|id| has("SELECT photo_path FROM yarns WHERE id = ?1", id)),
+            _ => None,
+        };
+        if let Some(pic) = picture {
+            if pictures.len() < CARD_PICTURES {
+                pictures.push(BoardPicture { kind: kind.clone(), id: pic });
+            }
+        }
+        if kind == "swatch" && colours.len() < CARD_COLOURS {
+            if let Some(c) = field("colour") {
+                colours.push(c);
+            }
+        }
+    }
+    Ok(InspirationBoard { id, name, created_at, updated_at, item_count: items.len() as i64, pictures, colours })
+}
+
+pub fn list_inspiration_boards(conn: &Connection) -> AppResult<Vec<InspirationBoard>> {
+    let rows: Vec<(String, String, i64, i64)> = conn
+        .prepare("SELECT id, name, created_at, updated_at FROM inspiration_boards ORDER BY updated_at DESC, created_at DESC")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<Result<_, _>>()?;
+    rows.into_iter().map(|(id, name, c, u)| row_to_inspiration(conn, id, name, c, u)).collect()
+}
+
+pub fn get_inspiration_board(conn: &Connection, id: &str) -> AppResult<InspirationBoard> {
+    let (name, c, u): (String, i64, i64) = conn
+        .query_row("SELECT name, created_at, updated_at FROM inspiration_boards WHERE id = ?1", params![id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That board is no longer there.".to_string()))?;
+    row_to_inspiration(conn, id.to_string(), name, c, u)
+}
+
+/// A board's name: what was typed, or a plain one when nothing was.
+fn board_name(name: &str) -> String {
+    let name = name.trim();
+    if name.is_empty() { "Untitled board".to_string() } else { name.chars().take(120).collect() }
+}
+
+pub fn insert_inspiration_board(conn: &Connection, id: &str, name: &str) -> AppResult<InspirationBoard> {
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO inspiration_boards (id, name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+        params![id, board_name(name), now],
+    )?;
+    get_inspiration_board(conn, id)
+}
+
+pub fn rename_inspiration_board(conn: &Connection, id: &str, name: &str) -> AppResult<InspirationBoard> {
+    let changed = conn.execute(
+        "UPDATE inspiration_boards SET name = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, board_name(name), now_ms()],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That board is no longer there.".to_string()));
+    }
+    get_inspiration_board(conn, id)
+}
+
+/// Removes a board and everything on it, returning its pictures' files.
+pub fn delete_inspiration_board(conn: &Connection, id: &str) -> AppResult<Vec<String>> {
+    let images = board_images(conn, id)?;
+    let changed = conn.execute("DELETE FROM inspiration_boards WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That board is no longer there.".to_string()));
+    }
+    conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
+    Ok(images)
+}
+
+// ---------- boards ----------
 
 fn row_to_item(row: &rusqlite::Row) -> rusqlite::Result<BoardItem> {
     let data: String = row.get("data")?;
     let image: String = row.get("image_file")?;
     Ok(BoardItem {
         id: row.get("id")?,
-        project_id: row.get("project_id")?,
+        board_id: row.get("board_id")?,
         kind: row.get("kind")?,
         x: row.get("x")?,
         y: row.get("y")?,
@@ -2011,10 +2316,26 @@ fn board_size(v: f64, fallback: f64) -> f64 {
     if v.is_finite() && v > 0.0 { v.clamp(40.0, 4000.0) } else { fallback }
 }
 
-pub fn list_board_items(conn: &Connection, project_id: &str) -> AppResult<Vec<BoardItem>> {
-    let mut stmt = conn.prepare("SELECT * FROM board_items WHERE project_id = ?1 ORDER BY z, created_at")?;
-    let rows = stmt.query_map(params![project_id], row_to_item)?;
+pub fn list_board_items(conn: &Connection, board_id: &str) -> AppResult<Vec<BoardItem>> {
+    let mut stmt = conn.prepare("SELECT * FROM board_items WHERE board_id = ?1 ORDER BY z, created_at")?;
+    let rows = stmt.query_map(params![board_id], row_to_item)?;
     Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// That a board is there to put things on: a project, or an inspiration board.
+fn board_exists(conn: &Connection, board_id: &str) -> AppResult<()> {
+    let found: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1) OR EXISTS(SELECT 1 FROM inspiration_boards WHERE id = ?1)",
+        params![board_id],
+        |r| r.get(0),
+    )?;
+    if found { Ok(()) } else { Err(AppError::NotFound("That board is no longer there.".to_string())) }
+}
+
+/// Notes that something on an inspiration board changed, so it sorts first.
+fn touch_board(conn: &Connection, board_id: &str) -> AppResult<()> {
+    conn.execute("UPDATE inspiration_boards SET updated_at = ?2 WHERE id = ?1", params![board_id, now_ms()])?;
+    Ok(())
 }
 
 pub fn get_board_item(conn: &Connection, id: &str) -> AppResult<BoardItem> {
@@ -2024,23 +2345,23 @@ pub fn get_board_item(conn: &Connection, id: &str) -> AppResult<BoardItem> {
 }
 
 /// Adds an item, on top of everything already on the board.
-pub fn insert_board_item(conn: &Connection, id: &str, project_id: &str, input: &BoardItemInput) -> AppResult<BoardItem> {
-    get_project(conn, project_id)?;
+pub fn insert_board_item(conn: &Connection, id: &str, board_id: &str, input: &BoardItemInput) -> AppResult<BoardItem> {
+    board_exists(conn, board_id)?;
     if !BOARD_KINDS.contains(&input.kind.as_str()) {
         return Err(AppError::Message(format!("A board cannot hold a “{}”.", input.kind)));
     }
     let data = item_data(input.data.as_ref().unwrap_or(&serde_json::json!({})))?;
     let top: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE project_id = ?1",
-        params![project_id],
+        "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE board_id = ?1",
+        params![board_id],
         |r| r.get(0),
     )?;
     conn.execute(
-        "INSERT INTO board_items (id, project_id, kind, x, y, w, h, z, data, created_at)
+        "INSERT INTO board_items (id, board_id, kind, x, y, w, h, z, data, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             id,
-            project_id,
+            board_id,
             input.kind,
             board_coord(input.x),
             board_coord(input.y),
@@ -2051,6 +2372,7 @@ pub fn insert_board_item(conn: &Connection, id: &str, project_id: &str, input: &
             now_ms()
         ],
     )?;
+    touch_board(conn, board_id)?;
     get_board_item(conn, id)
 }
 
@@ -2063,8 +2385,8 @@ pub fn update_board_item(conn: &Connection, id: &str, patch: &BoardItemPatch) ->
     };
     let z = if patch.to_front {
         let top: i64 = conn.query_row(
-            "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE project_id = ?1",
-            params![current.project_id],
+            "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE board_id = ?1",
+            params![current.board_id],
             |r| r.get(0),
         )?;
         if top == current.z { current.z } else { top + 1 }
@@ -2083,17 +2405,27 @@ pub fn update_board_item(conn: &Connection, id: &str, patch: &BoardItemPatch) ->
             data
         ],
     )?;
+    touch_board(conn, &current.board_id)?;
     get_board_item(conn, id)
 }
 
 /// Removes an item, returning its picture's file name for the caller to delete.
 pub fn delete_board_item(conn: &Connection, id: &str) -> AppResult<String> {
-    let image: String = conn
-        .query_row("SELECT image_file FROM board_items WHERE id = ?1", params![id], |r| r.get(0))
+    let (board, image): (String, String) = conn
+        .query_row("SELECT board_id, image_file FROM board_items WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?)))
         .optional()?
         .ok_or_else(|| AppError::NotFound("That is no longer on the board.".to_string()))?;
     conn.execute("DELETE FROM board_items WHERE id = ?1", params![id])?;
+    touch_board(conn, &board)?;
     Ok(image)
+}
+
+/// Every picture file on a board, so removing its owner can take them too.
+fn board_images(conn: &Connection, board_id: &str) -> AppResult<Vec<String>> {
+    Ok(conn
+        .prepare("SELECT image_file FROM board_items WHERE board_id = ?1 AND image_file <> ''")?
+        .query_map(params![board_id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?)
 }
 
 pub fn board_item_image(conn: &Connection, id: &str) -> AppResult<String> {
@@ -2118,11 +2450,7 @@ pub fn project_files(conn: &Connection, project_id: &str) -> AppResult<(String, 
         .query_row("SELECT cover_path FROM projects WHERE id = ?1", params![project_id], |r| r.get(0))
         .optional()?
         .unwrap_or_default();
-    let images: Vec<String> = conn
-        .prepare("SELECT image_file FROM board_items WHERE project_id = ?1 AND image_file <> ''")?
-        .query_map(params![project_id], |r| r.get::<_, String>(0))?
-        .collect::<Result<_, _>>()?;
-    Ok((cover, images))
+    Ok((cover, board_images(conn, project_id)?))
 }
 
 pub fn set_project_cover(conn: &Connection, project_id: &str, file: &str) -> AppResult<()> {

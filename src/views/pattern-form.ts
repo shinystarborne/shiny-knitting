@@ -12,9 +12,9 @@ import {
   coverUrl,
   extractFromDocument,
   forgetCover,
-  prepareChosenImage,
   saveCover,
 } from "../covers";
+import { changeCover } from "./cover-dialog";
 
 /**
  * The add/edit dialog for a pattern's details.
@@ -73,7 +73,7 @@ export class PatternForm {
             <div class="cover-row">
               <div class="cover-preview" data-el="coverbox"></div>
               <div class="cover-actions">
-                <button class="ghost" data-act="cover-file">Choose an image…</button>
+                <button class="ghost" data-act="cover-file" title="Paste a picture, drop one, or choose a file">Change cover…</button>
                 <button class="ghost" data-act="cover-reset">Read from the file</button>
                 <p class="hint">The cover is taken from the first page of a PDF, or the cover image of an EPUB.</p>
               </div>
@@ -93,6 +93,7 @@ export class PatternForm {
           <label class="field">
             <span>Status</span>
             <select data-f="status">
+              <option value="" ${e?.status ? "" : "selected"}>No status</option>
               ${STATUSES.map(
                 (s) =>
                   `<option value="${s.value}" ${e?.status === s.value ? "selected" : ""}>${s.label}</option>`,
@@ -319,24 +320,13 @@ export class PatternForm {
     box.style.backgroundImage = url ? `url("${url}")` : "";
   }
 
+  /** The cover dialog: paste, drop, choose, read again or remove. */
   private async chooseCover(): Promise<void> {
     if (!this.editing) return;
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.addEventListener("change", async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const blob = await prepareChosenImage(file);
-      if (!blob) {
-        this.showError("That file could not be read as an image.");
-        return;
-      }
-      await saveCover(this.editing!.id, blob);
-      forgetCover(this.editing!.id);
+    if (await changeCover(this.editing)) {
+      forgetCover(this.editing.id);
       await this.paintCover();
-    });
-    input.click();
+    }
   }
 
   private async resetCover(): Promise<void> {

@@ -36,6 +36,8 @@ export class ProjectPage {
   private tools: Tool[] = [];
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
+  /** The name or notes typed and not yet saved. */
+  private typingTimer: number | null = null;
 
   constructor(screen: HTMLElement, projectId: string, hooks: ProjectPageHooks) {
     this.screen = screen;
@@ -85,7 +87,13 @@ export class ProjectPage {
     this.teardown.push(() => document.removeEventListener("paste", onPaste));
   }
 
+  /** Saves the name or notes still being typed, and takes the page down. */
   destroy(): void {
+    if (this.typingTimer !== null) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+      void this.saveDetails();
+    }
     for (const undo of this.teardown) undo();
     this.board?.destroy();
     this.root?.remove();
@@ -164,6 +172,17 @@ export class ProjectPage {
     `;
     side.onclick = (e) => void this.onClick(e);
     side.onchange = (e) => void this.onChange(e);
+    // The name and notes save a moment after typing stops, too, so nothing
+    // typed is lost to opening another page before the field is left.
+    side.oninput = (e) => {
+      const f = (e.target as HTMLElement).dataset.f;
+      if (f !== "name" && f !== "notes") return;
+      if (this.typingTimer !== null) clearTimeout(this.typingTimer);
+      this.typingTimer = window.setTimeout(() => {
+        this.typingTimer = null;
+        void this.saveDetails();
+      }, 800);
+    };
     const cover = side.querySelector<HTMLElement>("[data-cover]")!;
     cover.ondragover = (e) => {
       e.preventDefault();
@@ -258,6 +277,17 @@ export class ProjectPage {
   private async onChange(e: Event): Promise<void> {
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
+    if (this.typingTimer !== null) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+    }
+    if (!(await this.saveDetails())) return;
+    // The pattern decides the Open link; the rest is already as typed.
+    if (f === "pattern" || f === "name") this.renderSide();
+  }
+
+  /** Saves the details as they stand on the page; false if that failed. */
+  private async saveDetails(): Promise<boolean> {
     const value = (name: string) => this.root.querySelector<HTMLInputElement>(`.project-side [data-f="${name}"]`)?.value ?? "";
     const started = value("started");
     const finishedAt = value("finished");
@@ -270,13 +300,14 @@ export class ProjectPage {
       toolIds: this.project.toolIds,
       yarns: this.project.yarns.map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId })),
     };
+    if (!input.name) return false;
     try {
       this.project = await api.updateProject(this.projectId, input);
+      return true;
     } catch (err) {
-      return void (await say(err instanceof Error ? err.message : String(err), "Project"));
+      await say(err instanceof Error ? err.message : String(err), "Project");
+      return false;
     }
-    // The pattern decides the Open link; the rest is already as typed.
-    if (f === "pattern" || f === "name") this.renderSide();
   }
 }
 

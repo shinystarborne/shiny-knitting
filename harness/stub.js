@@ -32,9 +32,11 @@ const store = {
   projects: [],
   projectTools: [],
   projectYarns: [],
-  // Each project's board. Pictures and covers share the `covers` blob store,
-  // under "board:<id>" and "project:<id>".
+  // Boards' items, keyed by board: a project's id or an inspiration board's.
+  // Pictures and covers share the `covers` blob store, under "board:<id>" and
+  // "project:<id>".
   boardItems: [],
+  inspirationBoards: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -426,6 +428,41 @@ function toolOut(t) {
 }
 
 /** `place_tool`: on an active project (off any other), or free with null. */
+/** An inspiration board as the backend sends it: with its card's pictures and colours. */
+function inspirationOut(b) {
+  const items = store.boardItems.filter((i) => i.boardId === b.id).sort((x, y) => y.createdAt - x.createdAt);
+  const pictures = items
+    .map((i) =>
+      i.kind === "image" && i.hasImage ? { kind: "image", id: i.id }
+      : i.kind === "pattern" && store.patterns.find((p) => p.id === i.data.patternId)?.coverPath ? { kind: "pattern", id: i.data.patternId }
+      : i.kind === "yarn" && store.yarns.find((y) => y.id === i.data.yarnId)?.photoPath ? { kind: "yarn", id: i.data.yarnId }
+      : null,
+    )
+    .filter(Boolean)
+    .slice(0, 4);
+  const colours = items.filter((i) => i.kind === "swatch" && i.data.colour).map((i) => i.data.colour).slice(0, 6);
+  return clone({ ...b, itemCount: items.length, pictures, colours });
+}
+
+function boardName(name) {
+  const n = String(name ?? "").trim();
+  return n ? n.slice(0, 120) : "Untitled board";
+}
+
+/** Something on an inspiration board changed, so it sorts first. */
+function touchBoard(id) {
+  const b = store.inspirationBoards.find((x) => x.id === id);
+  if (b) b.updatedAt = Math.max(Date.now(), b.updatedAt + 1);
+}
+
+/** As db::title_key. */
+function titleKey(title) {
+  let t = title.toLowerCase().replace(/\.(pdf|epub)$/, "");
+  const words = t.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  while (words.length > 1 && (["copy", "kopie", "kopia"].includes(words.at(-1)) || /^\d{1,2}$/.test(words.at(-1)))) words.pop();
+  return words.join(" ");
+}
+
 function placeTool(toolId, projectId) {
   if (projectId) {
     const pr = store.projects.find((x) => x.id === projectId);
@@ -657,6 +694,64 @@ const handlers = {
     next.yarnWeightFamily = yarnFamily(next.yarnWeight);
     store.patterns[i] = next;
     return clone(store.patterns[i]);
+  },
+  set_pattern_status: ({ id, status }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error(`pattern not found: ${id}`);
+    p.status = ["want-to-knit", "in-progress", "finished", "abandoned"].includes(status) ? status : "";
+    return clone(p);
+  },
+  // As db::duplicate_groups: the same file (a seeded `fileHash`), or the same
+  // title once a download's "(1)" and punctuation are left out, by the same
+  // designer or with one unnamed.
+  find_duplicate_patterns: () => {
+    const list = [...store.patterns].sort((a, b) => a.addedAt - b.addedAt);
+    const parent = list.map((_, i) => i);
+    const root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+    const join = (a, b) => {
+      const [ra, rb] = [root(a), root(b)];
+      if (ra !== rb) parent[rb] = ra;
+    };
+    list.forEach((a, i) =>
+      list.forEach((b, j) => {
+        if (j <= i) return;
+        if (a.fileHash && a.fileHash === b.fileHash) join(i, j);
+        const [da, db] = [a.designer.trim().toLowerCase(), b.designer.trim().toLowerCase()];
+        if (titleKey(a.title) && titleKey(a.title) === titleKey(b.title) && (!da || !db || da === db)) join(i, j);
+      }),
+    );
+    const groups = new Map();
+    list.forEach((p, i) => groups.set(root(i), [...(groups.get(root(i)) ?? []), p]));
+    return [...groups.values()]
+      .filter((g) => g.length > 1)
+      .map((g) => {
+        const entries = g.map((p) => ({
+          pattern: clone(p),
+          projects: store.projects.filter((pr) => pr.patternId === p.id).length,
+          marks: store.pins.filter((x) => x.patternId === p.id).length + store.bookmarks.filter((x) => x.patternId === p.id).length,
+          rows: 0,
+          fileSize: 1000 + p.title.length,
+        }));
+        const best = [...entries].sort((a, b) => b.projects - a.projects || b.marks - a.marks)[0];
+        return { exact: !!g[0].fileHash && g.every((p) => p.fileHash === g[0].fileHash), keep: best.pattern.id, patterns: entries };
+      });
+  },
+  merge_duplicate_patterns: ({ keep, remove }) => {
+    const kept = store.patterns.find((p) => p.id === keep);
+    if (!kept) throw new Error(`pattern not found: ${keep}`);
+    for (const id of remove.filter((r) => r !== keep)) {
+      const copy = store.patterns.find((p) => p.id === id);
+      if (!copy) throw new Error(`pattern not found: ${id}`);
+      for (const pr of store.projects) if (pr.patternId === id) pr.patternId = keep;
+      for (const item of store.boardItems) if (item.kind === "pattern" && item.data.patternId === id) item.data.patternId = keep;
+      for (const t of copy.tags) if (!kept.tags.some((k) => k.toLowerCase() === t.toLowerCase())) kept.tags.push(t);
+      if (!kept.status) kept.status = copy.status;
+      if (copy.notes.trim() && !kept.notes.includes(copy.notes.trim())) kept.notes = kept.notes.trim() ? `${kept.notes.trimEnd()}\n\n${copy.notes.trim()}` : copy.notes.trim();
+      for (const f of ["designer", "difficulty", "needleSize", "yarnWeight"]) if (!kept[f].trim()) kept[f] = copy[f];
+      store.patterns = store.patterns.filter((p) => p.id !== id);
+      store.covers.delete(id);
+    }
+    return clone(kept);
   },
   delete_pattern: ({ id }) => {
     store.patterns = store.patterns.filter((p) => p.id !== id);
@@ -1075,8 +1170,8 @@ const handlers = {
   },
   delete_project: ({ id }) => {
     if (!store.projects.some((x) => x.id === id)) throw new Error("That project is no longer there.");
-    for (const item of store.boardItems.filter((i) => i.projectId === id)) store.covers.delete(`board:${item.id}`);
-    store.boardItems = store.boardItems.filter((i) => i.projectId !== id);
+    for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
+    store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
     store.covers.delete(`project:${id}`);
     store.projects = store.projects.filter((x) => x.id !== id);
     store.projectTools = store.projectTools.filter((l) => l.projectId !== id);
@@ -1101,23 +1196,26 @@ const handlers = {
     store.covers.delete(`project:${projectId}`);
   },
 
-  // ---------- a project's board ----------
-  list_board_items: ({ projectId }) =>
-    clone(store.boardItems.filter((i) => i.projectId === projectId).sort((a, b) => a.z - b.z || a.createdAt - b.createdAt)),
-  add_board_item: ({ projectId, input }) => {
-    if (!store.projects.some((x) => x.id === projectId)) throw new Error("That project is no longer there.");
+  // ---------- boards ----------
+  list_board_items: ({ boardId }) =>
+    clone(store.boardItems.filter((i) => i.boardId === boardId).sort((a, b) => a.z - b.z || a.createdAt - b.createdAt)),
+  add_board_item: ({ boardId, input }) => {
+    if (!store.projects.some((x) => x.id === boardId) && !store.inspirationBoards.some((b) => b.id === boardId)) {
+      throw new Error("That board is no longer there.");
+    }
     const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch"];
     if (!kinds.includes(input.kind)) throw new Error(`A board cannot hold a “${input.kind}”.`);
     const data = input.data ?? {};
     if (typeof data !== "object" || Array.isArray(data)) throw new Error("A board item holds an object.");
-    const top = Math.max(0, ...store.boardItems.filter((i) => i.projectId === projectId).map((i) => i.z));
+    const top = Math.max(0, ...store.boardItems.filter((i) => i.boardId === boardId).map((i) => i.z));
     const size = (v, f) => (Number.isFinite(v) && v > 0 ? Math.min(4000, Math.max(40, v)) : f);
     const item = {
-      id: `b${store.nextId++}`, projectId, kind: input.kind,
+      id: `b${store.nextId++}`, boardId, kind: input.kind,
       x: input.x || 0, y: input.y || 0, w: size(input.w, 220), h: size(input.h, 160),
       z: top + 1, data: clone(data), hasImage: false, createdAt: Date.now(),
     };
     store.boardItems.push(item);
+    touchBoard(boardId);
     return clone(item);
   },
   update_board_item: ({ id, patch }) => {
@@ -1130,13 +1228,16 @@ const handlers = {
     if (patch.h != null) item.h = size(patch.h, item.h);
     if (patch.data) item.data = clone(patch.data);
     if (patch.toFront) {
-      const top = Math.max(0, ...store.boardItems.filter((i) => i.projectId === item.projectId).map((i) => i.z));
+      const top = Math.max(0, ...store.boardItems.filter((i) => i.boardId === item.boardId).map((i) => i.z));
       if (top !== item.z) item.z = top + 1;
     }
+    touchBoard(item.boardId);
     return clone(item);
   },
   delete_board_item: ({ id }) => {
-    if (!store.boardItems.some((i) => i.id === id)) throw new Error("That is no longer on the board.");
+    const gone = store.boardItems.find((i) => i.id === id);
+    if (!gone) throw new Error("That is no longer on the board.");
+    touchBoard(gone.boardId);
     store.boardItems = store.boardItems.filter((i) => i.id !== id);
     store.covers.delete(`board:${id}`);
   },
@@ -1152,6 +1253,34 @@ const handlers = {
     const bytes = store.covers.get(`board:${id}`);
     if (!bytes) throw new Error("That picture is no longer there.");
     return Uint8Array.from(bytes).buffer;
+  },
+
+  // ---------- inspiration boards ----------
+  list_inspiration_boards: () =>
+    [...store.inspirationBoards].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt).map(inspirationOut),
+  get_inspiration_board: ({ id }) => {
+    const b = store.inspirationBoards.find((x) => x.id === id);
+    if (!b) throw new Error("That board is no longer there.");
+    return inspirationOut(b);
+  },
+  add_inspiration_board: ({ name }) => {
+    const now = Date.now();
+    const b = { id: `ib${store.nextId++}`, name: boardName(name), createdAt: now, updatedAt: now };
+    store.inspirationBoards.push(b);
+    return inspirationOut(b);
+  },
+  rename_inspiration_board: ({ id, name }) => {
+    const b = store.inspirationBoards.find((x) => x.id === id);
+    if (!b) throw new Error("That board is no longer there.");
+    b.name = boardName(name);
+    b.updatedAt = Date.now();
+    return inspirationOut(b);
+  },
+  delete_inspiration_board: ({ id }) => {
+    if (!store.inspirationBoards.some((x) => x.id === id)) throw new Error("That board is no longer there.");
+    for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
+    store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
+    store.inspirationBoards = store.inspirationBoards.filter((x) => x.id !== id);
   },
 
   // ---------- yarn stash ----------

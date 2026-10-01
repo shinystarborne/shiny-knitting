@@ -10,16 +10,11 @@ import {
 } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
-import {
-  coverUrl,
-  ensureCover,
-  extractFromDocument,
-  forgetCover,
-  prepareChosenImage,
-  removeCover,
-  saveCover,
-} from "../covers";
+import { coverUrl, ensureCover, forgetCover } from "../covers";
 import { MetadataScanner, summarise, undoPattern, type ScanOutcome } from "../ai/scan";
+import { changeCover } from "./cover-dialog";
+import { sortOutDuplicates } from "./duplicates";
+import { paintLazily } from "./lazy";
 
 /**
  * The library screen: covers, search, filters, and the pattern grid.
@@ -69,8 +64,8 @@ export class LibraryView {
             <option value="lastOpened">Recently read</option>
           </select>
           <button data-act="fill-covers" class="ghost" title="Add missing covers">Covers</button>
+          <button data-act="duplicates" class="ghost" title="Find patterns that are in the library more than once">Duplicates…</button>
           <button data-act="scan" class="ghost" title="Describe patterns using your model">Describe</button>
-          <button data-act="settings" class="ghost" title="Model settings">Settings</button>
           <button data-act="add" class="primary">+ Add pattern</button>
           <button data-act="add-folder" class="ghost" title="Add every PDF and EPUB in a folder">Add folder…</button>
         </div>
@@ -176,20 +171,21 @@ export class LibraryView {
         await this.reload();
       } else if (act === "scan") {
         await this.startScan();
-      } else if (act === "settings" || act === "update-available") {
-        this.root.dispatchEvent(
-          new CustomEvent("open-settings", { bubbles: true, detail: this.settings }),
-        );
+      } else if (act === "duplicates") {
+        if (await sortOutDuplicates()) {
+          this.facets = await api.getFacets();
+          this.renderFacets();
+          await this.reload();
+        }
+      } else if (act === "want") {
+        await this.toggleWant(btn.dataset.id!);
       } else if (act === "fill-covers") {
         await this.fillMissingCovers(btn as HTMLButtonElement);
       } else if (act === "stop-scan") {
         this.stopRequested = true;
-      } else if (act === "cover-file") {
-        await this.pickCoverFile(btn.dataset.id!);
-      } else if (act === "cover-reset") {
-        await this.resetCover(btn.dataset.id!);
-      } else if (act === "cover-remove") {
-        await this.dropCover(btn.dataset.id!);
+      } else if (act === "cover") {
+        const pattern = this.patterns.find((p) => p.id === btn.dataset.id);
+        if (pattern && (await changeCover(pattern))) await this.afterCoverChange(pattern.id);
       } else if (act === "undo-ai") {
         await this.undoAi(btn.dataset.id!);
       }
@@ -253,47 +249,43 @@ export class LibraryView {
     this.flash(`Checked ${missing.length} pattern${missing.length === 1 ? "" : "s"}.`);
   }
 
-  private async pickCoverFile(patternId: string): Promise<void> {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.addEventListener("change", async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const blob = await prepareChosenImage(file);
-      if (!blob) {
-        this.flash("That file could not be read as an image.", true);
-        return;
-      }
-      await saveCover(patternId, blob);
-      forgetCover(patternId);
-      await this.reload();
-    });
-    input.click();
+
+  /** After the cover dialog: the card's picture, without repainting the grid. */
+  private async afterCoverChange(patternId: string): Promise<void> {
+    const fresh = await api.getPattern(patternId).catch(() => null);
+    const i = this.patterns.findIndex((p) => p.id === patternId);
+    if (fresh && i >= 0) this.patterns[i] = fresh;
+    forgetCover(patternId);
+    const cover = this.results.querySelector<HTMLElement>(`.cover[data-id="${patternId}"]`);
+    const host = cover?.querySelector<HTMLElement>('[data-el="photo"]');
+    if (!cover || !host) return;
+    const url = fresh?.coverPath ? await coverUrl(patternId) : null;
+    host.style.backgroundImage = url ? `url("${url}")` : "";
+    cover.classList.toggle("has-cover", !!url);
   }
 
-  private async resetCover(patternId: string): Promise<void> {
+  /**
+   * "Want to knit" on and off from the card. A pattern in progress or
+   * finished becomes one wanted again; one wanted goes back to no status.
+   */
+  private async toggleWant(patternId: string): Promise<void> {
     const pattern = this.patterns.find((p) => p.id === patternId);
     if (!pattern) return;
+    const next = pattern.status === "want-to-knit" ? "" : "want-to-knit";
+    let saved: Pattern;
     try {
-      const bytes = await api.readFile(pattern.id);
-      const found = await extractFromDocument(pattern, toBytes(bytes));
-      if (!found) {
-        this.flash("No cover image found in that file.", true);
-        return;
-      }
-      await saveCover(patternId, found.blob);
-      forgetCover(patternId);
-      await this.reload();
-    } catch {
-      this.flash("Could not read that file.", true);
+      saved = await api.setPatternStatus(patternId, next);
+    } catch (err) {
+      this.flash(err instanceof Error ? err.message : String(err), true);
+      return;
     }
-  }
-
-  private async dropCover(patternId: string): Promise<void> {
-    await removeCover(patternId);
-    forgetCover(patternId);
-    await this.reload();
+    Object.assign(pattern, saved);
+    const card = this.results.querySelector<HTMLElement>(`.card[data-open="${patternId}"]`);
+    if (!card) return;
+    card.querySelector(".card-meta [data-status]")?.remove();
+    card.querySelector(".card-meta")?.insertAdjacentHTML("afterbegin", statusPill(saved.status));
+    const btn = card.querySelector<HTMLElement>('[data-act="want"]');
+    if (btn) btn.outerHTML = wantButton(saved);
   }
 
   // ---------- AI ----------
@@ -361,24 +353,26 @@ export class LibraryView {
 
   /** Shows an undo button on any card the model has changed. */
   private async refreshUndoButtons(): Promise<void> {
-    for (const card of this.root.querySelectorAll<HTMLElement>(".card")) {
-      const id = card.dataset.open;
-      if (!id || card.querySelector("[data-act='undo-ai']")) continue;
-      // The row exists in the card markup, but is emptied by `:empty` in CSS
-      // when nothing is in it, so look it up rather than assuming.
-      const row = card.querySelector<HTMLElement>(".card-tools-row");
-      if (!row) continue;
-      try {
-        if (await api.hasAiHistory(id)) {
-          row.insertAdjacentHTML(
-            "afterbegin",
-            `<button class="card-tool" data-act="undo-ai" data-id="${id}"
-               title="Undo the last change your model made">Undo model change</button>`,
-          );
-        }
-      } catch {
-        // Not worth surfacing; the button simply does not appear.
+    for (const card of this.root.querySelectorAll<HTMLElement>(".card")) await this.undoButtonFor(card);
+  }
+
+  private async undoButtonFor(card: HTMLElement): Promise<void> {
+    const id = card.dataset.open;
+    if (!id || card.querySelector("[data-act='undo-ai']")) return;
+    // The row exists in the card markup, but is emptied by `:empty` in CSS
+    // when nothing is in it, so look it up rather than assuming.
+    const row = card.querySelector<HTMLElement>(".card-tools-row");
+    if (!row) return;
+    try {
+      if (await api.hasAiHistory(id)) {
+        row.insertAdjacentHTML(
+          "afterbegin",
+          `<button class="card-tool" data-act="undo-ai" data-id="${id}"
+             title="Undo the last change your model made">Undo model change</button>`,
+        );
       }
+    } catch {
+      // Not worth surfacing; the button simply does not appear.
     }
   }
 
@@ -454,22 +448,6 @@ export class LibraryView {
     setTimeout(() => el.remove(), 4000);
   }
 
-  /**
-   * Adds an "Update available" button to the toolbar, for when the startup
-   * check found a newer release. Clicking it opens Settings, where the
-   * download lives. Idempotent: a second check must not add a second button.
-   */
-  showUpdateNotice(tag: string): void {
-    if (this.root.querySelector('[data-act="update-available"]')) return;
-    const actions = this.root.querySelector(".lib-actions");
-    if (!actions) return;
-    const button = document.createElement("button");
-    button.className = "ghost";
-    button.dataset.act = "update-available";
-    button.title = `${tag} is available`;
-    button.textContent = "Update available";
-    actions.prepend(button);
-  }
 
   // ---------- listing ----------
 
@@ -589,8 +567,6 @@ export class LibraryView {
     if (token !== this.listToken) return;
     this.patterns = patterns;
     this.paint();
-    await this.loadCovers();
-    void this.refreshUndoButtons();
   }
 
   /** Repaints without reloading from the database, used during a scan. */
@@ -602,7 +578,11 @@ export class LibraryView {
     this.paint();
   }
 
+  private stopLazy: (() => void) | null = null;
+
   private paint(): void {
+    this.stopLazy?.();
+    this.stopLazy = null;
     if (!this.patterns.length) {
       this.results.innerHTML = `
         <div class="empty">
@@ -620,7 +600,26 @@ export class LibraryView {
       return;
     }
 
-    this.results.innerHTML = this.patterns.map((p) => this.cardHtml(p)).join("");
+    // A page of cards at a time; each card's cover, and its undo button, are
+    // read when it comes near the screen.
+    this.stopLazy = paintLazily(this.results, this.patterns, (p) => this.cardHtml(p), {
+      pictures: ".card",
+      paint: (card) => this.fillCard(card),
+    });
+  }
+
+  private async fillCard(card: HTMLElement): Promise<void> {
+    const id = card.dataset.open!;
+    const pattern = this.patterns.find((p) => p.id === id);
+    if (pattern?.coverPath) {
+      const host = card.querySelector<HTMLElement>('[data-el="photo"]');
+      const url = await coverUrl(id);
+      if (host && url) {
+        host.style.backgroundImage = `url("${url}")`;
+        host.parentElement?.classList.add("has-cover");
+      }
+    }
+    await this.undoButtonFor(card);
   }
 
   private cardHtml(p: Pattern): string {
@@ -632,12 +631,8 @@ export class LibraryView {
             <span>${p.format.toUpperCase()}</span>
           </div>
           <div class="cover-tools">
-            <button class="card-tool" data-act="cover-file" data-id="${p.id}"
-              title="Use your own image">Image</button>
-            <button class="card-tool" data-act="cover-reset" data-id="${p.id}"
-              title="Read the cover from the file">From file</button>
-            <button class="card-tool danger" data-act="cover-remove" data-id="${p.id}"
-              title="Remove the cover">×</button>
+            <button class="card-tool" data-act="cover" data-id="${p.id}"
+              title="Change the cover: paste a picture, drop one, or choose one">Cover…</button>
           </div>
         </div>
         <div class="card-body">
@@ -651,6 +646,7 @@ export class LibraryView {
           </div>
           ${p.tags.length ? `<div class="card-tags">${p.tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
           <div class="card-tools-row">
+            ${wantButton(p)}
             <button class="card-remove" data-delete="${p.id}"
               title="Remove this pattern from your library">Remove</button>
           </div>
@@ -658,23 +654,6 @@ export class LibraryView {
       </article>`;
   }
 
-  /**
-   * Fills in cover photos. Loaded after the cards so the grid appears at once
-   * with a placeholder, rather than waiting on a read per pattern.
-   */
-  private async loadCovers(): Promise<void> {
-    for (const pattern of this.patterns) {
-      if (!pattern.coverPath) continue;
-      const host = this.results.querySelector(
-        `.cover[data-id="${pattern.id}"] [data-el="photo"]`,
-      ) as HTMLElement | null;
-      if (!host) continue;
-      const url = await coverUrl(pattern.id);
-      if (!url) continue;
-      host.style.backgroundImage = `url("${url}")`;
-      host.parentElement?.classList.add("has-cover");
-    }
-  }
 
   /**
    * Repaints one card's cover after it was saved behind the view's back.
@@ -716,11 +695,20 @@ export class LibraryView {
 }
 
 function statusPill(status: string): string {
+  // No status is no pill: most of a large library is simply there.
+  if (!status) return "";
   // Status is a free string in the database, so the label is escaped, and
   // only a known value earns its own class; anything else gets the default.
   const known = STATUSES.find((s) => s.value === status);
   const cls = known ? `status-${status}` : "status-other";
-  return `<span class="pill ${cls}">${escapeHtml(known?.label ?? status)}</span>`;
+  return `<span class="pill ${cls}" data-status>${escapeHtml(known?.label ?? status)}</span>`;
+}
+
+/** The card's own "Want to knit" switch, lit when it is wanted. */
+function wantButton(p: Pattern): string {
+  const on = p.status === "want-to-knit";
+  return `<button class="card-want${on ? " on" : ""}" data-act="want" data-id="${p.id}" aria-pressed="${on}"
+    title="${on ? "Planned to knit soon. Click to take it off the list." : "Mark it as one to knit soon"}">${on ? "★" : "☆"} Want to knit</button>`;
 }
 
 /**

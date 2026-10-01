@@ -15,6 +15,7 @@ import {
   type Facet,
   type ToolFilter,
 } from "./tool-filter";
+import { paintLazily } from "./lazy";
 
 type Group = "use" | "kind" | "size" | "material" | "cableSize" | "brand";
 
@@ -156,7 +157,7 @@ export class ToolsView {
         </div>`;
       return;
     }
-    this.results.innerHTML = shown.map(cardHtml).join("");
+    paintLazily(this.results, shown, cardHtml);
   }
 
   /** Frees a tool from its project, from the card, without opening the form. */

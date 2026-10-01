@@ -45,8 +45,15 @@ pub type AppResult<T> = Result<T, AppError>;
 /// can add your own values later without a schema migration.
 ///
 /// These mirror the lists in `src/api.ts`; the frontend owns the UI wording and
-/// the backend uses these to reject unknown values.
+/// the backend uses these to reject unknown values. A pattern can also have no
+/// status at all, stored as an empty string, which is what a new one starts
+/// with: "want to knit" is a choice, not something every pattern is.
 pub const STATUSES: &[&str] = &["want-to-knit", "in-progress", "finished", "abandoned"];
+
+/// A status as stored: a known one, or none.
+pub fn tidy_status(status: &str) -> &str {
+    if STATUSES.contains(&status) { status } else { "" }
+}
 
 /// Accepted difficulty levels, in increasing order of challenge.
 pub const DIFFICULTIES: &[&str] = &["beginner", "easy", "intermediate", "advanced"];
@@ -777,9 +784,9 @@ pub struct FinishInput {
     pub leftovers: Vec<YarnLeftover>,
 }
 
-// ---------- a project's board ----------
+// ---------- boards ----------
 
-/// What can go on a project's board.
+/// What can go on a board, a project's or an inspiration board.
 ///
 /// - `note`: a sticky note
 /// - `text`: words on the board itself
@@ -791,12 +798,13 @@ pub struct FinishInput {
 /// - `swatch`: a colour
 pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch"];
 
-/// One thing on a project's board, where it sits, and what it holds.
+/// One thing on a board, where it sits, and what it holds.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardItem {
     pub id: String,
-    pub project_id: String,
+    /// The board it is on: a project's id, or an inspiration board's.
+    pub board_id: String,
     pub kind: String,
     /// Position and size on the board, in board units (pixels at 100%).
     pub x: f64,
@@ -846,4 +854,57 @@ pub struct BoardItemPatch {
     pub to_front: bool,
     #[serde(default)]
     pub data: Option<serde_json::Value>,
+}
+
+/// A board of its own, not tied to a project: somewhere to collect ideas.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InspirationBoard {
+    pub id: String,
+    pub name: String,
+    pub created_at: i64,
+    /// When something on it last changed, which is the order the boards are shown in.
+    pub updated_at: i64,
+    pub item_count: i64,
+    /// A few of its pictures, newest first, for the board's card.
+    pub pictures: Vec<BoardPicture>,
+    /// Its colour swatches, for the card.
+    pub colours: Vec<String>,
+}
+
+/// A picture a board shows: one of its own (`image`, by item id), a
+/// pattern's cover (`pattern`, by pattern id) or a yarn's photo (`yarn`).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardPicture {
+    pub kind: String,
+    pub id: String,
+}
+
+// ---------- duplicate patterns ----------
+
+/// Patterns that look like the same one, and which to keep.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateGroup {
+    /// Every file is byte for byte the same: certainly copies. Otherwise only
+    /// the names match, and they may be different versions or languages.
+    pub exact: bool,
+    /// The one suggested to keep: the one with the most attached to it.
+    pub keep: String,
+    pub patterns: Vec<DuplicateEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateEntry {
+    pub pattern: Pattern,
+    /// Projects made from it.
+    pub projects: i64,
+    /// Its highlights, notes on pages, bookmarks and pins.
+    pub marks: i64,
+    /// Rows counted in it.
+    pub rows: i64,
+    /// The file's size in bytes, 0 when it cannot be read.
+    pub file_size: u64,
 }

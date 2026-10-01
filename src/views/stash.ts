@@ -2,6 +2,7 @@ import { api, type Yarn, type YarnFilter, type YarnWeightFacet } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
+import { paintLazily } from "./lazy";
 
 /**
  * The stash screen: every yarn you own, with what is left of it.
@@ -82,7 +83,6 @@ export class StashView {
         if (input.checked) this.use.add(input.value as Use);
         else this.use.delete(input.value as Use);
         this.paint();
-        void this.loadPhotos();
         return;
       }
       if (input.dataset.filter !== "yarnWeight") return;
@@ -186,7 +186,6 @@ export class StashView {
     if (token !== this.listToken) return;
     this.yarns = yarns;
     this.paint();
-    await this.loadPhotos();
   }
 
   /**
@@ -228,7 +227,11 @@ export class StashView {
       return;
     }
 
-    this.results.innerHTML = yarns.map((y) => this.cardHtml(y)).join("");
+    // A page of cards at a time, each photo read as its card nears the screen.
+    paintLazily(this.results, yarns, (y) => this.cardHtml(y), {
+      pictures: ".cover[data-id]",
+      paint: (cover) => this.loadPhoto(cover),
+    });
   }
 
   private cardHtml(y: Yarn): string {
@@ -265,22 +268,15 @@ export class StashView {
       </article>`;
   }
 
-  /**
-   * Fills in photos. Loaded after the cards so the grid appears at once with
-   * a placeholder, rather than waiting on a read per yarn.
-   */
-  private async loadPhotos(): Promise<void> {
-    for (const yarn of this.yarns) {
-      if (!yarn.photoPath) continue;
-      const host = this.results.querySelector(
-        `.cover[data-id="${yarn.id}"] [data-el="photo"]`,
-      ) as HTMLElement | null;
-      if (!host) continue;
-      const url = await yarnPhotoUrl(yarn.id);
-      if (!url) continue;
-      host.style.backgroundImage = `url("${url}")`;
-      host.parentElement?.classList.add("has-cover");
-    }
+  /** One card's photo, read as the card comes near the screen. */
+  private async loadPhoto(cover: HTMLElement): Promise<void> {
+    const yarn = this.yarns.find((y) => y.id === cover.dataset.id);
+    if (!yarn?.photoPath) return;
+    const url = await yarnPhotoUrl(yarn.id);
+    const host = cover.querySelector<HTMLElement>('[data-el="photo"]');
+    if (!url || !host) return;
+    host.style.backgroundImage = `url("${url}")`;
+    cover.classList.add("has-cover");
   }
 
   private async confirmRemove(id: string): Promise<void> {

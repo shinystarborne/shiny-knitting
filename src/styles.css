@@ -2453,3 +2453,195 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 /* The board fills the page beside the side panel. */
 .project-board { position: relative; min-width: 0; min-height: 0; }
 .project-board > .board { position: absolute; inset: 0; }
+
+/* ---------- the tab bar's right end: updates and settings ---------- */
+
+.tab-bar { align-items: flex-end; }
+.tab-spacer { flex: 1; }
+.tab-gear {
+  align-self: center;
+  margin-bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.tab-gear:hover:not(:disabled) { color: var(--text); background: var(--bg-input); border-color: var(--border); }
+.tab-update { align-self: center; margin-bottom: 6px; font-size: 12px; padding: 4px 10px; }
+
+/* ---------- lazily painted grids ---------- */
+
+/* The marker at the end of a grid that asks for the next page. */
+.lazy-more { grid-column: 1 / -1; height: 1px; }
+
+/* ---------- want to knit ---------- */
+
+.card-want {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.card-want:hover,
+.card-want:focus-visible { color: var(--text); border-color: var(--border); }
+.card-want.on { color: #f2c94c; border-color: rgba(242, 201, 76, 0.45); background: rgba(242, 201, 76, 0.1); }
+
+/* ---------- the cover dialog ---------- */
+
+.dialog-card.cover-dialog { max-width: 460px; }
+.cover-drop {
+  position: relative;
+  height: min(52vh, 440px);
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg-input) center / contain no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+  outline: none;
+}
+.cover-drop:focus-visible,
+.cover-drop.over { border-color: var(--accent); }
+.cover-drop.filled { border-style: solid; }
+.cover-drop.filled .cover-drop-hint {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(20, 22, 26, 0.8);
+}
+.cover-drop.busy { opacity: 0.6; }
+.dialog-actions .spacer { flex: 1; }
+.cover-dialog-actions { flex-wrap: wrap; }
+
+/* ---------- the duplicates dialog ---------- */
+
+.dialog-card.duplicates-dialog { max-width: min(880px, 94vw); }
+.dup-list {
+  max-height: 58vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+.dup-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dup-group h4 { margin: 0 0 2px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.dup-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 8px;
+}
+.dup-row.kept { background: rgba(70, 167, 88, 0.12); }
+.dup-row.going { opacity: 0.6; }
+.dup-row.going strong { text-decoration: line-through; }
+.dup-cover {
+  width: 42px;
+  height: 56px;
+  border-radius: 4px;
+  background: #23272f center / cover no-repeat;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.dup-cover[style*="background-image"] span { display: none; }
+.dup-text { display: flex; flex-direction: column; min-width: 0; }
+.dup-text span { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-text .dup-attached { color: var(--text); opacity: 0.8; }
+.dup-choice { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+
+/* ---------- inspiration ---------- */
+
+.inspo-grid { grid-template-columns: repeat(auto-fill, 260px); align-content: start; }
+.inspo-card {
+  position: relative;
+  height: 300px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.inspo-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.inspo-mosaic {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 2px;
+  background: var(--border);
+}
+.inspo-mosaic.n1 { grid-template: 1fr / 1fr; }
+.inspo-mosaic.n2 { grid-template: 1fr / 1fr 1fr; }
+.inspo-mosaic.n3 { grid-template: 1fr 1fr / 2fr 1fr; }
+.inspo-mosaic.n3 .inspo-tile:first-child { grid-row: span 2; }
+.inspo-mosaic.n4 { grid-template: 1fr 1fr / 1fr 1fr; }
+.inspo-tile {
+  background: linear-gradient(135deg, rgba(229, 72, 77, 0.22), rgba(90, 140, 220, 0.18)) center / cover no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.3);
+}
+.inspo-colours { display: flex; height: 10px; flex: none; }
+.inspo-colours span { flex: 1; }
+.inspo-body { padding: 10px 14px 4px; flex: none; }
+.inspo-body h3 { margin: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inspo-body p { margin: 2px 0 0; font-size: 12px; color: var(--text-dim); }
+.inspo-card .card-remove { align-self: flex-end; margin: 0 10px 8px; }
+
+.inspo-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.inspo-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.inspo-name {
+  flex: 1;
+  min-width: 0;
+  max-width: 560px;
+  font-size: 18px;
+  font-weight: 600;
+  background: transparent;
+  border-color: transparent;
+  padding: 4px 8px;
+}
+.inspo-name:hover,
+.inspo-name:focus { border-color: var(--border); background: var(--bg-input); }
+.inspo-saved { margin-right: auto; }
+.inspo-page .project-board { flex: 1; }

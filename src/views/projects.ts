@@ -2,6 +2,7 @@ import { api, type Project } from "../api";
 import { coverUrl, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { longDate } from "./project-form";
+import { paintLazily } from "./lazy";
 
 type Status = "active" | "finished";
 
@@ -119,20 +120,21 @@ export class ProjectsView {
         </div>`;
       return;
     }
-    this.results.innerHTML = shown.map((p) => this.cardHtml(p)).join("");
-    void this.paintCovers(shown);
+    paintLazily(this.results, shown, (p) => this.cardHtml(p), {
+      pictures: ".project-card",
+      paint: (card) => this.paintCover(card),
+    });
   }
 
-  /** Each card's picture: the project's own cover, else its pattern's. */
-  private async paintCovers(shown: Project[]): Promise<void> {
-    for (const p of shown) {
-      const box = this.results.querySelector<HTMLElement>(`.project-card[data-open="${p.id}"] .project-card-cover`);
-      if (!box) continue;
-      const url = p.coverPath ? await projectCoverUrl(p.id) : p.patternId ? await coverUrl(p.patternId) : null;
-      if (url) {
-        box.style.backgroundImage = `url("${url}")`;
-        box.classList.add("filled");
-      }
+  /** A card's picture: the project's own cover, else its pattern's. */
+  private async paintCover(card: HTMLElement): Promise<void> {
+    const p = this.projects.find((x) => x.id === card.dataset.open);
+    const box = card.querySelector<HTMLElement>(".project-card-cover");
+    if (!p || !box) return;
+    const url = p.coverPath ? await projectCoverUrl(p.id) : p.patternId ? await coverUrl(p.patternId) : null;
+    if (url) {
+      box.style.backgroundImage = `url("${url}")`;
+      box.classList.add("filled");
     }
   }
 

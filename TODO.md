@@ -61,7 +61,8 @@ and the others build on it.
 | Projects: needles, hooks, cables and yarn in use; finishing releases them and records leftovers | built |
 | Yarn photo by paste or drop; weight cheat sheet; weight from the ball band; cone counts (2/28) | built |
 | A page per project: cover, dates, and a Miro-like board of notes, pictures, links, patterns, yarn, needles and colours | built |
-| Plans, finished gallery, inspiration board | not started |
+| Inspiration boards; Want to knit by choice; pattern covers by paste; duplicate patterns; lazy grids; settings gear | built |
+| Plans, finished gallery | not started |
 
 ## Tabs: stash, plans, gallery, board
 

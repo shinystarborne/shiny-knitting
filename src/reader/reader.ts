@@ -239,7 +239,7 @@ export class ReaderView {
           <h2>${escapeHtml(this.pattern.title)}</h2>
           <p>
             ${this.pattern.designer ? escapeHtml(this.pattern.designer) + " · " : ""}
-            <span class="pill">${statusLabel(this.pattern.status)}</span>
+            ${this.pattern.status ? `<span class="pill">${statusLabel(this.pattern.status)}</span>` : ""}
             ${this.pattern.needleSize ? `<span class="pill">${escapeHtml(this.pattern.needleSize)}</span>` : ""}
             ${this.pattern.difficulty ? `<span class="pill">${escapeHtml(this.pattern.difficulty)}</span>` : ""}
           </p>
@@ -504,7 +504,7 @@ export class ReaderView {
   private subtitleHtml(pattern: Pattern): string {
     const parts: string[] = [];
     if (pattern.designer) parts.push(escapeHtml(pattern.designer));
-    parts.push(`<span class="pill">${statusLabel(pattern.status)}</span>`);
+    if (pattern.status) parts.push(`<span class="pill">${statusLabel(pattern.status)}</span>`);
     if (pattern.needleSize) parts.push(`<span class="pill">${escapeHtml(pattern.needleSize)}</span>`);
     if (pattern.difficulty) parts.push(`<span class="pill">${escapeHtml(pattern.difficulty)}</span>`);
     return parts.join(" · ");

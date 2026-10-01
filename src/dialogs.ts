@@ -410,3 +410,23 @@ function button(label: string, kind: string, onClick: () => void): HTMLButtonEle
   el.addEventListener("click", onClick);
   return el;
 }
+
+/**
+ * A dialog built by its caller, for what the questions above do not cover: a
+ * cover to paste in, a list of duplicates to sort out. The caller fills
+ * `card` and calls `show`; `close` takes it down. Escape and the backdrop call
+ * `onCancel`, which should end in `close`.
+ */
+export function customDialog(
+  title: string,
+  onCancel: () => void,
+  className = "",
+): { card: HTMLElement; show: (focus?: HTMLElement) => void; close: () => void } {
+  const { overlay, card } = frame(title);
+  if (className) card.classList.add(...className.split(/\s+/).filter(Boolean));
+  return {
+    card,
+    show: (focus) => show(overlay, card, onCancel, focus),
+    close: () => close(overlay),
+  };
+}

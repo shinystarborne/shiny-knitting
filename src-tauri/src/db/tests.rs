@@ -345,10 +345,31 @@ fn a_deliberate_old_default_opacity_survives_a_second_migrate() {
 }
 
 #[test]
-fn unknown_status_falls_back_to_default() {
+fn unknown_status_falls_back_to_none() {
     let conn = test_db();
     let p = sample(&conn, "Odd", "Nobody", "nonsense-status", &[]);
-    assert_eq!(p.status, "want-to-knit");
+    assert_eq!(p.status, "", "an unknown status is no status, not want to knit");
+    let none = sample(&conn, "Plain", "Nobody", "", &[]);
+    assert_eq!(none.status, "");
+    assert_eq!(set_pattern_status(&conn, &none.id, "want-to-knit").unwrap().status, "want-to-knit");
+    assert_eq!(set_pattern_status(&conn, &none.id, "").unwrap().status, "");
+    assert!(set_pattern_status(&conn, "missing", "").is_err());
+}
+
+#[test]
+fn want_to_knit_given_by_default_is_cleared_once() {
+    let conn = test_db();
+    let a = sample(&conn, "A", "X", "want-to-knit", &[]);
+    let b = sample(&conn, "B", "Y", "in-progress", &[]);
+    // As a library from before: the reset has not run.
+    set_setting(&conn, "patterns_no_default_status", &false).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_pattern(&conn, &a.id).unwrap().status, "");
+    assert_eq!(get_pattern(&conn, &b.id).unwrap().status, "in-progress", "a real status stays");
+    // Chosen afterwards, it is kept through later launches.
+    set_pattern_status(&conn, &a.id, "want-to-knit").unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_pattern(&conn, &a.id).unwrap().status, "want-to-knit");
 }
 
 #[test]
@@ -2186,7 +2207,7 @@ fn a_board_holds_items_and_puts_each_new_one_on_top() {
 
     assert!(insert_board_item(&conn, "c", &pr.id, &crate::models::BoardItemInput { kind: "spaceship".into(), ..note.clone() }).is_err());
     assert!(insert_board_item(&conn, "d", &pr.id, &crate::models::BoardItemInput { data: Some(serde_json::json!("not an object")), ..note.clone() }).is_err());
-    assert!(insert_board_item(&conn, "e", "no-such-project", &note).is_err());
+    assert!(insert_board_item(&conn, "e", "no-such-board", &note).is_err());
 
     assert_eq!(delete_board_item(&conn, "b").unwrap(), "");
     delete_project(&conn, &pr.id).unwrap();
@@ -2204,4 +2225,137 @@ fn a_finished_projects_end_date_can_be_corrected_and_an_active_one_has_none() {
     assert_eq!(update_project(&conn, &pr.id, &set(None)).unwrap().finished_at, Some(200), "not given, kept");
     set_project_cover(&conn, &pr.id, "x.jpg").unwrap();
     assert_eq!(get_project(&conn, &pr.id).unwrap().cover_path, "x.jpg");
+}
+
+#[test]
+fn an_inspiration_board_holds_items_and_shows_its_pictures_and_colours() {
+    let conn = test_db();
+    let board = insert_inspiration_board(&conn, "ib", "  ").unwrap();
+    assert_eq!(board.name, "Untitled board", "a board always has a name");
+    assert_eq!(board.item_count, 0);
+    let pattern = sample(&conn, "Cardigan", "Jess", "", &[]);
+    set_cover(&conn, &pattern.id, "cardigan.jpg").unwrap();
+    let bare = sample(&conn, "No Cover", "Jess", "", &[]);
+    let item = |kind: &str, data: serde_json::Value| crate::models::BoardItemInput { kind: kind.into(), data: Some(data), ..Default::default() };
+    insert_board_item(&conn, "i0", "ib", &item("pattern", serde_json::json!({ "patternId": bare.id }))).unwrap();
+    insert_board_item(&conn, "i1", "ib", &item("pattern", serde_json::json!({ "patternId": pattern.id }))).unwrap();
+    insert_board_item(&conn, "i2", "ib", &item("swatch", serde_json::json!({ "colour": "#7aa874" }))).unwrap();
+    insert_board_item(&conn, "i3", "ib", &item("image", serde_json::json!({}))).unwrap();
+    set_board_item_image(&conn, "i3", "i3.jpg").unwrap();
+    insert_board_item(&conn, "i4", "ib", &item("note", serde_json::json!({ "text": "cosy" }))).unwrap();
+
+    let got = get_inspiration_board(&conn, "ib").unwrap();
+    assert_eq!(got.item_count, 5);
+    let mut pictures: Vec<_> = got.pictures.iter().map(|p| (p.kind.as_str(), p.id.as_str())).collect();
+    pictures.sort();
+    assert_eq!(pictures, vec![("image", "i3"), ("pattern", pattern.id.as_str())], "a pattern without a cover has no picture to show");
+    assert_eq!(got.colours, vec!["#7aa874"]);
+
+    let renamed = rename_inspiration_board(&conn, "ib", "Autumn colours").unwrap();
+    assert_eq!(renamed.name, "Autumn colours");
+    insert_inspiration_board(&conn, "other", "Lace ideas").unwrap();
+    update_board_item(&conn, "i4", &crate::models::BoardItemPatch { x: Some(5.0), ..Default::default() }).unwrap();
+    // Touched last, first in the list (the clock is in milliseconds, so wait one).
+    std::thread::sleep(std::time::Duration::from_millis(3));
+    update_board_item(&conn, "i4", &crate::models::BoardItemPatch { x: Some(6.0), ..Default::default() }).unwrap();
+    assert_eq!(list_inspiration_boards(&conn).unwrap()[0].id, "ib");
+
+    assert_eq!(delete_inspiration_board(&conn, "ib").unwrap(), vec!["i3.jpg".to_string()]);
+    assert!(list_board_items(&conn, "ib").unwrap().is_empty(), "its items go with it");
+    assert!(get_inspiration_board(&conn, "ib").is_err());
+    assert!(delete_inspiration_board(&conn, "ib").is_err());
+}
+
+#[test]
+fn board_items_keyed_by_project_move_to_the_board_id() {
+    let conn = test_db();
+    let pr = project(&conn, "Socks", None);
+    // The table as it was first made.
+    conn.execute_batch(
+        "DROP TABLE board_items;
+         CREATE TABLE board_items (
+            id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL, x REAL NOT NULL DEFAULT 0, y REAL NOT NULL DEFAULT 0,
+            w REAL NOT NULL DEFAULT 220, h REAL NOT NULL DEFAULT 160, z INTEGER NOT NULL DEFAULT 0,
+            data TEXT NOT NULL DEFAULT '{}', image_file TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO board_items (id, project_id, kind, data, created_at) VALUES ('n', ?1, 'note', '{\"text\":\"hi\"}', 1)",
+        params![pr.id],
+    )
+    .unwrap();
+    migrate(&conn).unwrap();
+    let items = list_board_items(&conn, &pr.id).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].board_id, pr.id);
+    assert_eq!(items[0].data["text"], "hi");
+}
+
+#[test]
+fn titles_match_whatever_a_download_added() {
+    assert_eq!(title_key("Featherweight Lace Sock"), "featherweight lace sock");
+    assert_eq!(title_key("featherweight-lace-sock (1).pdf"), "featherweight lace sock");
+    assert_eq!(title_key("Featherweight_Lace_Sock copy"), "featherweight lace sock");
+    assert_eq!(title_key("Sock 2"), "sock", "a copy number");
+    assert_eq!(title_key("1000"), "1000", "a title that is only a number stays");
+    assert_ne!(title_key("Sock 2024"), "sock", "a year is part of the name");
+}
+
+#[test]
+fn duplicates_are_found_by_file_or_by_title_and_designer() {
+    let conn = test_db();
+    let a = sample(&conn, "Lace Sock", "Jess", "", &[]);
+    let b = sample(&conn, "lace-sock (1)", "", "", &[]);
+    let c = sample(&conn, "Lace Sock", "Someone Else", "", &[]);
+    let d = sample(&conn, "Cardigan", "Ann", "", &[]);
+    let e = sample(&conn, "Cardigan Renamed", "Ann", "", &[]);
+    sample(&conn, "Alone", "Ann", "", &[]);
+    for (id, hash) in [(&d.id, "h1"), (&e.id, "h1")] {
+        conn.execute("UPDATE patterns SET file_hash = ?2 WHERE id = ?1", params![id, hash]).unwrap();
+    }
+    let groups = duplicate_groups(&conn).unwrap();
+    let ids = |g: &(bool, Vec<(Pattern, i64, i64, i64, String)>)| {
+        let mut v: Vec<String> = g.1.iter().map(|e| e.0.id.clone()).collect();
+        v.sort();
+        v
+    };
+    assert_eq!(groups.len(), 2, "{:?}", groups.iter().map(ids).collect::<Vec<_>>());
+    let exact = groups.iter().find(|g| g.0).expect("an exact group");
+    let mut want = vec![d.id.clone(), e.id.clone()];
+    want.sort();
+    assert_eq!(ids(exact), want);
+    let by_name = groups.iter().find(|g| !g.0).expect("a name group");
+    // Jess's sock and the unnamed download, and the other designer's sock
+    // through the unnamed one, which could be either.
+    let mut want = vec![a.id.clone(), b.id.clone(), c.id.clone()];
+    want.sort();
+    assert_eq!(ids(by_name), want);
+}
+
+#[test]
+fn merging_copies_keeps_what_was_made_from_them() {
+    let conn = test_db();
+    let keep = sample(&conn, "Lace Sock", "", "", &["socks"]);
+    let mut copy = sample(&conn, "Lace Sock (1)", "Jess", "want-to-knit", &["Socks", "lace"]);
+    copy.notes = "Use a smaller needle".into();
+    copy.yarn_weight = "fingering".into();
+    update_pattern(&conn, &copy).unwrap();
+    let pr = project(&conn, "Mum's socks", Some(&copy.id));
+    insert_board_item(
+        &conn,
+        "card",
+        &pr.id,
+        &crate::models::BoardItemInput { kind: "pattern".into(), data: Some(serde_json::json!({ "patternId": copy.id })), ..Default::default() },
+    )
+    .unwrap();
+
+    let merged = merge_patterns(&conn, &keep.id, &[copy.id.clone()]).unwrap();
+    assert_eq!(merged.tags, vec!["socks", "lace"], "tags joined, case-blind");
+    assert_eq!(merged.status, "want-to-knit");
+    assert_eq!(merged.designer, "Jess");
+    assert_eq!(merged.notes, "Use a smaller needle");
+    assert_eq!(merged.yarn_weight, "fingering");
+    assert_eq!(get_project(&conn, &pr.id).unwrap().pattern_id.as_deref(), Some(keep.id.as_str()));
+    assert_eq!(get_board_item(&conn, "card").unwrap().data["patternId"], keep.id.as_str());
 }

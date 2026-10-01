@@ -125,6 +125,16 @@ them to a row rather than stretching them. The left sidebar filters. Status, dif
 needle size, and yarn weight are checkboxes; tags are buttons you can combine.
 The search box covers title, designer, notes, and tags.
 
+A large library stays quick: cards are drawn a page at a time as the grid is
+scrolled, and a cover is read only when its card is about to come into view.
+The stash, needles, projects and inspiration boards work the same way.
+
+**Want to knit.** A pattern starts with no status. Mark the ones you plan to
+knit soon with **☆ Want to knit** on the card (click again to take it off), and
+the **Want to knit** filter lists just those. Libraries from before this have
+the old automatic "Want to knit" cleared once, on the first start, so the list
+means something; In progress, Finished and Abandoned are left as they were.
+
 **Yarn weight** filters on the standard weight scale — Lace, Fingering, Sport,
 DK, Worsted, Aran, Bulky, Chunky, Super chunky, Jumbo — lightest first, with a
 count beside each. A pattern states its weight however the designer liked, so
@@ -137,6 +147,18 @@ something I have?".
 
 **Removing a pattern.** Every card has a **Remove** button. It asks first, and
 says plainly that the file and its cover go too and that it cannot be undone.
+
+**Duplicates…** in the toolbar finds patterns that are in the library more
+than once: identical files, and patterns with the same title (a download's
+"(1)" or "copy", case and punctuation ignored) by the same designer or with
+one of them unnamed. Each group suggests which to keep — the copy with the most
+attached to it: projects, then highlights and pins, rows counted, notes, the
+one read last. The extra copies of identical files are ticked for removal from
+the start; in a same-name group nothing is, since those may be different
+versions or languages. Removing folds each copy into the one kept first: its
+projects and board cards move across, its tags are added, and a status, notes,
+designer, needle size or yarn weight the kept one lacks are taken from it. Its
+highlights, pins and counters go with it.
 
 ## Needles & hooks
 
@@ -231,6 +253,10 @@ asking. Pasting a web address makes a link and pasting words makes a note. New
 things go into free space near the middle of the view, and the board remembers
 where it was looked at.
 
+**Saved as you go.** The name and notes save a moment after typing stops, and
+a note on the board does too, so opening another tab straight away loses
+nothing.
+
 **While knitting.** An open pattern's side pane shows its project at the top —
 what is on it, and **Needles, yarn, finish…** to change any of it.
 
@@ -243,6 +269,20 @@ as a record.
 
 **Removing** a project frees what is on it; the needles and yarn stay. Removing
 a pattern keeps its projects, without the pattern.
+
+## Inspiration
+
+The **Inspiration** tab holds boards of their own, not tied to a project: a
+colour scheme, a shape of cardigan, next winter's hats. **+ New board** asks
+for its name and opens it. A board works like a project's — notes, text, links,
+pictures pasted with `Ctrl`+`V` or dropped from anywhere, patterns from the
+library, yarn from the stash, and colour swatches — and everything on it,
+including its name, saves as it changes. Each board's card shows a few of its
+pictures and its colours, newest first, and the boards changed most recently
+come first. Removing a board removes what is on it; the patterns and yarn on it
+stay where they are.
+
+The gear at the right end of the tab bar opens **Settings**, from any tab.
 
 ## Yarn stash
 
@@ -398,8 +438,8 @@ panel back for a quick check.
 newer one on request. Tick **Include beta releases** to be offered pre-releases
 as well as stable ones; a beta build is always offered the next beta, ticked or
 not, since otherwise it would have nowhere to go. With **Check automatically on startup** on, a quiet
-check runs once a day and an **Update available** button appears in the library
-toolbar only when there is something new. Downloading fetches the installer and
+check runs once a day and an **Update available** button appears beside the
+settings gear only when there is something new. Downloading fetches the installer and
 runs it for you; your library is untouched.
 
 Your place in the document is saved as you scroll, so reopening a pattern
@@ -488,12 +528,15 @@ a PDF, or the cover image an EPUB declares (checking the EPUB 3
 "cover" in its name). Everything is downscaled and stored as a JPEG under
 `library/covers/`.
 
-Hover a card to change it:
+Hover a card and press **Cover…** (or **Change cover…** in the pattern's
+details) to change it:
 
-- **Image** — pick your own picture, from anywhere on disk.
-- **From file** — read the cover out of the pattern again, discarding whatever
-  you had.
-- **×** — remove it, leaving the placeholder.
+- **Paste** — `Ctrl`+`V` while the dialog is open uses the picture on the
+  clipboard, such as a shop's photo copied with *Copy image*.
+- **Drop** a picture file on it, or **Choose a picture…** from disk.
+- **Read from the pattern** — take the cover from the file again, discarding
+  whatever you had.
+- **Remove** — leave the placeholder.
 
 The **Covers** button in the toolbar adds a cover to every pattern that is
 missing one, which is useful for a library that predates the feature.
@@ -546,7 +589,7 @@ Two settings worth knowing about, both under *More options*:
 
 ```
 src/
-  main.ts              app shell: the tab bar, swapping library, projects, stash, tools and reader
+  main.ts              app shell: the tab bar, swapping library, projects, inspiration, stash, tools and reader
   api.ts               typed wrapper over the Tauri commands
   covers.ts            cover and yarn-photo extraction, downscaling, storage
   annotations.ts       mark coordinates, quote anchoring, rectangle merging
@@ -562,7 +605,11 @@ src/
     project-form.ts    a project: its pattern, needles and yarn
     finish-project.ts  finishing one: releasing needles, recording leftovers
     project-page.ts    a project's own page: cover, details, and its board
-    board.ts           the board: notes, pictures, links and cards, laid out freely
+    board.ts           a board: notes, pictures, links and cards, laid out freely
+    inspiration.ts     the inspiration tab and its boards
+    lazy.ts            long grids, painted a page at a time with pictures read on sight
+    cover-dialog.ts    changing a pattern's cover: paste, drop, choose, read again
+    duplicates.ts      finding duplicate patterns and folding them into one
     yarn-picker.ts     choosing a project's yarn, and its lot
     yarn-weight.ts     the weight table and cheat sheet, mirroring yarn.rs
     pattern-form.ts    add/edit pattern dialog

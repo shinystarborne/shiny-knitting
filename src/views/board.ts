@@ -4,9 +4,10 @@ import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, prepareBoardImage
 import { describe, headline, kindLabel } from "./tool-filter";
 
 /**
- * A project's board: an endless surface to collect what the project is made
- * of and what it should look like -- notes, pictures, links, the pattern, the
- * yarn and needles, colours -- laid out freely, as on a Miro board.
+ * A board: an endless surface to collect what a project is made of and what
+ * it should look like -- notes, pictures, links, the pattern, the yarn and
+ * needles, colours -- laid out freely, as on a Miro board. A project has one,
+ * by its id; an inspiration board is one of its own.
  *
  * The board moves under a fixed frame: `view` says where board point (0, 0)
  * sits on screen and how large a board unit is. Items are positioned in board
@@ -84,15 +85,43 @@ const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
 const SWATCHES = ["#c94c6d", "#e3a458", "#7aa874", "#4f7cac", "#8e6bb8", "#d8c3a5", "#2f4858"];
 
 export interface BoardHooks {
-  /** The project, for its own pattern, needles and yarn to come first in the pickers. */
-  project(): Project;
+  /** The project, for its own pattern, needles and yarn to come first in the pickers; null on an inspiration board. */
+  project(): Project | null;
   openPattern(id: string): void;
 }
 
+export interface BoardOptions {
+  /** What the toolbar offers to add; everything when not given. */
+  kinds?: BoardKind[];
+  /** What an empty board says, as HTML. */
+  emptyHint?: string;
+}
+
+const TOOLBAR: { kind: BoardKind; html: string }[] = [
+  { kind: "note", html: `<button data-add="note" title="A sticky note">🗒<span>Note</span></button>` },
+  { kind: "text", html: `<button data-add="text" title="Words on the board">T<span>Text</span></button>` },
+  { kind: "link", html: `<button data-add="link" title="A web address">🔗<span>Link</span></button>` },
+  { kind: "image", html: `<button data-add="image" title="A picture: choose one, paste it with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>` },
+  { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>` },
+  { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>` },
+  { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>` },
+  { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
+];
+
+const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
+  needles and colours. Paste a picture or a link with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or drop one here.
+  Drag the board to move around; <kbd>Ctrl</kbd>+scroll zooms.`;
+
+/** How long after the last keystroke a note's words are saved. */
+const TYPING_SAVE_MS = 700;
+
 export class Board {
   private host: HTMLElement;
-  private projectId: string;
+  private boardId: string;
   private hooks: BoardHooks;
+  private options: BoardOptions;
+  /** A note's words typed but not yet saved, by item. */
+  private typing = new Map<string, number>();
   private root!: HTMLElement;
   private world!: HTMLElement;
   private items: BoardItem[] = [];
@@ -109,10 +138,11 @@ export class Board {
     | null = null;
   private teardown: (() => void)[] = [];
 
-  constructor(host: HTMLElement, projectId: string, hooks: BoardHooks) {
+  constructor(host: HTMLElement, boardId: string, hooks: BoardHooks, options: BoardOptions = {}) {
     this.host = host;
-    this.projectId = projectId;
+    this.boardId = boardId;
     this.hooks = hooks;
+    this.options = options;
   }
 
   async mount(): Promise<void> {
@@ -122,14 +152,7 @@ export class Board {
     this.root.innerHTML = `
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
-        <button data-add="note" title="A sticky note">🗒<span>Note</span></button>
-        <button data-add="text" title="Words on the board">T<span>Text</span></button>
-        <button data-add="link" title="A web address">🔗<span>Link</span></button>
-        <button data-add="image" title="A picture: choose one, paste it with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>
-        <button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>
-        <button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>
-        <button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>
-        <button data-add="swatch" title="A colour">🎨<span>Colour</span></button>
+        ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => t.html).join("")}
       </div>
       <div class="board-zoom">
         <button data-act="zoom-out" title="Zoom out">−</button>
@@ -137,18 +160,14 @@ export class Board {
         <button data-act="zoom-in" title="Zoom in">+</button>
         <button data-act="fit" title="Show everything">Fit</button>
       </div>
-      <p class="board-empty" hidden>
-        Collect what this project is made of: notes, pictures, links, the pattern, yarn,
-        needles and colours. Paste a picture or a link with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or drop one here.
-        Drag the board to move around; <kbd>Ctrl</kbd>+scroll zooms.
-      </p>
+      <p class="board-empty" hidden>${this.options.emptyHint ?? PROJECT_HINT}</p>
     `;
     this.host.appendChild(this.root);
     this.world = this.root.querySelector(".board-world")!;
     this.bind();
 
     [this.items, this.patterns, this.yarns, this.tools] = await Promise.all([
-      api.listBoardItems(this.projectId),
+      api.listBoardItems(this.boardId),
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.listYarns({}).catch(() => [] as Yarn[]),
       api.listTools().catch(() => [] as Tool[]),
@@ -158,10 +177,48 @@ export class Board {
     this.render();
   }
 
+  /**
+   * Takes the board down, saving first whatever is still being typed: a note
+   * being written, or a colour's name, when another page is opened.
+   */
   destroy(): void {
+    this.flush();
     for (const undo of this.teardown) undo();
     this.teardown = [];
     this.root?.remove();
+  }
+
+  /** Saves words typed into an item and not yet saved. */
+  private flush(): void {
+    for (const timer of this.typing.values()) clearTimeout(timer);
+    this.typing.clear();
+    if (!this.world) return;
+    for (const field of this.world.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>('textarea, input[data-f="label"]')) {
+      const item = this.items.find((i) => i.id === this.itemEl(field)?.dataset.id);
+      if (!item) continue;
+      const key = field instanceof HTMLTextAreaElement ? "text" : "label";
+      if (field.value !== String(item.data[key] ?? "")) {
+        item.data = { ...item.data, [key]: field.value };
+        void api.updateBoardItem(item.id, { data: item.data }).catch(() => {});
+      }
+    }
+  }
+
+  /** A note's words are saved a moment after the typing stops, as well as when it is left. */
+  private onType(e: Event): void {
+    const area = e.target;
+    if (!(area instanceof HTMLTextAreaElement)) return;
+    const id = this.itemEl(area)?.dataset.id;
+    if (!id) return;
+    clearTimeout(this.typing.get(id));
+    this.typing.set(
+      id,
+      window.setTimeout(() => {
+        this.typing.delete(id);
+        const item = this.items.find((i) => i.id === id);
+        if (item && area.value !== String(item.data.text ?? "")) void this.save(id, { data: { ...item.data, text: area.value } });
+      }, TYPING_SAVE_MS),
+    );
   }
 
   /** Re-reads what the cards show: a pattern renamed, a yarn's photo changed. */
@@ -177,7 +234,7 @@ export class Board {
   // ---------- the view ----------
 
   private viewKey(): string {
-    return `board-view:${this.projectId}`;
+    return `board-view:${this.boardId}`;
   }
 
   private savedView(): View | null {
@@ -245,6 +302,7 @@ export class Board {
     this.root.addEventListener("drop", (e) => void this.onDrop(e));
     this.root.addEventListener("focusout", (e) => void this.onBlur(e));
     this.root.addEventListener("change", (e) => void this.onChange(e));
+    this.root.addEventListener("input", (e) => this.onType(e));
     this.listen(document, "paste", (e) => void this.onPaste(e));
   }
 
@@ -427,6 +485,8 @@ export class Board {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
     const text = area.value;
+    clearTimeout(this.typing.get(item.id));
+    this.typing.delete(item.id);
     this.stopEditing();
     if (text !== (item.data.text ?? "")) await this.save(item.id, { data: { ...item.data, text } });
   }
@@ -513,15 +573,15 @@ export class Board {
       });
       input.click();
     } else if (kind === "pattern") {
-      const own = this.hooks.project().patternId;
+      const own = this.hooks.project()?.patternId ?? null;
       const choices: Choice[] = this.patterns
-        .map((p) => ({ value: p.id, label: p.designer ? `${p.title} — ${p.designer}` : p.title, group: p.id === own ? "This project's pattern" : "Library" }))
-        .sort((a, b) => (a.group === b.group ? a.label.localeCompare(b.label) : a.group === "Library" ? 1 : -1));
+        .map((p) => ({ value: p.id, label: p.designer ? `${p.title} — ${p.designer}` : p.title, group: p.id === own ? "This project's pattern" : p.status === "want-to-knit" ? "Want to knit" : "Library" }))
+        .sort((a, b) => PATTERN_GROUPS.indexOf(a.group) - PATTERN_GROUPS.indexOf(b.group) || a.label.localeCompare(b.label));
       if (!choices.length) return void (await say("There are no patterns in the library yet.", "Add a pattern"));
       const id = await askChoice("Which pattern?", choices, { title: "Add a pattern" });
       if (id) await this.add("pattern", at, { patternId: id });
     } else if (kind === "yarn") {
-      const own = new Set(this.hooks.project().yarns.map((y) => y.yarnId));
+      const own = new Set(this.hooks.project()?.yarns.map((y) => y.yarnId) ?? []);
       const choices: Choice[] = this.yarns
         .map((y) => ({ value: y.id, label: [y.name, y.colourway, y.brand].filter(Boolean).join(" · "), group: own.has(y.id) ? "On this project" : "Stash" }))
         .sort((a, b) => (a.group === b.group ? a.label.localeCompare(b.label) : a.group === "Stash" ? 1 : -1));
@@ -529,7 +589,7 @@ export class Board {
       const id = await askChoice("Which yarn?", choices, { title: "Add a yarn" });
       if (id) await this.add("yarn", at, { yarnId: id });
     } else if (kind === "tool") {
-      const own = new Set(this.hooks.project().toolIds);
+      const own = new Set(this.hooks.project()?.toolIds ?? []);
       const group = (t: Tool) => (own.has(t.id) ? "On this project" : t.projectId ? "On another project" : "Free");
       const order = ["On this project", "Free", "On another project"];
       const choices: Choice[] = this.tools
@@ -547,7 +607,7 @@ export class Board {
 
   private async add(kind: BoardKind, at: { x: number; y: number }, data: Record<string, unknown>, size = SIZES[kind]): Promise<BoardItem | null> {
     try {
-      const item = await api.addBoardItem(this.projectId, { kind, x: at.x, y: at.y, w: size[0], h: size[1], data });
+      const item = await api.addBoardItem(this.boardId, { kind, x: at.x, y: at.y, w: size[0], h: size[1], data });
       this.items.push(item);
       this.render();
       this.select(item.id);
@@ -763,6 +823,9 @@ export class Board {
     ]);
   }
 }
+
+/** The order the pattern picker lists its groups in. */
+const PATTERN_GROUPS = ["This project's pattern", "Want to knit", "Library"];
 
 const KIND_NAMES: Record<BoardKind, string> = {
   note: "note",

@@ -459,6 +459,7 @@ export function isAlreadyHave(err: unknown): boolean {
   return message.startsWith('already in the library as "');
 }
 
+/** A pattern's status; it can also have none (""), which is how one starts. */
 export const STATUSES = [
   { value: "want-to-knit", label: "Want to knit" },
   { value: "in-progress", label: "In progress" },
@@ -587,13 +588,14 @@ export interface ProjectInput {
   yarns: ProjectYarnInput[];
 }
 
-/** What can go on a project's board. */
+/** What can go on a board, a project's or an inspiration board. */
 export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch";
 
-/** One thing on a project's board. Mirrors `models.rs::BoardItem`. */
+/** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {
   id: string;
-  projectId: string;
+  /** The board it is on: a project's id, or an inspiration board's. */
+  boardId: string;
   kind: BoardKind;
   /** Board units: pixels at 100%. */
   x: number;
@@ -615,6 +617,33 @@ export interface BoardItemPatch {
   h?: number;
   toFront?: boolean;
   data?: Record<string, unknown>;
+}
+
+/** A board of its own, for ideas. Mirrors `models.rs::InspirationBoard`. */
+export interface InspirationBoard {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  itemCount: number;
+  /** A few of its pictures, for the card: its own, a pattern's cover, a yarn's photo. */
+  pictures: { kind: "image" | "pattern" | "yarn"; id: string }[];
+  colours: string[];
+}
+
+/** Patterns that look like copies of each other. Mirrors `models.rs::DuplicateGroup`. */
+export interface DuplicateGroup {
+  /** The files are identical; otherwise only the names match. */
+  exact: boolean;
+  /** The one suggested to keep. */
+  keep: string;
+  patterns: {
+    pattern: Pattern;
+    projects: number;
+    marks: number;
+    rows: number;
+    fileSize: number;
+  }[];
 }
 
 /** How much of one of a project's yarns is left; 0 is used up, null unknown. */
@@ -674,6 +703,11 @@ export const api = {
   scanPatternFolder: (path: string) => invoke<ScannedFile[]>("scan_pattern_folder", { path }),
   getPattern: (id: string) => invoke<Pattern>("get_pattern", { id }),
   updatePattern: (pattern: Pattern) => invoke<Pattern>("update_pattern", { pattern }),
+  /** Only the status; "" is none. */
+  setPatternStatus: (id: string, status: string) => invoke<Pattern>("set_pattern_status", { id, status }),
+  findDuplicatePatterns: () => invoke<DuplicateGroup[]>("find_duplicate_patterns"),
+  /** Keeps one, folds the others into it, and removes them. */
+  mergeDuplicatePatterns: (keep: string, remove: string[]) => invoke<Pattern>("merge_duplicate_patterns", { keep, remove }),
   deletePattern: (id: string) => invoke<void>("delete_pattern", { id }),
   getFacets: () => invoke<FacetValues>("get_facets"),
   savePosition: (id: string, page: number, scroll: number) =>
@@ -783,14 +817,19 @@ export const api = {
   getProjectCover: (projectId: string) => invoke<ArrayBuffer | ArrayBufferView>("get_project_cover", { projectId }),
   removeProjectCover: (projectId: string) => invoke<void>("remove_project_cover", { projectId }),
 
-  // A project's board.
-  listBoardItems: (projectId: string) => invoke<BoardItem[]>("list_board_items", { projectId }),
-  addBoardItem: (projectId: string, input: { kind: BoardKind; x: number; y: number; w: number; h: number; data?: Record<string, unknown> }) =>
-    invoke<BoardItem>("add_board_item", { projectId, input }),
+  // Boards: a project's, by its id, or an inspiration board.
+  listBoardItems: (boardId: string) => invoke<BoardItem[]>("list_board_items", { boardId }),
+  addBoardItem: (boardId: string, input: { kind: BoardKind; x: number; y: number; w: number; h: number; data?: Record<string, unknown> }) =>
+    invoke<BoardItem>("add_board_item", { boardId, input }),
   updateBoardItem: (id: string, patch: BoardItemPatch) => invoke<BoardItem>("update_board_item", { id, patch }),
   deleteBoardItem: (id: string) => invoke<void>("delete_board_item", { id }),
   setBoardImage: (id: string, bytes: number[]) => invoke<BoardItem>("set_board_image", { id, bytes }),
   getBoardImage: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_board_image", { id }),
+  listInspirationBoards: () => invoke<InspirationBoard[]>("list_inspiration_boards"),
+  getInspirationBoard: (id: string) => invoke<InspirationBoard>("get_inspiration_board", { id }),
+  addInspirationBoard: (name: string) => invoke<InspirationBoard>("add_inspiration_board", { name }),
+  renameInspirationBoard: (id: string, name: string) => invoke<InspirationBoard>("rename_inspiration_board", { id, name }),
+  deleteInspirationBoard: (id: string) => invoke<void>("delete_inspiration_board", { id }),
 
   listYarns: (filter: YarnFilter = {}) => invoke<Yarn[]>("list_yarns", { filter }),
   getYarn: (id: string) => invoke<Yarn>("get_yarn", { id }),

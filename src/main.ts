@@ -9,6 +9,7 @@ import { ProjectsView } from "./views/projects";
 import { ProjectForm } from "./views/project-form";
 import { FinishProjectDialog } from "./views/finish-project";
 import { ProjectPage } from "./views/project-page";
+import { InspirationPage, InspirationView } from "./views/inspiration";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
@@ -20,10 +21,14 @@ import { ReaderView, type Layout } from "./reader/reader";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
- * Stash, or Needles & hooks — and
- * the reader covers the Patterns tab when a pattern is open. The current
- * layout choice is remembered for the session.
+ * Inspiration, Stash, or Needles & hooks — with Settings as a gear at its
+ * right end, and the reader covers the Patterns tab when a pattern is open.
+ * The current layout choice is remembered for the session.
  */
+
+type Tab = "patterns" | "projects" | "inspiration" | "stash" | "tools";
+
+const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
   private root: HTMLElement;
   private tabBar!: HTMLElement;
@@ -33,6 +38,8 @@ class App {
   private activeReader: ReaderView | null = null;
   /** The project page on screen, so a dialog saved over it can refresh it. */
   private activeProjectPage: ProjectPage | null = null;
+  /** The inspiration board on screen, so leaving it saves what is being typed. */
+  private activeInspirationPage: InspirationPage | null = null;
   /** The mounted library, so background work can ask it to repaint a card. */
   private activeLibrary: LibraryView | null = null;
   private layout: Layout = "split";
@@ -58,8 +65,11 @@ class App {
     this.tabBar.innerHTML = `
       <button class="tab active" data-tab="patterns">Patterns</button>
       <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="inspiration">Inspiration</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
+      <span class="tab-spacer"></span>
+      <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
     this.screen = document.createElement("div");
     this.screen.className = "screen";
@@ -69,9 +79,16 @@ class App {
     this.root.append(this.tabBar, this.screen, this.modal);
 
     this.tabBar.addEventListener("click", (e) => {
+      const act = closestEl(e.target, "button[data-act]")?.dataset.act;
+      if (act === "settings" || act === "update-available") {
+        void this.openSettings();
+        return;
+      }
       const tab = closestEl(e.target, "button[data-tab]");
       if (!tab) return;
-      if (tab.dataset.tab === "stash") {
+      if (tab.dataset.tab === "inspiration") {
+        void this.showInspiration();
+      } else if (tab.dataset.tab === "stash") {
         void this.showStash();
       } else if (tab.dataset.tab === "tools") {
         void this.showTools();
@@ -117,6 +134,9 @@ class App {
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
     });
+    this.screen.addEventListener("open-inspiration", (e) => {
+      void this.showInspirationPage((e as CustomEvent<string>).detail);
+    });
     this.screen.addEventListener("edit-project", (e) => {
       void this.editProject((e as CustomEvent<string>).detail);
     });
@@ -125,12 +145,12 @@ class App {
       void this.openToolForm((e as CustomEvent<Tool>).detail);
     });
     this.screen.addEventListener("open-settings", (e) => {
-      void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
+      void this.openSettings((e as CustomEvent<AiSettingsView | undefined>).detail);
     });
     // The reader still dispatches the old name from its single-pattern
     // Describe flow; both names open the same dialog.
     this.screen.addEventListener("open-ai-settings", (e) => {
-      void this.openSettings((e as CustomEvent<AiSettingsView>).detail);
+      void this.openSettings((e as CustomEvent<AiSettingsView | undefined>).detail);
     });
 
     document.addEventListener("keydown", (e) => {
@@ -151,22 +171,32 @@ class App {
   }
 
   /**
-   * The daily update check. Only a found update surfaces, as a ghost button on
-   * the library toolbar; "skipped" and errors both show nothing. Public so the
+   * The daily update check. Only a found update surfaces, as a button beside
+   * the settings gear; "skipped" and errors both show nothing. Public so the
    * browser harness can re-run it after seeding a release.
    */
   async runStartupUpdateCheck(): Promise<void> {
-    const token = this.navToken;
     try {
       const outcome = await api.startupUpdateCheck();
-      // The user may have opened a pattern while the check was in flight; a
-      // notice for a screen that is no longer up would be worse than none.
-      if (token !== this.navToken) return;
       if (outcome.skipped || !outcome.update) return;
-      this.activeLibrary?.showUpdateNotice(outcome.update.tag);
+      this.showUpdateNotice(outcome.update.tag);
     } catch {
       // A failed check is a missed convenience, never an interruption.
     }
+  }
+
+  /**
+   * "Update available", beside the gear, on every tab. Clicking it opens
+   * Settings, where the download lives. A second check adds no second one.
+   */
+  private showUpdateNotice(tag: string): void {
+    if (this.tabBar.querySelector('[data-act="update-available"]')) return;
+    const button = document.createElement("button");
+    button.className = "ghost tab-update";
+    button.dataset.act = "update-available";
+    button.title = `${tag} is available`;
+    button.textContent = "Update available";
+    this.tabBar.querySelector(".tab-gear")?.before(button);
   }
 
   /**
@@ -191,6 +221,8 @@ class App {
     this.activeReader = null;
     this.activeProjectPage?.destroy();
     this.activeProjectPage = null;
+    this.activeInspirationPage?.destroy();
+    this.activeInspirationPage = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.screen.innerHTML = "";
@@ -201,9 +233,9 @@ class App {
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
   /** The tab on screen, so a dialog saved over it can bring it up to date. */
-  private currentTab: "patterns" | "projects" | "stash" | "tools" = "patterns";
+  private currentTab: Tab = "patterns";
 
-  private setActiveTab(name: "patterns" | "projects" | "stash" | "tools"): void {
+  private setActiveTab(name: Tab): void {
     this.currentTab = name;
     for (const tab of this.tabBar.querySelectorAll<HTMLElement>(".tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
@@ -250,6 +282,28 @@ class App {
       removed: () => void this.showProjects(),
     });
     this.activeProjectPage = page;
+    await page.mount();
+    if (token !== this.navToken) page.destroy();
+  }
+
+  private async showInspiration(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("inspiration");
+    const view = new InspirationView(this.screen);
+    await view.mount();
+  }
+
+  private async showInspirationPage(id: string): Promise<void> {
+    const token = ++this.navToken;
+    this.clearScreen();
+    this.setActiveTab("inspiration");
+    const page = new InspirationPage(this.screen, id, {
+      back: () => void this.showInspiration(),
+      openPattern: (patternId) => void this.showReader(patternId),
+    });
+    this.activeInspirationPage = page;
     await page.mount();
     if (token !== this.navToken) page.destroy();
   }
@@ -428,10 +482,17 @@ class App {
     await this.showLibrary();
   }
 
-  private async openSettings(current: AiSettingsView): Promise<void> {
+  private async openSettings(current?: AiSettingsView): Promise<void> {
     // Re-read rather than trusting whatever the view had cached, in case the
     // dialog was opened twice in one session.
-    const settings = await api.getAiSettings().catch(() => current);
+    const fallback: AiSettingsView | undefined = current;
+    let settings: AiSettingsView;
+    try {
+      settings = await api.getAiSettings();
+    } catch (err) {
+      if (!fallback) return void (await say(err instanceof Error ? err.message : String(err), "Settings"));
+      settings = fallback;
+    }
     const updateSettings = await api.getUpdateSettings().catch(() => ({
       includeBeta: false,
       checkOnStartup: true,
@@ -439,7 +500,8 @@ class App {
     }));
     const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, () => {
       // The library reads settings on mount; a reload picks up the new values.
-      void this.showLibrary();
+      // Elsewhere nothing shows them, so the screen is left as it is.
+      if (this.activeLibrary) void this.showLibrary();
     });
     dialog.open();
   }
