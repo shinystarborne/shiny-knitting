@@ -1,10 +1,13 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type ScannedFile, type Tool, type Yarn } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Tool, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
 import { ToolForm } from "./views/tool-form";
+import { ProjectsView } from "./views/projects";
+import { ProjectForm } from "./views/project-form";
+import { FinishProjectDialog } from "./views/finish-project";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
@@ -15,8 +18,8 @@ import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
- * App shell. A tab bar picks the top-level screen — Patterns, Stash, or
- * Needles & hooks — and
+ * App shell. A tab bar picks the top-level screen — Patterns, Projects,
+ * Stash, or Needles & hooks — and
  * the reader covers the Patterns tab when a pattern is open. The current
  * layout choice is remembered for the session.
  */
@@ -51,6 +54,7 @@ class App {
     this.tabBar.className = "tab-bar";
     this.tabBar.innerHTML = `
       <button class="tab active" data-tab="patterns">Patterns</button>
+      <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
     `;
@@ -68,6 +72,8 @@ class App {
         void this.showStash();
       } else if (tab.dataset.tab === "tools") {
         void this.showTools();
+      } else if (tab.dataset.tab === "projects") {
+        void this.showProjects();
       } else {
         void this.showLibrary();
       }
@@ -97,6 +103,13 @@ class App {
     this.screen.addEventListener("add-yarn", () => this.openYarnForm(null));
     this.screen.addEventListener("edit-yarn", (e) => {
       this.openYarnForm((e as CustomEvent<Yarn>).detail);
+    });
+    this.screen.addEventListener("add-project", (e) => {
+      const detail = (e as CustomEvent<{ patternId?: string }>).detail ?? {};
+      void this.openProjectForm(null, detail.patternId ?? null);
+    });
+    this.screen.addEventListener("edit-project", (e) => {
+      void this.editProject((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("add-tool", () => void this.openToolForm(null));
     this.screen.addEventListener("edit-tool", (e) => {
@@ -175,7 +188,11 @@ class App {
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
-  private setActiveTab(name: "patterns" | "stash" | "tools"): void {
+  /** The tab on screen, so a dialog saved over it can bring it up to date. */
+  private currentTab: "patterns" | "projects" | "stash" | "tools" = "patterns";
+
+  private setActiveTab(name: "patterns" | "projects" | "stash" | "tools"): void {
+    this.currentTab = name;
     for (const tab of this.tabBar.querySelectorAll<HTMLElement>(".tab")) {
       tab.classList.toggle("active", tab.dataset.tab === name);
     }
@@ -197,6 +214,15 @@ class App {
     this.clearScreen();
     this.setActiveTab("stash");
     const view = new StashView(this.screen);
+    await view.mount();
+  }
+
+  private async showProjects(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("projects");
+    const view = new ProjectsView(this.screen);
     await view.mount();
   }
 
@@ -258,6 +284,43 @@ class App {
       void this.showStash();
     });
     form.open();
+  }
+
+  private async editProject(id: string): Promise<void> {
+    const project = (await api.listProjects().catch(() => [] as Project[])).find((p) => p.id === id);
+    if (!project) {
+      await say("That project is no longer there.");
+      return;
+    }
+    await this.openProjectForm(project, null);
+  }
+
+  private async openProjectForm(project: Project | null, patternId: string | null): Promise<void> {
+    const form = new ProjectForm(this.freshModal(), project, { patternId }, {
+      onDone: () => this.afterProjectChange(),
+      onFinish: (saved) => void this.openFinish(saved),
+    });
+    await form.open();
+  }
+
+  private async openFinish(project: Project): Promise<void> {
+    const dialog = new FinishProjectDialog(this.freshModal(), project, () => this.afterProjectChange());
+    await dialog.open();
+  }
+
+  /**
+   * Brings whatever is on screen up to date after a project was saved,
+   * finished or removed: what is in use has changed under it. The reader only
+   * re-reads its project pane, so the page and place are not lost.
+   */
+  private afterProjectChange(): void {
+    if (this.activeReader) {
+      this.activeReader.refreshProject();
+      return;
+    }
+    if (this.currentTab === "projects") void this.showProjects();
+    else if (this.currentTab === "tools") void this.showTools();
+    else if (this.currentTab === "stash") void this.showStash();
   }
 
   private async openToolForm(tool: Tool | null): Promise<void> {

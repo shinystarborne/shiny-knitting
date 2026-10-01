@@ -10,7 +10,7 @@
  *   window.__toolChecks()
  */
 import type { Tool } from "../src/api";
-import { canonical, describe, filterTools, headline, isFree, knownBrands, knownMaterials, materialValue, measurements, parseSizes, toolFacets } from "../src/views/tool-filter";
+import { canonical, describe, filterTools, headline, isFree, knownBrands, knownMaterials, materialValue, measurements, parseSizes, toolFacets, connectorFor, connectorSummary } from "../src/views/tool-filter";
 
 interface CheckResult {
   name: string;
@@ -32,19 +32,30 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 10000): Pr
   }
 }
 
-type Store = { tools: (Tool & { patternTitle?: string })[]; patterns: { id: string; title: string }[] };
+type Store = {
+  tools: Tool[];
+  patterns: { id: string; title: string }[];
+  projects: { id: string; name: string; status: string }[];
+  projectTools: { projectId: string; toolId: string }[];
+};
+
+/** The active project a stored tool is on, as the backend works it out. */
+function projectOf(store: Store, toolId: string): string | null {
+  const link = store.projectTools.find((l) => l.toolId === toolId && store.projects.find((p) => p.id === l.projectId)?.status === "active");
+  return link ? link.projectId : null;
+}
 
 function pure(results: CheckResult[], tools: Tool[]): void {
   const ids = (list: Tool[]) => list.map((t) => t.id).sort().join(",");
-  check(results, "a tool on a pattern is in use", !isFree(tools.find((t) => t.id === "t1")!));
-  check(results, "a tool on a named project is in use", !isFree(tools.find((t) => t.id === "t2")!));
+  check(results, "a tool on a project from a pattern is in use", !isFree(tools.find((t) => t.id === "t1")!));
+  check(results, "a tool on a project without one is in use", !isFree(tools.find((t) => t.id === "t2")!));
   check(results, "Free shows only the free ones", ids(filterTools(tools, { use: ["free"] })) === "t3,t4,t5,t6", ids(filterTools(tools, { use: ["free"] })));
   check(results, "Free and In use together show everything", filterTools(tools, { use: ["free", "in-use"] }).length === tools.length);
   check(results, "groups combine: free circulars", ids(filterTools(tools, { use: ["free"], kind: ["circular"] })) === "t3");
   check(results, "a size box is the size in mm", ids(filterTools(tools, { size: ["4"] })) === "t2,t3");
   check(results, "a search for 4mm finds the 4 mm needles", ids(filterTools(tools, { search: "4mm" })) === "t2,t3", ids(filterTools(tools, { search: "4mm" })));
   check(results, "a search finds a project by its name", ids(filterTools(tools, { search: "gift" })) === "t2");
-  check(results, "a search finds a pattern a tool is on", ids(filterTools(tools, { search: "featherweight" })) === "t1");
+  check(results, "a search finds the project a tool is on", ids(filterTools(tools, { search: "featherweight" })) === "t1");
   const facets = toolFacets(tools);
   check(results, "counts: 4 free, 2 in use", facets.use[0].count === 4 && facets.use[1].count === 2, JSON.stringify(facets.use));
   check(results, "sizes are listed smallest first, cables left out", facets.size.map((f) => f.label).join("|") === "2.5 mm|3.5 mm|4 mm|5 mm", facets.size.map((f) => f.label).join("|"));
@@ -65,6 +76,13 @@ function pure(results: CheckResult[], tools: Tool[]): void {
   check(results, "3,4,5 is three sizes", ps("3,4,5") === '{"sizes":[3,4,5],"bad":[]}', ps("3,4,5"));
   check(results, "a set is sorted, without repeats", ps("5; 4; 4; 3.75") === '{"sizes":[3.75,4,5],"bad":[]}', ps("5; 4; 4; 3.75"));
   check(results, "something that is not a size is named", ps("4, 4mm, x").includes('"bad":["4mm","x"]'), ps("4, 4mm, x"));
+  const chiaoSet = [{ from: 2.75, size: "small" }, { from: 5.5, size: "large" }];
+  check(results, "up to 5 mm takes the small connector", connectorFor(2.75, chiaoSet) === "small" && connectorFor(5, chiaoSet) === "small");
+  check(results, "from 5.5 mm the large", connectorFor(5.5, chiaoSet) === "large" && connectorFor(10, chiaoSet) === "large");
+  const sum = connectorSummary([2.75, 3, 3.5, 4, 5, 5.5, 6, 8, 10], chiaoSet);
+  check(results, "a set's connectors read as ranges", sum === "2.75–5 mm small, 5.5–10 mm large", sum);
+  const three = connectorSummary([2, 2.5, 2.75, 5, 5.5], [{ from: 2, size: "mini" }, { from: 2.75, size: "small" }, { from: 5.5, size: "large" }]);
+  check(results, "three connectors in one set", three === "2–2.5 mm mini, 2.75–5 mm small, 5.5 mm large", three);
   const chiao = facets.brand.find((f) => f.key === "chiaogoo");
   check(results, "a brand typed two ways is one box", facets.brand.length === 4 && chiao?.count === 3, JSON.stringify(facets.brand));
   check(results, "cable sizes count tips and cables", facets.cableSize.find((f) => f.key === "small")?.count === 2);
@@ -110,8 +128,8 @@ export async function verifyTools() {
     const t1 = card("t1")!;
     check(results, "a card shows the size, kind and length", t1.querySelector(".tool-size")?.textContent === "2.5 mm" && /Double-pointed/.test(t1.textContent ?? "") && /20 cm long/.test(t1.textContent ?? ""));
     check(results, "…the brand and material", t1.querySelector(".tool-make")?.textContent === "HiyaHiya · Metal");
-    check(results, "…and the pattern it is on, as a link", t1.querySelector("button.tool-project")?.textContent === "Featherweight Lace Sock");
-    check(results, "a named project shows by name", card("t2")?.querySelector(".tool-project")?.textContent === "Gift hat");
+    check(results, "…and the project it is on, as a link", t1.querySelector("button.tool-project")?.textContent === "Featherweight Lace Sock");
+    check(results, "a project without a pattern shows by name", card("t2")?.querySelector(".tool-project")?.textContent === "Gift hat");
     check(results, "a free tool says Free", !!card("t3")?.querySelector(".tool-free") && card("t3")!.classList.contains("free"));
     const sizes = cards().map((c) => c.getBoundingClientRect()).map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`);
     check(results, "every card is the same size", new Set(sizes).size === 1, sizes.join(" "));
@@ -151,14 +169,16 @@ export async function verifyTools() {
     field("brand")!.dispatchEvent(new Event("input", { bubbles: true }));
     check(results, "…to the brands containing what is typed", brandList().map((li) => li.textContent).join("|") === "ChiaoGoo", brandList().map((li) => li.textContent).join("|"));
     set("material", "wood");
-    set("project", "p3");
+    const projectOptions = [...field("project")!.options].map((o) => o.textContent);
+    check(results, "In use for offers the active projects", projectOptions.includes("Featherweight Lace Sock") && projectOptions.includes("Gift hat"), projectOptions.join("|"));
+    set("project", "pr2");
     const before = store.tools.length;
     act("save");
     await waitFor(() => !modal() && store.tools.length === before + 1, "the save");
     const added = store.tools[store.tools.length - 1];
-    check(results, "the hook is stored with its pattern", added.kind === "hook" && added.sizeMm === 6 && added.lengthCm === 14 && added.cableCm === 0 && added.patternId === "p3" && added.material === "wood", JSON.stringify(added));
+    check(results, "the hook is stored, on its project", added.kind === "hook" && added.sizeMm === 6 && added.lengthCm === 14 && added.cableCm === 0 && projectOf(store, added.id) === "pr2" && added.material === "wood", JSON.stringify(added));
     await waitFor(() => !!card(added.id), "its card");
-    check(results, "its card shows the pattern", card(added.id)?.querySelector(".tool-project")?.textContent === store.patterns.find((p) => p.id === "p3")?.title);
+    check(results, "its card shows the project", card(added.id)?.querySelector(".tool-project")?.textContent === "Gift hat");
 
     // Save and add another keeps the form open and filled in.
     (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
@@ -180,7 +200,7 @@ export async function verifyTools() {
     // A set: several sizes at once, sharing everything but a project.
     (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
     await waitFor(() => !!modal(), "the form for a set");
-    set("project", "p3");
+    set("project", "pr1");
     set("kind", "tips");
     field("sizeMm")!.value = "3, 3.5, 4, 4.5";
     field("sizeMm")!.dispatchEvent(new Event("input", { bubbles: true }));
@@ -199,7 +219,32 @@ export async function verifyTools() {
     const setTools = store.tools.slice(-4);
     check(results, "a set adds one entry per size", setTools.map((t) => t.sizeMm).join(",") === "3,3.5,4,4.5", setTools.map((t) => t.sizeMm).join(","));
     check(results, "…all with the same details", setTools.every((t) => t.kind === "tips" && t.lengthCm === 13 && t.cableSize === "small" && t.brand === "ChiaoGoo" && t.material === "metal"), JSON.stringify(setTools[0]));
-    check(results, "…and all free, though a project had been chosen first", setTools.every((t) => !t.patternId && !t.project), JSON.stringify(setTools.map((t) => t.patternId)));
+    check(results, "…and all free, though a project had been chosen first", setTools.every((t) => !projectOf(store, t.id)), JSON.stringify(setTools.map((t) => projectOf(store, t.id))));
+    // A set whose connector changes partway: small up to 5 mm, large from 5.5.
+    (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal(), "the form for a split set");
+    set("kind", "tips");
+    const splitOption = () => modal()!.querySelector<HTMLOptionElement>('[data-el="split-option"]')!;
+    field("sizeMm")!.value = "4";
+    field("sizeMm")!.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "one size is not offered a change of connector", splitOption().hidden);
+    field("sizeMm")!.value = "2.75, 3, 4, 5, 5.5, 6, 8";
+    field("sizeMm")!.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "a set is offered Changes with size", !splitOption().hidden);
+    set("cableSize", "__split__");
+    const stepsBox = () => modal()!.querySelector<HTMLElement>('[data-el="connector-steps"]')!;
+    check(results, "choosing it shows a row per connector", !stepsBox().hidden && stepsBox().querySelectorAll(".connector-step").length === 2);
+    const fromSel = stepsBox().querySelector<HTMLSelectElement>('select[data-step="1"][data-part="from"]')!;
+    fromSel.value = "5.5";
+    fromSel.dispatchEvent(new Event("change", { bubbles: true }));
+    const previewText = modal()!.querySelector('[data-el="set-preview"]')?.textContent ?? "";
+    check(results, "the preview says which sizes get which", /Cable size: 2\.75–5 mm small, 5\.5–8 mm large/.test(previewText), previewText);
+    const n1 = store.tools.length;
+    act("save");
+    await waitFor(() => !modal() && store.tools.length === n1 + 7, "the split set to be added");
+    const split = store.tools.slice(-7).map((t) => `${t.sizeMm}:${t.cableSize}`).join(" ");
+    check(results, "each size is stored with its own connector", split === "2.75:small 3:small 4:small 5:small 5.5:large 6:large 8:large", split);
+
     (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
     await waitFor(() => !!modal(), "the form again");
     field("sizeMm")!.value = "4, four";
@@ -219,25 +264,20 @@ export async function verifyTools() {
     act("cancel");
     await waitFor(() => !modal(), "the edit form to close");
 
-    // A project not in the library.
+    // Editing puts a tool on a project.
     (card("t3") as HTMLElement).click();
     await waitFor(() => !!modal(), "the edit form");
     check(results, "editing keeps the measurements", field("sizeMm")?.value === "4" && field("cableCm")?.value === "40");
-    set("project", "__other__");
-    check(results, "something not in the library asks for its name", shown("projectName"));
-    act("save");
-    await waitFor(() => !modal()?.querySelector<HTMLElement>('[data-el="error"]')?.hidden, "the name error");
-    check(results, "…and will not save without one", /Name the project/.test(modal()?.querySelector('[data-el="error"]')?.textContent ?? ""));
-    field("projectName")!.value = "Blanket";
+    set("project", "pr2");
     act("save");
     await waitFor(() => !modal(), "the edit save");
-    await waitFor(() => card("t3")?.querySelector(".tool-project")?.textContent === "Blanket", "the card to update");
-    check(results, "the card shows the named project", true);
+    await waitFor(() => card("t3")?.querySelector(".tool-project")?.textContent === "Gift hat", "the card to update");
+    check(results, "the card shows the project it was put on", projectOf(store, "t3") === "pr2");
 
     // Free it from the card.
     (card("t3")!.querySelector('[data-act="free"]') as HTMLElement).click();
     await waitFor(() => !!card("t3")?.querySelector(".tool-free"), "the tool to be freed");
-    check(results, "Free it frees the tool", store.tools.find((t) => t.id === "t3")?.project === "" && !store.tools.find((t) => t.id === "t3")?.patternId);
+    check(results, "Free it frees the tool", !projectOf(store, "t3"));
 
     // Remove, after asking.
     (card("t4")!.querySelector('[data-act="remove"]') as HTMLElement).click();
@@ -247,71 +287,29 @@ export async function verifyTools() {
     await waitFor(() => !card("t4"), "the removal");
     check(results, "the tool is gone", !store.tools.some((t) => t.id === "t4"));
 
-    // The pattern link opens the reader, whose side pane lists the tool.
-    (card("t1")!.querySelector('[data-act="open-pattern"]') as HTMLElement).click();
-    await waitFor(() => !!document.querySelector("[data-tool-panel] .tool-list, [data-tool-panel] .hint"), "the reader's tool panel", 15000);
-    const panel = () => document.querySelector<HTMLElement>("[data-tool-panel]")!;
-    check(results, "the pattern link opens that pattern", document.querySelector(".reader-title h2")?.textContent === "Featherweight Lace Sock");
-    check(results, "its side pane lists the tool on it", /2\.5 mm double-pointed needles, 20 cm \(HiyaHiya\)/.test(panel().textContent ?? ""), panel().textContent ?? "");
-    const select = panel().querySelector<HTMLSelectElement>('[data-el="tool-add"]')!;
-    check(results, "free tools are offered as Free", [...select.querySelectorAll<HTMLOptionElement>('optgroup[label="Free"] option')].every((o) => isFree(store.tools.find((t) => t.id === o.value) as Tool)) && select.querySelectorAll('optgroup[label="Free"] option').length > 0);
-    const use = panel().querySelector<HTMLButtonElement>('[data-act="tool-use"]')!;
-    check(results, "Use waits for a choice", use.disabled);
-    select.value = "t3";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-    check(results, "choosing does not put it on by itself", !store.tools.find((t) => t.id === "t3")?.patternId && !use.disabled);
-    use.click();
-    await waitFor(() => store.tools.find((t) => t.id === "t3")?.patternId === "p1", "the tool to go on");
-    await waitFor(() => panel().querySelectorAll(".tool-list li").length === 2, "the list to grow");
-    check(results, "choosing one puts it on the pattern", true);
-    (panel().querySelector('[data-act="tool-free"][data-id="t1"]') as HTMLElement).click();
-    await waitFor(() => !store.tools.find((t) => t.id === "t1")?.patternId, "the tool to come off");
-    check(results, "✕ takes it off and frees it", true);
-    check(results, "a needle on another project is offered, saying where", [...panel().querySelectorAll<HTMLOptionElement>('optgroup[label^="On another project"] option')].some((o) => o.value === "t2" && /Gift hat/.test(o.textContent ?? "")));
-
-    // The pattern's own details form chooses its needles too, saved with it.
-    (document.querySelector('.reader [data-act="edit"]') as HTMLElement).click();
-    const pform = () => document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) .modal");
-    await waitFor(() => !!pform()?.querySelector('[data-el="tools"] .tool-list, [data-el="tools"] .tool-add'), "the pattern form's needles");
-    const fsel = () => pform()!.querySelector<HTMLSelectElement>('[data-el="tools"] [data-el="tool-add"]')!;
-    const fuse = () => pform()!.querySelector<HTMLButtonElement>('[data-el="tools"] [data-act="tool-use"]')!;
-    const listed = () => [...pform()!.querySelectorAll('[data-el="tools"] .tool-list li')].map((li) => li.textContent ?? "");
-    check(results, "Details lists the needles on this pattern", listed().length === 1 && /4 mm circular needle, 40 cm/.test(listed()[0]), listed().join(" / "));
-    fsel().value = "t2";
-    fsel().dispatchEvent(new Event("change", { bubbles: true }));
-    fuse().click();
-    check(results, "a needle from another project can be chosen in Details", listed().some((l) => /80 cm/.test(l)));
-    check(results, "…not saved until the form is", store.tools.find((t) => t.id === "t2")?.project === "Gift hat");
-    (pform()!.querySelector('[data-el="tools"] [data-act="tool-free"][data-id="t3"]') as HTMLElement).click();
-    check(results, "one taken off shows as free again in the list", [...fsel().querySelectorAll('optgroup[label="Free"] option')].some((o) => (o as HTMLOptionElement).value === "t3"));
-    (pform()!.querySelector('[data-act="save"]') as HTMLElement).click();
-    await waitFor(() => store.tools.find((t) => t.id === "t2")?.patternId === "p1", "the form's needles to save");
-    check(results, "saving moves the chosen needle onto the pattern", store.tools.find((t) => t.id === "t2")?.project === "");
-    check(results, "…and frees the one taken off", !store.tools.find((t) => t.id === "t3")?.patternId);
-    await waitFor(() => !!document.querySelector("[data-tool-panel] .tool-list"), "the reader again", 15000);
-    await waitFor(() => /80 cm/.test(document.querySelector("[data-tool-panel]")?.textContent ?? ""), "the side pane to show it");
-    check(results, "the side pane shows what Details chose", true);
+    // The project link on a card opens that project.
+    const pform = () => document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) .project-form");
+    (card("t1")!.querySelector('[data-act="open-project"]') as HTMLElement).click();
+    await waitFor(() => !!pform()?.querySelector('[data-el="tools"] .tool-list'), "the project form");
+    check(results, "the card's project link opens the project", (pform()!.querySelector<HTMLSelectElement>('[data-f="pattern"]')?.value ?? "") === "p1");
+    check(results, "…listing the needle on it", /2\.5 mm double-pointed needles, 20 cm \(HiyaHiya\)/.test(pform()!.querySelector('[data-el="tools"]')?.textContent ?? ""));
 
     // A form closed with Escape leaves nothing listening for the next one.
-    (document.querySelector('.reader [data-act="edit"]') as HTMLElement).click();
-    await waitFor(() => !!pform(), "Details again");
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await waitFor(() => !pform(), "Escape to close it");
-    tab("tools");
-    await waitFor(() => cards().length > 0, "the tools tab");
     (document.querySelector('.tools [data-act="add"]') as HTMLElement).click();
     await waitFor(() => !!modal(), "the needle form");
     set("sizeMm", "7");
     const n = store.tools.length;
     act("save");
     await waitFor(() => store.tools.length === n + 1 && !modal(), "the needle to save");
-    check(results, "an earlier form's Save does not also run", !document.querySelector(".form-error:not([hidden])") && store.patterns.find((p) => p.id === "p1")?.title === "Featherweight Lace Sock");
+    check(results, "an earlier form's Save does not also run", !document.querySelector(".form-error:not([hidden])") && store.projects.length === 2);
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
     document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) [data-act=\"cancel\"]")?.click();
     tab("patterns");
-    await waitFor(() => !!document.querySelector(".library:not(.stash):not(.tools)"), "the library", 5000).catch(() => {});
+    await waitFor(() => !!document.querySelector(".library:not(.stash):not(.tools):not(.projects)"), "the library", 5000).catch(() => {});
   }
 
   const failed = results.filter((r) => !r.ok);

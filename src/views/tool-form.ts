@@ -1,16 +1,25 @@
 import {
   api,
   CABLE_SIZES,
-  STATUSES,
   TOOL_KINDS,
-  type Pattern,
+  type Project,
   type Tool,
   type ToolInput,
   type ToolKind,
 } from "../api";
 import { closestEl } from "../dom";
 import { makeCombo } from "./combo";
-import { canonical, knownBrands, knownMaterials, materialLabel, materialValue, parseSizes } from "./tool-filter";
+import {
+  canonical,
+  connectorFor,
+  connectorSummary,
+  knownBrands,
+  knownMaterials,
+  materialLabel,
+  materialValue,
+  parseSizes,
+  type ConnectorStep,
+} from "./tool-filter";
 
 /** Lengths offered as suggestions; any other can still be typed. */
 const COMMON_LENGTHS = [10, 13, 15, 20, 23, 25, 30, 35, 40];
@@ -32,9 +41,11 @@ const LENGTH_LABEL: Record<string, string> = {
   hook: "Needle length (cm)",
 };
 
-/** The pattern picker's special values. */
+/** The cable size choice that opens the per-size steps; only offered for a set. */
+const SPLIT = "__split__";
+
+/** The project picker's "free" choice. */
 const FREE = "";
-const OTHER = "__other__";
 
 /**
  * The add/edit dialog for a needle or hook.
@@ -48,9 +59,12 @@ export class ToolForm {
   private root: HTMLElement;
   private editing: Tool | null;
   private onDone: (tool: Tool) => void;
-  private patterns: Pattern[] = [];
+  /** The active projects, which are what a tool can be put on. */
+  private projects: Project[] = [];
   private brands: string[] = [];
   private materials: string[] = [];
+  /** A set's connector changes, while "Changes with size…" is chosen. */
+  private steps: ConnectorStep[] = [];
 
   constructor(root: HTMLElement, editing: Tool | null, onDone: (tool: Tool) => void) {
     this.root = root;
@@ -59,17 +73,17 @@ export class ToolForm {
   }
 
   async open(): Promise<void> {
-    const [patterns, tools] = await Promise.all([
-      api.listPatterns({}).catch(() => [] as Pattern[]),
+    const [projects, tools] = await Promise.all([
+      api.listProjects().catch(() => [] as Project[]),
       api.listTools().catch(() => [] as Tool[]),
     ]);
-    this.patterns = patterns;
+    this.projects = projects.filter((p) => p.status === "active");
     this.brands = knownBrands(tools);
     this.materials = knownMaterials(tools);
 
     const e = this.editing;
     const kind: ToolKind = e?.kind ?? "circular";
-    const projectChoice = e?.patternId ?? (e?.project ? OTHER : FREE);
+    const projectChoice = e?.projectId ?? FREE;
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal tool-form" role="dialog" aria-modal="true">
@@ -103,10 +117,12 @@ export class ToolForm {
             <select data-f="cableSize">
               <option value="">Not sure</option>
               ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${e?.cableSize === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
+              <option value="${SPLIT}" data-el="split-option" hidden>Changes with size…</option>
             </select>
           </label>
         </div>
         <p class="hint" data-el="kind-hint"></p>
+        <div class="connector-steps" data-el="connector-steps" hidden></div>
         <p class="hint set-preview" data-el="set-preview" hidden></p>
 
         <div class="field-row">
@@ -126,13 +142,11 @@ export class ToolForm {
             <span>In use for</span>
             <select data-f="project">
               <option value="${FREE}" ${projectChoice === FREE ? "selected" : ""}>Nothing — it's free</option>
-              ${this.patternOptions(projectChoice)}
-              <option value="${OTHER}" ${projectChoice === OTHER ? "selected" : ""}>Something not in the library…</option>
+              ${this.projects
+                .map((p) => `<option value="${escapeAttr(p.id)}" ${p.id === projectChoice ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
+                .join("")}
             </select>
-          </label>
-          <label class="field" data-show="other-project">
-            <span>Project</span>
-            <input data-f="projectName" value="${escapeAttr(e?.project ?? "")}" placeholder="e.g. Gift hat for Sam" />
+            ${this.projects.length ? "" : `<span class="hint">Start a project in the Projects tab to put needles on it.</span>`}
           </label>
         </div>
 
@@ -163,41 +177,96 @@ export class ToolForm {
     (this.root.querySelector('[data-f="sizeMm"]') as HTMLInputElement | null)?.focus();
   }
 
-  /**
-   * The library's patterns, ones being knitted first: those are the ones a
-   * needle is about to go onto.
-   */
-  private patternOptions(chosen: string): string {
-    const order = (p: Pattern) => {
-      const i = ["in-progress", "want-to-knit"].indexOf(p.status);
-      return i < 0 ? 2 : i;
-    };
-    const groups = new Map<string, Pattern[]>();
-    for (const p of [...this.patterns].sort((a, b) => order(a) - order(b) || a.title.localeCompare(b.title))) {
-      const label = STATUSES.find((s) => s.value === p.status)?.label ?? "Other";
-      groups.set(label, [...(groups.get(label) ?? []), p]);
+  private onChange = (e: Event): void => {
+    const target = e.target as HTMLSelectElement;
+    const f = target.dataset.f;
+    if (f === "kind" || f === "project") this.applyKind();
+    if (f === "cableSize") this.previewSet();
+    const step = target.dataset.step;
+    if (step !== undefined) {
+      const s = this.steps[Number(step)];
+      if (target.dataset.part === "from") s.from = Number(target.value);
+      if (target.dataset.part === "size") s.size = target.value;
+      this.renderSteps();
+      this.previewSet();
     }
-    return [...groups.entries()]
-      .map(
-        ([label, list]) => `
-          <optgroup label="${escapeAttr(label)}">
-            ${list.map((p) => `<option value="${escapeAttr(p.id)}" ${p.id === chosen ? "selected" : ""}>${escapeHtml(p.title)}</option>`).join("")}
-          </optgroup>`,
-      )
-      .join("");
+  };
+
+  // ---------- a set's connector changes ----------
+
+  /** Whether "Changes with size…" applies: chosen, for a set of tips or cables. */
+  private splitting(): boolean {
+    return this.isSet() && HAS.connector(this.value("kind")) && this.value("cableSize") === SPLIT;
   }
 
-  private onChange = (e: Event): void => {
-    const f = (e.target as HTMLElement).dataset.f;
-    if (f === "kind" || f === "project") this.applyKind();
-  };
+  /**
+   * Keeps the steps on sizes the set has: the first starts at the smallest,
+   * and a later one whose size was removed moves to the next size up, or goes.
+   * Started, when first needed, as small then large from the middle size:
+   * the commonest set there is, and a starting point to correct.
+   */
+  private fitSteps(sizes: number[]): void {
+    if (!sizes.length) return;
+    if (!this.steps.length) {
+      this.steps = [
+        { from: sizes[0], size: "small" },
+        { from: sizes[Math.ceil(sizes.length / 2)] ?? sizes[sizes.length - 1], size: "large" },
+      ];
+    }
+    const fitted: ConnectorStep[] = [];
+    this.steps.forEach((step, i) => {
+      const from = i === 0 ? sizes[0] : sizes.find((mm) => mm >= step.from);
+      if (from === undefined || (i > 0 && from === sizes[0])) return;
+      if (fitted.some((f) => f.from === from)) return;
+      fitted.push({ from, size: step.size });
+    });
+    this.steps = fitted.sort((a, b) => a.from - b.from);
+  }
+
+  /** One row per change: "From [5.5] mm: [Large]", and a way to add another. */
+  private renderSteps(): void {
+    const box = this.root.querySelector<HTMLElement>('[data-el="connector-steps"]');
+    if (!box) return;
+    const on = this.splitting();
+    box.hidden = !on;
+    if (!on) return;
+    const { sizes } = parseSizes(this.value("sizeMm"));
+    this.fitSteps(sizes);
+    const connector = (i: number, chosen: string) => `
+      <select data-step="${i}" data-part="size" aria-label="Cable size">
+        <option value="" ${chosen ? "" : "selected"}>Not sure</option>
+        ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${c.key === chosen ? "selected" : ""}>${c.label}</option>`).join("")}
+      </select>`;
+    const free = sizes.slice(1).filter((mm) => !this.steps.some((s) => s.from === mm));
+    box.innerHTML = `
+      ${this.steps
+        .map((step, i) =>
+          i === 0
+            ? `<div class="connector-step"><span>From ${step.from} mm</span>${connector(i, step.size)}</div>`
+            : `<div class="connector-step">
+                <span>From</span>
+                <select data-step="${i}" data-part="from" aria-label="From size">
+                  ${sizes
+                    .slice(1)
+                    .filter((mm) => mm === step.from || !this.steps.some((s) => s.from === mm))
+                    .map((mm) => `<option value="${mm}" ${mm === step.from ? "selected" : ""}>${mm} mm</option>`)
+                    .join("")}
+                </select>
+                ${connector(i, step.size)}
+                <button type="button" class="ghost" data-act="step-remove" data-step="${i}" title="Remove this change">✕</button>
+              </div>`,
+        )
+        .join("")}
+      ${free.length ? `<button type="button" class="ghost" data-act="step-add">+ Add a change</button>` : ""}
+    `;
+  }
 
   /** Shows the fields the chosen kind has, and the project name when asked for. */
   private applyKind(): void {
     const kind = this.value("kind");
     for (const el of this.root.querySelectorAll<HTMLElement>("[data-show]")) {
       const what = el.dataset.show!;
-      el.hidden = what === "other-project" ? this.value("project") !== OTHER : !HAS[what as keyof typeof HAS](kind);
+      el.hidden = !HAS[what as keyof typeof HAS](kind);
     }
     const label = this.root.querySelector('[data-el="length-label"]');
     if (label) label.textContent = LENGTH_LABEL[kind] ?? "Length (cm)";
@@ -231,8 +300,15 @@ export class ToolForm {
     const { sizes } = parseSizes(this.value("sizeMm"));
     const set = this.isSet();
     preview.hidden = !set;
+    // "Changes with size…" is only for a set: one size has one connector.
+    const split = this.root.querySelector<HTMLOptionElement>('[data-el="split-option"]');
+    if (split) split.hidden = !set;
+    const cableSize = this.root.querySelector<HTMLSelectElement>('[data-f="cableSize"]');
+    if (!set && cableSize?.value === SPLIT) cableSize.value = "";
+    this.renderSteps();
     if (set) {
-      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes. Each is added free; put one on a project from its card, or from the pattern.`;
+      const connectors = this.splitting() ? ` Cable size: ${connectorSummary(sizes, this.steps)}.` : "";
+      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes.${connectors} Each is added free; put one on a project from its card, or from the pattern.`;
     }
     const projectRow = this.root.querySelector<HTMLElement>('[data-el="project-row"]');
     if (projectRow) projectRow.hidden = set;
@@ -254,6 +330,24 @@ export class ToolForm {
     if (btn.dataset.act === "cancel") this.close();
     if (btn.dataset.act === "save") void this.save(false);
     if (btn.dataset.act === "save-another") void this.save(true);
+    if (btn.dataset.act === "step-remove") {
+      this.steps.splice(Number(btn.dataset.step), 1);
+      this.renderSteps();
+      this.previewSet();
+    }
+    if (btn.dataset.act === "step-add") {
+      const { sizes } = parseSizes(this.value("sizeMm"));
+      const last = this.steps[this.steps.length - 1];
+      const from = sizes.find((mm) => mm > last.from) ?? sizes.slice(1).find((mm) => !this.steps.some((s) => s.from === mm));
+      if (from !== undefined) {
+        // The next connector up from the last one, as sets grow.
+        const keys = CABLE_SIZES.map((c) => c.key as string);
+        const next = keys[Math.min(keys.indexOf(last.size) + 1, keys.length - 1)] ?? "";
+        this.steps.push({ from, size: next });
+        this.renderSteps();
+        this.previewSet();
+      }
+    }
   };
 
   private value(name: string): string {
@@ -269,12 +363,12 @@ export class ToolForm {
       sizeMm: HAS.size(kind) ? (parseSizes(this.value("sizeMm")).sizes[0] ?? 0) : 0,
       lengthCm: HAS.length(kind) ? num(this.value("lengthCm")) : 0,
       cableCm: HAS.cable(kind) ? num(this.value("cableCm")) : 0,
-      cableSize: HAS.connector(kind) ? this.value("cableSize") : "",
+      // "Changes with size…" is not a size; save() gives each size its own.
+      cableSize: HAS.connector(kind) && this.value("cableSize") !== SPLIT ? this.value("cableSize") : "",
       // The same word in another case files under the spelling already used.
       brand: canonical(this.value("brand"), this.brands),
       material: materialValue(canonical(this.value("material"), this.materials)),
-      patternId: choice && choice !== OTHER ? choice : null,
-      project: choice === OTHER ? this.value("projectName").trim() : "",
+      projectId: choice || null,
       notes: this.value("notes"),
     };
   }
@@ -285,12 +379,11 @@ export class ToolForm {
     try {
       const set = this.isSet();
       // A set is added free: its sizes do not share a project (see previewSet).
-      const input = set ? { ...this.input(), patternId: null, project: "" } : this.input();
+      const input = set ? { ...this.input(), projectId: null } : this.input();
       const { sizes, bad } = HAS.size(input.kind) ? parseSizes(this.value("sizeMm")) : { sizes: [0], bad: [] };
       if (bad.length) throw new Error(`“${bad[0]}” is not a size. Give sizes in millimetres, e.g. 4, or 2.5, 3, 3.5 for a set.`);
       if (!sizes.length) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
       if (this.editing && sizes.length > 1) throw new Error("This changes one needle or hook, so give it one size. Add a set with + Add.");
-      if (!set && choiceNeedsName(this.value("project"), input.project)) throw new Error("Name the project, or choose a pattern.");
       let saved: Tool;
       if (this.editing) {
         saved = await api.updateTool(this.editing.id, input);
@@ -298,10 +391,12 @@ export class ToolForm {
         // A set is one entry per size, sharing the rest but no project. Added
         // one at a time, in order, so a refusal partway names the size it
         // stopped at.
-        saved = await api.addTool({ ...input, sizeMm: sizes[0] });
+        const steps = this.splitting() ? this.steps : null;
+        const one = (mm: number) => ({ ...input, sizeMm: mm, cableSize: steps ? connectorFor(mm, steps) : input.cableSize });
+        saved = await api.addTool(one(sizes[0]));
         for (const size of sizes.slice(1)) {
           try {
-            saved = await api.addTool({ ...input, sizeMm: size });
+            saved = await api.addTool(one(size));
           } catch (err) {
             this.onDone(saved);
             throw new Error(`Added up to ${saved.sizeMm} mm, then stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
@@ -358,8 +453,6 @@ function withChoice(choices: string[], value: string): string[] {
   if (!v || choices.some((c) => c.toLowerCase() === v.toLowerCase())) return choices;
   return [...choices, v];
 }
-
-const choiceNeedsName = (choice: string, name: string): boolean => choice === OTHER && !name;
 
 function num(v: string): number {
   const n = parseFloat(v.replace(",", "."));

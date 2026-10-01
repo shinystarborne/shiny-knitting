@@ -7,6 +7,7 @@ mod export;
 mod external;
 mod models;
 mod state;
+mod projects;
 mod tools;
 mod update;
 mod yarn;
@@ -103,6 +104,11 @@ pub fn run() {
             tools::update_tool,
             tools::set_tool_project,
             tools::delete_tool,
+            projects::list_projects,
+            projects::add_project,
+            projects::update_project,
+            projects::finish_project,
+            projects::delete_project,
             annotations::list_pins,
             annotations::pin_count,
             annotations::add_pin,

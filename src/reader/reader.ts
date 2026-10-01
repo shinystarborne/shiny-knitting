@@ -9,7 +9,7 @@ import { ContentsPanel } from "./contents";
 import { SearchBar } from "./search";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
-import { ToolPanel } from "./tool-panel";
+import { ProjectPanel } from "./project-panel";
 import { isCapturing } from "./keys";
 import { normalRotation } from "./rotation";
 import { scanOne } from "../ai/scan";
@@ -61,6 +61,7 @@ export class ReaderView {
   /** Search inside the PDF. Null until loaded, and for an EPUB. */
   private search: SearchBar | null = null;
   private counter: RowCounter | null = null;
+  private projectPanel: ProjectPanel | null = null;
   private settings: HighlightSettings | null = null;
 
   /** Guards against writing a stale scroll position after the user navigates. */
@@ -83,6 +84,11 @@ export class ReaderView {
   private destroyed = false;
 
   /** The pattern being read, so the app can re-render this view in a new layout. */
+  /** Re-reads the side pane's project, after one was saved or finished. */
+  refreshProject(): void {
+    void this.projectPanel?.refresh();
+  }
+
   get patternId(): string {
     return this.pattern.id;
   }
@@ -203,8 +209,11 @@ export class ReaderView {
     await this.counter.refresh();
     if (this.destroyed) return;
 
-    const toolHost = this.root.querySelector<HTMLElement>("[data-tool-panel]");
-    if (toolHost) void new ToolPanel(toolHost, this.pattern.id).refresh();
+    const projectHost = this.root.querySelector<HTMLElement>("[data-project-panel]");
+    if (projectHost) {
+      this.projectPanel = new ProjectPanel(projectHost, this.pattern.id);
+      void this.projectPanel.refresh();
+    }
 
     this.bindKeys();
     this.bindPositionSaving();
@@ -285,7 +294,7 @@ export class ReaderView {
         <aside class="side-pane" ${sidebar ? "" : "hidden"}>
           <!-- First, above the counter: a few lines, and the counter panel is
                tall enough to push anything after it out of sight. -->
-          <div class="side-section" data-tool-panel></div>
+          <div class="side-section" data-project-panel></div>
           <div class="counter-slot"></div>
           <div class="side-section">
             <h3>Notes</h3>

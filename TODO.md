@@ -58,6 +58,8 @@ and the others build on it.
 | In-app update check | built |
 | Yarn stash | built |
 | Needle and hook inventory, with what each is on and a Free filter | built |
+| Projects: needles, hooks, cables and yarn in use; finishing releases them and records leftovers | built |
+| Yarn photo by paste or drop; weight cheat sheet; weight from the ball band; cone counts (2/28) | built |
 | Plans, finished gallery, inspiration board | not started |
 
 ## Tabs: stash, plans, gallery, board
@@ -89,6 +91,9 @@ text entry, because some plans have no pattern yet), a yarn from the stash
 (optional), a target date or season, and an order. Drag to reorder; marking
 one started/finished should move the pattern's own status along. Open
 question: dates as exact days, or coarse ("autumn", "before the baby comes")?
+Now that Projects exist, a plan is a project that has not started: the queue
+could be projects with a "planned" status, sharing the same pattern, yarn and
+needle choices, rather than a separate kind of thing.
 
 **Finished gallery.** Cards with photos of finished objects: the pattern it
 came from (linked back into the library), the yarn used, needle size,

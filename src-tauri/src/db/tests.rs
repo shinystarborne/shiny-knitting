@@ -1681,6 +1681,7 @@ fn updating_a_yarn_reconciles_its_lots() {
             grams_left: 45,
             location: String::new(),
             bought_at: None,
+            leftover: false,
         },
     ];
 
@@ -1949,67 +1950,53 @@ fn tool(kind: &str, size: f64) -> crate::models::ToolInput {
     }
 }
 
+fn project(conn: &Connection, name: &str, pattern: Option<&str>) -> crate::models::Project {
+    let input = crate::models::ProjectInput {
+        name: name.to_string(),
+        pattern_id: pattern.map(str::to_string),
+        ..Default::default()
+    };
+    insert_project(conn, &uuid::Uuid::new_v4().to_string(), &input).unwrap()
+}
+
+fn yarn_with_lots(conn: &Connection, name: &str, lots: Vec<crate::models::YarnLotInput>) -> Yarn {
+    let input = YarnInput { name: name.to_string(), lots, ..YarnInput::default() };
+    insert_yarn(conn, &uuid::Uuid::new_v4().to_string(), &input).unwrap()
+}
+
 #[test]
 fn tools_are_listed_smallest_first_with_their_project() {
     let conn = test_db();
-    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    let socks = project(&conn, "Socks", None);
     insert_tool(&conn, "big", &tool("hook", 6.0)).unwrap();
     insert_tool(
         &conn,
         "small",
-        &crate::models::ToolInput { pattern_id: Some(p.id.clone()), ..tool("dpn", 2.5) },
+        &crate::models::ToolInput { project_id: Some(socks.id.clone()), ..tool("dpn", 2.5) },
     )
     .unwrap();
-    insert_tool(
-        &conn,
-        "gift",
-        &crate::models::ToolInput { project: "Gift hat".into(), ..tool("circular", 4.0) },
-    )
-    .unwrap();
-
     let list = list_tools(&conn).unwrap();
     let ids: Vec<&str> = list.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(ids, vec!["small", "gift", "big"]);
-    assert_eq!(list[0].pattern_title, "Socks", "the pattern's title comes with it");
-    assert_eq!(list[1].project, "Gift hat");
-    assert_eq!(list[2].pattern_id, None);
-    assert_eq!(list[2].pattern_title, "");
+    assert_eq!(ids, vec!["small", "big"]);
+    assert_eq!(list[0].project_id.as_deref(), Some(socks.id.as_str()));
+    assert_eq!(list[0].project_name, "Socks", "the project's name comes with it");
+    assert_eq!(list[1].project_id, None);
 }
 
 #[test]
-fn removing_a_pattern_frees_its_tools_and_keeps_them() {
+fn a_tool_is_on_one_active_project_at_a_time() {
     let conn = test_db();
-    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
-    insert_tool(
-        &conn,
-        "t1",
-        &crate::models::ToolInput { pattern_id: Some(p.id.clone()), ..tool("dpn", 2.5) },
-    )
-    .unwrap();
-    delete_pattern(&conn, &p.id).unwrap();
-    let t = get_tool(&conn, "t1").unwrap();
-    assert_eq!(t.pattern_id, None);
-    assert_eq!(t.pattern_title, "");
-}
-
-#[test]
-fn a_tool_can_be_put_on_a_project_and_freed() {
-    let conn = test_db();
-    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    let a = project(&conn, "A", None);
+    let b = project(&conn, "B", None);
     insert_tool(&conn, "t1", &tool("hook", 4.0)).unwrap();
 
-    let on = set_tool_project(&conn, "t1", Some(&p.id), "ignored").unwrap();
-    assert_eq!(on.pattern_id.as_deref(), Some(p.id.as_str()));
-    assert_eq!(on.project, "", "a pattern wins over a name");
-
-    let named = set_tool_project(&conn, "t1", None, "  Blanket ").unwrap();
-    assert_eq!((named.pattern_id, named.project.as_str()), (None, "Blanket"));
-
-    let free = set_tool_project(&conn, "t1", None, "").unwrap();
-    assert_eq!((free.pattern_id, free.project.as_str()), (None, ""));
-
-    assert!(set_tool_project(&conn, "t1", Some("gone"), "").is_err(), "an unknown pattern is refused");
-    assert!(set_tool_project(&conn, "nope", None, "").is_err());
+    assert_eq!(set_tool_project(&conn, "t1", Some(&a.id)).unwrap().project_name, "A");
+    assert_eq!(set_tool_project(&conn, "t1", Some(&b.id)).unwrap().project_name, "B", "moved");
+    assert!(get_project(&conn, &a.id).unwrap().tool_ids.is_empty(), "and off the first");
+    let free = set_tool_project(&conn, "t1", None).unwrap();
+    assert_eq!((free.project_id, free.project_name.as_str()), (None, ""));
+    assert!(set_tool_project(&conn, "t1", Some("gone")).is_err(), "an unknown project is refused");
+    assert!(set_tool_project(&conn, "nope", None).is_err());
 }
 
 #[test]
@@ -2018,8 +2005,155 @@ fn a_tool_is_updated_and_removed() {
     insert_tool(&conn, "t1", &tool("hook", 4.0)).unwrap();
     let t = update_tool(&conn, "t1", &crate::models::ToolInput { brand: "Clover".into(), ..tool("hook", 4.5) }).unwrap();
     assert_eq!((t.brand.as_str(), t.size_mm), ("Clover", 4.5));
-    assert!(insert_tool(&conn, "t2", &crate::models::ToolInput { pattern_id: Some("gone".into()), ..tool("hook", 3.0) }).is_err());
+    assert!(insert_tool(&conn, "t2", &crate::models::ToolInput { project_id: Some("gone".into()), ..tool("hook", 3.0) }).is_err());
+    assert!(get_tool(&conn, "t2").is_err(), "a refused tool is not half-stored");
     delete_tool(&conn, "t1").unwrap();
     assert!(list_tools(&conn).unwrap().is_empty());
     assert!(delete_tool(&conn, "t1").is_err());
+}
+
+#[test]
+fn a_project_is_named_after_its_pattern_when_no_name_is_given() {
+    let conn = test_db();
+    let p = sample(&conn, "Featherweight Socks", "A", "in-progress", &[]);
+    let named = project(&conn, "  Gift   socks ", Some(&p.id));
+    assert_eq!(named.name, "Gift socks");
+    assert_eq!(named.pattern_title, "Featherweight Socks");
+    assert_eq!(named.status, "active");
+    assert_eq!(project(&conn, "", Some(&p.id)).name, "Featherweight Socks");
+    assert_eq!(project(&conn, "", None).name, "Untitled project");
+    let bad = crate::models::ProjectInput { pattern_id: Some("gone".into()), ..Default::default() };
+    assert!(insert_project(&conn, "x", &bad).is_err());
+}
+
+#[test]
+fn saving_a_project_brings_its_tools_and_yarns_to_what_was_sent() {
+    let conn = test_db();
+    let other = project(&conn, "Other", None);
+    insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
+    insert_tool(&conn, "t2", &tool("dpn", 2.5)).unwrap();
+    set_tool_project(&conn, "t2", Some(&other.id)).unwrap();
+    let y = yarn_with_lots(&conn, "Felted Tweed", vec![lot("A", 2.0, 100), lot("B", 1.0, 50)]);
+
+    let input = crate::models::ProjectInput {
+        name: "Jumper".into(),
+        tool_ids: vec!["t1".into(), "t2".into()],
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()) }],
+        ..Default::default()
+    };
+    let jumper = insert_project(&conn, "j", &input).unwrap();
+    assert_eq!(jumper.tool_ids, vec!["t1", "t2"]);
+    assert_eq!(get_tool(&conn, "t2").unwrap().project_name, "Jumper", "taken from the other project");
+    assert!(get_project(&conn, &other.id).unwrap().tool_ids.is_empty());
+    assert_eq!(jumper.yarns.len(), 1);
+    assert_eq!(jumper.yarns[0].dye_lot, "B");
+    assert_eq!(get_yarn(&conn, &y.id).unwrap().projects, vec!["Jumper"], "the yarn is in use");
+
+    let entry = jumper.yarns[0].id.clone();
+    let fewer = crate::models::ProjectInput {
+        name: "Jumper".into(),
+        tool_ids: vec!["t2".into()],
+        yarns: vec![crate::models::ProjectYarnInput { id: Some(entry.clone()), yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()) }],
+        ..Default::default()
+    };
+    let saved = update_project(&conn, "j", &fewer).unwrap();
+    assert_eq!(saved.tool_ids, vec!["t2"]);
+    assert_eq!(get_tool(&conn, "t1").unwrap().project_id, None, "taken off, it is free");
+    assert_eq!(saved.yarns[0].id, entry, "a kept yarn keeps its entry");
+
+    let wrong_lot = crate::models::ProjectInput {
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some("someone-elses".into()) }],
+        ..Default::default()
+    };
+    assert!(update_project(&conn, "j", &wrong_lot).is_err());
+}
+
+#[test]
+fn finishing_releases_the_tools_and_records_the_leftovers() {
+    let conn = test_db();
+    insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
+    let y = yarn_with_lots(&conn, "Felted Tweed", vec![lot("A", 2.0, 100)]);
+    let gone = yarn_with_lots(&conn, "Used up", vec![lot("", 1.0, 50)]);
+    let none = yarn_with_lots(&conn, "No lots", vec![]);
+    let input = crate::models::ProjectInput {
+        name: "Jumper".into(),
+        tool_ids: vec!["t1".into()],
+        yarns: [&y, &gone, &none]
+            .iter()
+            .map(|yy| crate::models::ProjectYarnInput { id: None, yarn_id: yy.id.clone(), lot_id: None })
+            .collect(),
+        ..Default::default()
+    };
+    let p = insert_project(&conn, "j", &input).unwrap();
+    let entry = |name: &str| p.yarns.iter().find(|e| e.yarn_name == name).unwrap().id.clone();
+    let finish = crate::models::FinishInput {
+        finished_at: Some(1234),
+        leftovers: vec![
+            crate::models::YarnLeftover { entry_id: entry("Felted Tweed"), grams: Some(35) },
+            crate::models::YarnLeftover { entry_id: entry("Used up"), grams: Some(0) },
+            crate::models::YarnLeftover { entry_id: entry("No lots"), grams: Some(12) },
+        ],
+    };
+    let done = finish_project(&conn, "j", &finish).unwrap();
+    assert_eq!((done.status.as_str(), done.finished_at), ("finished", Some(1234)));
+    assert_eq!(done.tool_ids, vec!["t1"], "a finished project keeps what it used");
+    assert_eq!(get_tool(&conn, "t1").unwrap().project_id, None, "but the tool is free");
+
+    let left = get_yarn(&conn, &y.id).unwrap();
+    assert_eq!((left.lots[0].grams_left, left.lots[0].leftover), (35, true));
+    assert!(left.projects.is_empty(), "the yarn is free again");
+    let used = get_yarn(&conn, &gone.id).unwrap();
+    assert_eq!((used.lots[0].grams_left, used.lots[0].leftover), (0, false), "0 g is used up, not a leftover");
+    let made = get_yarn(&conn, &none.id).unwrap();
+    assert_eq!(made.lots.len(), 1, "a lot is made to hold what is left");
+    assert_eq!((made.lots[0].grams_left, made.lots[0].leftover), (12, true));
+    assert_eq!(done.yarns.iter().find(|e| e.yarn_name == "Felted Tweed").unwrap().leftover_grams, Some(35));
+
+    assert!(finish_project(&conn, "j", &crate::models::FinishInput::default()).is_err(), "only once");
+    assert!(set_tool_project(&conn, "t1", Some("j")).is_err(), "nothing goes on a finished project");
+    let renamed = update_project(&conn, "j", &crate::models::ProjectInput { name: "Blue jumper".into(), ..Default::default() }).unwrap();
+    assert_eq!(renamed.name, "Blue jumper");
+    assert_eq!(renamed.tool_ids, vec!["t1"], "editing a finished project leaves its record alone");
+}
+
+#[test]
+fn removing_a_project_frees_what_was_on_it() {
+    let conn = test_db();
+    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    let pr = project(&conn, "", Some(&p.id));
+    insert_tool(&conn, "t1", &crate::models::ToolInput { project_id: Some(pr.id.clone()), ..tool("dpn", 2.5) }).unwrap();
+    delete_pattern(&conn, &p.id).unwrap();
+    let kept = get_project(&conn, &pr.id).unwrap();
+    assert_eq!((kept.pattern_id, kept.pattern_title.as_str()), (None, ""), "removing the pattern keeps the project");
+    delete_project(&conn, &pr.id).unwrap();
+    assert_eq!(get_tool(&conn, "t1").unwrap().project_id, None);
+    assert!(list_projects(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn needles_on_patterns_and_named_projects_move_onto_projects_once() {
+    let conn = test_db();
+    let p = sample(&conn, "Socks", "A", "in-progress", &[]);
+    // As a library from before projects: the old columns filled in directly.
+    for (id, pattern, name) in [("a", Some(p.id.as_str()), ""), ("b", Some(p.id.as_str()), ""), ("c", None, "Gift hat"), ("d", None, "gift hat"), ("e", None, "")] {
+        conn.execute(
+            "INSERT INTO tools (id, kind, size_mm, pattern_id, project, added_at) VALUES (?1, 'hook', 4, ?2, ?3, 0)",
+            params![id, pattern, name],
+        )
+        .unwrap();
+    }
+    conn.execute("DELETE FROM app_settings WHERE key = 'tools_into_projects'", []).unwrap();
+    migrate(&conn).unwrap();
+
+    let projects = list_projects(&conn).unwrap();
+    assert_eq!(projects.len(), 2, "one per pattern and one per name");
+    let socks = projects.iter().find(|pr| pr.name == "Socks").unwrap();
+    assert_eq!(socks.pattern_id.as_deref(), Some(p.id.as_str()));
+    assert_eq!(socks.tool_ids.len(), 2);
+    let hat = projects.iter().find(|pr| pr.name == "Gift hat").unwrap();
+    assert_eq!(hat.tool_ids.len(), 2, "the same name in another case is the same project");
+    assert_eq!(get_tool(&conn, "e").unwrap().project_id, None);
+
+    migrate(&conn).unwrap();
+    assert_eq!(list_projects(&conn).unwrap().len(), 2, "and not again");
 }

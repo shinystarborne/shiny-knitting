@@ -8,8 +8,8 @@ import { CABLE_SIZES, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "../api";
  * same list. Pure functions, so the harness checks them directly.
  */
 
-/** Whether a tool is free: on no pattern and no named project. */
-export const isFree = (t: Tool): boolean => !t.patternId && !t.project.trim();
+/** Whether a tool is free: on no active project. */
+export const isFree = (t: Tool): boolean => !t.projectId;
 
 /**
  * Ticked boxes per group. Within a group they are OR (4 mm or 4.5 mm), and
@@ -147,10 +147,9 @@ export function describe(t: Tool): string {
   return `${name}${size}${connector}${brand}`;
 }
 
-/** What a tool is on: the pattern's title, the named project, or "". */
+/** The project a tool is on, or "". */
 export function projectName(t: Tool): string {
-  if (t.patternId) return t.patternTitle || "A pattern";
-  return t.project.trim();
+  return t.projectId ? t.projectName || "A project" : "";
 }
 
 function matches(t: Tool, f: ToolFilter): boolean {
@@ -159,8 +158,7 @@ function matches(t: Tool, f: ToolFilter): boolean {
     const words = [
       t.brand,
       t.notes,
-      t.project,
-      t.patternTitle,
+      t.projectName,
       kindLabel(t.kind),
       materialLabel(t.material),
       t.kind === "cable" ? "" : `${sizeLabel(t.sizeMm)} ${trim(t.sizeMm)}mm`,
@@ -272,4 +270,36 @@ export function parseSizes(text: string): { sizes: number[]; bad: string[] } {
     }
   }
   return { sizes: [...sizes].sort((a, b) => a - b), bad };
+}
+
+/**
+ * One change of connector within a set: from this size up, the tips take
+ * this cable size. A ChiaoGoo set is two -- small from 2.75 mm, large from
+ * 5.5 mm -- and a complete set with mini tips is three.
+ */
+export interface ConnectorStep {
+  from: number;
+  size: string;
+}
+
+/** The connector a size gets: that of the last step it has reached. */
+export function connectorFor(size: number, steps: ConnectorStep[]): string {
+  const sorted = [...steps].sort((a, b) => a.from - b.from);
+  let found = sorted[0]?.size ?? "";
+  for (const step of sorted) if (size >= step.from) found = step.size;
+  return found;
+}
+
+/** "2.75–5 mm small, 5.5–10 mm large": the sizes grouped by connector. */
+export function connectorSummary(sizes: number[], steps: ConnectorStep[]): string {
+  const groups: { size: string; first: number; last: number }[] = [];
+  for (const mm of [...sizes].sort((a, b) => a - b)) {
+    const size = connectorFor(mm, steps);
+    const last = groups[groups.length - 1];
+    if (last && last.size === size) last.last = mm;
+    else groups.push({ size, first: mm, last: mm });
+  }
+  return groups
+    .map((g) => `${g.first === g.last ? trim(g.first) : `${trim(g.first)}–${trim(g.last)}`} mm ${g.size ? cableSizeLabel(g.size).toLowerCase() : "not sure"}`)
+    .join(", ");
 }

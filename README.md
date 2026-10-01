@@ -124,7 +124,7 @@ The search box covers title, designer, notes, and tags.
 **Yarn weight** filters on the standard weight scale — Lace, Fingering, Sport,
 DK, Worsted, Aran, Bulky, Chunky, Super chunky, Jumbo — lightest first, with a
 count beside each. A pattern states its weight however the designer liked, so
-anything from "DK" and "4-ply worsted" through to a bare "100 m/100g" is read
+anything from "DK", "8 ply" and "4-ply worsted" through to a bare "100 m/100g", or a cone's "2/28", is read
 into the right family. A name always wins over a figure; a figure with no
 recognisable unit is left alone rather than guessed at, and a weight nothing
 matches is still shown on the card as written. Families you own nothing in are
@@ -167,38 +167,62 @@ spelling you already use.
 **Add** makes one entry per size, sharing the kind, length, brand, material and
 notes; the button says how many ("Add 5") before anything is added. A comma
 between digits with nothing else around it (`3,5`) is read as a decimal comma,
-so `3,5` is 3.5 mm. A set is added free: its sizes do not share a project, so
+so `3,5` is 3.5 mm. When a set's tips change connector partway — ChiaoGoo's are
+small up to 5 mm and large from 5.5 mm — choose **Changes with size…** under
+Cable size and say where each connector starts ("From 5.5 mm: Large"; **+ Add a
+change** for a third). Each size is stored with its own. A set is added free: its sizes do not share a project, so
 "In use for" is hidden while one is typed, and each size goes onto its own
 project afterwards.
 
 **Adding a run of them.** **Save and add another** keeps the form filled in, so
 needles that differ by more than the size are still quick to enter.
 
-**What it is on.** *In use for* is a pattern from your library (the ones you are
-knitting are listed first), or *something not in the library*, named in words.
-The pattern's name on a card opens it. **Free it** on the card takes a tool off
-its project. Removing a pattern frees its tools; the tools themselves stay.
-
-Needles can also be chosen from the pattern itself, in two places:
-
-- the **side pane** of an open pattern, at the top: choose one and press
-  **Use**, or ✕ to take one off; this saves at once
-- the pattern's **Details** form, which saves with the form, so needles can be
-  chosen while adding a pattern too
-
-Both offer free tools first, then the ones on another project — choosing one of
-those moves it here, since needles go from one project to the next.
+**What it is on.** A tool is in use while an active **project** has it (see
+[Projects](#projects)). *In use for* in the form puts it on one; its card shows
+the project, and the project's name opens it. **Free it** on the card takes a
+tool off its project.
 
 **Filters.** **Free** shows only what is not on a project. There are also
 **In use**, kind, size, material, cable size and brand. Boxes in one group widen
 the list (4 mm *or* 4.5 mm); different groups narrow it (4 mm *and* free). The
 search box matches size ("4mm"), brand, kind, material, project and notes.
 
+## Projects
+
+The **Projects** tab is everything being knitted, and everything finished. A
+project has a name, optionally a pattern from your library (a pattern can be
+knitted more than once), a start date, notes — and the needles, hooks, cables
+and yarn it is made with. **What is on an active project is what is in use**:
+the Needles & hooks tab and the stash both say so, and filter on it.
+
+**Starting one.** **+ New project** on the tab, or **+ Start a project** in the
+side pane of an open pattern, which fills the pattern in. Choose its needles
+and yarn there: free ones first, then those on another project, which are moved
+over. A yarn bought in more than one dye lot asks which lot, since that is the
+one knitted from and the one its leftover goes back to. Left without a name, a
+project takes its pattern's.
+
+**While knitting.** An open pattern's side pane shows its project at the top —
+what is on it, and **Needles, yarn, finish…** to change any of it.
+
+**Finishing.** **Finish project…** releases every needle, hook and cable back to
+free, and asks what is left of each yarn: weigh it and type the grams. That
+becomes what the lot holds, with a **Leftover** tag in the stash; 0 g is used
+up; left empty, the stash stays as it was. It also offers to mark the pattern
+Finished. A finished project keeps the list of what it used and what was left,
+as a record.
+
+**Removing** a project frees what is on it; the needles and yarn stay. Removing
+a pattern keeps its projects, without the pattern.
+
 ## Yarn stash
 
 The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A
 card shows the name, brand and colourway, the weight, a photo, and what is
-left of it: "4 × 100 g · 240 g left · ~528 m".
+left of it: "4 × 100 g · 240 g left · ~528 m". A yarn on an active project says
+which ("In use: Gift hat"), and one holding a project's leftover is tagged
+**Leftover**; **Availability** down the side filters on Free, In use and
+Leftover. A lot's **Leftover** box can also be ticked or cleared by hand.
 
 **Partial balls are weighed, not guessed.** Put the grams left on a lot and
 the metres left are worked out from the ball band (metres per ball ÷ grams
@@ -217,9 +241,23 @@ filters patterns on — Lace through Jumbo, with a count beside each — so
 "could I knit this in something I have?" reads off one table. Families you
 own nothing in are dimmed rather than hidden.
 
-A photo can be chosen in the add/edit form; it is downscaled in the app
-before it is stored, as covers are. Removing a yarn asks first and takes its
-photo with it.
+**A photo** can be chosen, pasted with `Ctrl`+`V` — a picture copied from a
+shop's page, or a screenshot — or dropped on the photo box. It is downscaled in
+the app before it is stored, as covers are. Removing a yarn asks first and takes
+its photo with it.
+
+**Yarn weight.** **Weights ?** beside the field opens a cheat sheet: each weight
+with its metres per 100 g, its other names, and the needles it is usually knitted
+on. Fill in metres and grams per ball and the weight is filled in for you ("175 m
+/ 50 g = 350 m/100 g: Sport"); a weight you type yourself is kept, with the
+figures' weight said beside it if they disagree. **Cone yarn** can be given by its
+count: `2/28` is two strands of 28 m to the gram, 1 400 m/100 g, a lace weight;
+`2/2800` gives the single strand per 100 g and is the same yarn. With the cone's
+grams filled in, its metres are worked out too.
+
+Ply counts follow the UK and Australian names Ravelry uses: 2 ply lace, 3–4 ply
+fingering, 5 ply sport, 8 ply DK, 10 ply worsted, 12 ply bulky, 14 ply chunky. A
+family name wins over a ply count, so "4-ply worsted" is worsted.
 
 **The row counter.** One total, and any number of named counters.
 
@@ -471,7 +509,7 @@ Two settings worth knowing about, both under *More options*:
 
 ```
 src/
-  main.ts              app shell: the tab bar, swapping library, stash, tools and reader
+  main.ts              app shell: the tab bar, swapping library, projects, stash, tools and reader
   api.ts               typed wrapper over the Tauri commands
   covers.ts            cover and yarn-photo extraction, downscaling, storage
   annotations.ts       mark coordinates, quote anchoring, rectangle merging
@@ -483,6 +521,11 @@ src/
     tool-filter.ts     filtering, facet counts and naming for needles and hooks
     tool-picker.ts     choosing a project's needles: side pane and Details
     combo.ts           a field you can type in or pick from
+    projects.ts        the projects tab
+    project-form.ts    a project: its pattern, needles and yarn
+    finish-project.ts  finishing one: releasing needles, recording leftovers
+    yarn-picker.ts     choosing a project's yarn, and its lot
+    yarn-weight.ts     the weight table and cheat sheet, mirroring yarn.rs
     pattern-form.ts    add/edit pattern dialog
     yarn-form.ts       add/edit yarn dialog, with lots and a photo
     settings.ts        updates and model settings, with the privacy notice
@@ -498,7 +541,7 @@ src/
     click.ts           the mechanical-counter click, synthesised
     marks.ts           highlights, notes, drawings, and the note editor
     pins.ts            cropping part of a page, and the floating cards
-    tool-panel.ts      the pattern's needles and hooks, in the side pane
+    project-panel.ts   the pattern's project, in the side pane
 src-tauri/src/
   db/                  schema, queries, counter arithmetic, and their tests
   ai/                  the model client, prompting, parsing, and merge rules
@@ -507,6 +550,7 @@ src-tauri/src/
   models.rs            shared types
   yarn.rs              the standard yarn weight table, and reading a weight
   tools.rs             needles and hooks: what each kind keeps, and the commands
+  projects.rs          projects: starting, finishing, and what puts things in use
   annotations.rs        storing and editing marks
 ```
 

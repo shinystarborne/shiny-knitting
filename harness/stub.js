@@ -1,3 +1,5 @@
+import { WEIGHTS, familyOf } from "../src/views/yarn-weight";
+
 /**
  * Test harness. Loads the real app code in a browser with a fake Tauri IPC
  * layer backed by an in-memory store, so the whole UI can be exercised
@@ -26,10 +28,16 @@ const store = {
   // Needles and hooks. `patternTitle` is not stored; it is joined in on read,
   // as the backend's LEFT JOIN does.
   tools: [],
+  // Projects and what is on them, as the backend's three tables.
+  projects: [],
+  projectTools: [],
+  projectYarns: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
-  nextId: 1,
+  // Starts well past the seeded ids (p1…, y1…, l1…, pr1…), so an id made
+  // here can never be one the seed already used.
+  nextId: 1000,
 };
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -324,8 +332,8 @@ function seed() {
   ];
 
   // Needles and hooks, seeded with one of each state worth seeing: on a
-  // library pattern, on a project named in words, and free, across kinds that
-  // each keep different measurements.
+  // project from a pattern, on one without, and free, across kinds that each
+  // keep different measurements.
   const tool = (id, fields) => ({
     id,
     kind: "circular",
@@ -335,20 +343,29 @@ function seed() {
     cableSize: "",
     brand: "",
     material: "",
-    patternId: null,
-    project: "",
     notes: "",
     addedAt: now,
     ...fields,
   });
   store.tools = [
-    tool("t1", { kind: "dpn", sizeMm: 2.5, lengthCm: 20, brand: "HiyaHiya", material: "metal", patternId: pdfId }),
-    tool("t2", { kind: "circular", sizeMm: 4, cableCm: 80, brand: "ChiaoGoo", material: "metal", project: "Gift hat" }),
+    tool("t1", { kind: "dpn", sizeMm: 2.5, lengthCm: 20, brand: "HiyaHiya", material: "metal" }),
+    tool("t2", { kind: "circular", sizeMm: 4, cableCm: 80, brand: "ChiaoGoo", material: "metal" }),
     tool("t3", { kind: "circular", sizeMm: 4, cableCm: 40, brand: "Addi", material: "bamboo" }),
     tool("t4", { kind: "hook", sizeMm: 5, lengthCm: 15, brand: "Clover", material: "aluminium" }),
     tool("t5", { kind: "tips", sizeMm: 3.5, lengthCm: 13, cableSize: "small", brand: "chiaogoo", material: "metal" }),
     tool("t6", { kind: "cable", cableCm: 60, cableSize: "small", brand: "ChiaoGoo" }),
   ];
+  // Two active projects, as the backend's migration would make from needles
+  // put on a pattern (t1) and on a project named in words (t2).
+  store.projects = [
+    { id: "pr1", name: "Featherweight Lace Sock", patternId: pdfId, status: "active", startedAt: now - 86400000 * 3, finishedAt: null, notes: "", createdAt: now - 86400000 * 3 },
+    { id: "pr2", name: "Gift hat", patternId: null, status: "active", startedAt: now - 86400000, finishedAt: null, notes: "", createdAt: now - 86400000 },
+  ];
+  store.projectTools = [
+    { projectId: "pr1", toolId: "t1", addedAt: now, releasedAt: null },
+    { projectId: "pr2", toolId: "t2", addedAt: now, releasedAt: null },
+  ];
+  store.projectYarns = [];
 }
 
 // The rules of `tools::clean`, so the harness refuses what the app would.
@@ -382,10 +399,7 @@ function cleanTool(input) {
     sizeMm = measure(input.sizeMm, 2, 50, "size", "mm");
     if (sizeMm <= 0) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
   }
-  const patternId = input.patternId && String(input.patternId).trim() ? String(input.patternId).trim() : null;
-  if (patternId && !store.patterns.some((p) => p.id === patternId)) {
-    throw new Error("That pattern is no longer in the library.");
-  }
+  const projectId = input.projectId && String(input.projectId).trim() ? String(input.projectId).trim() : null;
   return {
     kind,
     sizeMm,
@@ -394,80 +408,94 @@ function cleanTool(input) {
     cableSize: ["tips", "cable"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
     brand: String(input.brand || "").trim().slice(0, 80),
     material: toolMaterial(input.material),
-    patternId,
-    project: patternId ? "" : String(input.project || "").trim().slice(0, 120),
+    projectId,
     notes: String(input.notes || ""),
   };
 }
-/** A stored tool as the backend returns it: the pattern's title joined in, and
- * a pattern that no longer exists treated as gone (ON DELETE SET NULL). */
+/** A stored tool as the backend returns it: the active project it is on joined in. */
 function toolOut(t) {
-  const p = t.patternId ? store.patterns.find((x) => x.id === t.patternId) : null;
-  return clone({ ...t, patternId: p ? t.patternId : null, patternTitle: p ? p.title : "" });
+  const link = store.projectTools.find(
+    (l) => l.toolId === t.id && store.projects.find((pr) => pr.id === l.projectId)?.status === "active",
+  );
+  const pr = link ? store.projects.find((x) => x.id === link.projectId) : null;
+  const { projectId: _ignored, ...rest } = t;
+  return clone({ ...rest, projectId: pr ? pr.id : null, projectName: pr ? pr.name : "" });
+}
+
+/** `place_tool`: on an active project (off any other), or free with null. */
+function placeTool(toolId, projectId) {
+  if (projectId) {
+    const pr = store.projects.find((x) => x.id === projectId);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (pr.status !== "active") throw new Error("That project is finished, so nothing more can go on it.");
+  }
+  store.projectTools = store.projectTools.filter(
+    (l) => !(l.toolId === toolId && l.projectId !== projectId && store.projects.find((pr) => pr.id === l.projectId)?.status === "active"),
+  );
+  if (projectId && !store.projectTools.some((l) => l.toolId === toolId && l.projectId === projectId)) {
+    store.projectTools.push({ projectId, toolId, addedAt: Date.now(), releasedAt: null });
+  }
+}
+
+/** A project as the backend returns it: pattern title, tools and yarns joined in. */
+function projectOut(pr) {
+  const pattern = pr.patternId ? store.patterns.find((x) => x.id === pr.patternId) : null;
+  return clone({
+    ...pr,
+    patternId: pattern ? pr.patternId : null,
+    patternTitle: pattern ? pattern.title : "",
+    toolIds: store.projectTools.filter((l) => l.projectId === pr.id).map((l) => l.toolId),
+    yarns: store.projectYarns
+      .filter((e) => e.projectId === pr.id)
+      .map((e) => {
+        const yarn = store.yarns.find((y) => y.id === e.yarnId);
+        const lot = yarn?.lots.find((l) => l.id === e.lotId);
+        return { id: e.id, yarnId: e.yarnId, yarnName: yarn ? yarn.name : "", lotId: e.lotId, dyeLot: lot ? lot.dyeLot : "", leftoverGrams: e.leftoverGrams };
+      }),
+  });
+}
+
+/** `sync_links`: an active project's tools and yarns brought to what was sent. */
+function syncLinks(id, input) {
+  const want = [...new Set((input.toolIds || []).filter(Boolean))];
+  store.projectTools = store.projectTools.filter((l) => l.projectId !== id || want.includes(l.toolId));
+  for (const toolId of want) {
+    if (!store.tools.some((t) => t.id === toolId)) throw new Error("One of those needles or hooks is no longer there.");
+    placeTool(toolId, id);
+  }
+  const keep = (input.yarns || []).map((y) => y.id).filter(Boolean);
+  store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id || keep.includes(e.id));
+  for (const y of input.yarns || []) {
+    const yarn = store.yarns.find((x) => x.id === y.yarnId);
+    if (!yarn) throw new Error("One of those yarns is no longer in the stash.");
+    if (y.lotId && !yarn.lots.some((l) => l.id === y.lotId)) throw new Error("That lot is not one of that yarn's.");
+    const existing = y.id && store.projectYarns.find((e) => e.id === y.id);
+    if (existing) {
+      existing.yarnId = y.yarnId;
+      existing.lotId = y.lotId ?? null;
+    } else {
+      store.projectYarns.push({ id: `py${store.nextId++}`, projectId: id, yarnId: y.yarnId, lotId: y.lotId ?? null, addedAt: Date.now(), releasedAt: null, leftoverGrams: null });
+    }
+  }
+}
+
+function projectName(input) {
+  const typed = String(input.name || "").split(/\s+/).filter(Boolean).join(" ");
+  if (typed) return typed.slice(0, 120);
+  const title = input.patternId ? store.patterns.find((p) => p.id === input.patternId)?.title : "";
+  return title && title.trim() ? title : "Untitled project";
 }
 
 /**
- * The standard yarn weight table, mirroring `src-tauri/src/yarn.rs`.
- *
- * The harness reimplements the derivation rather than importing the app's
- * code, because the point of the stub is to stand in for the backend. It is
- * kept deliberately small and honest: if the two ever disagree the frontend
- * tests are measuring the wrong thing, which is why the metre bands and the
- * ordering are spelled out here.
+ * The standard yarn weight table and the reading of a weight, from the same
+ * module the yarn form uses, which mirrors `src-tauri/src/yarn.rs`. A copy
+ * kept here had drifted from the backend -- other metre bands, 4 ply as
+ * worsted -- so there is one now.
  */
-const YARN_FAMILIES = [
-  ["lace", "Lace", 200, Infinity],
-  ["fingering", "Fingering", 170, 200],
-  ["sport", "Sport", 120, 170],
-  ["dk", "DK", 100, 120],
-  ["worsted", "Worsted", 80, 100],
-  ["aran", "Aran", 60, 80],
-  ["bulky", "Bulky", 40, 60],
-  ["chunky", "Chunky", 30, 40],
-  ["super-chunky", "Super chunky", 20, 30],
-  ["jumbo", "Jumbo", 0, 20],
-];
-
-const YARN_KEYWORDS = [
-  ["super chunky", "super-chunky"],
-  ["super-chunky", "super-chunky"],
-  ["super bulky", "super-chunky"],
-  ["double knit", "dk"],
-  ["sock weight", "fingering"],
-  ["4-ply", "worsted"],
-  ["4 ply", "worsted"],
-  ["3-ply", "chunky"],
-  ["2-ply", "super-chunky"],
-  ["2 ply", "super-chunky"],
-  ["afghan", "worsted"],
-  ["fingering", "fingering"],
-  ["finger", "fingering"],
-  ["worsted", "worsted"],
-  ["chunky", "chunky"],
-  ["bulky", "bulky"],
-  ["sport", "sport"],
-  ["jumbo", "jumbo"],
-  ["thread", "lace"],
-  ["cobweb", "lace"],
-  ["lace", "lace"],
-  ["aran", "aran"],
-  ["dk", "dk"],
-];
+const YARN_FAMILIES = WEIGHTS.map((w) => [w.key, w.label, w.min, w.max]);
 
 function yarnFamily(text) {
-  const lower = String(text || "").toLowerCase();
-  if (!lower.trim()) return "";
-  for (const [word, family] of YARN_KEYWORDS) {
-    const re = new RegExp(`(^|[^a-z0-9])${word.replace(/[-]/g, "\\-")}([^a-z0-9]|$)`);
-    if (re.test(lower)) return family;
-  }
-  const m = lower.match(/(\d+(?:\.\d+)?)\s*m(?:etres|eters|trs)?\s*(?:\/|\s*per\s*|\s*at\s*)100\s*g/);
-  if (m) {
-    const metres = Math.round(parseFloat(m[1]));
-    const row = YARN_FAMILIES.find(([, , min, max]) => metres >= min && metres < max);
-    if (row) return row[0];
-  }
-  return "";
+  return familyOf(String(text || ""));
 }
 
 /**
@@ -530,6 +558,16 @@ function withYarnTotals(yarn) {
     out.gramsPerBall > 0 && out.metresPerBall > 0
       ? Math.round((out.gramsLeft / out.gramsPerBall) * out.metresPerBall)
       : 0;
+  out.lots = out.lots.map((l) => ({ leftover: false, ...l }));
+  out.projects = [
+    ...new Set(
+      store.projectYarns
+        .filter((e) => e.yarnId === yarn.id)
+        .map((e) => store.projects.find((pr) => pr.id === e.projectId))
+        .filter((pr) => pr && pr.status === "active")
+        .map((pr) => pr.name),
+    ),
+  ].sort();
   return out;
 }
 
@@ -618,8 +656,8 @@ const handlers = {
   },
   delete_pattern: ({ id }) => {
     store.patterns = store.patterns.filter((p) => p.id !== id);
-    // ON DELETE SET NULL: the pattern's needles and hooks become free.
-    for (const t of store.tools) if (t.patternId === id) t.patternId = null;
+    // ON DELETE SET NULL: its projects stay, without a pattern.
+    for (const pr of store.projects) if (pr.patternId === id) pr.patternId = null;
   },
   get_facets: () => ({
     designers: [...new Set(store.patterns.map((p) => p.designer).filter(Boolean))].sort(),
@@ -940,29 +978,100 @@ const handlers = {
       .map(toolOut),
   add_tool: ({ input }) => {
     // Not `t${n}`: that would collide with the seeded t1..t6.
-    const t = { id: `tool-${store.nextId++}`, ...cleanTool(input), addedAt: Date.now() };
+    const { projectId, ...fields } = cleanTool(input);
+    const t = { id: `tool-${store.nextId++}`, ...fields, addedAt: Date.now() };
+    placeTool(t.id, projectId);
     store.tools.push(t);
     return toolOut(t);
   },
   update_tool: ({ id, input }) => {
     const i = store.tools.findIndex((t) => t.id === id);
     if (i < 0) throw new Error(`No needle or hook with id ${id}.`);
-    store.tools[i] = { ...store.tools[i], ...cleanTool(input) };
+    const { projectId, ...fields } = cleanTool(input);
+    placeTool(id, projectId);
+    store.tools[i] = { ...store.tools[i], ...fields };
     return toolOut(store.tools[i]);
   },
-  set_tool_project: ({ id, patternId, project }) => {
+  set_tool_project: ({ id, projectId }) => {
     const t = store.tools.find((x) => x.id === id);
     if (!t) throw new Error(`No needle or hook with id ${id}.`);
-    const pid = patternId && String(patternId).trim() ? String(patternId).trim() : null;
-    if (pid && !store.patterns.some((p) => p.id === pid)) throw new Error("That pattern is no longer in the library.");
-    t.patternId = pid;
-    t.project = pid ? "" : String(project || "").trim();
+    placeTool(id, projectId && String(projectId).trim() ? String(projectId).trim() : null);
     return toolOut(t);
   },
   delete_tool: ({ id }) => {
     const before = store.tools.length;
     store.tools = store.tools.filter((t) => t.id !== id);
     if (store.tools.length === before) throw new Error(`No needle or hook with id ${id}.`);
+    store.projectTools = store.projectTools.filter((l) => l.toolId !== id);
+  },
+
+  // ---------- projects ----------
+  list_projects: () =>
+    store.projects
+      .slice()
+      .sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1) || b.startedAt - a.startedAt)
+      .map(projectOut),
+  add_project: ({ input }) => {
+    if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
+    const now = Date.now();
+    const pr = { id: `pr${store.nextId++}`, name: projectName(input), patternId: input.patternId || null, status: "active", startedAt: input.startedAt ?? now, finishedAt: null, notes: input.notes || "", createdAt: now };
+    store.projects.push(pr);
+    try {
+      syncLinks(pr.id, input);
+    } catch (e) {
+      store.projects = store.projects.filter((x) => x.id !== pr.id);
+      store.projectTools = store.projectTools.filter((l) => l.projectId !== pr.id);
+      store.projectYarns = store.projectYarns.filter((x) => x.projectId !== pr.id);
+      throw e;
+    }
+    return projectOut(pr);
+  },
+  update_project: ({ id, input }) => {
+    const pr = store.projects.find((x) => x.id === id);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
+    pr.name = projectName(input);
+    pr.patternId = input.patternId || null;
+    pr.startedAt = input.startedAt ?? pr.startedAt;
+    pr.notes = input.notes || "";
+    if (pr.status === "active") syncLinks(id, input);
+    return projectOut(pr);
+  },
+  finish_project: ({ id, input }) => {
+    const pr = store.projects.find((x) => x.id === id);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (pr.status !== "active") throw new Error("That project is already finished.");
+    const now = Date.now();
+    for (const left of input.leftovers || []) {
+      if (left.grams == null) continue;
+      if (left.grams < 0) throw new Error("Leftovers are a number of grams, 0 or more.");
+      if (!store.projectYarns.some((e) => e.id === left.entryId && e.projectId === id)) throw new Error("That yarn is not on this project.");
+    }
+    pr.status = "finished";
+    pr.finishedAt = input.finishedAt ?? now;
+    for (const l of store.projectTools) if (l.projectId === id && !l.releasedAt) l.releasedAt = now;
+    for (const e of store.projectYarns) if (e.projectId === id && !e.releasedAt) e.releasedAt = now;
+    for (const left of input.leftovers || []) {
+      if (left.grams == null) continue;
+      const e = store.projectYarns.find((x) => x.id === left.entryId);
+      e.leftoverGrams = left.grams;
+      const yarn = store.yarns.find((y) => y.id === e.yarnId);
+      if (!yarn) continue;
+      let lot = yarn.lots.find((l) => l.id === e.lotId) ?? yarn.lots[0];
+      if (!lot) {
+        lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, location: "", boughtAt: null, leftover: false };
+        yarn.lots.push(lot);
+      }
+      lot.gramsLeft = left.grams;
+      lot.leftover = left.grams > 0;
+    }
+    return projectOut(pr);
+  },
+  delete_project: ({ id }) => {
+    if (!store.projects.some((x) => x.id === id)) throw new Error("That project is no longer there.");
+    store.projects = store.projects.filter((x) => x.id !== id);
+    store.projectTools = store.projectTools.filter((l) => l.projectId !== id);
+    store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id);
   },
 
   // ---------- yarn stash ----------
@@ -1017,6 +1126,7 @@ const handlers = {
         gramsLeft: lot.gramsLeft || 0,
         location: lot.location || "",
         boughtAt: lot.boughtAt ?? null,
+        leftover: !!lot.leftover,
       })),
     };
     store.yarns.push(y);
@@ -1036,6 +1146,7 @@ const handlers = {
       gramsLeft: lot.gramsLeft || 0,
       location: lot.location || "",
       boughtAt: lot.boughtAt ?? null,
+      leftover: !!lot.leftover,
     }));
     const next = {
       ...clone(yarn),
@@ -1049,11 +1160,13 @@ const handlers = {
     delete next.gramsLeft;
     delete next.ballsTotal;
     delete next.metresLeft;
+    delete next.projects;
     store.yarns[i] = next;
     return withYarnTotals(next);
   },
   delete_yarn: ({ id }) => {
     store.yarns = store.yarns.filter((y) => y.id !== id);
+    store.projectYarns = store.projectYarns.filter((e) => e.yarnId !== id);
     // The photo goes too, as deleting a pattern takes its cover.
     store.covers.delete(id);
   },

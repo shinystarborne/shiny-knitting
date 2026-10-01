@@ -5,7 +5,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES,
+    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES, FinishInput, Project,
+    ProjectInput, ProjectYarn,
 };
 
 #[cfg(test)]
@@ -182,6 +183,43 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_tools_pattern ON tools(pattern_id);
 
+        -- A piece of knitting: from a library pattern or not, active until it
+        -- is finished. What is on an active project is in use; a finished
+        -- one keeps what it used as its record.
+        CREATE TABLE IF NOT EXISTS projects (
+            id           TEXT PRIMARY KEY,
+            name         TEXT NOT NULL,
+            pattern_id   TEXT REFERENCES patterns(id) ON DELETE SET NULL,
+            status       TEXT NOT NULL DEFAULT 'active',
+            started_at   INTEGER NOT NULL,
+            finished_at  INTEGER,
+            notes        TEXT NOT NULL DEFAULT '',
+            created_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_projects_pattern ON projects(pattern_id);
+
+        -- The needles, hooks and cables on a project.
+        CREATE TABLE IF NOT EXISTS project_tools (
+            project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            tool_id      TEXT NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+            added_at     INTEGER NOT NULL,
+            released_at  INTEGER,
+            PRIMARY KEY (project_id, tool_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_tools_tool ON project_tools(tool_id);
+
+        -- The yarn on a project, from which lot, and what was left of it.
+        CREATE TABLE IF NOT EXISTS project_yarns (
+            id              TEXT PRIMARY KEY,
+            project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            yarn_id         TEXT NOT NULL REFERENCES yarns(id) ON DELETE CASCADE,
+            lot_id          TEXT REFERENCES yarn_lots(id) ON DELETE SET NULL,
+            added_at        INTEGER NOT NULL,
+            released_at     INTEGER,
+            leftover_grams  INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_yarns_yarn ON project_yarns(yarn_id);
+
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
         CREATE TABLE IF NOT EXISTS page_rotations (
@@ -299,6 +337,14 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // be done in Rust: the family is derived from free text, which SQL has no
     // way to do per row.
     backfill_yarn_families(conn)?;
+    // The ply counts changed meaning (4 ply is fingering, as in the UK and on
+    // Ravelry, not worsted), so every stored family is worked out again once.
+    let ply_fixed: bool = get_setting(conn, "yarn_families_ply_v2")?;
+    if !ply_fixed {
+        rederive_families(conn, "patterns")?;
+        rederive_families(conn, "yarns")?;
+        set_setting(conn, "yarn_families_ply_v2", &true)?;
+    }
 
     // The highlight line's default opacity dropped from 0.9 to 0.3, which
     // reads far better over a pattern: at 90% the text underneath was hard to
@@ -317,6 +363,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         set_setting(conn, "highlight_opacity_0_3", &true)?;
     }
 
+    // A counter's own key; empty for the counters made before keys existed.
+    if !column_exists(conn, "counters", "hotkey")? {
+        conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // A lot that is what a finished project left over.
+    if !column_exists(conn, "yarn_lots", "leftover")? {
+        conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
+    }
+    move_tools_into_projects(conn)?;
+
     // The line is now off by default: most patterns are read rather than
     // counted against a chart, and for those it was in the way. Lines still on
     // the old factory setting -- every style field untouched -- are switched
@@ -324,11 +380,6 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // state. The position is not part of the test, since clicking the page
     // moves it without anyone meaning to configure anything. Once only, for
     // the same reason as the opacity migration above.
-    // A counter's own key; empty for the counters made before keys existed.
-    if !column_exists(conn, "counters", "hotkey")? {
-        conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
-    }
-
     let off_migrated: bool = get_setting(conn, "highlight_off_by_default")?;
     if !off_migrated {
         conn.execute(
@@ -339,6 +390,22 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             [],
         )?;
         set_setting(conn, "highlight_off_by_default", &true)?;
+    }
+    Ok(())
+}
+
+/// Works out the family of every row of `table` again, from what it states.
+fn rederive_families(conn: &Connection, table: &str) -> AppResult<()> {
+    // `table` is one of two literals from migrate(), never user input.
+    let rows: Vec<(String, String)> = conn
+        .prepare(&format!("SELECT id, yarn_weight FROM {table}"))?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (id, weight) in rows {
+        conn.execute(
+            &format!("UPDATE {table} SET yarn_weight_family = ?2 WHERE id = ?1"),
+            params![id, crate::yarn::family_of(&weight)],
+        )?;
     }
     Ok(())
 }
@@ -1432,8 +1499,16 @@ pub fn delete_annotation(conn: &Connection, id: &str) -> AppResult<()> {
 
 // ---------- needles and hooks ----------
 
-const TOOL_SELECT: &str = "SELECT t.*, COALESCE(p.title, '') AS pattern_title
-     FROM tools t LEFT JOIN patterns p ON p.id = t.pattern_id";
+/// A tool with the active project it is on, if any. A tool is on at most one
+/// active project -- `link_tool` keeps it that way -- and the subquery takes
+/// one regardless, so a stray second link could never list a tool twice.
+const TOOL_SELECT: &str = "SELECT t.*, pr.id AS active_project_id, COALESCE(pr.name, '') AS active_project_name
+     FROM tools t
+     LEFT JOIN projects pr ON pr.id = (
+         SELECT pt.project_id FROM project_tools pt
+         JOIN projects p2 ON p2.id = pt.project_id
+         WHERE pt.tool_id = t.id AND p2.status = 'active'
+         LIMIT 1)";
 
 fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
     Ok(Tool {
@@ -1445,9 +1520,8 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
         cable_size: row.get("cable_size")?,
         brand: row.get("brand")?,
         material: row.get("material")?,
-        pattern_id: row.get("pattern_id")?,
-        pattern_title: row.get("pattern_title")?,
-        project: row.get("project")?,
+        project_id: row.get("active_project_id")?,
+        project_name: row.get("active_project_name")?,
         notes: row.get("notes")?,
         added_at: row.get("added_at")?,
     })
@@ -1472,30 +1546,15 @@ pub fn get_tool(conn: &Connection, id: &str) -> AppResult<Tool> {
         .ok_or_else(|| AppError::NotFound(format!("No needle or hook with id {id}.")))
 }
 
-/// Refuses a project pattern that is not in the library, in words rather than
-/// as a foreign-key failure.
-fn check_tool_pattern(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
-    let Some(id) = pattern_id else { return Ok(()) };
-    let found: Option<i64> = conn
-        .query_row("SELECT 1 FROM patterns WHERE id = ?1", params![id], |r| r.get(0))
-        .optional()?;
-    if found.is_none() {
-        return Err(AppError::Message(
-            "That pattern is no longer in the library.".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 /// Stores a new tool. The input is expected to have been through
 /// `tools::clean` already, which is what keeps the measurements consistent.
 pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<Tool> {
-    check_tool_pattern(conn, input.pattern_id.as_deref())?;
-    conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "INSERT INTO tools
          (id, kind, size_mm, length_cm, cable_cm, cable_size, brand, material,
-          pattern_id, project, notes, added_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+          notes, added_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             id,
             input.kind,
@@ -1505,22 +1564,21 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.cable_size,
             input.brand,
             input.material,
-            input.pattern_id,
-            input.project,
             input.notes,
             now_ms()
         ],
     )?;
+    place_tool(&tx, id, input.project_id.as_deref())?;
+    tx.commit()?;
     get_tool(conn, id)
 }
 
-/// Replaces a tool's details, project included.
+/// Replaces a tool's details, its project included.
 pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<Tool> {
-    check_tool_pattern(conn, input.pattern_id.as_deref())?;
-    let changed = conn.execute(
+    let tx = conn.unchecked_transaction()?;
+    let changed = tx.execute(
         "UPDATE tools SET kind = ?2, size_mm = ?3, length_cm = ?4, cable_cm = ?5,
-         cable_size = ?6, brand = ?7, material = ?8, pattern_id = ?9, project = ?10,
-         notes = ?11
+         cable_size = ?6, brand = ?7, material = ?8, notes = ?9
          WHERE id = ?1",
         params![
             id,
@@ -1531,35 +1589,66 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.cable_size,
             input.brand,
             input.material,
-            input.pattern_id,
-            input.project,
             input.notes
         ],
     )?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
+    place_tool(&tx, id, input.project_id.as_deref())?;
+    tx.commit()?;
     get_tool(conn, id)
 }
 
-/// Puts a tool to use on a project, or frees it with neither given. A pattern
-/// wins over a named project: a tool is in one project at a time.
-pub fn set_tool_project(
-    conn: &Connection,
-    id: &str,
-    pattern_id: Option<&str>,
-    project: &str,
-) -> AppResult<Tool> {
-    check_tool_pattern(conn, pattern_id)?;
-    let project = if pattern_id.is_some() { "" } else { project.trim() };
-    let changed = conn.execute(
-        "UPDATE tools SET pattern_id = ?2, project = ?3 WHERE id = ?1",
-        params![id, pattern_id, project],
-    )?;
-    if changed == 0 {
+/// Puts a tool on an active project, moving it off any other, or frees it
+/// with None.
+pub fn set_tool_project(conn: &Connection, id: &str, project_id: Option<&str>) -> AppResult<Tool> {
+    let found: Option<i64> = conn
+        .query_row("SELECT 1 FROM tools WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()?;
+    if found.is_none() {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
+    let tx = conn.unchecked_transaction()?;
+    place_tool(&tx, id, project_id)?;
+    tx.commit()?;
     get_tool(conn, id)
+}
+
+/// The one place a tool is put on or taken off a project.
+///
+/// Only active projects are touched: a finished project's tools are its
+/// record of what it used, and stay. Taking a tool off an active project
+/// removes it from that project altogether -- it was moved or freed, not used
+/// to the end -- and putting it on one takes it off any other active one,
+/// since a needle is in one project at a time.
+fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> AppResult<()> {
+    if let Some(p) = project_id {
+        let status: Option<String> = conn
+            .query_row("SELECT status FROM projects WHERE id = ?1", params![p], |r| r.get(0))
+            .optional()?;
+        match status.as_deref() {
+            None => return Err(AppError::Message("That project is no longer there.".to_string())),
+            Some("active") => {}
+            Some(_) => {
+                return Err(AppError::Message(
+                    "That project is finished, so nothing more can go on it.".to_string(),
+                ))
+            }
+        }
+    }
+    conn.execute(
+        "DELETE FROM project_tools WHERE tool_id = ?1 AND project_id <> COALESCE(?2, '')
+         AND project_id IN (SELECT id FROM projects WHERE status = 'active')",
+        params![tool_id, project_id],
+    )?;
+    if let Some(p) = project_id {
+        conn.execute(
+            "INSERT OR IGNORE INTO project_tools (project_id, tool_id, added_at) VALUES (?1, ?2, ?3)",
+            params![p, tool_id, now_ms()],
+        )?;
+    }
+    Ok(())
 }
 
 pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
@@ -1567,6 +1656,352 @@ pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
+    Ok(())
+}
+
+// ---------- projects ----------
+
+fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
+    Ok(Project {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        pattern_id: row.get("pattern_id")?,
+        pattern_title: row.get("pattern_title")?,
+        status: row.get("status")?,
+        started_at: row.get("started_at")?,
+        finished_at: row.get("finished_at")?,
+        notes: row.get("notes")?,
+        created_at: row.get("created_at")?,
+        tool_ids: Vec::new(),
+        yarns: Vec::new(),
+    })
+}
+
+const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title
+     FROM projects pr LEFT JOIN patterns p ON p.id = pr.pattern_id";
+
+/// Fills in a project's tools and yarns.
+fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
+    let mut stmt = conn.prepare(
+        "SELECT tool_id FROM project_tools WHERE project_id = ?1 ORDER BY added_at, rowid",
+    )?;
+    project.tool_ids = stmt
+        .query_map(params![project.id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    let mut stmt = conn.prepare(
+        "SELECT py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams
+         FROM project_yarns py
+         JOIN yarns y ON y.id = py.yarn_id
+         LEFT JOIN yarn_lots l ON l.id = py.lot_id
+         WHERE py.project_id = ?1 ORDER BY py.added_at, py.rowid",
+    )?;
+    project.yarns = stmt
+        .query_map(params![project.id], |r| {
+            Ok(ProjectYarn {
+                id: r.get(0)?,
+                yarn_id: r.get(1)?,
+                yarn_name: r.get(2)?,
+                lot_id: r.get(3)?,
+                dye_lot: r.get(4)?,
+                leftover_grams: r.get(5)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(project)
+}
+
+/// Every project: active ones first, the latest started first within each.
+pub fn list_projects(conn: &Connection) -> AppResult<Vec<Project>> {
+    let mut stmt = conn.prepare(&format!(
+        "{PROJECT_SELECT} ORDER BY (pr.status = 'active') DESC, pr.started_at DESC, pr.created_at DESC"
+    ))?;
+    let rows: Vec<Project> = stmt.query_map([], row_to_project)?.collect::<Result<_, _>>()?;
+    rows.into_iter().map(|p| with_links(conn, p)).collect()
+}
+
+pub fn get_project(conn: &Connection, id: &str) -> AppResult<Project> {
+    let project = conn
+        .query_row(&format!("{PROJECT_SELECT} WHERE pr.id = ?1"), params![id], row_to_project)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That project is no longer there.".to_string()))?;
+    with_links(conn, project)
+}
+
+/// The name a project gets when none is typed: its pattern's title, or a
+/// plain placeholder.
+fn project_name(conn: &Connection, input: &ProjectInput) -> AppResult<String> {
+    let typed: String = input.name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !typed.is_empty() {
+        return Ok(typed.chars().take(120).collect());
+    }
+    if let Some(p) = &input.pattern_id {
+        let title: Option<String> = conn
+            .query_row("SELECT title FROM patterns WHERE id = ?1", params![p], |r| r.get(0))
+            .optional()?;
+        if let Some(t) = title.filter(|t| !t.trim().is_empty()) {
+            return Ok(t);
+        }
+    }
+    Ok("Untitled project".to_string())
+}
+
+fn check_pattern(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
+    let Some(id) = pattern_id else { return Ok(()) };
+    let found: Option<i64> = conn
+        .query_row("SELECT 1 FROM patterns WHERE id = ?1", params![id], |r| r.get(0))
+        .optional()?;
+    if found.is_none() {
+        return Err(AppError::Message("That pattern is no longer in the library.".to_string()));
+    }
+    Ok(())
+}
+
+pub fn insert_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<Project> {
+    check_pattern(conn, input.pattern_id.as_deref())?;
+    let name = project_name(conn, input)?;
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO projects (id, name, pattern_id, status, started_at, finished_at, notes, created_at)
+         VALUES (?1, ?2, ?3, 'active', ?4, NULL, ?5, ?6)",
+        params![id, name, input.pattern_id, input.started_at.unwrap_or(now), input.notes, now],
+    )?;
+    sync_links(&tx, id, input)?;
+    tx.commit()?;
+    get_project(conn, id)
+}
+
+/// Saves a project's details. While it is active its tools and yarns are
+/// brought to what was sent; a finished project's are its record, so only
+/// the name, pattern, dates and notes change.
+pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<Project> {
+    let current = get_project(conn, id)?;
+    check_pattern(conn, input.pattern_id.as_deref())?;
+    let name = project_name(conn, input)?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE projects SET name = ?2, pattern_id = ?3, started_at = ?4, notes = ?5 WHERE id = ?1",
+        params![id, name, input.pattern_id, input.started_at.unwrap_or(current.started_at), input.notes],
+    )?;
+    if current.status == "active" {
+        sync_links(&tx, id, input)?;
+    }
+    tx.commit()?;
+    get_project(conn, id)
+}
+
+/// Brings an active project's tools and yarns to the set the dialog sent.
+fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()> {
+    let current: Vec<String> = conn
+        .prepare("SELECT tool_id FROM project_tools WHERE project_id = ?1")?
+        .query_map(params![id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    for tool in current.iter().filter(|t| !input.tool_ids.contains(t)) {
+        conn.execute(
+            "DELETE FROM project_tools WHERE project_id = ?1 AND tool_id = ?2",
+            params![id, tool],
+        )?;
+    }
+    for tool in input.tool_ids.iter().filter(|t| !current.contains(t)) {
+        let found: Option<i64> = conn
+            .query_row("SELECT 1 FROM tools WHERE id = ?1", params![tool], |r| r.get(0))
+            .optional()?;
+        if found.is_none() {
+            return Err(AppError::Message("One of those needles or hooks is no longer there.".to_string()));
+        }
+        place_tool(conn, tool, Some(id))?;
+    }
+
+    let kept: Vec<&str> = input.yarns.iter().filter_map(|y| y.id.as_deref()).collect();
+    let existing: Vec<String> = conn
+        .prepare("SELECT id FROM project_yarns WHERE project_id = ?1")?
+        .query_map(params![id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    for entry in existing.iter().filter(|e| !kept.contains(&e.as_str())) {
+        conn.execute("DELETE FROM project_yarns WHERE id = ?1", params![entry])?;
+    }
+    for yarn in &input.yarns {
+        // Scoped to the yarn, so a lot from another yarn cannot be named.
+        if let Some(lot) = &yarn.lot_id {
+            let ok: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM yarn_lots WHERE id = ?1 AND yarn_id = ?2",
+                    params![lot, yarn.yarn_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if ok.is_none() {
+                return Err(AppError::Message("That lot is not one of that yarn's.".to_string()));
+            }
+        }
+        match yarn.id.as_deref().filter(|e| existing.iter().any(|x| x == e)) {
+            Some(entry) => {
+                conn.execute(
+                    "UPDATE project_yarns SET yarn_id = ?2, lot_id = ?3 WHERE id = ?1",
+                    params![entry, yarn.yarn_id, yarn.lot_id],
+                )?;
+            }
+            None => {
+                let found: Option<i64> = conn
+                    .query_row("SELECT 1 FROM yarns WHERE id = ?1", params![yarn.yarn_id], |r| r.get(0))
+                    .optional()?;
+                if found.is_none() {
+                    return Err(AppError::Message("One of those yarns is no longer in the stash.".to_string()));
+                }
+                conn.execute(
+                    "INSERT INTO project_yarns (id, project_id, yarn_id, lot_id, added_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![uuid::Uuid::new_v4().to_string(), id, yarn.yarn_id, yarn.lot_id, now_ms()],
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Finishes a project: its tools are released, and each yarn's leftover, if
+/// given, becomes what its lot holds -- tagged as a leftover in the stash, or
+/// used up at 0 g. The tools and yarns stay listed on the project, as the
+/// record of what it was made with.
+pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppResult<Project> {
+    let project = get_project(conn, id)?;
+    if project.status != "active" {
+        return Err(AppError::Message("That project is already finished.".to_string()));
+    }
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE projects SET status = 'finished', finished_at = ?2 WHERE id = ?1",
+        params![id, input.finished_at.unwrap_or(now)],
+    )?;
+    tx.execute(
+        "UPDATE project_tools SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL",
+        params![id, now],
+    )?;
+    tx.execute(
+        "UPDATE project_yarns SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL",
+        params![id, now],
+    )?;
+    for left in &input.leftovers {
+        let Some(grams) = left.grams else { continue };
+        if grams < 0 {
+            return Err(AppError::Message("Leftovers are a number of grams, 0 or more.".to_string()));
+        }
+        let Some(entry) = project.yarns.iter().find(|y| y.id == left.entry_id) else {
+            return Err(AppError::Message("That yarn is not on this project.".to_string()));
+        };
+        tx.execute(
+            "UPDATE project_yarns SET leftover_grams = ?2 WHERE id = ?1",
+            params![entry.id, grams],
+        )?;
+        // The lot the yarn came from; for a yarn with one lot, that one; for
+        // one with none, a lot is made to hold what is left.
+        let lot: Option<String> = match &entry.lot_id {
+            Some(l) => Some(l.clone()),
+            None => tx
+                .query_row(
+                    "SELECT id FROM yarn_lots WHERE yarn_id = ?1 ORDER BY rowid LIMIT 1",
+                    params![entry.yarn_id],
+                    |r| r.get(0),
+                )
+                .optional()?,
+        };
+        match lot {
+            Some(l) => {
+                tx.execute(
+                    "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3 WHERE id = ?1",
+                    params![l, grams, grams > 0],
+                )?;
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
+                     VALUES (?1, ?2, '', 0, ?3, '', NULL, ?4)",
+                    params![uuid::Uuid::new_v4().to_string(), entry.yarn_id, grams, grams > 0],
+                )?;
+            }
+        }
+    }
+    tx.commit()?;
+    get_project(conn, id)
+}
+
+/// Removes a project. Its tools and yarns are freed with it -- the links go,
+/// the needles and yarn stay.
+pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+/// Moves needles put straight on a pattern, or on a project named in words,
+/// onto projects, from before projects existed. One project per pattern and
+/// per name, as each was one piece of knitting. Once only.
+fn move_tools_into_projects(conn: &Connection) -> AppResult<()> {
+    let done: bool = get_setting(conn, "tools_into_projects")?;
+    if done {
+        return Ok(());
+    }
+    let tx = conn.unchecked_transaction()?;
+    let now = now_ms();
+    let on_patterns: Vec<(String, String, String)> = tx
+        .prepare(
+            "SELECT t.id, p.id, p.title FROM tools t JOIN patterns p ON p.id = t.pattern_id
+             ORDER BY t.added_at",
+        )?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut by_key: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (tool, pattern, title) in on_patterns {
+        let project = match by_key.get(&format!("p:{pattern}")) {
+            Some(p) => p.clone(),
+            None => {
+                let pid = uuid::Uuid::new_v4().to_string();
+                tx.execute(
+                    "INSERT INTO projects (id, name, pattern_id, status, started_at, notes, created_at)
+                     VALUES (?1, ?2, ?3, 'active', ?4, '', ?4)",
+                    params![pid, title, pattern, now],
+                )?;
+                by_key.insert(format!("p:{pattern}"), pid.clone());
+                pid
+            }
+        };
+        tx.execute(
+            "INSERT OR IGNORE INTO project_tools (project_id, tool_id, added_at) VALUES (?1, ?2, ?3)",
+            params![project, tool, now],
+        )?;
+    }
+    let named: Vec<(String, String)> = tx
+        .prepare("SELECT id, TRIM(project) FROM tools WHERE pattern_id IS NULL AND TRIM(project) <> '' ORDER BY added_at")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (tool, name) in named {
+        let key = format!("n:{}", name.to_lowercase());
+        let project = match by_key.get(&key) {
+            Some(p) => p.clone(),
+            None => {
+                let pid = uuid::Uuid::new_v4().to_string();
+                tx.execute(
+                    "INSERT INTO projects (id, name, pattern_id, status, started_at, notes, created_at)
+                     VALUES (?1, ?2, NULL, 'active', ?3, '', ?3)",
+                    params![pid, name, now],
+                )?;
+                by_key.insert(key, pid.clone());
+                pid
+            }
+        };
+        tx.execute(
+            "INSERT OR IGNORE INTO project_tools (project_id, tool_id, added_at) VALUES (?1, ?2, ?3)",
+            params![project, tool, now],
+        )?;
+    }
+    // The old columns stay in the table, empty: SQLite cannot drop a column
+    // with a foreign key on every version this runs on.
+    tx.execute("UPDATE tools SET pattern_id = NULL, project = ''", [])?;
+    set_setting(&tx, "tools_into_projects", &true)?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -1936,6 +2371,7 @@ fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
         grams_left: row.get("grams_left")?,
         location: row.get("location")?,
         bought_at: row.get("bought_at")?,
+        leftover: row.get("leftover")?,
     })
 }
 
@@ -1958,6 +2394,7 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         grams_left: 0,
         balls_total: 0.0,
         metres_left: 0,
+        projects: Vec::new(),
     })
 }
 
@@ -1967,6 +2404,13 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
 /// missing the honest answer is zero rather than a guess.
 fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
     yarn.lots = list_yarn_lots(conn, &yarn.id)?;
+    yarn.projects = conn
+        .prepare(
+            "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+             WHERE py.yarn_id = ?1 AND pr.status = 'active' ORDER BY pr.name",
+        )?
+        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
     yarn.grams_left = yarn.lots.iter().map(|l| l.grams_left).sum();
     yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
     yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
@@ -2078,8 +2522,8 @@ fn insert_lot(
         .filter(|i| !i.is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     conn.execute(
-        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
         params![
             id,
             yarn_id,
@@ -2087,7 +2531,8 @@ fn insert_lot(
             lot.balls,
             lot.grams_left,
             lot.location,
-            lot.bought_at
+            lot.bought_at,
+            lot.leftover
         ],
     )?;
     Ok(())
@@ -2138,7 +2583,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             // Scoped to the yarn as well as the id, so a lot can never be
             // rewritten through another yarn's update.
             tx.execute(
-                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8
                  WHERE id=?1 AND yarn_id=?2",
                 params![
                     lot.id,
@@ -2147,7 +2592,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.balls,
                     lot.grams_left,
                     lot.location,
-                    lot.bought_at
+                    lot.bought_at,
+                    lot.leftover
                 ],
             )?;
             kept.push(&lot.id);
@@ -2158,8 +2604,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                 lot.id.clone()
             };
             tx.execute(
-                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
                 params![
                     id,
                     yarn.id,
@@ -2167,7 +2613,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.balls,
                     lot.grams_left,
                     lot.location,
-                    lot.bought_at
+                    lot.bought_at,
+                    lot.leftover
                 ],
             )?;
         }

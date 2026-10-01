@@ -262,6 +262,10 @@ pub struct YarnLot {
     pub grams_left: i64,
     pub location: String,
     pub bought_at: Option<i64>,
+    /// What is left after a project: set when a finished project records its
+    /// leftovers, shown as a Leftover tag in the stash.
+    #[serde(default)]
+    pub leftover: bool,
 }
 
 /// A yarn in the stash, with its lots and the quantities derived from them.
@@ -292,6 +296,9 @@ pub struct Yarn {
     /// What `grams_left` works out to in metres. Zero when either per-ball
     /// figure is missing, since it cannot be known then.
     pub metres_left: i64,
+    /// The active projects using this yarn, by name. Empty when it is free.
+    #[serde(default)]
+    pub projects: Vec<String>,
 }
 
 /// What the add dialog sends. Everything but the name is optional.
@@ -332,6 +339,8 @@ pub struct YarnLotInput {
     pub location: String,
     #[serde(default)]
     pub bought_at: Option<i64>,
+    #[serde(default)]
+    pub leftover: bool,
 }
 
 /// A photo belonging to a yarn. Bytes are stored under
@@ -637,15 +646,13 @@ pub struct Tool {
     pub brand: String,
     /// A key from `TOOL_MATERIALS`, a material as typed, or empty.
     pub material: String,
-    /// The pattern the tool is being used for. Cleared when that pattern is
-    /// removed, which frees the tool.
-    pub pattern_id: Option<String>,
-    /// That pattern's title, for display; empty when there is none.
+    /// The active project the tool is on; None when it is free. A tool is in
+    /// use exactly while an active project has it.
     #[serde(default)]
-    pub pattern_title: String,
-    /// A project that is not in the library, named in words. A tool is in use
-    /// when it has a pattern or this; free when it has neither.
-    pub project: String,
+    pub project_id: Option<String>,
+    /// That project's name, for display; empty when free.
+    #[serde(default)]
+    pub project_name: String,
     pub notes: String,
     pub added_at: i64,
 }
@@ -667,10 +674,99 @@ pub struct ToolInput {
     pub brand: String,
     #[serde(default)]
     pub material: String,
+    /// The active project to put it on, or None to leave it free.
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub notes: String,
+}
+
+// ---------- projects ----------
+
+/// Something being knitted (or crocheted): optionally from a library pattern,
+/// with the needles, hooks, cables and yarn it is using.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    /// The library pattern it is made from. Cleared, not deleted, when the
+    /// pattern is removed: the project still happened.
+    pub pattern_id: Option<String>,
+    #[serde(default)]
+    pub pattern_title: String,
+    /// "active", or "finished": a finished one keeps a record of what it used.
+    pub status: String,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
+    pub notes: String,
+    pub created_at: i64,
+    /// The tools on it: while active, those in use; once finished, those it used.
+    pub tool_ids: Vec<String>,
+    pub yarns: Vec<ProjectYarn>,
+}
+
+/// One yarn on a project, and, once finished, how much of it was left.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectYarn {
+    pub id: String,
+    pub yarn_id: String,
+    pub yarn_name: String,
+    /// The lot it is from, when the yarn has more than one.
+    pub lot_id: Option<String>,
+    #[serde(default)]
+    pub dye_lot: String,
+    /// Grams left when the project finished; None while active, or when the
+    /// leftover was not recorded.
+    pub leftover_grams: Option<i64>,
+}
+
+/// A yarn as the project dialog sends it: an `id` keeps an existing entry.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectYarnInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub yarn_id: String,
+    #[serde(default)]
+    pub lot_id: Option<String>,
+}
+
+/// A project as the dialog sends it. The tools and yarns are the whole set
+/// wanted on it; the backend adds and removes to match.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInput {
+    #[serde(default)]
+    pub name: String,
     #[serde(default)]
     pub pattern_id: Option<String>,
     #[serde(default)]
-    pub project: String,
-    #[serde(default)]
     pub notes: String,
+    #[serde(default)]
+    pub started_at: Option<i64>,
+    #[serde(default)]
+    pub tool_ids: Vec<String>,
+    #[serde(default)]
+    pub yarns: Vec<ProjectYarnInput>,
+}
+
+/// How much of one of a project's yarns is left, given when finishing it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnLeftover {
+    pub entry_id: String,
+    /// Grams left; 0 for used up. None leaves the stash as it was.
+    #[serde(default)]
+    pub grams: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FinishInput {
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+    #[serde(default)]
+    pub leftovers: Vec<YarnLeftover>,
 }

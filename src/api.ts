@@ -363,6 +363,8 @@ export interface YarnLot {
   /** Where it is kept, e.g. "under-bed box". */
   location: string;
   boughtAt: number | null;
+  /** What a finished project left over; shown as a Leftover tag. */
+  leftover: boolean;
 }
 
 /** Mirrors `models.rs::Yarn`. */
@@ -394,6 +396,8 @@ export interface Yarn {
   ballsTotal: number;
   /** gramsLeft ÷ gramsPerBall × metresPerBall; 0 when the per-ball figures are unknown. */
   metresLeft: number;
+  /** The active projects using it, by name; empty when it is free. */
+  projects: string[];
 }
 
 export interface YarnLotInput {
@@ -404,6 +408,7 @@ export interface YarnLotInput {
   gramsLeft: number;
   location: string;
   boughtAt: number | null;
+  leftover: boolean;
 }
 
 /** What the yarn form sends; ids and derived figures are the backend's. */
@@ -521,17 +526,68 @@ export interface Tool {
   cableSize: string;
   brand: string;
   material: string;
-  /** The library pattern it is being used for. */
-  patternId: string | null;
-  /** That pattern's title, or "". */
-  patternTitle: string;
-  /** A project not in the library, named in words. */
-  project: string;
+  /** The active project it is on; null when it is free. */
+  projectId: string | null;
+  /** That project's name, or "". */
+  projectName: string;
   notes: string;
   addedAt: number;
 }
 
-export type ToolInput = Omit<Tool, "id" | "patternTitle" | "addedAt">;
+export type ToolInput = Omit<Tool, "id" | "projectName" | "addedAt">;
+
+// ---------- projects ----------
+
+/** One yarn on a project. Mirrors `models.rs::ProjectYarn`. */
+export interface ProjectYarn {
+  id: string;
+  yarnId: string;
+  yarnName: string;
+  /** The lot it is from, when the yarn has more than one. */
+  lotId: string | null;
+  dyeLot: string;
+  /** Grams left when the project finished; null while active or not recorded. */
+  leftoverGrams: number | null;
+}
+
+/** A piece of knitting, and what it is made with. Mirrors `models.rs::Project`. */
+export interface Project {
+  id: string;
+  name: string;
+  patternId: string | null;
+  patternTitle: string;
+  status: "active" | "finished";
+  startedAt: number;
+  finishedAt: number | null;
+  notes: string;
+  createdAt: number;
+  /** While active, the tools in use on it; once finished, those it used. */
+  toolIds: string[];
+  yarns: ProjectYarn[];
+}
+
+export interface ProjectYarnInput {
+  /** Present keeps an existing entry. */
+  id?: string | null;
+  yarnId: string;
+  lotId: string | null;
+}
+
+/** What the project dialog sends: the whole set of tools and yarns wanted. */
+export interface ProjectInput {
+  name: string;
+  patternId: string | null;
+  notes: string;
+  startedAt: number | null;
+  toolIds: string[];
+  yarns: ProjectYarnInput[];
+}
+
+/** How much of one of a project's yarns is left; 0 is used up, null unknown. */
+export interface YarnLeftover {
+  entryId: string;
+  grams: number | null;
+}
 
 /**
  * Suggestions for the yarn weight field.
@@ -675,10 +731,19 @@ export const api = {
   listTools: () => invoke<Tool[]>("list_tools"),
   addTool: (input: ToolInput) => invoke<Tool>("add_tool", { input }),
   updateTool: (id: string, input: ToolInput) => invoke<Tool>("update_tool", { id, input }),
-  /** Puts a tool on a pattern or a named project; neither frees it. */
-  setToolProject: (id: string, patternId: string | null, project = "") =>
-    invoke<Tool>("set_tool_project", { id, patternId, project }),
+  /** Puts a tool on an active project, moving it off any other; null frees it. */
+  setToolProject: (id: string, projectId: string | null) =>
+    invoke<Tool>("set_tool_project", { id, projectId }),
   deleteTool: (id: string) => invoke<void>("delete_tool", { id }),
+
+  // Projects: what puts needles and yarn in use.
+  listProjects: () => invoke<Project[]>("list_projects"),
+  addProject: (input: ProjectInput) => invoke<Project>("add_project", { input }),
+  updateProject: (id: string, input: ProjectInput) => invoke<Project>("update_project", { id, input }),
+  /** Releases its tools and records each yarn's leftover in the stash. */
+  finishProject: (id: string, leftovers: YarnLeftover[], finishedAt: number | null = null) =>
+    invoke<Project>("finish_project", { id, input: { finishedAt, leftovers } }),
+  deleteProject: (id: string) => invoke<void>("delete_project", { id }),
 
   listYarns: (filter: YarnFilter = {}) => invoke<Yarn[]>("list_yarns", { filter }),
   getYarn: (id: string) => invoke<Yarn>("get_yarn", { id }),

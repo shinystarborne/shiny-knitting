@@ -27,6 +27,8 @@ export class StashView {
   private filter: YarnFilter = {};
   private facets: YarnWeightFacet[] = [];
   private yarns: Yarn[] = [];
+  /** Ticked availability boxes; filtered here, over what the backend sent. */
+  private use = new Set<Use>();
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
 
@@ -48,6 +50,10 @@ export class StashView {
 
       <div class="lib-body">
         <aside class="filters">
+          <div class="filter-group" data-slot="use">
+            <h4>Availability</h4>
+            <div class="facet-list weight-scale"></div>
+          </div>
           <div class="filter-group" data-slot="yarn">
             <h4>Yarn weight</h4>
             <div class="facet-list weight-scale"></div>
@@ -72,6 +78,13 @@ export class StashView {
 
     this.root.addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
+      if (input.dataset.filter === "use") {
+        if (input.checked) this.use.add(input.value as Use);
+        else this.use.delete(input.value as Use);
+        this.paint();
+        void this.loadPhotos();
+        return;
+      }
       if (input.dataset.filter !== "yarnWeight") return;
       const checked = this.checkedValues();
       this.filter.yarnWeight = checked.length ? checked : undefined;
@@ -93,6 +106,7 @@ export class StashView {
         this.root.dispatchEvent(new CustomEvent("add-yarn", { bubbles: true }));
       } else if (act === "clear") {
         this.filter = {};
+        this.use.clear();
         this.searchBox.value = "";
         this.root
           .querySelectorAll<HTMLInputElement>("input[data-filter]")
@@ -167,17 +181,38 @@ export class StashView {
     await this.loadPhotos();
   }
 
+  /**
+   * The availability boxes. Counted over what the other filters let through,
+   * since these narrow that list rather than the whole stash.
+   */
+  private renderUse(): void {
+    const count = (u: Use) => this.yarns.filter((y) => useOf(y).includes(u)).length;
+    const labels: Record<Use, string> = { free: "Free", "in-use": "In use", leftover: "Leftover" };
+    this.root.querySelector('[data-slot="use"] .facet-list')!.innerHTML = (["free", "in-use", "leftover"] as Use[])
+      .map(
+        (u) => `
+          <label class="check${count(u) ? "" : " unused"}">
+            <input type="checkbox" data-filter="use" value="${u}" ${this.use.has(u) ? "checked" : ""} />
+            <span>${labels[u]}</span>
+            <em>${count(u)}</em>
+          </label>`,
+      )
+      .join("");
+  }
+
   private paint(): void {
-    if (!this.yarns.length) {
+    this.renderUse();
+    const yarns = this.use.size ? this.yarns.filter((y) => useOf(y).some((u) => this.use.has(u))) : this.yarns;
+    if (!yarns.length) {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${
-            this.filter.search || this.filter.yarnWeight
+            this.filter.search || this.filter.yarnWeight || this.use.size
               ? "Nothing matches those filters"
               : "No yarn yet"
           }</h2>
           <p>${
-            this.filter.search || this.filter.yarnWeight
+            this.filter.search || this.filter.yarnWeight || this.use.size
               ? "Try removing a filter."
               : "Add a yarn to get started."
           }</p>
@@ -185,7 +220,7 @@ export class StashView {
       return;
     }
 
-    this.results.innerHTML = this.yarns.map((y) => this.cardHtml(y)).join("");
+    this.results.innerHTML = yarns.map((y) => this.cardHtml(y)).join("");
   }
 
   private cardHtml(y: Yarn): string {
@@ -203,7 +238,13 @@ export class StashView {
           <p class="designer">${where ? escapeHtml(where) : "No brand"}</p>
           <div class="card-meta">
             ${yarnPill(y)}
+            ${y.lots.some((l) => l.leftover) ? `<span class="pill yarn-leftover" title="What a finished project left over">Leftover</span>` : ""}
           </div>
+          ${
+            y.projects.length
+              ? `<p class="card-use" title="${escapeHtml(y.projects.join(", "))}">In use: ${escapeHtml(y.projects.join(", "))}</p>`
+              : ""
+          }
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
           <div class="card-tools-row">
@@ -249,6 +290,15 @@ export class StashView {
     this.renderFacets();
     await this.reload();
   }
+}
+
+/** Whether a yarn is free, on an active project, and holds a leftover. */
+type Use = "free" | "in-use" | "leftover";
+
+function useOf(y: Yarn): Use[] {
+  const out: Use[] = [y.projects.length ? "in-use" : "free"];
+  if (y.lots.some((l) => l.leftover)) out.push("leftover");
+  return out;
 }
 
 /**

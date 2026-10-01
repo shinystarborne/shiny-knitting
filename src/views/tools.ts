@@ -117,8 +117,8 @@ export class ToolsView {
       }
       if (act === "free") await this.free(btn.dataset.id!);
       if (act === "remove") await this.remove(btn.dataset.id!);
-      if (act === "open-pattern") {
-        this.root.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: btn.dataset.pattern }));
+      if (act === "open-project") {
+        this.root.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: btn.dataset.project }));
       }
       return;
     }
@@ -205,11 +205,9 @@ function cardHtml(t: Tool): string {
   const project = projectName(t);
   const use = free
     ? `<span class="pill tool-free">Free</span>`
-    : t.patternId
-      ? `<span class="tool-use-label">On</span>
-         <button class="link tool-project" data-act="open-pattern" data-pattern="${escapeHtml(t.patternId)}"
-           title="Open this pattern">${escapeHtml(project)}</button>`
-      : `<span class="tool-use-label">On</span> <span class="tool-project">${escapeHtml(project)}</span>`;
+    : `<span class="tool-use-label">On</span>
+       <button class="link tool-project" data-act="open-project" data-project="${escapeHtml(t.projectId ?? "")}"
+         title="Open this project">${escapeHtml(project)}</button>`;
   return `
     <article class="tool-card${free ? " free" : " in-use"}" data-open="${t.id}" title="${escapeHtml(t.notes)}">
       <div class="tool-head">

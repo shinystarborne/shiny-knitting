@@ -34,19 +34,18 @@ pub const FAMILIES: &[(&str, &str, u32, u32)] = &[
 
 /// Words that name a family directly, longest and most specific first so that
 /// "super chunky" is not read as "chunky" and "double knit" beats "dk".
+///
+/// Family names come before ply counts, so "4-ply worsted" is worsted: a name
+/// says what the designer meant, and ply counts are read differently around
+/// the world. The counts are the UK and Australian ones Ravelry uses -- 4 ply
+/// is fingering, 8 ply DK -- not the US "#4 medium", which is written as a
+/// number on its own rather than as a ply.
 const KEYWORDS: &[(&str, &str)] = &[
     ("super chunky", "super-chunky"),
     ("super-chunky", "super-chunky"),
     ("super bulky", "super-chunky"),
     ("double knit", "dk"),
     ("sock weight", "fingering"),
-    ("4-ply", "worsted"),
-    ("4 ply", "worsted"),
-    // Ply counts run the other way from thickness: fewer plies, finer yarn.
-    // 3-ply is a light fingering and 2-ply a lace or baby weight.
-    ("3-ply", "fingering"),
-    ("2-ply", "lace"),
-    ("2 ply", "lace"),
     ("afghan", "worsted"),
     ("fingering", "fingering"),
     ("finger", "fingering"),
@@ -60,6 +59,26 @@ const KEYWORDS: &[(&str, &str)] = &[
     ("lace", "lace"),
     ("aran", "aran"),
     ("dk", "dk"),
+    // Ply counts: fewer plies, finer yarn. "12-ply" is not read as "2-ply",
+    // since a digit before the hyphen is part of the word.
+    ("1-ply", "lace"),
+    ("1 ply", "lace"),
+    ("2-ply", "lace"),
+    ("2 ply", "lace"),
+    ("3-ply", "fingering"),
+    ("3 ply", "fingering"),
+    ("4-ply", "fingering"),
+    ("4 ply", "fingering"),
+    ("5-ply", "sport"),
+    ("5 ply", "sport"),
+    ("8-ply", "dk"),
+    ("8 ply", "dk"),
+    ("10-ply", "worsted"),
+    ("10 ply", "worsted"),
+    ("12-ply", "bulky"),
+    ("12 ply", "bulky"),
+    ("14-ply", "chunky"),
+    ("14 ply", "chunky"),
 ];
 
 /// The family a yarn weight falls into, or `""` when nothing recognisable is
@@ -72,10 +91,86 @@ pub fn family_of(text: &str) -> &'static str {
     if let Some(found) = family_by_name(text) {
         return found;
     }
-    match metres_per_100g(text) {
+    match metres_per_100g(text).or_else(|| cone_count(text)) {
         Some(m) => family_by_metres(m),
         None => "",
     }
+}
+
+/// Metres per 100 g from a cone yarn's count, as cones are labelled.
+///
+/// "2/28" is the metric count: two strands of a yarn that runs 28 m to the
+/// gram, so the plied yarn runs 14 m/g, or 1400 m/100 g. Some labels give the
+/// single strand per 100 g instead -- "2/2800" -- which works out the same.
+/// So a count under 100 is metres per gram and one of 100 or more is metres
+/// per 100 g; either is divided by the number of strands.
+///
+/// Only the a/b shape with nothing after it that makes it something else: a
+/// unit straight after ("2/28 m", "50/100g") means it is not a count, and the
+/// strands are 1 to 12, since a "1/2" or "3/4" in a description is far more
+/// often a fraction than a lace weight.
+pub fn cone_count(text: &str) -> Option<u32> {
+    let lower = text.to_lowercase();
+    let b = lower.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if !b[i].is_ascii_digit() || (i > 0 && (b[i - 1].is_ascii_digit() || b[i - 1] == b'.' || b[i - 1] == b',')) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        let strands: u32 = match lower[start..i].parse() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let mut j = i;
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        if j >= b.len() || b[j] != b'/' {
+            continue;
+        }
+        j += 1;
+        while j < b.len() && b[j] == b' ' {
+            j += 1;
+        }
+        let count_start = j;
+        while j < b.len() && b[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == count_start {
+            continue;
+        }
+        let count: u32 = match lower[count_start..j].parse() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        // Not followed by more of a number, or by a unit.
+        let mut k = j;
+        while k < b.len() && b[k] == b' ' {
+            k += 1;
+        }
+        // A unit is a whole word: "m" or "g" after it is a figure, "merino" is not.
+        let word_end = (k..b.len()).find(|&x| !b[x].is_ascii_alphabetic()).unwrap_or(b.len());
+        let unit = matches!(
+            &lower[k..word_end],
+            "m" | "g" | "kg" | "gr" | "mtr" | "mtrs" | "metres" | "meters" | "gram" | "grams" | "yd" | "yds"
+        );
+        if matches!(b.get(j).copied(), Some(b'.') | Some(b',')) || unit {
+            i = j;
+            continue;
+        }
+        if !(1..=12).contains(&strands) {
+            i = j;
+            continue;
+        }
+        let per_100g = if count >= 100 { count as f64 } else if count >= 5 { count as f64 * 100.0 } else { i = j; continue };
+        return Some((per_100g / strands as f64).round() as u32);
+    }
+    None
 }
 
 /// The family named in the text, ignoring any metre figure in it.
@@ -217,7 +312,11 @@ mod tests {
             ("sock weight", "fingering"),
             ("Sport", "sport"),
             ("Worsted", "worsted"),
-            ("4-ply", "worsted"),
+            ("4-ply", "fingering"),
+            ("4 ply", "fingering"),
+            ("8 ply", "dk"),
+            ("10-ply", "worsted"),
+            ("4-ply worsted", "worsted"),
             ("Aran", "aran"),
             ("Bulky", "bulky"),
             ("Chunky", "chunky"),
@@ -279,9 +378,13 @@ mod tests {
         assert_eq!(family_of("2-ply"), "lace");
         assert_eq!(family_of("2 ply"), "lace");
         assert_eq!(family_of("3-ply"), "fingering");
+        assert_eq!(family_of("4 ply"), "fingering", "UK and Australian 4 ply is fingering");
+        assert_eq!(family_of("8 ply"), "dk");
         // The digit before the hyphen is part of the word, so a longer count
         // is not misread as a shorter one.
-        assert_eq!(family_of("12-ply"), "");
+        assert_eq!(family_of("12-ply"), "bulky");
+        assert_eq!(family_of("14 ply"), "chunky");
+        assert_eq!(family_of("4-ply worsted"), "worsted", "a family name wins over a ply count");
     }
 
     #[test]
@@ -330,6 +433,30 @@ mod tests {
             u32::MAX,
             "the lightest row must be open-ended"
         );
+    }
+
+    #[test]
+    fn a_cone_count_is_read_as_metres_per_100g() {
+        assert_eq!(cone_count("2/28"), Some(1400));
+        assert_eq!(cone_count("2/2800"), Some(1400), "the single strand per 100 g, the same yarn");
+        assert_eq!(cone_count("Nm 2/28"), Some(1400));
+        assert_eq!(cone_count("1/15"), Some(1500));
+        assert_eq!(cone_count("3/9"), Some(300));
+        assert_eq!(cone_count("2 / 30 merino"), Some(1500));
+        assert_eq!(family_of("2/28"), "lace");
+        assert_eq!(family_of("3/9"), "sport");
+        assert_eq!(family_of("2/8 cotton"), "fingering", "400 m/100 g");
+    }
+
+    #[test]
+    fn a_fraction_or_a_figure_is_not_a_cone_count() {
+        assert_eq!(cone_count("1/2 ball"), None, "a fraction");
+        assert_eq!(cone_count("3/4"), None);
+        assert_eq!(cone_count("100 m/100g"), None, "a metre figure, read by the other rule");
+        assert_eq!(cone_count("50/100g"), None, "a unit after it");
+        assert_eq!(cone_count("2/28 m"), None);
+        assert_eq!(cone_count("20/28"), None, "more than 12 strands is not a count");
+        assert_eq!(family_of("100 m/100g"), "bulky", "the metre rule still wins where it applies");
     }
 
     #[test]

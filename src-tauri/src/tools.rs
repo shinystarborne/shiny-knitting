@@ -122,17 +122,10 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     };
     let material = material(&input.material);
 
-    // One project at a time: a pattern from the library, or a project named in
-    // words, never both.
-    let pattern_id = input
-        .pattern_id
+    let project_id = input
+        .project_id
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty());
-    let project = if pattern_id.is_some() {
-        String::new()
-    } else {
-        input.project.trim().chars().take(120).collect()
-    };
 
     Ok(ToolInput {
         kind,
@@ -142,8 +135,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
         cable_size,
         brand: input.brand.trim().chars().take(80).collect(),
         material,
-        pattern_id,
-        project,
+        project_id,
         notes: input.notes,
     })
 }
@@ -166,17 +158,16 @@ pub fn update_tool(state: State<'_, AppState>, id: String, input: ToolInput) -> 
     db::update_tool(&state.db(), &id, &input)
 }
 
-/// Puts a tool on a project, or frees it when given neither a pattern nor a
-/// project name.
+/// Puts a tool on an active project, moving it off any other, or frees it
+/// with no project.
 #[tauri::command]
 pub fn set_tool_project(
     state: State<'_, AppState>,
     id: String,
-    pattern_id: Option<String>,
-    project: String,
+    project_id: Option<String>,
 ) -> CmdResult<Tool> {
-    let pattern_id = pattern_id.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
-    db::set_tool_project(&state.db(), &id, pattern_id.as_deref(), &project)
+    let project_id = project_id.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+    db::set_tool_project(&state.db(), &id, project_id.as_deref())
 }
 
 #[tauri::command]
@@ -244,23 +235,10 @@ mod tests {
     }
 
     #[test]
-    fn a_tool_is_on_a_pattern_or_a_named_project_not_both() {
-        let both = clean(ToolInput {
-            pattern_id: Some("p1".into()),
-            project: "Gift hat".into(),
-            ..input("hook")
-        })
-        .unwrap();
-        assert_eq!(both.pattern_id.as_deref(), Some("p1"));
-        assert_eq!(both.project, "");
-
-        let named = clean(ToolInput {
-            pattern_id: Some("  ".into()),
-            project: "  Gift hat ".into(),
-            ..input("hook")
-        })
-        .unwrap();
-        assert_eq!(named.pattern_id, None, "a blank pattern is no pattern");
-        assert_eq!(named.project, "Gift hat");
+    fn a_blank_project_is_no_project() {
+        let on = clean(ToolInput { project_id: Some(" pr1 ".into()), ..input("hook") }).unwrap();
+        assert_eq!(on.project_id.as_deref(), Some("pr1"));
+        let blank = clean(ToolInput { project_id: Some("  ".into()), ..input("hook") }).unwrap();
+        assert_eq!(blank.project_id, None);
     }
 }
