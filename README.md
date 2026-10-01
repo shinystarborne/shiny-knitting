@@ -20,8 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.4)** — the
+  Needles & hooks tab, the reader brought up to Shelfmind's (pen highlighter,
+  pins, zoom, contents, search, links), page rotation, and your own count
+  keys. The one to test.
 - **[v0.3.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.3)** — a
-  mark left behind by a window resize, fixed. The one to test.
+  mark left behind by a window resize, fixed. Superseded by `beta.4`.
 - **[v0.3.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.2)** — the
   reader toolbar, fixed. Superseded by `beta.3`.
 - **[v0.3.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.1)** — a
