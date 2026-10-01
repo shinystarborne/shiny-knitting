@@ -20,9 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.6](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.6)** —
+  Projects: needles, hooks, cables and yarn in use, finishing with leftovers
+  back in the stash; sets that change connector; pasted yarn photos and a
+  weight cheat sheet with cone counts. The one to test.
 - **[v0.3.0-beta.5](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.5)** —
   needle sets in one go, type-or-pick brand and material (any material), and
-  choosing needles from the pattern itself. The one to test.
+  choosing needles from the pattern itself. Superseded by `beta.6`.
 - **[v0.3.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.4)** — the
   Needles & hooks tab, the reader brought up to Shelfmind's (pen highlighter,
   pins, zoom, contents, search, links), page rotation, and your own count
