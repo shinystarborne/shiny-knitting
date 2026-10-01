@@ -1,5 +1,5 @@
 import { unzipSync, strFromU8 } from "fflate";
-import type { RenderedDoc } from "./pdf";
+import type { OutlineItem, RenderedDoc } from "./pdf";
 
 interface ManifestItem {
   id: string;
@@ -400,6 +400,23 @@ export class EpubView implements RenderedDoc {
       // A frame the browser refuses to reach is a frame we cannot mark.
       return null;
     }
+  }
+
+  /**
+   * The chapters, as a table of contents: each named after its own first
+   * heading, or its title, or its place in the book when it has neither.
+   */
+  async outline(): Promise<OutlineItem[]> {
+    return this.frames.map((frame, i) => {
+      let title = "";
+      try {
+        const doc = frame.contentDocument;
+        title = (doc?.querySelector("h1, h2, h3")?.textContent || doc?.title || "").replace(/\s+/g, " ").trim();
+      } catch {
+        // An unreachable frame is still a chapter; it just gets a plain name.
+      }
+      return { title: title || `Chapter ${i + 1}`, page: i + 1, items: [] };
+    });
   }
 
   destroy(): void {

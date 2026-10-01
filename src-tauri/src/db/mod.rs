@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
-    CounterInput, HighlightSettings, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
+    CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
     Yarn, YarnInput, YarnLot, DIFFICULTIES, STATUSES,
 };
 
@@ -81,7 +81,7 @@ fn migrate(conn: &Connection) -> AppResult<()> {
 
         CREATE TABLE IF NOT EXISTS highlights (
             pattern_id    TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
-            enabled       INTEGER NOT NULL DEFAULT 1,
+            enabled       INTEGER NOT NULL DEFAULT 0,
             offset_y      REAL    NOT NULL DEFAULT 0.35,
             thickness     REAL    NOT NULL DEFAULT 3,
             width         REAL    NOT NULL DEFAULT 0,
@@ -161,6 +161,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             created_at  INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_pins_pattern ON pins(pattern_id);
+
+        -- A page the reader turned, for a chart printed sideways to fit. Only
+        -- turned pages have a row; turning one back to upright removes it.
+        CREATE TABLE IF NOT EXISTS page_rotations (
+            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            page        INTEGER NOT NULL,
+            rotation    INTEGER NOT NULL,
+            PRIMARY KEY (pattern_id, page)
+        );
 
         -- A yarn in the stash. The weight is kept as written, with the
         -- standard family derived from it on every write, exactly like
@@ -286,6 +295,30 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             [],
         )?;
         set_setting(conn, "highlight_opacity_0_3", &true)?;
+    }
+
+    // The line is now off by default: most patterns are read rather than
+    // counted against a chart, and for those it was in the way. Lines still on
+    // the old factory setting -- every style field untouched -- are switched
+    // off; a line someone has restyled was set up on purpose and keeps its
+    // state. The position is not part of the test, since clicking the page
+    // moves it without anyone meaning to configure anything. Once only, for
+    // the same reason as the opacity migration above.
+    // A counter's own key; empty for the counters made before keys existed.
+    if !column_exists(conn, "counters", "hotkey")? {
+        conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
+    }
+
+    let off_migrated: bool = get_setting(conn, "highlight_off_by_default")?;
+    if !off_migrated {
+        conn.execute(
+            "UPDATE highlights SET enabled = 0
+             WHERE ABS(thickness - 3.0) < 0.0001 AND ABS(width) < 0.0001
+               AND ABS(inset_x - 24.0) < 0.0001 AND color = '#e5484d'
+               AND ABS(opacity - 0.3) < 0.0001 AND animate = 1 AND animation_ms = 260",
+            [],
+        )?;
+        set_setting(conn, "highlight_off_by_default", &true)?;
     }
     Ok(())
 }
@@ -841,6 +874,7 @@ fn row_to_counter(row: &rusqlite::Row) -> rusqlite::Result<Counter> {
         enabled: row.get::<_, i64>("enabled")? != 0,
         excluded_from_total: row.get::<_, i64>("excluded_from_total")? != 0,
         position: row.get("position")?,
+        hotkey: row.get("hotkey")?,
     })
 }
 
@@ -878,7 +912,17 @@ pub fn add_counter(
         enabled: input.enabled,
         excluded_from_total: input.excluded_from_total,
         position,
+        hotkey: String::new(),
     })
+}
+
+/// Gives a counter its own key, or takes it away with an empty string.
+pub fn set_counter_key(conn: &Connection, id: &str, hotkey: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE counters SET hotkey = ?2 WHERE id = ?1", params![id, hotkey])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("counter {id}")));
+    }
+    Ok(())
 }
 
 pub fn update_counter(
@@ -1364,6 +1408,61 @@ pub fn delete_annotation(conn: &Connection, id: &str) -> AppResult<()> {
         return Err(AppError::NotFound(format!("No annotation with id {id}.")));
     }
     Ok(())
+}
+
+// ---------- page rotations ----------
+
+/// Every turned page of a pattern, in page order. Upright pages are left out.
+pub fn list_page_rotations(conn: &Connection, pattern_id: &str) -> AppResult<Vec<PageRotation>> {
+    let mut stmt = conn.prepare(
+        "SELECT page, rotation FROM page_rotations WHERE pattern_id = ?1 ORDER BY page",
+    )?;
+    let rows = stmt.query_map(params![pattern_id], |row| {
+        Ok(PageRotation {
+            page: row.get(0)?,
+            rotation: row.get(1)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// Turns a page to a rotation, clockwise in degrees.
+///
+/// Any whole number of degrees is accepted and brought round to 0, 90, 180 or
+/// 270, so a caller can add 90 without minding the wrap. Anything between the
+/// quarter turns is refused: a page can only be shown square.
+pub fn set_page_rotation(
+    conn: &Connection,
+    pattern_id: &str,
+    page: i64,
+    rotation: i64,
+) -> AppResult<i64> {
+    if page < 1 {
+        return Err(AppError::Message(format!("There is no page {page}.")));
+    }
+    if rotation % 90 != 0 {
+        return Err(AppError::Message(format!(
+            "A page turns in quarter turns, not {rotation}°."
+        )));
+    }
+    let normal = rotation.rem_euclid(360);
+    if normal == 0 {
+        conn.execute(
+            "DELETE FROM page_rotations WHERE pattern_id = ?1 AND page = ?2",
+            params![pattern_id, page],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO page_rotations (pattern_id, page, rotation) VALUES (?1, ?2, ?3)
+             ON CONFLICT(pattern_id, page) DO UPDATE SET rotation = excluded.rotation",
+            params![pattern_id, page, normal],
+        )?;
+    }
+    Ok(normal)
 }
 
 // ---------- bookmarks ----------

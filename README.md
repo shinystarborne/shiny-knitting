@@ -109,7 +109,8 @@ already added stays. Files already in the library are skipped — duplicates are
 recognised by content, not name — and the panel ends with a count of what was
 added, skipped, and could not be read.
 
-**Finding a pattern.** The left sidebar filters. Status, difficulty, designer,
+**Finding a pattern.** Every card is the same size; a wider window fits more of
+them to a row rather than stretching them. The left sidebar filters. Status, difficulty, designer,
 needle size, and yarn weight are checkboxes; tags are buttons you can combine.
 The search box covers title, designer, notes, and tags.
 
@@ -185,7 +186,7 @@ Keyboard, while the reader has focus:
 
 | Key | Action |
 | --- | --- |
-| `J` / `K` | **one row down / up** — moves the line a whole band *and* counts it |
+| `J` / `K` | **count a row up / down** — and, with the line on, move it a whole band |
 | `Shift`+`J`/`K` | counts the row without moving the line |
 | `Alt`+`J`/`K` | moves the line a whole band without counting |
 | `↓` `→` | count a row (`Shift` for +10) |
@@ -194,11 +195,20 @@ Keyboard, while the reader has focus:
 | `+` / `-` | count ±1 (`Shift` for ±10) |
 
 Every one of those counting keys is the same single action: the project total
-plus every counter that is switched on. There is deliberately no key that moves
-just one counter — that is what a counter's own buttons are for, and a keyboard
-route to one would make it too easy to move a number without the others.
+plus every counter that is switched on.
 
-`J` and `K` are the ones for working through a schematic. Set the line's
+**Choosing your keys.** `J` and `K` are only the starting keys. Under **Keys** in
+the counter panel, click the key beside *Count up* or *Count down* and press the
+one you want instead. A counter can also have a key of its own: its **Key**
+button takes one the same way, and that key then works like the counter's own
+`+` (with `Shift`, its `−`), whether or not the counter is switched on. A key
+already in use is refused with what it is used for, so one key never does two
+things; `Escape`, `Tab`, `PageUp`/`PageDown` and the modifier keys cannot be
+chosen. **Clear** takes a counter's key away, or puts *Count up*/*Count down*
+back to `J`/`K`. Keys are matched by their place on the keyboard, so they work
+the same with `Shift` held and on any keyboard layout. The choices are saved.
+
+The count keys are the ones for working through a schematic. Set the line's
 thickness to the on-screen height of one chart row and each press lands on
 exactly the next row — a line covering 0–5px moves to 5–10px, then 10–15px —
 and the project total follows, so a row is marked and counted in one press. The
@@ -212,7 +222,9 @@ the line is free to be dragged anywhere; only the keys snap to the band grid, so
 a precise position is still available when you want one.
 
 **The highlight line.** It sits over the reading area and stays put while the
-pattern scrolls beneath it.
+pattern scrolls beneath it. It is **off** until you want it: press **Line** and
+tick *Show line*. While it is off the count keys just count, and the page
+stays where it is.
 
 - Drag it to move it; drag the round handle for a precise grab.
 - Click anywhere in the pattern to park it there.
@@ -230,9 +242,11 @@ The line starts at 30% opacity, which is faint enough to read the pattern
 straight through it. Thickness goes from 1px to 600px, and the number box beside
 the slider takes an exact value: a highlight is often meant to mask a block of
 chart legend or a run of instructions, not just mark off a single row. That
-thickness is also the height of one row for the `J`/`K` keys, which is what ties
+thickness is also the height of one row for the count keys, which is what ties
 the line to the counter. Existing patterns still on the old 90% default are moved
 over on first launch, and any opacity you have set deliberately is left alone.
+Likewise, a line that was only ever on because it used to start on is switched
+off once on first launch; one you have adjusted in any way is left showing.
 
 **Layout.** "Split view" puts the counter, notes, and tags beside the pattern.
 "Focus view" gives the pattern the full width; a "Counter" button brings the
@@ -240,7 +254,8 @@ panel back for a quick check.
 
 **Updates.** **Settings → Updates** shows the version you have and checks for a
 newer one on request. Tick **Include beta releases** to be offered pre-releases
-as well as stable ones. With **Check automatically on startup** on, a quiet
+as well as stable ones; a beta build is always offered the next beta, ticked or
+not, since otherwise it would have nowhere to go. With **Check automatically on startup** on, a quiet
 check runs once a day and an **Update available** button appears in the library
 toolbar only when there is something new. Downloading fetches the installer and
 runs it for you; your library is untouched.
@@ -253,6 +268,25 @@ bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.
 
+**Turning a page.** A chart printed sideways to fit can be turned the right way
+up: **⟳** turns the page taking up most of the pane a quarter turn clockwise,
+and `Shift`-click turns it back. Only that page turns, and it stays turned the
+next time you open the pattern. Marks, pins, search and links all turn with it,
+and a mark made on a turned page is still in the right place if you turn the
+page back.
+
+**Contents and bookmarks.** **📑** opens a panel with the PDF's own table of
+contents (an EPUB's chapters), and a **Bookmarks** tab. **🔖** bookmarks the
+page in view in one click; rename a bookmark in the panel, or remove it with
+its ✕. Click any entry to go there.
+
+**Search.** **🔎** or `Ctrl`+`F` searches the PDF's text: `Enter`/`Shift`+`Enter`
+or ▲/▼ step through the matches, which are marked on the page, and `Escape`
+closes it. A PDF made of scanned pictures has no text to search, and says so.
+
+**Links** in a PDF work with **Select** (➤): one inside the document jumps to its
+page, and a web or email link opens in your browser rather than in the app.
+
 ## Marking up a pattern
 
 Four tools, as icons in the bar above the reading area. **Select** (➤) is the
@@ -261,48 +295,48 @@ default, so reading and tidying up need no tool chosen at all.
 - **Select** (➤) — click a note to open it and change the wording, or click a
   highlight or drawing to be offered its removal. Nothing is deleted without
   asking.
-- **Highlight** (🖊) — select some text, then press this or `H` and it is
-  marked in the current colour.
+- **Highlighter** (🖊) — drag over the page like a highlighter pen: a broad,
+  see-through band in the current colour, over text or over a chart alike.
+  It scales with the page, so it stays on the same rows at any zoom.
 - **Note** (🅣) — click anywhere to drop a note. Clearing the text and saving
   removes the note rather than leaving an empty dot behind.
-- **Draw** (✏️) — freehand, over charts and diagrams. Per page.
+- **Draw** (✏️) — a thin pen, freehand, over charts and diagrams.
 
-The colour wheel picks the highlight colour. **Undo** (↶) removes the last
+The colour wheel picks the colour for both pens. **Undo** (↶) removes the last
 mark made; **Clear** (🗑) removes every mark on the pattern, after asking once.
 Both grey out when there is nothing to act on.
 
-On a **PDF**, a mark is remembered as a rectangle on its page, because the page
-does not move. On an **EPUB**, the text does move — a wider window, a different
-font — so a mark is remembered as *which* passage it was made on: the words
-themselves, and which time round they appear if the same phrase occurs more
-than once. A highlight therefore stays on the words you made it on when the
-chapter rewraps, instead of drifting to wherever that text used to be.
+Every mark belongs to the page it was made on and moves with that page as you
+scroll, zoom or resize the window. It is remembered as a position on the page,
+so on a **PDF**, whose pages never change, it stays exactly where you put it.
+An **EPUB** reflows when the window changes width, and a stroke drawn over its
+text is not moved with the words — the same as a drawing.
 
 ## Pins
 
 A pin keeps a picture of part of a page somewhere you can see it while you work,
 which is the point: a chart you have to keep scrolling back to is no help.
 
-Choose **Pin** (📌) and drag a box around anything — a chart, a stitch diagram,
-a run of instructions you will refer to again. Up to **5** per pattern; the
-button greys out at the limit and says so. Each pin becomes a card you can:
+Press **Pin** (📌) and drag a box around anything — a chart, a stitch diagram,
+a run of instructions you will refer to again. Pin mode ends after each box;
+press 📌 again for the next one. Up to **5** per pattern; the button greys out
+at the limit and says so.
 
-- **drag** by its title bar, anywhere over the reading pane
-- **resize** by the corner grip
-- **rename** by clicking its title
-- **hide** — collapses the card to just its number (1–5), so the title bar it
-  would otherwise leave behind doesn't sit over the words you're reading;
-  click the number to bring the full card back
-- **remove** with the ×
+Each pin gets a numbered chip next to the 📌 button. Click a chip to show or
+hide that pin; hover it and click its ✕ to remove the pin. A shown pin is a
+panel you can:
 
-Cards stay where you put them — including across closing the pattern — and a new
-one arrives clear of the last, so five pins do not land on the same spot. A card
-is named after the words under its crop, cut to fit.
+- **drag** by its header, anywhere over the reading pane
+- **zoom** with its − and + buttons
+- **resize** from its bottom-right corner
 
-Pins are for **PDFs**. A PDF page is a picture, so a crop is real pixels. An
-EPUB's text is reflowed and rewrapped by the window it is shown in, so there is
-no fixed region of the page to cut, and the Pin button says so rather than
-offering a card that is subtly not what you pointed at.
+The panel is drawn straight from the PDF, so it stays as sharp as the page at
+any size. Panels stay where you put them — including across closing the
+pattern. Hover a panel's header to see the words under its crop.
+
+Pins are for **PDFs**. An EPUB's text is reflowed and rewrapped by the window it
+is shown in, so there is no fixed region of the page to cut, and the Pin button
+says so rather than offering something that is subtly not what you pointed at.
 
 ## Covers
 
@@ -402,7 +436,7 @@ src-tauri/src/
   annotations.rs        storing and editing marks
 ```
 
-Agreed but not yet built — bookmarks, the index, PDF export, and the native file
+Agreed but not yet built — PDF export, the rest of the Shelfmind reader, and the native file
 drop — are written down in [TODO.md](TODO.md), along with the traps worth
 remembering about this codebase.
 

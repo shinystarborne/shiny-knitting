@@ -4,7 +4,8 @@ use tauri::State;
 
 use crate::db;
 use crate::models::{
-    Annotation, AnnotationInput, AppError, Bookmark, ExportRequest, Pin, PinInput, PinPlacement,
+    Annotation, AnnotationInput, AppError, Bookmark, ExportRequest, PageRotation, Pin, PinInput,
+    PinPlacement,
     MAX_PINS,
 };
 
@@ -103,6 +104,27 @@ pub fn move_bookmark(
 #[tauri::command]
 pub fn delete_bookmark(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db::delete_bookmark(&state.db(), &id)
+}
+
+// ---------- page rotations ----------
+
+#[tauri::command]
+pub fn list_page_rotations(
+    state: State<'_, AppState>,
+    pattern_id: String,
+) -> CmdResult<Vec<PageRotation>> {
+    db::list_page_rotations(&state.db(), &pattern_id)
+}
+
+/// Turns one page; returns the rotation it now has (0, 90, 180 or 270).
+#[tauri::command]
+pub fn set_page_rotation(
+    state: State<'_, AppState>,
+    pattern_id: String,
+    page: i64,
+    rotation: i64,
+) -> CmdResult<i64> {
+    db::set_page_rotation(&state.db(), &pattern_id, page, rotation)
 }
 
 /// Falls back to something usable when the user saves a bookmark without

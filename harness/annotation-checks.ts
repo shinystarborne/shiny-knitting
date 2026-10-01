@@ -12,6 +12,9 @@
  *   window.__annotationChecks()
  */
 import {
+  countMatches,
+  findTextMatches,
+  pageSearchText,
   findQuoteRanges,
   fromPageRect,
   isUsableRect,
@@ -25,6 +28,7 @@ import {
   toPageRect,
   visibleRectsForRanges,
 } from "../src/annotations";
+import { boxFromView, boxToView, normalRotation, pointFromView, pointToView, type Rotation } from "../src/reader/rotation";
 import { titleFor } from "../src/reader/pins";
 
 interface CheckResult {
@@ -257,6 +261,49 @@ export function runAnnotationChecks(): CheckResult[] {
   // A quote that is not there at all must not claim a match.
   check(results, "an absent quote reports occurrence 0", occurrenceAt(repeats, onFirst, "not in the text") === 0);
   check(results, "an empty quote reports occurrence 0", occurrenceAt(repeats, onFirst, "  ") === 0);
+
+  // --- Search: counting a page's text and drawing its matches must agree ---
+  // A PDF text layer is one span per run of text. The page text that search
+  // counts joins runs with spaces, so the drawn matches must treat a span
+  // boundary as a space too, or "the third match" would mean different words
+  // to the counter and to the page.
+  const layer = track(fakePage(600, 200));
+  layer.innerHTML =
+    '<span>Knit</span><span>two together, then</span><span>knit two</span><br><span>KNIT  TWO again</span>';
+  const runs = ["Knit", "two together, then", "knit two", "KNIT  TWO again"];
+  const text = pageSearchText(runs);
+  check(results, "page text joins runs with a space", text === "knit two together, then knit two knit two again", text);
+  check(results, "matches are counted case-insensitively", countMatches(text, "Knit Two") === 3, String(countMatches(text, "Knit Two")));
+  const drawn = findTextMatches(layer, "knit two");
+  check(results, "the same matches are found in the page", drawn.length === 3, `${drawn.length} found`);
+  check(results, "a match across two spans comes back as two ranges", drawn[0]?.length === 2, `${drawn[0]?.length}`);
+  check(results, "a match inside one span is one range", drawn[1]?.length === 1, `${drawn[1]?.length}`);
+  check(results, "the boundary space is not part of a range", drawn[0]?.map((r) => r.toString()).join("|") === "Knit|two", drawn[0]?.map((r) => r.toString()).join("|"));
+  // The collapsed second space is skipped, as findQuoteRanges does, so this is
+  // two ranges on one line -- which draw as one band once merged.
+  const doubled = drawn[2]?.map((r) => r.toString()).join("") ?? "";
+  check(results, "a match over doubled whitespace still covers both words", doubled.replace(/\s+/g, " ").trim() === "KNIT TWO", JSON.stringify(doubled));
+  check(results, "no matches for absent text", findTextMatches(layer, "purl").length === 0 && countMatches(text, "purl") === 0);
+  check(results, "an empty query matches nothing", findTextMatches(layer, "  ").length === 0 && countMatches(text, " ") === 0);
+
+  // --- Turned pages: stored upright, shown turned ---
+  const corner = { x: 0.1, y: 0.2 };
+  const p90 = pointToView(corner, 90);
+  check(results, "a quarter turn clockwise takes the top left to the top right", closeTo(p90.x, 0.8) && closeTo(p90.y, 0.1), JSON.stringify(p90));
+  const p270 = pointToView(corner, 270);
+  check(results, "three quarters takes it to the bottom left", closeTo(p270.x, 0.2) && closeTo(p270.y, 0.9), JSON.stringify(p270));
+  for (const r of [0, 90, 180, 270] as Rotation[]) {
+    const back = pointFromView(pointToView(corner, r), r);
+    check(results, `a point turned ${r}° and back is where it was`, closeTo(back.x, corner.x) && closeTo(back.y, corner.y), JSON.stringify(back));
+    const box = { x: 0.1, y: 0.2, w: 0.3, h: 0.05 };
+    const shown = boxToView(box, r);
+    const again = boxFromView(shown, r);
+    check(results, `a box turned ${r}° and back is the same box`, closeTo(again.x, box.x) && closeTo(again.y, box.y) && closeTo(again.w, box.w) && closeTo(again.h, box.h), JSON.stringify(again));
+    if (r === 90 || r === 270) {
+      check(results, `a box turned ${r}° swaps its width and height`, closeTo(shown.w, box.h) && closeTo(shown.h, box.w), JSON.stringify(shown));
+    }
+  }
+  check(results, "turns wrap round to a quarter", normalRotation(-90) === 270 && normalRotation(450) === 90 && normalRotation(360) === 0, "");
 
   for (const el of pages) el.remove();
   return results;

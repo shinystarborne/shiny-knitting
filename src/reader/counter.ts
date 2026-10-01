@@ -1,7 +1,8 @@
-import { api, type Counter, type CountOutcome, type Progress } from "../api";
-import { askForm } from "../dialogs";
+import { api, type Counter, type CountKeys, type CountOutcome, type Progress } from "../api";
+import { askForm, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { isClickMuted, playClick, setClickMuted } from "./click";
+import { captureKey, isPlainPress, keyLabel } from "./keys";
 
 /**
  * The row counter.
@@ -26,6 +27,8 @@ export class RowCounter {
 
   private counters: Counter[] = [];
   private progress: Progress | null = null;
+  /** The count up / count down keys, shared by every pattern. */
+  private keys: CountKeys = { up: "KeyJ", down: "KeyK" };
 
   // Element references, kept to avoid re-querying on every render.
   private totalValue!: HTMLElement;
@@ -73,6 +76,25 @@ export class RowCounter {
           <p class="hint">
             The dot switches a counter on and off. Off keeps its count but stops
             it moving. Several can be on at once.
+          </p>
+        </div>
+
+        <div class="counter-keys">
+          <label>Keys</label>
+          <div class="key-row">
+            <span>Count up</span>
+            <button class="key-chip" data-act="key-up" title="Choose the key that counts a row"></button>
+          </div>
+          <div class="key-row">
+            <span>Count down</span>
+            <button class="key-chip" data-act="key-down" title="Choose the key that takes a row back"></button>
+          </div>
+          <p class="hint">
+            These count the total and every counter that is on, and step the row
+            line. Shift counts without moving the line; Alt moves it without
+            counting. Give a counter its own key with its <em>Key</em> button:
+            that key works like the counter's own + button, and Shift with it like
+            its −.
           </p>
         </div>
       </div>
@@ -166,6 +188,15 @@ export class RowCounter {
         break;
       case "add-counter":
         await this.promptCounter();
+        break;
+      case "key-up":
+        await this.chooseCountKey("up");
+        break;
+      case "key-down":
+        await this.chooseCountKey("down");
+        break;
+      case "c-key":
+        if (id) await this.chooseCounterKey(id);
         break;
 
       case "sound":
@@ -287,20 +318,84 @@ export class RowCounter {
     await this.refresh();
   }
 
-  /** Loads counters and progress, then paints. */
+  /** Loads counters, progress and keys, then paints. */
   async refresh(): Promise<void> {
-    const [counters, progress] = await Promise.all([
+    const [counters, progress, keys] = await Promise.all([
       api.listCounters(this.patternId),
       api.getProgress(this.patternId),
+      api.getCountKeys(),
     ]);
     this.counters = counters;
     this.progress = progress;
+    this.keys = keys;
+    this.render();
+  }
+
+  /** The count up / count down keys, for the reader's row keys. */
+  get countKeys(): CountKeys {
+    return this.keys;
+  }
+
+  /**
+   * What a key is already used for, if anything, so one key never does two
+   * things. `except` is the thing being given the key, which may keep it.
+   */
+  private keyOwner(code: string, except: string): string | null {
+    if (except !== "up" && this.keys.up === code) return "Count up";
+    if (except !== "down" && this.keys.down === code) return "Count down";
+    const counter = this.counters.find((c) => c.hotkey === code && c.id !== except);
+    return counter ? `the “${counter.name}” counter` : null;
+  }
+
+  private async chooseCountKey(which: "up" | "down"): Promise<void> {
+    const title = which === "up" ? "Count up key" : "Count down key";
+    const code = await captureKey(title, this.keys[which]);
+    if (code === null || code === this.keys[which]) return;
+    if (code === "") {
+      // Counting must always have both keys; Clear here puts back the default.
+      await this.saveCountKey(which, which === "up" ? "KeyJ" : "KeyK");
+      return;
+    }
+    const owner = this.keyOwner(code, which);
+    if (owner) {
+      await say(`${keyLabel(code)} is already the key for ${owner}.`, title);
+      return;
+    }
+    await this.saveCountKey(which, code);
+  }
+
+  private async saveCountKey(which: "up" | "down", code: string): Promise<void> {
+    const next = { ...this.keys, [which]: code };
+    try {
+      this.keys = await api.saveCountKeys(next);
+    } catch (e) {
+      await say(e instanceof Error ? e.message : String(e), "Keys");
+    }
+    this.render();
+  }
+
+  private async chooseCounterKey(id: string): Promise<void> {
+    const counter = this.counters.find((c) => c.id === id);
+    if (!counter) return;
+    const code = await captureKey(`Key for “${counter.name}”`, counter.hotkey);
+    if (code === null || code === counter.hotkey) return;
+    if (code) {
+      const owner = this.keyOwner(code, id);
+      if (owner) {
+        await say(`${keyLabel(code)} is already the key for ${owner}.`, "Counter key");
+        return;
+      }
+    }
+    await api.setCounterKey(id, code);
+    counter.hotkey = code;
     this.render();
   }
 
   private render(): void {
     if (!this.progress) return;
     this.totalValue.textContent = String(this.progress.totalRows);
+    this.q('[data-act="key-up"]').textContent = keyLabel(this.keys.up);
+    this.q('[data-act="key-down"]').textContent = keyLabel(this.keys.down);
 
     if (!this.counters.length) {
       this.counterList.innerHTML =
@@ -332,6 +427,9 @@ export class RowCounter {
               <button data-act="c-inc" data-id="${c.id}" title="Add 1">+</button>
             </div>
             <div class="counter-more">
+              <button class="ghost key-chip${c.hotkey ? " set" : ""}" data-act="c-key" data-id="${c.id}"
+                title="${c.hotkey ? `${escapeHtml(keyLabel(c.hotkey))} counts this counter; Shift+${escapeHtml(keyLabel(c.hotkey))} counts it down. Click to change.` : "Give this counter its own key"}"
+                >${c.hotkey ? escapeHtml(keyLabel(c.hotkey)) : "Key"}</button>
               <button class="ghost" data-act="c-edit" data-id="${c.id}" title="Rename or set a target">Edit</button>
               <button class="ghost" data-act="c-reset" data-id="${c.id}" title="Reset to zero">Reset</button>
               <button class="ghost" data-act="c-del" data-id="${c.id}" title="Remove this counter">×</button>
@@ -350,15 +448,21 @@ export class RowCounter {
    * PageUp are deliberately absent -- the reader intercepts them first to
    * scroll the pattern under a stationary line.
    *
-   * Every counting key goes through the one action, so the total and the
-   * enabled counters always move together. There is deliberately no key that
-   * counts a single counter: that is what the counter's own buttons are for,
-   * and a keyboard route to one would make it too easy to move one number
-   * without the other.
+   * The arrow and +/- keys go through the one action, so the total and the
+   * enabled counters move together. A counter given its own key is the
+   * exception, by request: that key counts that counter alone, the same as its
+   * own + button, and Shift with it counts it down.
    */
   handleKey(e: KeyboardEvent): boolean {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       return false;
+    }
+    if (isPlainPress(e) && e.code) {
+      const own = this.counters.find((c) => c.hotkey === e.code);
+      if (own) {
+        void this.countOne(own.id, e.shiftKey ? -1 : 1).catch((err) => console.error("Counting failed:", err));
+        return true;
+      }
     }
     const step = e.shiftKey ? 10 : 1;
     let delta: number | null = null;

@@ -6,7 +6,7 @@ use tauri::State;
 use crate::ai::{CompletionRequest, ModelInfo};
 use crate::db;
 use crate::models::{
-    AiSettings, AppError, CoverImage, Counter, CounterInput, HighlightSettings, Pattern,
+    AiSettings, AppError, CountKeys, CoverImage, Counter, CounterInput, HighlightSettings, Pattern,
     PatternInput, PhotoInfo, Progress, ScannedFile, Suggestion, SuggestionResult, Yarn, YarnInput,
 };
 use crate::state::AppState;
@@ -287,6 +287,33 @@ pub fn update_counter(
     excluded_from_total: bool,
 ) -> CmdResult<()> {
     db::update_counter(&state.db(), &id, &name, target, excluded_from_total)
+}
+
+/// Gives a counter its own key (a physical key code), or clears it with "".
+#[tauri::command]
+pub fn set_counter_key(state: State<'_, AppState>, id: String, hotkey: String) -> CmdResult<()> {
+    db::set_counter_key(&state.db(), &id, hotkey.trim())
+}
+
+/// The two counting keys, shared by every pattern.
+#[tauri::command]
+pub fn get_count_keys(state: State<'_, AppState>) -> CmdResult<CountKeys> {
+    db::get_setting(&state.db(), "count_keys")
+}
+
+#[tauri::command]
+pub fn save_count_keys(state: State<'_, AppState>, keys: CountKeys) -> CmdResult<CountKeys> {
+    if !valid_count_keys(&keys) {
+        return Err(AppError::Message("Count up and count down need two different keys.".into()));
+    }
+    db::set_setting(&state.db(), "count_keys", &keys)?;
+    Ok(keys)
+}
+
+/// Both keys are needed and must differ: a key that counted up and down at
+/// once would do nothing, and an empty one could never be pressed.
+fn valid_count_keys(keys: &CountKeys) -> bool {
+    !keys.up.trim().is_empty() && !keys.down.trim().is_empty() && keys.up != keys.down
 }
 
 /// Switches a counter on or off, and reports the full state afterwards.
@@ -892,6 +919,16 @@ pub fn clear_ai_history(state: State<'_, AppState>, pattern_id: String) -> CmdRe
 mod tests {
     use super::*;
     use crate::models::{CounterInput, PatternInput, Suggestion};
+
+    #[test]
+    fn count_keys_default_to_j_and_k_and_must_differ() {
+        let conn = db::open_test_db();
+        let keys: CountKeys = db::get_setting(&conn, "count_keys").unwrap();
+        assert_eq!((keys.up.as_str(), keys.down.as_str()), ("KeyJ", "KeyK"));
+        assert!(valid_count_keys(&CountKeys { up: "Space".into(), down: "Backspace".into() }));
+        assert!(!valid_count_keys(&CountKeys { up: "KeyJ".into(), down: "KeyJ".into() }));
+        assert!(!valid_count_keys(&CountKeys { up: " ".into(), down: "KeyK".into() }));
+    }
 
     /// A pattern on a throwaway in-memory database.
     fn pattern(conn: &rusqlite::Connection, title: &str) -> Pattern {

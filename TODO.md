@@ -31,7 +31,7 @@ and the others build on it.
 | `feature/lopapeysa` | Round yoke calculator. Probably a mode of the raglan one. |
 | `feature/native-file-drop` | Native file drop, so dropping a large PDF is as fast as Browse. |
 | `feature/undo-delete` | A way to recover a removed pattern. |
-| `feature/keyboard-config` | Make the row keys configurable. |
+| `feature/keyboard-config` | ~~Make the row keys configurable.~~ Done: chosen count keys, and a key per counter. |
 | `feature/updates` | In-app update check with beta toggle. |
 
 ## Status
@@ -47,7 +47,12 @@ and the others build on it.
 | Named counters, multiple at once, with a click | shipped |
 | Highlights, notes, drawings, pins | shipped |
 | PDF zoom: fit-width default, +/-, Ctrl+wheel | shipped |
-| Bookmarks, index, PDF export | **backend only, no UI** |
+| Contents (outline) and bookmarks panel, PDF search, PDF links | built |
+| Library cards one fixed size, more per row on a wider window | built |
+| Highlight line off by default | built |
+| Count keys chosen by the reader; a key per counter | built |
+| Turning a PDF page (per page, remembered) | built |
+| PDF export | **backend only, no UI** |
 | Raglan calculator, colourwork designer, lopapeysa | not started |
 | Bulk add | built |
 | In-app update check | built |
@@ -164,8 +169,30 @@ Built on `feature/marks`. Done: PDF rects, EPUB quote + occurrence, notes that
 open for editing (emptying one removes it), freehand drawings, Select as the
 default tool, a colour picker, and `H` for highlight. Merged to `main`.
 
+**Changed since, at the user's request:** the Highlighter is now a pen, not
+select-then-mark — a broad translucent stroke dragged over the page, which
+works over charts with no text as well as over words. Stored as a `highlight`
+whose geometry is points instead of rectangles (`isMarkerStroke` in
+`marks.ts`), so no backend change, and older text highlights still display.
+The `H` shortcut is gone: no marking action has a key.
+
 Shipped but found broken by real use, and fixed:
 
+- **Every mark operation only worked on the page at the top of the pane.**
+  The mark layer was one overlay outside the document, and everything in it —
+  painting, hit-testing, highlighting a selection, dropping a note, starting a
+  stroke — used `currentPage()`, which is the page whose top has scrolled past
+  the top of the pane. With two pages on screen (constantly, on a maximized
+  window) a selection on the lower one was silently refused, its marks were
+  not drawn at all, and notes and strokes started there were filed against
+  the page above. Marks also sat still while the page scrolled under them
+  until scrolling stopped. And since the overlay was outside the scroller, a
+  click on a mark never reached the scroller's handlers, so notes could not
+  be opened and highlighted words could not be selected again. Rewritten the
+  way Shelfmind does it: one layer per page, inside the page (or over the
+  frame, for an EPUB chapter), marks in percentages of it, and the page for
+  each action taken from under the pointer. Pins had the same `currentPage()`
+  bug for the page a crop was filed under.
 - **The Highlight toolbar button did nothing.** It only armed a visual "tool"
   state; `MarkLayer.pointerDown()` had no case for `"highlight"` at all, and
   nothing else called `highlightSelection()`. Only the `H` key ever worked.
@@ -273,8 +300,17 @@ tested; the page picker is not.
 - **Restore a removed pattern.** `delete_pattern` is immediate and there is no
   undo. A trash or a confirm-with-undo would be kinder, since it also deletes
   the file from disk.
-- **Make the row keys configurable.** `J`/`K` were chosen, not asked for. If
-  they clash with something, they are one branch in `handleRowKey`.
+- ~~**Make the row keys configurable.**~~ Done: the count keys are chosen in
+  the counter panel (stored as the `count_keys` setting), and each counter can
+  have its own key (`counters.hotkey`). Keys are physical codes (`e.code`).
+- **The rest of Shelfmind's pattern reader.** Already here: marks (pen
+  highlighter, notes, pen, undo, clear), pins with live panels and chips, zoom,
+  contents and bookmarks, search, links. Still to bring over: zoom remembered
+  per pattern; page-by-page (swipe) mode; a light/dark reader theme; two PDFs
+  side by side; a Select tool that moves and resizes marks; an eraser; typed
+  text on the page; undo per page; library tabs with folder re-import; lists;
+  "Open in the default PDF app" (the backend `open_pattern_file` exists, no
+  button yet); a missing-file state on cards; clicker extras.
 
 ## Knitting tools: calculators and a chart designer
 
@@ -321,6 +357,16 @@ folding it in is probably right — but the increase *rules* differ enough that
 forcing one model on both could get ugly.
 
 ## Gotchas worth remembering
+
+- **pdf.js does not turn its own text and link layers.** Given a rotated
+  viewport, the canvas paints turned, but `TextLayer` and `AnnotationLayer`
+  lay themselves out upright at the page's upright size, set
+  `data-main-rotation`, and leave the turn to rules in pdf.js's viewer
+  stylesheet, which this app does not load. Without those rules (now in
+  `styles.css`) a turned page shows sideways words over a picture they no
+  longer match, so selection and search hits land in the wrong place, with no
+  error anywhere. Marks and pins are stored upright and turned on the way to
+  the screen (`src/reader/rotation.ts`), so turning a page never moves them.
 
 - **A hidden tab has no `requestAnimationFrame`.** The browser harness reports
   a tab as focused while `document.visibilityState` is `hidden`, so rAF never
@@ -404,6 +450,21 @@ forcing one model on both could get ugly.
 - The model server at `gen2.zeroval.eu` was returning **502 for every request**
   as of 26 Sep 2026, so the AI path could not be checked live. The user is
   verifying it themselves.
+- **`currentPage()` means "the page at the top of the pane", not "the page
+  the reader is looking at".** In a continuous scroll those differ whenever
+  two pages are on screen. Anything acting on a page must find it from the
+  pointer or the DOM node involved; `currentPage()` is only right for saving
+  the reading position. Harness tests that always acted on page 1 at scroll 0
+  could never see this.
+- **The update check compared tags, and the tags lie about the version.** A
+  beta is tagged in its cycle's name (`v0.3.0-beta.3`) while the build inside
+  carries a plain bumped version (`0.3.2`), because Tauri's installers cannot
+  hold a prerelease label. In semver `0.3.0-beta.3` < `0.3.1`, so every 0.3
+  install saw every later beta as *older* and was offered nothing. The check
+  now reads the version from the installer's file name, which Tauri writes
+  from the build itself. Separately, a beta build is now always offered the
+  next beta: with "Include beta releases" unticked (the default) it was
+  otherwise stranded, since the only stable release is 0.1.0.
 - **`element.click()` is not a click.** It fires the `click` handler but skips
   the `pointerdown`/`mouseup` the browser would otherwise dispatch, so it
   cannot prove a button actually works by mouse — testing the Highlight button

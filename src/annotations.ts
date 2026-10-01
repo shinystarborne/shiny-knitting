@@ -237,6 +237,107 @@ function normalise(value: string): string {
 }
 
 /**
+ * Every place a search query occurs in a container, case-insensitively, as
+ * the ranges each one covers.
+ *
+ * Text is read the way `pageSearchText` writes it for counting: whitespace
+ * collapsed, and the boundary between two text nodes in different elements
+ * counted as a space. A PDF text layer puts each run of text in its own span,
+ * so without that, words at the end of one span and the start of the next
+ * would run together here while being separate in the page text, and the two
+ * would disagree about which match is the third.
+ */
+export function findTextMatches(container: HTMLElement, query: string): Range[][] {
+  const wanted = normalise(query).toLowerCase();
+  if (!wanted) return [];
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let haystack = "";
+  const origin: { node: number; offset: number }[] = [];
+  let pendingSpace: { node: number; offset: number } | null = null;
+  let lastParent: Node | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent ?? "";
+    if (!text) continue;
+    const index = nodes.length;
+    nodes.push(node as Text);
+    if (haystack && lastParent && node.parentNode !== lastParent && !pendingSpace) {
+      pendingSpace = { node: index, offset: 0 };
+    }
+    lastParent = node.parentNode;
+    for (let i = 0; i < text.length; i++) {
+      if (/\s/.test(text[i])) {
+        if (!pendingSpace && haystack) pendingSpace = { node: index, offset: i };
+        continue;
+      }
+      if (pendingSpace) {
+        haystack += " ";
+        origin.push(pendingSpace);
+        pendingSpace = null;
+      }
+      haystack += text[i].toLowerCase();
+      origin.push({ node: index, offset: i });
+    }
+  }
+
+  const matches: Range[][] = [];
+  for (let at = haystack.indexOf(wanted); at >= 0; at = haystack.indexOf(wanted, at + wanted.length)) {
+    const ranges: Range[] = [];
+    let current: { node: Text; start: number; end: number } | null = null;
+    const flush = () => {
+      if (!current) return;
+      try {
+        const range = current.node.ownerDocument.createRange();
+        range.setStart(current.node, current.start);
+        range.setEnd(current.node, current.end);
+        ranges.push(range);
+      } catch {
+        // A node whose text changed under us costs that fragment, not the match.
+      }
+      current = null;
+    };
+    for (let i = at; i < at + wanted.length; i++) {
+      const o = origin[i];
+      const node = nodes[o.node];
+      // A space standing for a boundary between elements has no text of its
+      // own to cover.
+      if (haystack[i] === " " && !/\s/.test(node.textContent?.[o.offset] ?? "")) {
+        flush();
+        continue;
+      }
+      if (current && current.node === node && o.offset === current.end) {
+        current.end = o.offset + 1;
+        continue;
+      }
+      flush();
+      current = { node, start: o.offset, end: o.offset + 1 };
+    }
+    flush();
+    if (ranges.length) matches.push(ranges);
+  }
+  return matches;
+}
+
+/**
+ * A page's text as search counts it: its runs joined with spaces, whitespace
+ * collapsed, lower-cased. Matches `findTextMatches`, so an occurrence counted
+ * here is the same one drawn there.
+ */
+export function pageSearchText(runs: string[]): string {
+  return normalise(runs.join(" ")).toLowerCase();
+}
+
+/** How many times a query occurs in a page's search text. */
+export function countMatches(text: string, query: string): number {
+  const wanted = normalise(query).toLowerCase();
+  if (!wanted) return 0;
+  let n = 0;
+  for (let at = text.indexOf(wanted); at >= 0; at = text.indexOf(wanted, at + wanted.length)) n++;
+  return n;
+}
+
+/**
  * Which occurrence of a quote a selection is on.
  *
  * Built on `findQuoteRanges` deliberately, so the two cannot disagree about

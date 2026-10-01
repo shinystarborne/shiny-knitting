@@ -104,6 +104,11 @@ export class HighlightLine {
     this.apply();
   }
 
+  /** Whether the line is switched on and showing. */
+  get enabled(): boolean {
+    return this.settings.enabled;
+  }
+
   get current(): HighlightSettings {
     return { ...this.settings };
   }

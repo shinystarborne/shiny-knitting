@@ -2,30 +2,37 @@ import { api, type Annotation } from "../api";
 import { askText, askYesNo } from "../dialogs";
 import {
   findQuoteRanges,
-  fromPageRect,
   isDistinctStrokePoint,
   mergeRects,
-  occurrenceAt,
   parsePoints,
   parseRects,
   pointsToJson,
-  rectsForRanges,
   rectsToJson,
   toPageRect,
   visibleRectsForRanges,
-  type ClientRect,
   type Point,
   type Rect,
 } from "../annotations";
+import { boxFromView, boxToView, pointFromView, pointToView, type Rotation } from "./rotation";
 
 /**
  * Highlights, notes and drawings on the page.
  *
- * The layer sits above the document and paints the stored geometry over it. It
- * is an overlay rather than anything inserted into the document, for the same
- * reason the highlight line is: a PDF page is a canvas, and EPUBs are
- * sandboxed iframes whose contents must not be rewritten. Overlaying means the
- * same code works for both, and a mark cannot be lost by a re-render.
+ * Every page gets its own layer, and a mark is drawn on the layer of the page
+ * it belongs to, positioned in percentages of that page. On a PDF the layer is
+ * a child of the page element itself; an EPUB chapter is an iframe, which
+ * cannot hold children, so its layer sits over the frame as a sibling inside
+ * the chapter list. Either way the layer is inside the scrolled content, so a
+ * mark moves with its page when the reader scrolls, zooms or resizes the
+ * window, with nothing having to reposition it.
+ *
+ * This replaced a single overlay outside the document that drew only the page
+ * at the top of the pane. That had three consequences, all of which looked
+ * like "the highlighter does not work": a selection on any other visible page
+ * was refused; marks on the lower of two visible pages were not drawn; and
+ * marks stayed put while the page scrolled under them until scrolling
+ * stopped. The overlay also sat outside the scroller, so a click on a mark
+ * never reached the scroller's handlers at all.
  *
  * Drawing is pointer-captured, so a stroke that leaves the page, crosses the
  * sidebar, or outruns the pointer still finishes where it started rather than
@@ -44,11 +51,15 @@ export const MARK_COLOURS = [
   { value: "#c77dff", label: "Purple" },
 ];
 
+/** How far a press may travel and still count as a click on a mark. */
+const CLICK_SLOP = 5;
+
 export class MarkLayer {
-  private host: HTMLElement;
   private scroller: HTMLElement;
   private patternId: string;
   private doc: MarkTarget;
+  /** The layer each page's marks are drawn on, by page number. */
+  private hosts = new Map<number, HTMLElement>();
 
   private marks: Annotation[] = [];
   private tool: MarkTool = "none";
@@ -59,10 +70,21 @@ export class MarkLayer {
   private liveNode: SVGSVGElement | null = null;
   private drawingPointer: number | null = null;
   /** The page a stroke started on, which is where it is saved even if the
-   * reader scrolls to another page mid-drag. */
+   * pointer wanders onto another page mid-drag. */
   private drawingPage = 0;
+  /** Which pen the stroke in progress is: the thin pen, or the highlighter. */
+  private drawingKind: "draw" | "highlight" = "draw";
   /** The element holding pointer capture for the stroke, if capture took. */
   private captureEl: Element | null = null;
+  /**
+   * A press on a mark with Select, waiting to see whether it is a click.
+   *
+   * Acting on the press itself -- as this used to -- meant a drag that merely
+   * started on a highlight opened "Remove this highlight?" instead of selecting
+   * the words, so text that had been highlighted once could never be selected
+   * again. Only a press that comes back up where it went down is a click.
+   */
+  private pendingClick: { pointer: number; x: number; y: number; id: string } | null = null;
   /** The note editor, while one is open. */
   private notePopover: HTMLElement | null = null;
   /** The click listener that dismisses the note editor, so it can always be
@@ -78,7 +100,7 @@ export class MarkLayer {
    * Set by the reader rather than reaching for the layer directly, so the mark
    * layer does not have to know that pins exist.
    */
-  onPinSelect: ((e: PointerEvent, page: HTMLElement) => void) | null = null;
+  onPinSelect: ((e: PointerEvent, page: HTMLElement, pageNumber: number) => void) | null = null;
 
   /**
    * Called whenever a mark is added or removed, so the toolbar can grey out
@@ -90,9 +112,6 @@ export class MarkLayer {
     this.scroller = scroller;
     this.patternId = patternId;
     this.doc = doc;
-
-    this.host = document.createElement("div");
-    this.host.className = "mark-layer";
 
     this.scroller.addEventListener("pointerdown", this.onPointerDown);
     this.scroller.addEventListener("pointermove", this.onPointerMove);
@@ -107,10 +126,7 @@ export class MarkLayer {
     window.addEventListener("pointercancel", this.onPointerUp);
   }
 
-  /** Mounts the overlay above the document. */
   attach(): void {
-    const pane = this.scroller.parentElement;
-    if (pane && this.host.parentElement !== pane) pane.appendChild(this.host);
     this.attachFrames();
     this.repaint();
   }
@@ -127,14 +143,14 @@ export class MarkLayer {
     for (const teardown of this.frameTeardowns) teardown();
     this.frameTeardowns = [];
     this.wiredFrames = new WeakSet();
-    this.host.remove();
+    for (const host of this.hosts.values()) host.remove();
+    this.hosts.clear();
   }
 
   setTool(tool: MarkTool): void {
     this.tool = tool;
-    this.scroller.classList.toggle("mark-tool-draw", tool === "draw");
+    this.scroller.classList.toggle("mark-tool-draw", tool === "draw" || tool === "highlight");
     this.scroller.classList.toggle("mark-tool-pick", tool === "none");
-    this.host.dataset.tool = tool;
   }
 
   get currentTool(): MarkTool {
@@ -143,7 +159,6 @@ export class MarkLayer {
 
   setColour(colour: string): void {
     this.colour = colour;
-    this.repaint();
   }
 
   get currentColour(): string {
@@ -161,194 +176,161 @@ export class MarkLayer {
     this.repaint();
   }
 
-  /**
-   * Repaints every mark for the page currently on screen.
-   *
-   * Only the visible page is drawn. A 200-page pattern with marks throughout
-   * would otherwise build a few hundred invisible nodes on every repaint, and
-   * the page elements do not exist until they are laid out anyway.
-   */
-  repaint(): void {
-    this.host.textContent = "";
-    const pageNumber = this.doc.currentPage();
-    const page = this.doc.pageElement(pageNumber);
-    if (!page) return;
-    // An EPUB's text has moved since the mark was made, so its rectangles are
-    // worked out again from the quote rather than read back. A PDF's have not,
-    // and a stored rectangle is exact and costs nothing.
-    const reflowing = page instanceof HTMLIFrameElement;
-    const text = reflowing ? this.doc.textLayerFor(pageNumber) : null;
-    for (const mark of this.marks) {
-      if (mark.page !== pageNumber) continue;
-      if (mark.kind === "draw") {
-        this.paintDrawing(mark, page);
-        continue;
-      }
-      if (reflowing && mark.kind === "highlight" && mark.quote && text) {
-        const ranges = findQuoteRanges(text, mark.quote, mark.occurrence);
-        if (!ranges.length) continue; // The passage is gone after an edit.
-        // Dropped rather than clamped if the passage has scrolled outside the
-        // chapter's visible box, so a mark never lands on the page edge.
-        this.paintRects(mark, page, visibleRectsForRanges(ranges, page));
-        continue;
-      }
-      this.paintRects(mark, page);
+  // ---------- pages ----------
+
+  /** Every page that is laid out, in order. */
+  private *pages(): Generator<[number, HTMLElement]> {
+    for (let n = 1; ; n++) {
+      const el = this.doc.pageElement(n);
+      if (!el) return;
+      yield [n, el];
     }
   }
 
-  private paintRects(mark: Annotation, page: HTMLElement, given?: Rect[]): void {
-    const rects =
-      given ?? (mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry));
-    for (const rect of rects) {
-      const box = fromPageRect(rect, page);
-      const el = document.createElement("div");
-      el.className = `mark mark-${mark.kind}`;
-      this.place(el, box);
-      el.style.setProperty("--mark-colour", mark.color);
-      el.dataset.id = mark.id;
-      el.title = `Click to remove ${describeMark(mark)}`;
-      if (mark.kind === "note") {
-        el.dataset.role = "note";
-        el.title = mark.text ? `${mark.text}\n\nClick to remove` : "Note\n\nClick to remove";
-      }
-      this.host.appendChild(el);
-    }
-  }
-
-  private paintDrawing(mark: Annotation, page: HTMLElement): void {
-    const points = parsePoints(mark.geometry);
-    if (points.length < 2) return;
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", "mark mark-draw");
-    svg.dataset.id = mark.id;
-    // The svg is positioned over the page, so stroke coordinates are page
-    // fractions scaled to the page's pixel size.
-    this.place(svg, page.getBoundingClientRect());
-    svg.setAttribute("viewBox", "0 0 1 1");
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.style.setProperty("--mark-colour", mark.color);
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", toPath(points));
-    path.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.appendChild(path);
-    this.host.appendChild(svg);
-  }
-
-  /**
-   * Positions an overlay node over a page box, in the layer's own coordinates.
-   *
-   * The layer clips marks to the reading pane (overflow, in the stylesheet),
-   * so a mark on a page that has scrolled half out of view is cut at the pane
-   * edge rather than bleeding over the reader bar. Clipping requires the marks
-   * to be the layer's absolute children rather than fixed to the viewport,
-   * which is why the page box -- measured against the viewport -- is shifted
-   * by the layer's own box here.
-   */
-  private place(el: HTMLElement | SVGSVGElement, box: ClientRect | DOMRect): void {
-    const origin = this.host.getBoundingClientRect();
-    el.style.left = `${box.left - origin.left}px`;
-    el.style.top = `${box.top - origin.top}px`;
-    el.style.width = `${box.width}px`;
-    el.style.height = `${box.height}px`;
-  }
-
-  // ---------- selection to highlight ----------
-
-  /**
-   * Turns the current text selection into a highlight.
-   *
-   * Returns false when there is nothing to highlight, so the caller can leave
-   * the selection alone rather than clearing it on a stray click.
-   */
-  async highlightSelection(): Promise<boolean> {
-    const range = this.currentSelection();
-    if (!range) return false;
-    const quote = range.toString().replace(/\s+/g, " ").trim();
-    if (!quote) return false;
-
-    const pageNumber = this.doc.currentPage();
-    const page = this.doc.pageElement(pageNumber);
-    if (!page) return false;
-
-    const rects = mergeRects(rectsForRanges([range], page));
-    if (!rects.length) return false;
-
-    // On an EPUB the text will move, so what is recorded is *which* passage
-    // this was and the rectangles are only there to paint it right now. On a
-    // PDF the page is fixed, the rectangles are the record, and the quote is
-    // kept purely so the mark can be labelled later.
-    const reflowing = page instanceof HTMLIFrameElement;
-    const text = reflowing ? this.doc.textLayerFor(pageNumber) : null;
-    const occurrence = text ? occurrenceAt(text, range, quote) : 0;
-
-    const created = await api.addAnnotation(this.patternId, {
-      kind: "highlight",
-      page: pageNumber,
-      geometry: rectsToJson(rects),
-      quote,
-      occurrence,
-      color: this.colour,
-      text: "",
-    });
-    this.marks.push(created);
-    this.onChange?.();
-    const selection = this.selectionFor(range);
-    selection?.removeAllRanges();
-    this.repaint();
-    return true;
-  }
-
-  /**
-   * The range the reader currently has selected, if it is a usable one.
-   *
-   * A selection inside an EPUB chapter's iframe belongs to that frame, not to
-   * the outer document, so the frame's own selection is preferred. A selection
-   * that starts outside the page being viewed is refused: a mark belongs to the
-   * page under the selection, and guessing would put it on the wrong one.
-   */
-  private currentSelection(): Range | null {
-    const outer = window.getSelection();
-    if (outer && !outer.isCollapsed && outer.rangeCount > 0) {
-      const node = outer.getRangeAt(0).startContainer;
-      // Which page the selection starts in, if it is in one at all.
-      const page = this.doc.pageElement(this.doc.currentPage());
-      if (page && (page.contains(node) || this.doc.textLayerFor(this.doc.currentPage())?.contains(node))) {
-        return outer.getRangeAt(0);
-      }
-    }
-    // Fall back to a chapter iframe, for a selection made inside one.
-    const pageNumber = this.doc.currentPage();
-    const frame = this.ownerFrame(pageNumber);
-    if (frame) {
-      const inner = frame.contentWindow?.getSelection();
-      if (inner && !inner.isCollapsed && inner.rangeCount > 0) return inner.getRangeAt(0);
+  /** The page under a point in the outer viewport, if there is one. */
+  private pageAt(x: number, y: number): [number, HTMLElement] | null {
+    for (const [n, el] of this.pages()) {
+      const box = el.getBoundingClientRect();
+      // Pages run top to bottom, so once one starts below the point, none of
+      // the rest can contain it.
+      if (box.top > y) break;
+      if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) return [n, el];
     }
     return null;
   }
 
-  /** The document a range belongs to, so its selection can be cleared. */
-  private selectionFor(range: Range): Selection | null {
-    const win = range.startContainer.ownerDocument?.defaultView;
-    return win?.getSelection() ?? null;
+  /**
+   * The layer a page's marks are drawn on, made the first time it is needed.
+   *
+   * On a PDF it is a child of the page, so it is the page's size wherever the
+   * page is. An EPUB frame cannot hold children, so there the layer is placed
+   * over the frame in the chapter list, and moved whenever the chapters
+   * reflow -- which is when this is called again.
+   */
+  private hostFor(n: number, page: HTMLElement): HTMLElement {
+    let host = this.hosts.get(n);
+    const frame = page instanceof HTMLIFrameElement;
+    const parent = frame ? page.parentElement : page;
+    if (!host || host.parentElement !== parent) {
+      host?.remove();
+      host = document.createElement("div");
+      host.className = "page-marks";
+      host.dataset.page = String(n);
+      parent?.appendChild(host);
+      this.hosts.set(n, host);
+    }
+    if (frame) {
+      host.style.inset = "auto";
+      host.style.left = `${page.offsetLeft}px`;
+      host.style.top = `${page.offsetTop}px`;
+      host.style.width = `${page.offsetWidth}px`;
+      host.style.height = `${page.offsetHeight}px`;
+    }
+    return host;
   }
 
-  /** The iframe a chapter is rendered in, when the document is an EPUB. */
-  private ownerFrame(page: number): HTMLIFrameElement | null {
-    const el = this.doc.pageElement(page);
-    return el instanceof HTMLIFrameElement ? el : null;
+  // ---------- painting ----------
+
+  /**
+   * Redraws every page's marks.
+   *
+   * Called when marks change and when the document's layout changes. Not on
+   * scroll: the layers are inside the scrolled content, so they already move
+   * with it.
+   */
+  repaint(): void {
+    const byPage = new Map<number, Annotation[]>();
+    for (const mark of this.marks) {
+      const list = byPage.get(mark.page);
+      if (list) list.push(mark);
+      else byPage.set(mark.page, [mark]);
+    }
+    // A page whose last mark was removed still has that mark drawn.
+    for (const [n, host] of this.hosts) {
+      if (!byPage.has(n)) clearPainted(host);
+    }
+    for (const [n, marks] of byPage) {
+      const page = this.doc.pageElement(n);
+      if (!page) continue;
+      const host = this.hostFor(n, page);
+      clearPainted(host);
+      // An EPUB's text has moved since the mark was made, so its rectangles
+      // are worked out again from the quote rather than read back. A PDF's have
+      // not, and a stored rectangle is exact and costs nothing.
+      const reflowing = page instanceof HTMLIFrameElement;
+      const text = reflowing ? this.doc.textLayerFor(n) : null;
+      for (const stored of marks) {
+        const mark = this.shown(stored);
+        if (isStroke(mark)) {
+          this.paintDrawing(mark, host, page);
+        } else if (reflowing && mark.kind === "highlight" && mark.quote) {
+          if (!text) continue;
+          const ranges = findQuoteRanges(text, mark.quote, mark.occurrence);
+          // Gone after an edit, or outside the chapter's box mid-reflow: drawn
+          // nowhere rather than against the page edge.
+          if (ranges.length) this.paintRects(mark, host, visibleRectsForRanges(ranges, page));
+        } else {
+          this.paintRects(mark, host, mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry));
+        }
+      }
+    }
   }
+
+  /** How far a page is turned; an EPUB chapter never is. */
+  private turnOf(page: number): Rotation {
+    return this.doc.rotationOf?.(page) ?? 0;
+  }
+
+  /**
+   * A mark as it shows on its page: stored upright, and turned here to match
+   * a page the reader has rotated. See rotation.ts.
+   */
+  private shown(mark: Annotation): Annotation {
+    const r = this.turnOf(mark.page);
+    if (!r) return mark;
+    const geometry = isStroke(mark)
+      ? pointsToJson(parsePoints(mark.geometry).map((p) => pointToView(p, r)))
+      : rectsToJson(parseRects(mark.geometry).map((b) => boxToView(b, r)));
+    return { ...mark, geometry };
+  }
+
+  private paintRects(mark: Annotation, host: HTMLElement, rects: Rect[]): void {
+    for (const rect of rects) {
+      const el = document.createElement("div");
+      el.className = `mark mark-${mark.kind}`;
+      el.style.left = pct(rect.x);
+      el.style.top = pct(rect.y);
+      el.style.width = pct(rect.w);
+      el.style.height = pct(rect.h);
+      el.style.setProperty("--mark-colour", mark.color);
+      el.dataset.id = mark.id;
+      if (mark.kind === "note") el.title = mark.text || "Note";
+      host.appendChild(el);
+    }
+  }
+
+  private paintDrawing(mark: Annotation, host: HTMLElement, page: HTMLElement): void {
+    const points = parsePoints(mark.geometry);
+    if (points.length < 2) return;
+    const svg = strokeSvg(mark.color, mark.kind === "highlight", page);
+    svg.dataset.id = mark.id;
+    setStroke(svg, points);
+    host.appendChild(svg);
+  }
+
+  // ---------- notes and removal ----------
 
   /** Places a note where the reader clicked, asking for its text first. */
-  async addNoteAt(x: number, y: number, pageNumber?: number): Promise<boolean> {
-    const onPage = pageNumber ?? this.doc.currentPage();
-    const page = this.doc.pageElement(onPage);
+  async addNoteAt(x: number, y: number, pageNumber: number): Promise<boolean> {
+    const page = this.doc.pageElement(pageNumber);
     if (!page) return false;
+    const box = page.getBoundingClientRect();
     const text = await askText("Note:");
     if (text === null) return false;
 
     const rect: Rect = {
-      x: Math.max(0, Math.min(1, (x - page.getBoundingClientRect().left) / (page.getBoundingClientRect().width || 1))),
-      y: Math.max(0, Math.min(1, (y - page.getBoundingClientRect().top) / (page.getBoundingClientRect().height || 1))),
+      x: Math.max(0, Math.min(1, (x - box.left) / (box.width || 1))),
+      y: Math.max(0, Math.min(1, (y - box.top) / (box.height || 1))),
       // A note is a marker, not a block of text, so it gets a small fixed size
       // in page fractions.
       w: 0.03,
@@ -356,8 +338,9 @@ export class MarkLayer {
     };
     const created = await api.addAnnotation(this.patternId, {
       kind: "note",
-      page: onPage,
-      geometry: rectsToJson([rect]),
+      page: pageNumber,
+      // Measured on the page as shown, stored upright.
+      geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
       quote: "",
       occurrence: 0,
       color: this.colour,
@@ -370,38 +353,34 @@ export class MarkLayer {
   }
 
   /**
-   * Removes the mark under a point, after asking.
+   * Removes a mark, after asking.
    *
    * A single click deleting work with no undo would be a nasty surprise, so it
-   * confirms first. The mark says what will happen on hover, so the behaviour
-   * is discoverable rather than a trap.
+   * confirms first.
    */
-  async removeAt(x: number, y: number): Promise<boolean> {
-    const hit = this.markAt(x, y);
-    if (!hit) return false;
-    const what = describeMark(hit);
-    if (!(await askYesNo(`Remove ${what}?`, { okLabel: "Remove", danger: true }))) return false;
-    await this.removeById(hit.id);
+  private async removeMark(mark: Annotation): Promise<boolean> {
+    if (!(await askYesNo(`Remove ${describeMark(mark)}?`, { okLabel: "Remove", danger: true }))) {
+      return false;
+    }
+    await this.removeById(mark.id);
     this.repaint();
     return true;
   }
 
   /**
-   * Opens a note for reading and editing, or says why it cannot be opened.
+   * Opens a note for reading and editing.
    *
    * Notes are the one mark with something to say, so clicking one opens it
    * rather than offering to delete it: a note you can only create and destroy
    * is not much use once you have thought of a better wording.
    */
-  async editNoteAt(x: number, y: number): Promise<boolean> {
-    const hit = this.markAt(x, y);
-    if (!hit || hit.kind !== "note") return false;
+  private editNote(mark: Annotation): void {
     this.closeNotePopover();
 
     const pop = document.createElement("div");
     pop.className = "note-popover";
     const textarea = document.createElement("textarea");
-    textarea.value = hit.text;
+    textarea.value = mark.text;
     textarea.rows = 4;
     textarea.setAttribute("aria-label", "Note text");
 
@@ -413,15 +392,13 @@ export class MarkLayer {
     actions.append(save, remove, close);
     pop.append(textarea, actions);
 
-    const anchor = this.host.querySelector<HTMLElement>(`[data-id="${hit.id}"]`);
+    const anchor = this.scroller.querySelector<HTMLElement>(`.mark[data-id="${mark.id}"]`);
     const box = (anchor ?? this.scroller).getBoundingClientRect();
     pop.style.left = `${Math.min(box.left, window.innerWidth - 300)}px`;
     pop.style.top = `${Math.min(box.bottom + 8, window.innerHeight - 220)}px`;
-    // Mounted beside the mark layer, not inside it: repaint() clears the
-    // layer on every scroll, and an editor living there would lose the
-    // textarea mid-sentence. The popover is positioned against the viewport,
-    // so a sibling mount changes nothing about where it appears.
-    (this.host.parentElement ?? this.host).appendChild(pop);
+    // Fixed-positioned, and mounted outside the scrolled content so a repaint
+    // of the page's layer cannot take the textarea away mid-sentence.
+    (this.scroller.parentElement ?? document.body).appendChild(pop);
     this.notePopover = pop;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
@@ -431,10 +408,10 @@ export class MarkLayer {
       // An emptied note is a note the user changed their mind about, so it is
       // removed rather than left as an empty dot.
       if (!text) {
-        await this.removeById(hit.id);
+        await this.removeById(mark.id);
       } else {
-        await api.editAnnotation(hit.id, text, hit.color);
-        const stored = this.marks.find((m) => m.id === hit.id);
+        await api.editAnnotation(mark.id, text, mark.color);
+        const stored = this.marks.find((m) => m.id === mark.id);
         if (stored) stored.text = text;
       }
       this.closeNotePopover();
@@ -444,18 +421,13 @@ export class MarkLayer {
       this.closeNotePopover();
       // Asked from the note editor rather than over it, so the popover is not
       // left hanging behind a question it cannot answer.
-      if (await askYesNo(`Remove ${describeMark(hit)}?`, { okLabel: "Remove", danger: true })) {
-        await this.removeById(hit.id);
-        this.repaint();
-      }
+      await this.removeMark(mark);
     });
     close.addEventListener("click", () => this.closeNotePopover());
 
     // Clicking elsewhere dismisses, on the next tick so the click that opened
     // this does not immediately close it. The listener is remembered so
-    // closeNotePopover can always take it back: a popover closed by its own
-    // buttons returns early here (the closing click bubbled from inside), and
-    // a forgotten listener would close the next popover on its opening click.
+    // closeNotePopover can always take it back.
     const dismiss = (e: MouseEvent) => {
       if (pop.contains(e.target as Node)) return;
       this.closeNotePopover();
@@ -464,7 +436,6 @@ export class MarkLayer {
     setTimeout(() => {
       if (this.noteDismiss === dismiss) document.addEventListener("click", dismiss);
     }, 0);
-    return true;
   }
 
   private async removeById(id: string): Promise<void> {
@@ -524,20 +495,20 @@ export class MarkLayer {
     this.notePopover = null;
   }
 
-  /** The topmost mark under a point, or null. */
+  /** The topmost mark under a point in the outer viewport, or null. */
   markAt(x: number, y: number): Annotation | null {
+    const hit = this.pageAt(x, y);
+    if (!hit) return null;
+    const [n, page] = hit;
+    const box = page.getBoundingClientRect();
+    const px = (x - box.left) / (box.width || 1);
+    const py = (y - box.top) / (box.height || 1);
     for (const mark of [...this.marks].reverse()) {
-      if (mark.page !== this.doc.currentPage()) continue;
-      const page = this.doc.pageElement(mark.page);
-      if (!page) continue;
-      const box = page.getBoundingClientRect();
-      const px = (x - box.left) / (box.width || 1);
-      const py = (y - box.top) / (box.height || 1);
-      const rects = this.hitRects(mark, page);
-      for (const r of rects) {
-        // Drawings are strokes a few pixels wide, so the hit area is grown to
-        // something a finger can actually hit.
-        const pad = mark.kind === "draw" ? 0.01 : 0;
+      if (mark.page !== n) continue;
+      // Strokes are lines, so the hit area is grown to something a finger can
+      // actually hit -- and a highlighter band is broader than a pen line.
+      const pad = !isStroke(mark) ? 0 : mark.kind === "highlight" ? 0.012 : 0.01;
+      for (const r of this.hitRects(mark, n, page)) {
         if (px >= r.x - pad && px <= r.x + r.w + pad && py >= r.y - pad && py <= r.y + r.h + pad) {
           return mark;
         }
@@ -549,32 +520,34 @@ export class MarkLayer {
   /**
    * The rectangles a mark is hit-tested against.
    *
-   * An EPUB highlight is redrawn from its quote on every repaint, because the
-   * text reflows; testing against the geometry stored at save time would
-   * accept clicks wherever the passage used to be, which diverges from what is
-   * visible after any reflow. So a reflowed mark is tested against the same
-   * re-found rectangles it is drawn from. Everything else is fixed geometry
-   * and is tested as stored.
+   * An EPUB highlight is redrawn from its quote, because the text reflows;
+   * testing against the geometry stored at save time would accept clicks
+   * wherever the passage used to be. So a reflowed mark is tested against the
+   * same re-found rectangles it is drawn from. Everything else is fixed
+   * geometry and is tested as stored.
    */
-  private hitRects(mark: Annotation, page: HTMLElement): Rect[] {
-    if (mark.kind === "draw") return boundsOf(parsePoints(mark.geometry));
+  private hitRects(stored: Annotation, n: number, page: HTMLElement): Rect[] {
+    const mark = this.shown(stored);
+    if (isStroke(mark)) return boundsOf(parsePoints(mark.geometry));
     if (mark.kind === "note") return noteRects(mark);
     if (page instanceof HTMLIFrameElement) {
-      const text = this.doc.textLayerFor(mark.page);
+      const text = this.doc.textLayerFor(n);
       const ranges = text && mark.quote ? findQuoteRanges(text, mark.quote, mark.occurrence) : [];
       return ranges.length ? visibleRectsForRanges(ranges, page) : [];
     }
     return parseRects(mark.geometry);
   }
 
-  // ---------- drawing ----------
+  // ---------- pointer ----------
 
   private onDragStart = (e: Event): void => {
     e.preventDefault();
   };
 
   private onPointerDown = (e: PointerEvent): void => {
-    this.pointerDown(e, 0, 0, this.doc.currentPage());
+    // Presses inside a chapter frame are handled by that frame's own
+    // listeners; this one sees presses on the outer document only.
+    this.pointerDown(e, 0, 0, this.pageAt(e.clientX, e.clientY));
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -582,12 +555,24 @@ export class MarkLayer {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    const pending = this.pendingClick;
+    if (pending && pending.pointer === e.pointerId) {
+      this.pendingClick = null;
+      const moved = Math.hypot(e.clientX - pending.x, e.clientY - pending.y);
+      const mark = this.marks.find((m) => m.id === pending.id);
+      if (moved <= CLICK_SLOP && mark) {
+        if (mark.kind === "note") this.editNote(mark);
+        else void this.removeMark(mark);
+      }
+    }
+
     if (this.drawingPointer !== e.pointerId) return;
     this.drawingPointer = null;
     // The live state is reset before anything that can throw, so a stroke is
     // never left half-drawn on screen when the release comes without capture.
     const points = this.liveStroke;
     const pageNumber = this.drawingPage;
+    const kind = this.drawingKind;
     this.liveStroke = [];
     this.liveNode?.remove();
     this.liveNode = null;
@@ -602,12 +587,14 @@ export class MarkLayer {
     // A tap is not a stroke. Saving one would leave a dot nobody drew.
     if (points.length < 2) return;
     // Saved against the page the stroke started on: its points were measured
-    // there, and a page change mid-drag would otherwise file it wrongly.
+    // there. A highlighter stroke is stored as a highlight whose geometry is
+    // points rather than rectangles -- see isMarkerStroke.
     void api
       .addAnnotation(this.patternId, {
-        kind: "draw",
+        kind,
         page: pageNumber,
-        geometry: pointsToJson(points),
+        // Measured on the page as shown, stored upright.
+        geometry: pointsToJson(points.map((p) => pointFromView(p, this.turnOf(pageNumber)))),
         quote: "",
         occurrence: 0,
         color: this.colour,
@@ -620,36 +607,50 @@ export class MarkLayer {
       });
   };
 
-  private pointerDown(e: PointerEvent, dx: number, dy: number, pageNumber: number): void {
+  /**
+   * One press, from the outer document or a chapter frame.
+   *
+   * `dx`/`dy` translate a frame's coordinates into the outer viewport the
+   * marks are measured in; `hit` is the page under the press, if any.
+   */
+  private pointerDown(e: PointerEvent, dx: number, dy: number, hit: [number, HTMLElement] | null): void {
     if (e.button !== 0) return;
-    const page = this.doc.pageElement(pageNumber);
-    if (!page) return;
     const x = e.clientX + dx;
     const y = e.clientY + dy;
     // Never start a mark on the highlight line or the counter: those have their
     // own drag behaviour and a mark under them would be unreachable.
-    if ((e.target as HTMLElement).closest(".highlight-line, .highlight-layer")) return;
+    if ((e.target as HTMLElement).closest?.(".highlight-line, .highlight-layer")) return;
+
+    if (this.tool === "none") {
+      // With no tool chosen, a click on a mark does something useful to it: a
+      // note opens for editing, anything else offers to be removed. Decided on
+      // release, so that a drag starting on a mark still selects text.
+      const mark = this.markAt(x, y);
+      this.pendingClick = mark ? { pointer: e.pointerId, x: e.clientX, y: e.clientY, id: mark.id } : null;
+      return;
+    }
+    if (!hit) return;
+    const [n, page] = hit;
 
     if (this.tool === "pin") {
       // A pin is a crop of the page rather than a mark drawn on it, so the pin
       // layer owns the drag. It is reached through here so that one tool is
-      // active at a time: a drag that started as a pin must not also leave a
-      // note behind on the way.
+      // active at a time.
       e.preventDefault();
-      this.onPinSelect?.(e, page);
-    } else if (this.tool === "draw") {
-      const point = this.pointFrom(x, y, page);
+      this.onPinSelect?.(e, page, n);
+    } else if (this.tool === "draw" || this.tool === "highlight") {
+      const point = pointFrom(x, y, page);
       if (!point) return;
       e.preventDefault();
       this.drawingPointer = e.pointerId;
-      this.drawingPage = pageNumber;
+      this.drawingPage = n;
+      this.drawingKind = this.tool;
       this.liveStroke = [point];
       // Capture keeps the stroke coming when the pointer leaves the page, which
       // is what stops a long drag from jumping. It is an improvement, not a
-      // requirement: it throws if the pointer is already gone, and losing the
-      // whole stroke over that would be far worse than losing the capture.
-      // Inside an EPUB chapter the scroller cannot capture the frame's pointer,
-      // so the element under the press captures it within the frame instead.
+      // requirement: it throws if the pointer is already gone. Inside an EPUB
+      // chapter the scroller cannot capture the frame's pointer, so the element
+      // under the press captures it within the frame instead.
       this.captureEl = null;
       try {
         const target = page instanceof HTMLIFrameElement ? (e.target as Element) : this.scroller;
@@ -658,20 +659,10 @@ export class MarkLayer {
       } catch {
         // Drawing still works; it just stops at the edge of the page.
       }
-      this.beginLiveStroke(page);
+      this.beginLiveStroke(n, page);
     } else if (this.tool === "note") {
       e.preventDefault();
-      void this.addNoteAt(x, y, pageNumber);
-    } else if (this.tool === "none") {
-      // With no tool chosen, a click on a mark does something useful to it: a
-      // note opens for editing, anything else offers to be removed.
-      const hit = this.markAt(x, y);
-      if (hit) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (hit.kind === "note") void this.editNoteAt(x, y);
-        else void this.removeAt(x, y);
-      }
+      void this.addNoteAt(x, y, n);
     }
   }
 
@@ -679,39 +670,22 @@ export class MarkLayer {
     if (this.drawingPointer !== e.pointerId) return;
     const page = this.doc.pageElement(this.drawingPage);
     if (!page) return;
-    const point = this.pointFrom(e.clientX + dx, e.clientY + dy, page);
+    const point = pointFrom(e.clientX + dx, e.clientY + dy, page);
     if (!point || !isDistinctStrokePoint(this.liveStroke, point)) return;
     this.liveStroke.push(point);
     this.extendLiveStroke();
   }
 
-  private pointFrom(x: number, y: number, page: HTMLElement): Point | null {
-    const box = page.getBoundingClientRect();
-    if (!box.width || !box.height) return null;
-    return {
-      x: (x - box.left) / box.width,
-      y: (y - box.top) / box.height,
-    };
-  }
-
-  private beginLiveStroke(page: HTMLElement): void {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", "mark mark-draw live");
-    this.place(svg, page.getBoundingClientRect());
-    svg.setAttribute("viewBox", "0 0 1 1");
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.style.setProperty("--mark-colour", this.colour);
-    this.host.appendChild(svg);
+  private beginLiveStroke(n: number, page: HTMLElement): void {
+    const svg = strokeSvg(this.colour, this.drawingKind === "highlight", page);
+    svg.classList.add("live");
+    this.hostFor(n, page).appendChild(svg);
     this.liveNode = svg;
     this.extendLiveStroke();
   }
 
   private extendLiveStroke(): void {
-    if (!this.liveNode) return;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", toPath(this.liveStroke));
-    path.setAttribute("vector-effect", "non-scaling-stroke");
-    this.liveNode.appendChild(path);
+    if (this.liveNode) setStroke(this.liveNode, this.liveStroke);
   }
 
   // ---------- EPUB chapter frames ----------
@@ -719,17 +693,15 @@ export class MarkLayer {
   /**
    * Wires the tool listeners into every EPUB chapter frame.
    *
-   * Pointer and key events inside a chapter's iframe are dispatched to the
-   * frame's own document and never reach the scroller, so without this the
-   * note and draw tools -- and the H shortcut -- are dead on an EPUB. The
+   * Pointer events inside a chapter's iframe are dispatched to the frame's own
+   * document and never reach the scroller, so without this every tool is dead
+   * on an EPUB. The
    * handlers are the same ones the scroller uses; only the coordinates are
    * translated, from the frame's viewport into the outer one the marks are
    * measured in.
    */
   private attachFrames(): void {
-    for (let page = 1; ; page++) {
-      const el = this.doc.pageElement(page);
-      if (!el) break;
+    for (const [, el] of this.pages()) {
       if (el instanceof HTMLIFrameElement) this.wireFrame(el);
     }
   }
@@ -743,7 +715,6 @@ export class MarkLayer {
     const onMove = (e: Event) => this.framePointerMove(frame, e as PointerEvent);
     const onUp = (e: Event) => this.onPointerUp(e as PointerEvent);
     const onDrag = (e: Event) => e.preventDefault();
-    const onKey = (e: Event) => this.frameKeyDown(e as KeyboardEvent);
 
     const unbind = () => {
       if (!wired) return;
@@ -752,7 +723,6 @@ export class MarkLayer {
       wired.removeEventListener("pointerup", onUp);
       wired.removeEventListener("pointercancel", onUp);
       wired.removeEventListener("dragstart", onDrag);
-      wired.removeEventListener("keydown", onKey);
       wired = null;
     };
     // Rendering a chapter replaces its document, so the wiring is redone on
@@ -767,7 +737,6 @@ export class MarkLayer {
       doc.addEventListener("pointerup", onUp);
       doc.addEventListener("pointercancel", onUp);
       doc.addEventListener("dragstart", onDrag);
-      doc.addEventListener("keydown", onKey);
     };
     bind();
     frame.addEventListener("load", bind);
@@ -778,17 +747,17 @@ export class MarkLayer {
   }
 
   /** The page a chapter frame renders, so a mark lands on the right page. */
-  private pageForFrame(frame: HTMLIFrameElement): number {
-    for (let page = 1; ; page++) {
-      const el = this.doc.pageElement(page);
-      if (!el) return this.doc.currentPage();
-      if (el === frame) return page;
+  private pageForFrame(frame: HTMLIFrameElement): number | null {
+    for (const [n, el] of this.pages()) {
+      if (el === frame) return n;
     }
+    return null;
   }
 
   private framePointerDown(frame: HTMLIFrameElement, e: PointerEvent): void {
     const box = frame.getBoundingClientRect();
-    this.pointerDown(e, box.left, box.top, this.pageForFrame(frame));
+    const n = this.pageForFrame(frame);
+    this.pointerDown(e, box.left, box.top, n === null ? null : [n, frame]);
   }
 
   private framePointerMove(frame: HTMLIFrameElement, e: PointerEvent): void {
@@ -796,23 +765,6 @@ export class MarkLayer {
     this.pointerMove(e, box.left, box.top);
   }
 
-  /**
-   * The H shortcut, forwarded from inside a chapter.
-   *
-   * The reader's own key handling lives on the scroller, which a keypress in
-   * an iframe never reaches. Only highlighting is mirrored here: it is the one
-   * mark action with a key, and the selection it acts on is in the frame.
-   */
-  private frameKeyDown(e: KeyboardEvent): void {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    // The frame has its own realm, so instanceof against the outer
-    // HTMLInputElement would never match; the tag name is realm-agnostic.
-    const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-    if (e.key.toLowerCase() !== "h") return;
-    e.preventDefault();
-    void this.highlightSelection();
-  }
 }
 
 /** The subset of a reader document the mark layer needs. */
@@ -828,6 +780,74 @@ export interface MarkTarget {
    * which has no text at all.
    */
   textLayerFor(page: number): HTMLElement | null;
+  /** How far the reader has turned a page; absent for a document that cannot turn. */
+  rotationOf?(page: number): Rotation;
+}
+
+/** Removes a layer's drawn marks, leaving a stroke still being drawn alone. */
+function clearPainted(host: HTMLElement): void {
+  host.querySelectorAll(".mark:not(.live)").forEach((el) => el.remove());
+}
+
+const pct = (n: number): string => `${n * 100}%`;
+
+/**
+ * A highlighter stroke: a highlight whose geometry is stroke points rather
+ * than rectangles.
+ *
+ * Stored under the existing highlight kind, so no new kind is needed on the
+ * backend, and a build from before the highlighter existed skips these rather
+ * than misreading them -- it parses highlight geometry as rectangles, and a
+ * point has no width.
+ */
+function isMarkerStroke(mark: Annotation): boolean {
+  if (mark.kind !== "highlight") return false;
+  try {
+    const geometry: unknown = JSON.parse(mark.geometry);
+    return Array.isArray(geometry) && geometry.length > 0 && !("w" in geometry[0]);
+  } catch {
+    return false;
+  }
+}
+
+/** A pen drawing or a highlighter stroke: anything drawn as a line. */
+const isStroke = (mark: Annotation): boolean => mark.kind === "draw" || isMarkerStroke(mark);
+
+/**
+ * An svg covering the whole page, for one stroke.
+ *
+ * A pen line is thin and stays the same width on screen at any zoom. A
+ * highlighter band has to cover the same words at any zoom, so its width is in
+ * page units -- and a width in page units only scales evenly if the viewBox has
+ * the page's own proportions, which is what `aspect` is for. The points are
+ * still page fractions; `setStroke` stretches y to match.
+ */
+function strokeSvg(colour: string, marker: boolean, page: HTMLElement): SVGSVGElement {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", marker ? "mark mark-draw marker" : "mark mark-draw");
+  const aspect = marker ? page.offsetHeight / (page.offsetWidth || 1) || 1 : 1;
+  svg.setAttribute("viewBox", `0 0 1 ${aspect}`);
+  svg.dataset.aspect = String(aspect);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.style.setProperty("--mark-colour", colour);
+  return svg;
+}
+
+/** Draws (or redraws) a stroke's points into its svg. */
+function setStroke(svg: SVGSVGElement, points: Point[]): void {
+  const aspect = Number(svg.dataset.aspect) || 1;
+  const path =
+    svg.querySelector("path") ??
+    svg.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "path"));
+  const scaled = aspect === 1 ? points : points.map((p) => ({ x: p.x, y: p.y * aspect }));
+  path.setAttribute("d", toPath(scaled));
+  if (!svg.classList.contains("marker")) path.setAttribute("vector-effect", "non-scaling-stroke");
+}
+
+function pointFrom(x: number, y: number, page: HTMLElement): Point | null {
+  const box = page.getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  return { x: (x - box.left) / box.width, y: (y - box.top) / box.height };
 }
 
 /** How a mark is named when asking whether to remove it. */

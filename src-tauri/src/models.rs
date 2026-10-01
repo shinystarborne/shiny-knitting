@@ -148,6 +148,27 @@ pub struct Counter {
     /// of the project's rows -- a setup row, or a separate note.
     pub excluded_from_total: bool,
     pub position: i64,
+    /// The key that counts this counter on its own, as a physical key code
+    /// (`KeyF`, `Digit2`, `Space`), or empty for none. A code rather than the
+    /// character it types, so Shift+key still matches it and the key stays
+    /// put on any keyboard layout.
+    pub hotkey: String,
+}
+
+/// The two counting keys: count a row up, and back down. Physical key codes,
+/// like a counter's hotkey.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CountKeys {
+    pub up: String,
+    pub down: String,
+}
+
+impl Default for CountKeys {
+    fn default() -> Self {
+        // J and K, which is what counting was before the keys could be chosen.
+        Self { up: "KeyJ".into(), down: "KeyK".into() }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -196,7 +217,8 @@ impl HighlightSettings {
     pub fn defaults(pattern_id: &str) -> Self {
         Self {
             pattern_id: pattern_id.to_string(),
-            enabled: true,
+            // Off until wanted: see the highlight_off_by_default migration.
+            enabled: false,
             offset_y: 0.35,
             thickness: 3.0,
             width: 0.0,
@@ -408,6 +430,14 @@ pub struct Bookmark {
     pub title: String,
     pub sort_order: i64,
     pub created_at: i64,
+}
+
+/// A page shown turned, clockwise in degrees: 90, 180 or 270.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PageRotation {
+    pub page: i64,
+    pub rotation: i64,
 }
 
 /// A floating copy of a piece of the pattern.

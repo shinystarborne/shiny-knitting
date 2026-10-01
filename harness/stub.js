@@ -14,6 +14,8 @@ const store = {
   covers: new Map(),
   pins: [],
   pinImages: new Map(),
+  bookmarks: [],
+  rotations: [],
   aiHistory: new Map(),
   aiSettings: null,
   updateSettings: null,
@@ -28,6 +30,9 @@ const store = {
 };
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
+
+/** annotations.rs::clean_title. */
+const bookmarkTitle = (raw) => (String(raw ?? "").trim() || "Untitled").slice(0, 120);
 
 // ---------- bulk add fixtures ----------
 //
@@ -222,6 +227,7 @@ function seed() {
       enabled: true,
       excludedFromTotal: false,
       position: 0,
+      hotkey: "",
     },
     {
       id: "c2",
@@ -232,6 +238,7 @@ function seed() {
       enabled: true,
       excludedFromTotal: false,
       position: 1,
+      hotkey: "",
     },
     {
       id: "c3",
@@ -243,6 +250,7 @@ function seed() {
       enabled: false,
       excludedFromTotal: false,
       position: 2,
+      hotkey: "",
     },
     {
       id: "c4",
@@ -253,6 +261,7 @@ function seed() {
       enabled: true,
       excludedFromTotal: true,
       position: 3,
+      hotkey: "",
     },
   ];
 
@@ -310,6 +319,7 @@ function seed() {
       ],
     },
   ];
+
 }
 
 /**
@@ -573,9 +583,22 @@ const handlers = {
       enabled: input.enabled,
       excludedFromTotal: input.excludedFromTotal,
       position: store.counters.filter((x) => x.patternId === patternId).length,
+      hotkey: "",
     };
     store.counters.push(c);
     return clone(c);
+  },
+  set_counter_key: ({ id, hotkey }) => {
+    requireCounter(id).hotkey = String(hotkey ?? "").trim();
+  },
+  // Mirrors commands.rs: J and K by default, and two different keys required.
+  get_count_keys: () => clone(store.countKeys ?? { up: "KeyJ", down: "KeyK" }),
+  save_count_keys: ({ keys }) => {
+    if (!keys.up?.trim() || !keys.down?.trim() || keys.up === keys.down) {
+      throw new Error("Count up and count down need two different keys.");
+    }
+    store.countKeys = { up: keys.up, down: keys.down };
+    return clone(store.countKeys);
   },
   update_counter: ({ id, name, target, excludedFromTotal }) => {
     const c = requireCounter(id);
@@ -618,6 +641,60 @@ const handlers = {
     const pr = store.progress.get(patternId) || newProgress(patternId);
     pr.totalRows = Math.max(0, total);
     return clone(pr);
+  },
+  // ---------- opening outside the app ----------
+  //
+  // Recorded rather than opened, so a test can see what would have been.
+  open_link: ({ url }) => {
+    const lower = String(url).trim().toLowerCase();
+    if (!/^(https?:\/\/|mailto:)/.test(lower)) throw new Error("Only web and email links can be opened.");
+    (window.__opened ??= []).push(url);
+  },
+  open_pattern_file: ({ id }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error("no pattern with that id");
+    (window.__opened ??= []).push(p.filePath);
+  },
+  // ---------- bookmarks ----------
+  //
+  // Mirrors annotations.rs: a blank title becomes "Untitled", titles are cut
+  // at 120 characters, and a page below 1 is raised to 1.
+  list_bookmarks: ({ patternId }) =>
+    clone(store.bookmarks.filter((b) => b.patternId === patternId).sort((a, b) => a.sortOrder - b.sortOrder)),
+  add_bookmark: ({ patternId, page, title }) => {
+    const mine = store.bookmarks.filter((b) => b.patternId === patternId);
+    const b = {
+      id: `bm${store.nextId++}`,
+      patternId,
+      page: Math.max(1, page),
+      title: bookmarkTitle(title),
+      sortOrder: mine.length,
+      createdAt: Date.now(),
+    };
+    store.bookmarks.push(b);
+    return clone(b);
+  },
+  rename_bookmark: ({ id, title }) => {
+    const b = store.bookmarks.find((x) => x.id === id);
+    if (!b) throw new Error("no bookmark with that id");
+    b.title = bookmarkTitle(title);
+    return clone(b);
+  },
+  delete_bookmark: ({ id }) => {
+    const before = store.bookmarks.length;
+    store.bookmarks = store.bookmarks.filter((b) => b.id !== id);
+    if (store.bookmarks.length === before) throw new Error("no bookmark with that id");
+  },
+  list_page_rotations: ({ patternId }) =>
+    clone(store.rotations.filter((r) => r.patternId === patternId).sort((a, b) => a.page - b.page))
+      .map(({ page, rotation }) => ({ page, rotation })),
+  set_page_rotation: ({ patternId, page, rotation }) => {
+    if (page < 1) throw new Error(`There is no page ${page}.`);
+    if (rotation % 90 !== 0) throw new Error(`A page turns in quarter turns, not ${rotation}°.`);
+    const normal = ((rotation % 360) + 360) % 360;
+    store.rotations = store.rotations.filter((r) => !(r.patternId === patternId && r.page === page));
+    if (normal) store.rotations.push({ patternId, page, rotation: normal });
+    return normal;
   },
   // ---------- annotations ----------
   //

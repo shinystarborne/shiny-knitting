@@ -1,12 +1,16 @@
 import { api, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
-import { say } from "../dialogs";
+import { dialogOpen, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
 import { PinLayer } from "./pins";
+import { ContentsPanel } from "./contents";
+import { SearchBar } from "./search";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
+import { isCapturing } from "./keys";
+import { normalRotation } from "./rotation";
 import { scanOne } from "../ai/scan";
 import { extractFromDocument, forgetCover, prepareChosenImage, saveCover } from "../covers";
 
@@ -51,6 +55,10 @@ export class ReaderView {
   private marks: MarkLayer | null = null;
   /** The floating pin cards. Null until the document has loaded. */
   private pins: PinLayer | null = null;
+  /** The outline and bookmarks panel. Null until the document has loaded. */
+  private contents: ContentsPanel | null = null;
+  /** Search inside the PDF. Null until loaded, and for an EPUB. */
+  private search: SearchBar | null = null;
   private counter: RowCounter | null = null;
   private settings: HighlightSettings | null = null;
 
@@ -62,8 +70,6 @@ export class ReaderView {
    * discarded the pending notes write.
    */
   private notesTimer: number | null = null;
-  /** Throttles mark repainting while scrolling. */
-  private markRepaintTimer: number | null = null;
   /** Click-outside dismissal for the floating counter panel, while it is open. */
   private fabDismiss: ((e: MouseEvent) => void) | null = null;
 
@@ -93,7 +99,21 @@ export class ReaderView {
     if (this.destroyed) return;
     const data = toBytes(bytes);
 
-    this.doc = this.pattern.format === "epub" ? new EpubView(this.scroller) : new PdfView(this.scroller);
+    if (this.pattern.format === "epub") {
+      this.doc = new EpubView(this.scroller);
+    } else {
+      const pdf = new PdfView(this.scroller);
+      // A link out of the pattern opens in the browser, not in place of the app.
+      pdf.onExternalLink = (url) =>
+        void api.openLink(url).catch((e) => say(e instanceof Error ? e.message : String(e), "Link"));
+      // Turned pages are known before the first paint, so a sideways chart
+      // never shows sideways first. A pattern whose turns cannot be read still
+      // opens, upright.
+      const turns = await api.listPageRotations(this.pattern.id).catch(() => []);
+      if (this.destroyed) return;
+      for (const t of turns) pdf.rotations.set(t.page, normalRotation(t.rotation));
+      this.doc = pdf;
+    }
     // A chapter that changes height moves everything below it; a PDF page
     // repaints at a different pixel size on a zoom or a window resize. Either
     // way, marks are positioned against the page's current box and have to be
@@ -133,16 +153,45 @@ export class ReaderView {
     await this.marks.refresh();
     if (this.destroyed) return;
 
+    const doc = this.doc;
+    const pane = this.root.querySelector<HTMLElement>(".doc-pane");
+    if (pane) {
+      this.contents = new ContentsPanel(pane, this.pattern.id, {
+        outline: () => doc.outline(),
+        currentPage: () => doc.currentPage(),
+        goToPage: (page) => doc.goToPage(page),
+      });
+      this.contents.onToggle = (open) =>
+        this.root.querySelector("[data-contents-tool]")?.classList.toggle("on", open);
+      if (doc.searchTexts && doc.setSearch) {
+        const searchTexts = doc.searchTexts.bind(doc);
+        const setSearch = doc.setSearch.bind(doc);
+        this.search = new SearchBar(pane, this.scroller, {
+          searchTexts,
+          setSearch,
+          goToPage: (page) => doc.goToPage(page),
+          currentPage: () => doc.currentPage(),
+          pageElement: (page) => doc.pageElement(page),
+        });
+        this.search.onToggle = (open) =>
+          this.root.querySelector("[data-search-tool]")?.classList.toggle("on", open);
+        document.addEventListener("keydown", this.onFindKey, true);
+      }
+    }
     this.pins = new PinLayer(this.scroller, this.pattern.id, {
-      currentPage: () => this.doc?.currentPage() ?? 1,
-      pageElement: (page) => this.doc?.pageElement(page) ?? null,
-      textLayerFor: (page) => this.doc?.textLayerFor(page) ?? null,
+      pageElement: (page) => doc.pageElement(page),
+      textLayerFor: (page) => doc.textLayerFor(page),
       format: this.pattern.format,
+      renderRegion: doc.renderRegion?.bind(doc),
+      rotationOf: doc.rotationOf?.bind(doc),
     });
     // A pin drag is started from the mark layer, so that only one tool can be
     // active: a press that begins a crop cannot also leave a note behind.
-    this.marks.onPinSelect = (e, page) => this.pins?.beginSelection(e, page);
+    this.marks.onPinSelect = (e, page, pageNumber) => this.pins?.beginSelection(e, page, pageNumber);
     this.pins.onChange = () => this.refreshPinTool();
+    // One crop per press of the Pin button, as in Shelfmind.
+    this.pins.onCropEnd = () => this.setMarkTool("none");
+    this.pins.setTray(this.root.querySelector<HTMLElement>("[data-pin-chips]"));
     await this.pins.load();
     if (this.destroyed) return;
     this.refreshPinTool();
@@ -164,13 +213,6 @@ export class ReaderView {
 
     const colour = this.root.querySelector<HTMLInputElement>("[data-mark-colour]");
     colour?.addEventListener("input", () => this.marks?.setColour(colour.value));
-
-    // Marks are stored per page, so they are repainted as the reader moves and
-    // as pages finish rendering underneath.
-    this.scroller.addEventListener("scroll", () => {
-      clearTimeout(this.markRepaintTimer ?? undefined);
-      this.markRepaintTimer = window.setTimeout(() => this.marks?.repaint(), 120);
-    }, { passive: true });
   }
 
   private renderChrome(): void {
@@ -191,26 +233,36 @@ export class ReaderView {
         </div>
         <div class="reader-tools">
           <span class="row-readout" data-row-readout
-            title="Which row the highlight line is on. Press J or K to step a row and count it."
+            title="Which row the highlight line is on. The count keys (J and K unless you chose others) step a row and count it."
             >${this.rowLabel}</span
           >
           <div class="mark-tools" role="toolbar" aria-label="Marking">
             <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it">➤</button>
-            <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlight: select text, then press this or H">🖊</button>
+            <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
             <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click where it belongs">🅣</button>
             <button data-mark="draw" class="ghost icon-btn" aria-label="Draw" title="Draw: drag on the page">✏️</button>
-            <button data-mark="pin" class="ghost icon-btn" aria-label="Pin" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>📌</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
             <button data-act="mark-undo" class="ghost icon-btn" aria-label="Undo" title="Undo the last mark made" data-mark-undo>↶</button>
             <button data-act="mark-clear" class="ghost icon-btn" aria-label="Clear all marks" title="Remove every highlight, note and drawing on this pattern" data-mark-clear>🗑</button>
           </div>
+          <div class="nav-tools" role="toolbar" aria-label="Contents">
+            <button data-act="bookmark-page" class="ghost icon-btn" aria-label="Bookmark this page" title="Bookmark this page — one click, rename later">🔖</button>
+            <button data-act="contents" class="ghost icon-btn" aria-label="Contents" title="Contents — outline and your bookmarks" data-contents-tool>📑</button>
+          </div>
+          <div class="pin-tray" role="toolbar" aria-label="Pins">
+            <span class="pin-chips" data-pin-chips></span>
+            <button data-mark="pin" class="ghost icon-btn" aria-label="New pin" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>📌</button>
+          </div>
           ${
             this.pattern.format === "pdf"
               ? `<div class="zoom-tools" role="toolbar" aria-label="Zoom">
+                  <button data-act="search" class="ghost icon-btn" aria-label="Search" title="Search in this PDF (Ctrl+F)" data-search-tool>🔎</button>
                   <button data-act="zoom-out" class="ghost icon-btn" aria-label="Zoom out" title="Zoom out (Ctrl+-)">−</button>
                   <span class="zoom-pct" data-zoom-pct>100%</span>
                   <button data-act="zoom-in" class="ghost icon-btn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
                   <button data-act="zoom-fit" class="ghost icon-btn" aria-label="Fit width" title="Fit width (Ctrl+0)">⇔</button>
+                  <button data-act="rotate" class="ghost icon-btn" aria-label="Rotate page"
+                    title="Turn the page in view a quarter turn clockwise — for a chart printed sideways. Shift-click turns it back.">⟳</button>
                 </div>`
               : ""
           }
@@ -254,12 +306,8 @@ export class ReaderView {
       const tool = closestEl(e.target, "[data-mark]");
       if (tool) {
         const kind = tool.dataset.mark as MarkTool;
-        // Highlight is not a drag tool like Draw or Pin: it acts on the
-        // selection that is already made, the same as the H key does. Just
-        // arming it would leave the button looking on with nothing to click
-        // it into, since the mark layer has no drag behaviour for this tool.
-        if (kind === "highlight") void this.highlightSelection();
-        else this.setMarkTool(kind);
+        // Pressing Pin again while it is armed cancels it, as in Shelfmind.
+        this.setMarkTool(kind === "pin" && this.marks?.currentTool === "pin" ? "none" : kind);
         return;
       }
       const btn = closestEl(e.target, "button[data-act]");
@@ -281,9 +329,13 @@ export class ReaderView {
       if (act === "cover-reset") void this.resetCover();
       if (act === "mark-undo") void this.marks?.undoLast().then(() => this.refreshMarkTools());
       if (act === "mark-clear") void this.marks?.clearAll().then(() => this.refreshMarkTools());
+      if (act === "contents") this.contents?.toggle();
+      if (act === "search") this.search?.toggle();
+      if (act === "bookmark-page") void this.bookmarkPage(btn as HTMLButtonElement);
       if (act === "zoom-in") this.doc?.zoomIn?.();
       if (act === "zoom-out") this.doc?.zoomOut?.();
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
+      if (act === "rotate") void this.rotatePageInView(e.shiftKey ? -90 : 90);
     });
 
     // The side pane is always in the DOM, so the counter keeps its state; the
@@ -639,7 +691,7 @@ export class ReaderView {
   /**
    * The synchronised row keys.
    *
-   * `J` and `K` step the highlight line down or up by exactly one band and
+   * The count keys (`J` and `K` unless the reader chose others) step the highlight line down or up by exactly one band and
    * count the row at the same time, which is the whole point: with the line's
    * thickness set to the on-screen height of one schematic row, each press
    * lands on the next chart row and the counter follows without a second key.
@@ -657,8 +709,10 @@ export class ReaderView {
    * Returns true when the key was handled.
    */
   private handleRowKey(e: KeyboardEvent): boolean {
-    const key = e.key.toLowerCase();
-    if (key !== "j" && key !== "k") return false;
+    // The keys are the reader's own choice now (J and K unless changed), and
+    // matched by physical key, so Shift and Alt do not change which key it is.
+    const keys = this.counter?.countKeys ?? { up: "KeyJ", down: "KeyK" };
+    if (e.code !== keys.up && e.code !== keys.down) return false;
     if (e.ctrlKey || e.metaKey) return false;
     // Typing in the counter's own inputs must not be intercepted.
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -668,14 +722,16 @@ export class ReaderView {
     if (!line) return false;
 
     e.preventDefault();
-    const direction: 1 | -1 = key === "j" ? 1 : -1;
+    const direction: 1 | -1 = e.code === keys.up ? 1 : -1;
 
     if (!e.altKey) {
       // The counter owns the arithmetic: one action moves the project total
       // and every enabled counter, so the numbers cannot drift apart.
       void this.counter?.countRows(direction);
     }
-    if (!e.shiftKey) {
+    // A line that is switched off is not moved: it would step out of sight
+    // and scroll the page under the reader for no visible reason.
+    if (!e.shiftKey && line.enabled) {
       line.stepRow(direction, true);
       line.flush();
     }
@@ -701,35 +757,7 @@ export class ReaderView {
   /** The row the line is on, shown in the reader bar and the settings panel. */
   private rowLabel = "row 1";
 
-  /**
-   * The marking shortcuts: H highlights the selection, N places a note, D draws.
-   *
-   * H is the one that earns a key, because highlighting is a two-step action --
-   * select the words, then press -- and reaching for the toolbar with the other
-   * hand on the mouse is awkward. The other two are single clicks on the page,
-   * which are quicker than a key.
-   */
-  private handleMarkKey(e: KeyboardEvent): boolean {
-    if (e.ctrlKey || e.metaKey || e.altKey) return false;
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-      return false;
-    }
-    const key = e.key.toLowerCase();
-    if (key === "h") {
-      e.preventDefault();
-      void this.highlightSelection();
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Switches the marking tool, and paints the toolbar to show which is on.
-   *
-   * The highlight tool is the one that needs a two-step action -- select, then
-   * press -- so it also takes a key. Switching away from it does not clear the
-   * selection, which would throw away the words the user just chose.
-   */
+  /** Switches the marking tool, and paints the toolbar to show which is on. */
   private setMarkTool(tool: MarkTool): void {
     if (!this.marks) return;
     // A tool that cannot work right now is not chosen: pressing Pin on an
@@ -748,6 +776,17 @@ export class ReaderView {
       button.classList.toggle("on", on);
       button.setAttribute("aria-pressed", String(on));
     });
+    // Says what to do while Pin is armed, since dragging over the page means
+    // something different then.
+    let hint = this.root.querySelector<HTMLElement>(".pin-hint");
+    if (tool === "pin" && !hint) {
+      hint = document.createElement("div");
+      hint.className = "pin-hint";
+      hint.textContent = "Drag a rectangle around the area you want to pin";
+      this.root.querySelector(".doc-pane")?.appendChild(hint);
+    } else if (tool !== "pin") {
+      hint?.remove();
+    }
   }
 
   /**
@@ -764,6 +803,72 @@ export class ReaderView {
     button.title = room.ok
       ? "Pin: drag a box around part of the page to keep it in view"
       : room.reason;
+  }
+
+  /**
+   * Ctrl/Cmd+F opens the PDF search, as in Shelfmind and every other reader,
+   * and Escape closes it while it is open -- wherever the focus is.
+   *
+   * Listened for on the document in the capture phase, ahead of the app's own
+   * Escape (which leaves the reader). Without that, pressing Escape after
+   * clicking ▲ or ▼ -- which moves the focus off the search field -- closed
+   * the pattern instead of the search. An open dialog still gets its Escape
+   * first.
+   */
+  private onFindKey = (e: KeyboardEvent): void => {
+    if (!this.search || dialogOpen() || isCapturing()) return;
+    if (e.key === "Escape" && this.search.isOpen) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.search.close();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      void this.search.open();
+    }
+  };
+
+  /**
+   * Bookmarks the page on screen in one click, as Shelfmind's 🔖 does. The
+   * button lights briefly so a click with the panel closed is not a mystery.
+   */
+  private async bookmarkPage(button: HTMLButtonElement): Promise<void> {
+    if (!this.contents) return;
+    try {
+      await this.contents.bookmarkCurrentPage();
+    } catch (e) {
+      await say(e instanceof Error ? e.message : String(e), "Bookmark");
+      return;
+    }
+    button.classList.add("on");
+    button.title = `Bookmarked page ${this.doc?.currentPage() ?? ""} — rename it in Contents`;
+    setTimeout(() => {
+      button.classList.remove("on");
+      button.title = "Bookmark this page — one click, rename later";
+    }, 1200);
+  }
+
+  /**
+   * Turns the page taking up most of the pane, and remembers it for next time.
+   *
+   * The page in view rather than the one at the top: with the end of one page
+   * and most of the next on screen, the one being read is the second.
+   */
+  private async rotatePageInView(by: 90 | -90): Promise<void> {
+    const pdf = this.doc instanceof PdfView ? this.doc : null;
+    if (!pdf) return;
+    const n = pdf.pageInView();
+    let next: number;
+    try {
+      next = await api.setPageRotation(this.pattern.id, n, pdf.rotationOf(n) + by);
+    } catch (e) {
+      await say(e instanceof Error ? e.message : String(e), "Rotate page");
+      return;
+    }
+    await pdf.rotate(n, next);
+    // Pins of this page are painted the way it now shows.
+    this.pins?.redraw();
   }
 
   /** Updates the zoom percentage readout, and disables Zoom out at the floor. */
@@ -804,26 +909,9 @@ export class ReaderView {
     return false;
   }
 
-  /**
-   * Highlights whatever is selected, and reports whether it did.
-   *
-   * The selection is left alone when there is nothing to highlight, so a
-   * mistimed keypress does not clear the words.
-   */
-  private async highlightSelection(): Promise<boolean> {
-    if (!this.marks) return false;
-    const done = await this.marks.highlightSelection();
-    if (done) this.setMarkTool("highlight");
-    return done;
-  }
-
   private bindKeys(): void {
     this.scroller.addEventListener("keydown", (e) => {
-      // Marking keys first, so H reaches the highlight rather than falling
-      // through to something that handles letters.
-      if (this.handleMarkKey(e)) return;
-
-      // Zoom next, and only with a modifier: plain +/-/0 are the counter's
+      // Zoom first, and only with a modifier: plain +/-/0 are the counter's
       // own keys, and Ctrl/Cmd is also the combination every other app uses
       // for zoom, so it is the one combination guaranteed not to collide.
       if ((e.ctrlKey || e.metaKey) && this.handleZoomKey(e)) return;
@@ -862,6 +950,10 @@ export class ReaderView {
       if (!line || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       if (target.closest(".highlight-line")) return;
+      // The release of a text selection also arrives as a click, and parking
+      // the line there would move it to wherever the reader just finished
+      // selecting words to highlight -- not somewhere they asked it to go.
+      if (window.getSelection()?.toString()) return;
       const rect = this.scroller.getBoundingClientRect();
       line.commitTop(e.clientY - rect.top);
       line.flush();
@@ -927,7 +1019,6 @@ export class ReaderView {
   destroy(): void {
     this.destroyed = true;
     clearTimeout(this.saveTimer ?? undefined);
-    clearTimeout(this.markRepaintTimer ?? undefined);
     // A note typed within the debounce window has not been written yet; fire
     // the save now rather than losing the text.
     if (this.notesTimer !== null) {
@@ -945,6 +1036,9 @@ export class ReaderView {
     window.removeEventListener("beforeunload", this.savePosition);
     this.marks?.detach();
     this.pins?.detach();
+    this.contents?.close();
+    this.search?.close();
+    document.removeEventListener("keydown", this.onFindKey, true);
     this.highlight?.detach();
     this.doc?.destroy();
     // Takes this view's listeners with it, so a later reader cannot be acted

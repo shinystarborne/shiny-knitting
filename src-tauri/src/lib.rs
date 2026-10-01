@@ -4,6 +4,7 @@ mod commands;
 mod covers;
 mod db;
 mod export;
+mod external;
 mod models;
 mod state;
 mod update;
@@ -57,6 +58,9 @@ pub fn run() {
             commands::count_counter,
             commands::reset_counter,
             commands::delete_counter,
+            commands::set_counter_key,
+            commands::get_count_keys,
+            commands::save_count_keys,
             commands::get_progress,
             commands::set_total_rows,
             commands::get_highlight,
@@ -91,6 +95,8 @@ pub fn run() {
             annotations::rename_bookmark,
             annotations::move_bookmark,
             annotations::delete_bookmark,
+            annotations::list_page_rotations,
+            annotations::set_page_rotation,
             annotations::list_pins,
             annotations::pin_count,
             annotations::add_pin,
@@ -100,6 +106,8 @@ pub fn run() {
             annotations::get_pin_image,
             annotations::save_export_pdf,
             export::estimate_export_dpi,
+            external::open_link,
+            external::open_pattern_file,
             update::get_update_settings,
             update::save_update_settings,
             update::check_for_update,

@@ -69,6 +69,14 @@ export interface Counter {
    */
   excludedFromTotal: boolean;
   position: number;
+  /** The key that counts this counter alone (a physical key code), or "". */
+  hotkey: string;
+}
+
+/** The keys that count a row up and back down. Physical key codes. */
+export interface CountKeys {
+  up: string;
+  down: string;
 }
 
 export interface CounterInput {
@@ -195,6 +203,24 @@ export interface Pin {
   z: number;
   /** File name of the crop inside `library/pins`. */
   imageFile: string;
+  createdAt: number;
+}
+
+/** Mirrors `models.rs::Bookmark`. */
+/** A page shown turned, clockwise in degrees. Upright pages have none. */
+export interface PageRotation {
+  /** 1-based page. */
+  page: number;
+  rotation: number;
+}
+
+export interface Bookmark {
+  id: string;
+  patternId: string;
+  /** 1-based page. */
+  page: number;
+  title: string;
+  sortOrder: number;
   createdAt: number;
 }
 
@@ -450,6 +476,7 @@ export const DIFFICULTIES = [
  * family any of them belongs to.
  */
 export const YARN_WEIGHT_OPTIONS = [
+
   "Lace",
   "Fingering",
   "Sport",
@@ -517,6 +544,9 @@ export const api = {
   countCounter: (id: string, delta: number) => invoke<CountOutcome>("count_counter", { id, delta }),
   resetCounter: (id: string) => invoke<void>("reset_counter", { id }),
   deleteCounter: (id: string) => invoke<void>("delete_counter", { id }),
+  setCounterKey: (id: string, hotkey: string) => invoke<void>("set_counter_key", { id, hotkey }),
+  getCountKeys: () => invoke<CountKeys>("get_count_keys"),
+  saveCountKeys: (keys: CountKeys) => invoke<CountKeys>("save_count_keys", { keys }),
 
   getProgress: (patternId: string) => invoke<Progress>("get_progress", { patternId }),
   setTotalRows: (patternId: string, total: number) =>
@@ -529,6 +559,25 @@ export const api = {
   editAnnotation: (id: string, text: string, color: string) =>
     invoke<void>("edit_annotation", { id, text, color }),
   deleteAnnotation: (id: string) => invoke<void>("delete_annotation", { id }),
+
+  // Opening outside the app.
+  /** An http, https or mailto link, in the default browser or mail app. */
+  openLink: (url: string) => invoke<void>("open_link", { url }),
+  /** A pattern's own file, in the program Windows uses for it. */
+  openPatternFile: (id: string) => invoke<void>("open_pattern_file", { id }),
+
+  // Bookmarks: named pages to jump back to.
+  listBookmarks: (patternId: string) => invoke<Bookmark[]>("list_bookmarks", { patternId }),
+  addBookmark: (patternId: string, page: number, title: string) =>
+    invoke<Bookmark>("add_bookmark", { patternId, page, title, position: null }),
+  renameBookmark: (id: string, title: string) => invoke<Bookmark>("rename_bookmark", { id, title }),
+  deleteBookmark: (id: string) => invoke<void>("delete_bookmark", { id }),
+
+  // Turned pages, for charts printed sideways.
+  listPageRotations: (patternId: string) => invoke<PageRotation[]>("list_page_rotations", { patternId }),
+  /** Returns the rotation the page now has, brought round to 0, 90, 180 or 270. */
+  setPageRotation: (patternId: string, page: number, rotation: number) =>
+    invoke<number>("set_page_rotation", { patternId, page, rotation }),
 
   // Pins: a cropped image of part of a page, kept beside the pattern.
   listPins: (patternId: string) => invoke<Pin[]>("list_pins", { patternId }),

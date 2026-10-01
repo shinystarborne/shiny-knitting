@@ -66,6 +66,21 @@ fn enabled_counter(conn: &Connection, pattern_id: &str, name: &str, target: i64)
     .expect("add counter")
 }
 
+#[test]
+fn a_counter_key_is_stored_and_cleared() {
+    let conn = test_db();
+    let p = sample(&conn, "Jumper", "A", "in-progress", &[]);
+    let c = enabled_counter(&conn, &p.id, "Sleeve", 40);
+    assert_eq!(c.hotkey, "", "a new counter has no key");
+
+    set_counter_key(&conn, &c.id, "KeyS").unwrap();
+    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].hotkey, "KeyS");
+    set_counter_key(&conn, &c.id, "").unwrap();
+    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].hotkey, "");
+
+    assert!(set_counter_key(&conn, "no-such-counter", "KeyX").is_err());
+}
+
 /// Finds one counter in a result by id, so a test can assert on it without
 /// depending on the order the rows happen to come back in.
 fn counter<'a>(out: &'a CountOutcome, id: &str) -> &'a Counter {
@@ -220,7 +235,8 @@ fn insert_seeds_progress_and_highlight() {
 
     // A pattern gets usable highlight settings without the caller asking.
     let h = get_highlight(&conn, &p.id).unwrap();
-    assert!(h.enabled);
+    // Off until wanted: most patterns are read, not counted against a chart.
+    assert!(!h.enabled);
     assert_eq!(h.pattern_id, p.id);
     // 30% rather than the old 90%: the point of the line is to mark a spot,
     // and at 90% it hid the text it was marking.
@@ -264,6 +280,50 @@ fn migration_moves_only_the_old_default_opacity() {
     // Deliberate choices survive the migration.
     assert!((opacity("dimmed") - 0.15).abs() < 0.0001);
     assert!((opacity("strong") - 1.0).abs() < 0.0001);
+}
+
+#[test]
+fn migration_turns_off_only_lines_left_on_the_factory_setting() {
+    // A library from before the line was off by default: one line untouched
+    // but moved by clicking, one restyled and on, one already switched off.
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    conn.execute_batch(
+        "CREATE TABLE highlights (
+             pattern_id TEXT PRIMARY KEY,
+             enabled INTEGER NOT NULL DEFAULT 1,
+             offset_y REAL NOT NULL DEFAULT 0.35,
+             thickness REAL NOT NULL DEFAULT 3,
+             width REAL NOT NULL DEFAULT 0,
+             inset_x REAL NOT NULL DEFAULT 24,
+             color TEXT NOT NULL DEFAULT '#e5484d',
+             opacity REAL NOT NULL DEFAULT 0.3,
+             animate INTEGER NOT NULL DEFAULT 1,
+             animation_ms INTEGER NOT NULL DEFAULT 260
+         );
+         INSERT INTO highlights (pattern_id, offset_y) VALUES ('untouched', 0.71);
+         INSERT INTO highlights (pattern_id, thickness, opacity) VALUES ('restyled', 12, 0.35);
+         INSERT INTO highlights (pattern_id, enabled) VALUES ('already-off', 0);
+        ",
+    )
+    .expect("seed old schema");
+
+    migrate(&conn).expect("migrate");
+
+    let enabled = |id: &str| -> bool {
+        conn.query_row("SELECT enabled FROM highlights WHERE pattern_id = ?1", [id], |r| {
+            r.get::<_, i64>(0)
+        })
+        .expect("row")
+            != 0
+    };
+    assert!(!enabled("untouched"), "an untouched line should be switched off");
+    assert!(enabled("restyled"), "a line set up on purpose keeps its state");
+    assert!(!enabled("already-off"));
+
+    // Once only: a line switched back on afterwards stays on.
+    conn.execute("UPDATE highlights SET enabled = 1 WHERE pattern_id = 'untouched'", []).unwrap();
+    migrate(&conn).expect("second migrate");
+    assert!(enabled("untouched"), "switched back on, it must stay on");
 }
 
 #[test]
@@ -1840,4 +1900,41 @@ fn a_yarn_round_trips_every_field() {
     assert_eq!(fetched.lots[0].dye_lot, "L22");
     assert_eq!(fetched.lots[0].location, "stash box 2");
     assert_eq!(fetched.lots[0].bought_at, Some(1_700_000_000_000));
+}
+
+#[test]
+fn a_page_turns_in_quarter_turns_and_upright_is_forgotten() {
+    let conn = test_db();
+    let p = sample(&conn, "Sideways chart", "A", "in-progress", &[]);
+    assert!(list_page_rotations(&conn, &p.id).unwrap().is_empty());
+
+    assert_eq!(set_page_rotation(&conn, &p.id, 3, 90).unwrap(), 90);
+    assert_eq!(set_page_rotation(&conn, &p.id, 7, -90).unwrap(), 270, "a turn back wraps round");
+    assert_eq!(set_page_rotation(&conn, &p.id, 3, 450).unwrap(), 90, "a full turn and a quarter is a quarter");
+    assert_eq!(
+        list_page_rotations(&conn, &p.id).unwrap(),
+        vec![
+            PageRotation { page: 3, rotation: 90 },
+            PageRotation { page: 7, rotation: 270 },
+        ]
+    );
+
+    // Turned all the way round, a page is upright again and keeps no row.
+    assert_eq!(set_page_rotation(&conn, &p.id, 3, 360).unwrap(), 0);
+    assert_eq!(list_page_rotations(&conn, &p.id).unwrap(), vec![PageRotation { page: 7, rotation: 270 }]);
+
+    assert!(set_page_rotation(&conn, &p.id, 2, 45).is_err(), "only quarter turns");
+    assert!(set_page_rotation(&conn, &p.id, 0, 90).is_err(), "pages start at 1");
+}
+
+#[test]
+fn a_patterns_rotations_go_with_it() {
+    let conn = test_db();
+    let p = sample(&conn, "Sideways chart", "A", "in-progress", &[]);
+    set_page_rotation(&conn, &p.id, 2, 180).unwrap();
+    conn.execute("DELETE FROM patterns WHERE id = ?1", params![p.id]).unwrap();
+    let left: i64 = conn
+        .query_row("SELECT COUNT(*) FROM page_rotations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 0);
 }

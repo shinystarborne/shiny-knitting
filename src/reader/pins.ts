@@ -1,41 +1,64 @@
 /**
- * Pins: a cropped picture of part of a page, floating over the pattern.
+ * Pins: a region of a page kept floating over the pattern.
  *
  * The point of a pin is to hold a chart or a run of instructions somewhere you
  * can see them while you work, rather than where the pattern happens to print
- * them. So a pin is two things that have to agree: the crop, stored as a
- * region of the page so it can be taken again, and the card, positioned as a
- * fraction of the reading pane so it stays put while the document scrolls.
+ * them. Modelled on Shelfmind's: a numbered chip per pin in the reader bar
+ * shows or hides it, and a shown pin is a panel you can drag by its header,
+ * zoom with − and +, and resize from its corner.
  *
- * Only PDFs, for now. A PDF page is a canvas, so a crop is real pixels taken
- * from what is already on screen. An EPUB chapter is text in an iframe, and
- * there is no honest way to rasterise a region of it without re-implementing a
- * layout engine, so the tool is refused there rather than producing a card that
- * is subtly not what you pinned.
+ * The panel is painted live from the PDF, not from a stored picture, so it is
+ * as sharp as the page at any size. A JPEG of the crop is still taken when a
+ * pin is made, because the backend keeps one per pin; it is simply not what
+ * is shown. (Showing it was also how a new pin used to appear as a broken
+ * image: the card was drawn before its picture had been loaded.)
+ *
+ * Only PDFs. An EPUB chapter is text in an iframe with no fixed region to
+ * crop, so the tool is refused there rather than producing something that is
+ * subtly not what was pinned.
  */
-import { api, MAX_PINS, type Pin, type PinPlacement } from "../api";
-import { fromPageRect, textInRect, toPageRect, type Rect } from "../annotations";
-import { askText, askYesNo, say } from "../dialogs";
+import { api, MAX_PINS, type Pin } from "../api";
+import { textInRect, type Rect } from "../annotations";
+import { say } from "../dialogs";
+import type { RegionRect } from "./pdf";
+import { boxFromView, type Rotation } from "./rotation";
 
 /** The part of a rendered document a pin needs. */
 export interface PinTarget {
-  /** 1-based page currently at the top of the view. */
-  currentPage(): number;
   /** The element a page is painted into. */
   pageElement(page: number): HTMLElement | null;
   /**
-   * The element holding a page's real text, for labelling a crop.
-   *
-   * Null for a page with no text layer, which is an image-only scan: the crop
-   * still works, it just cannot be named after the words under it.
+   * The element holding a page's real text, for naming a crop. Null for an
+   * image-only scan: the crop still works, it just cannot be named.
    */
   textLayerFor(page: number): HTMLElement | null;
   /** "pdf" or "epub". */
   format: string;
+  /** Paints a region of a page into a canvas; PDF only. */
+  renderRegion?(page: number, rect: RegionRect, cssWidth: number, canvas: HTMLCanvasElement): Promise<void>;
+  /**
+   * How far the reader has turned a page. A crop is stored upright, as marks
+   * are, and renderRegion paints it the way the page is shown.
+   */
+  rotationOf?(page: number): Rotation;
 }
 
-/** How small a crop may be, as a fraction of the page. */
-const MIN_CROP = 0.01;
+/** How small a crop may be, in pixels on screen, before it counts as a slip. */
+const MIN_CROP_PX = 12;
+
+/** How wide a new panel starts, as Shelfmind's do. */
+const NEW_PANEL_PX = 280;
+
+/** Where new panels start, and how far each next one steps down and right. */
+const CASCADE_START_PX = 24;
+const CASCADE_STEP_PX = 28;
+
+/** The panel width limits, as fractions of the pane. The backend clamps to these too. */
+const MIN_WIDTH = 0.1;
+const MAX_WIDTH = 0.9;
+
+/** How much one press of − or + changes a panel's size. */
+const ZOOM_STEP = 1.2;
 
 /** A page's pixels as they were when a drag started, and the size they showed at. */
 interface Shot {
@@ -44,21 +67,7 @@ interface Shot {
   shownHeight: number;
 }
 
-/** Where a new card starts: to the right, clear of the text. */
-const NEW_CARD_X = 0.7;
-
-/** The first of five slots down the pane, so five cards do not land on one spot. */
-const NEW_CARD_TOP = 0.04;
-const NEW_CARD_STEP = 0.17;
-
-/** Which slot the nth card starts in, so a pattern at the limit still fans out. */
-function newCardY(n: number): number {
-  // Wrapping past the fifth keeps a sixth from walking off the bottom, and the
-  // limit means there is never a sixth.
-  return NEW_CARD_TOP + ((n % 5) * NEW_CARD_STEP);
-}
-
-/** The longest a card title is before it is trimmed. */
+/** The longest a pin's name is before it is trimmed. */
 const TITLE_LIMIT = 60;
 
 export class PinLayer {
@@ -67,29 +76,39 @@ export class PinLayer {
   private patternId: string;
   private doc: PinTarget;
 
-  /** The floating cards, over the pane rather than in the scrolling document. */
+  /** The floating panels, over the pane rather than in the scrolling document. */
   private host: HTMLElement;
+  /** Where the numbered chips go, in the reader bar. */
+  private tray: HTMLElement | null = null;
   /** The rubber-band rectangle, while a crop is being dragged out. */
   private band: HTMLElement | null = null;
 
+  /** In the order they were made, which is the order they are numbered in. */
   private pins: Pin[] = [];
-  private images = new Map<string, string>();
-  /** Set while a card is being dragged or resized, so it saves once at the end. */
+  /** Set while a panel is being dragged or resized, so it saves once at the end. */
   private moving: {
     pin: Pin;
     pointer: number;
     mode: "move" | "size";
     start: { x: number; y: number };
-    origin: PinPlacement;
+    origin: { offsetX: number; offsetY: number; width: number };
   } | null = null;
   private busy = false;
+
+  /** Called when the set of pins changes, so the Pin button can grey out at the limit. */
+  onChange: (() => void) | null = null;
+  /**
+   * Called when a crop drag ends, made or not. Pin mode is one crop at a time,
+   * as in Shelfmind, so the reader goes back to Select.
+   */
+  onCropEnd: (() => void) | null = null;
 
   constructor(scroller: HTMLElement, patternId: string, doc: PinTarget) {
     this.scroller = scroller;
     this.patternId = patternId;
     this.doc = doc;
 
-    // The cards belong to the pane, not the document: a card that scrolled
+    // The panels belong to the pane, not the document: a pin that scrolled
     // away with the text would be no use for the thing it is there to help with.
     this.pane = scroller.parentElement ?? scroller;
     this.host = document.createElement("div");
@@ -97,16 +116,15 @@ export class PinLayer {
     this.pane.appendChild(this.host);
   }
 
-  /**
-   * Called when the set of pins changes, so the toolbar can be brought up to
-   * date. Without it the Pin button still reads as available after the fifth
-   * pin, and only finds out by refusing.
-   */
-  onChange: (() => void) | null = null;
+  /** Where to draw the numbered chips. */
+  setTray(tray: HTMLElement | null): void {
+    this.tray = tray;
+    this.renderTray();
+  }
 
   /** Whether pinning is possible for this document, and why not if it is not. */
   availability(): { ok: boolean; reason: string } {
-    if (this.doc.format === "epub") {
+    if (this.doc.format === "epub" || !this.doc.renderRegion) {
       return {
         ok: false,
         reason:
@@ -114,40 +132,37 @@ export class PinLayer {
       };
     }
     if (this.pins.length >= MAX_PINS) {
-      return { ok: false, reason: `This pattern already has ${MAX_PINS} pins.` };
+      return { ok: false, reason: `This pattern already has ${MAX_PINS} pins. Remove one from its numbered chip first.` };
     }
     return { ok: true, reason: "" };
   }
 
   async load(): Promise<void> {
     try {
-      this.pins = await api.listPins(this.patternId);
+      this.pins = (await api.listPins(this.patternId)).sort((a, b) => a.createdAt - b.createdAt);
     } catch (e) {
       this.pins = [];
       this.report(e);
       return;
     }
-    for (const pin of this.pins) void this.loadImage(pin);
     this.render();
   }
+
+  // ---------- making a pin ----------
 
   /**
    * Starts a crop, called by the mark layer when the Pin tool is active.
    *
-   * The whole drag belongs here rather than to a permanent listener, so the
-   * pointer is only tracked between a press and a release and there is nothing
-   * to leave behind if the reader is torn down mid-drag.
+   * `startPage` is the page under the press, not the page at the top of the
+   * pane, which is a different page whenever two are on screen.
    */
-  beginSelection(e: PointerEvent, page: HTMLElement): void {
+  beginSelection(e: PointerEvent, page: HTMLElement, startPage: number): void {
     // One crop at a time. A second press while a band is out would otherwise
     // leave the first band's listeners attached to the scroller for good.
     if (this.band) return;
     const start = this.normalised(e.clientX, e.clientY, page);
     if (!start) return;
     const shot = this.snapshot(page);
-    // The page is remembered now: the crop is of this page, and a scroll
-    // mid-drag must not file the pin under whatever page ends up on top.
-    const startPage = this.doc.currentPage();
 
     const band = document.createElement("div");
     band.className = "pin-band";
@@ -169,26 +184,25 @@ export class PinLayer {
       });
     };
 
-    const finish = async () => {
+    const stop = () => {
       this.scroller.removeEventListener("pointermove", move);
       this.scroller.removeEventListener("pointerup", finish);
       this.scroller.removeEventListener("pointercancel", cancel);
       band.remove();
       this.band = null;
+      this.onCropEnd?.();
+    };
+
+    const finish = async () => {
+      stop();
       const rect = span(start, latest);
-      // A click, or a slip of the hand, is not a crop. Saying so beats storing
-      // a sliver of white and calling it a chart.
-      if (rect.w < MIN_CROP || rect.h < MIN_CROP) return;
+      const box = page.getBoundingClientRect();
+      // A click, or a slip of the hand, is not a crop.
+      if (rect.w * box.width < MIN_CROP_PX || rect.h * box.height < MIN_CROP_PX) return;
       await this.save(page, rect, shot, startPage);
     };
 
-    const cancel = () => {
-      this.scroller.removeEventListener("pointermove", move);
-      this.scroller.removeEventListener("pointerup", finish);
-      this.scroller.removeEventListener("pointercancel", cancel);
-      band.remove();
-      this.band = null;
-    };
+    const cancel = () => stop();
 
     try {
       this.scroller.setPointerCapture(e.pointerId);
@@ -202,27 +216,13 @@ export class PinLayer {
   }
 
   /**
-   * Crops the region and stores it.
-   *
-   * The check for an existing full set is here as well as in the backend. The
-   * backend is what actually enforces it — this is so the sixth pin is refused
-   * with a sentence rather than after a slow round trip through a crop.
-   */
-  /**
-   * Copies the page's pixels at the moment the drag starts.
-   *
-   * The crop is taken when the drag ends, and in between the page can be
-   * repainted — which clears the canvas, because setting its size does. The pin
-   * would then be a clean rectangle of white, and it would be saved that way,
-   * because a blank crop is indistinguishable from a blank part of the page.
-   * Copying now means the pin is always of what was under the drag when the
-   * drag began, which is what the reader saw and pointed at.
+   * Copies the page's pixels at the moment the drag starts, for the backend's
+   * stored crop. Taken now because the page can be repainted mid-drag, which
+   * clears its canvas.
    */
   private snapshot(page: HTMLElement): Shot | null {
     const src = page.querySelector<HTMLCanvasElement>("canvas");
     if (!src || src.width <= 0 || src.height <= 0) return null;
-    // Measured now, while the canvas is still in the document. A detached
-    // canvas has no box at all, and the copy is never in one.
     const shown = src.getBoundingClientRect();
     if (shown.width <= 0 || shown.height <= 0) return null;
     const copy = document.createElement("canvas");
@@ -252,28 +252,27 @@ export class PinLayer {
       if (!blob) throw new Error("That part of the page could not be cropped.");
       const bytes = new Uint8Array(await blob.arrayBuffer());
 
-      // Named after the words under it, which is the only thing that can say
-      // what the picture is. A chart has none, and gets a plain name. The page
-      // is the one the drag started on, not whatever is on top now.
+      // Named after the words under it; shown as the panel's tooltip.
       const text = this.doc.textLayerFor(startPage);
       const quote = text ? textInRect(text, page, rect) : "";
-      const title = titleFor(quote, this.nextPinNumber());
 
       const pin = await api.addPin(this.patternId, {
         page: startPage,
-        geometry: JSON.stringify([round4(rect)]),
+        geometry: JSON.stringify([round4(boxFromView(rect, this.doc.rotationOf?.(startPage) ?? 0))]),
         quote: quote.slice(0, 400),
-        title,
+        title: titleFor(quote, this.pins.length + 1),
         imageBytes: Array.from(bytes),
         imageMime: "image/jpeg",
       });
+      // Cascaded from the top left, as Shelfmind does, so each new panel is
+      // visible and none lands exactly on another.
+      const paneBox = this.pane.getBoundingClientRect();
+      const step = CASCADE_START_PX + this.pins.length * CASCADE_STEP_PX;
+      pin.offsetX = step / (paneBox.width || 1);
+      pin.offsetY = step / (paneBox.height || 1);
+      pin.width = clamp(NEW_PANEL_PX / (paneBox.width || 1), MIN_WIDTH, MAX_WIDTH);
+      pin.hidden = false;
       this.pins.push(pin);
-      // The backend stores one fixed placement, so two pins saved in a row land
-      // exactly on top of each other and the second is simply not there. Fan
-      // them out from where the last one went, so each new card is visible and
-      // can be dragged where it belongs.
-      pin.offsetX = NEW_CARD_X;
-      pin.offsetY = newCardY(this.pins.length - 1);
       this.render();
       this.onChange?.();
       await this.savePlacement(pin);
@@ -284,149 +283,142 @@ export class PinLayer {
     }
   }
 
-  /**
-   * The number for the next unnamed pin.
-   *
-   * Counting the existing pins would reuse a number after a deletion -- remove
-   * pin 2 of 3 and the next unnamed pin is "Pin 3" again. The highest number
-   * already taken, plus one, never collides with a surviving card.
-   */
-  private nextPinNumber(): number {
-    let max = 0;
-    for (const pin of this.pins) {
-      const match = /^Pin (\d+)$/.exec(pin.title);
-      if (match) max = Math.max(max, parseInt(match[1], 10));
-    }
-    return max + 1;
-  }
+  // ---------- drawing ----------
 
-  private async loadImage(pin: Pin): Promise<void> {
-    if (this.images.has(pin.id)) return;
-    try {
-      const raw = await api.getPinImage(pin.id);
-      const url = URL.createObjectURL(new Blob([raw as BlobPart], { type: "image/jpeg" }));
-      this.images.set(pin.id, url);
-      this.render();
-    } catch {
-      // A pin whose image has gone is still a pin; the card says so.
-    }
+  /** Paints every panel again: after a page is turned, so its pins turn with it. */
+  redraw(): void {
+    this.render();
   }
 
   private render(): void {
-    // Images are looked up, not rebuilt: the object URLs are created once when
-    // a crop is loaded and are only released when the pin goes or the reader
-    // closes, so re-rendering a card does not throw its own picture away.
     this.host.textContent = "";
-    this.pins.forEach((pin, index) => this.host.appendChild(this.card(pin, index)));
+    this.pins.forEach((pin, index) => {
+      if (!pin.hidden) this.host.appendChild(this.panel(pin, index));
+    });
+    this.renderTray();
   }
 
-  /**
-   * A hidden pin, shown as its number rather than its card.
-   *
-   * A hidden card still had a full title bar, which is the one thing hiding a
-   * pin is supposed to get out of the way of the text underneath. The number
-   * is its position among this pattern's pins, capped at five, so it is
-   * always "1" through "5" and never an id or a growing count. Clicking it is
-   * the fastest way back: no separate menu to find it in.
-   */
-  private badge(pin: Pin, index: number): HTMLElement {
-    const card = document.createElement("div");
-    card.className = "pin-card hidden";
-    card.dataset.id = pin.id;
-    card.style.left = `${pin.offsetX * 100}%`;
-    card.style.top = `${pin.offsetY * 100}%`;
-    card.style.zIndex = String(10 + pin.z);
+  /** The numbered chips: click to show or hide, ✕ to remove. */
+  private renderTray(): void {
+    if (!this.tray) return;
+    this.tray.textContent = "";
+    this.pins.forEach((pin, index) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = pin.hidden ? "pin-chip" : "pin-chip on";
+      chip.textContent = String(index + 1);
+      chip.title = `Pin ${index + 1} · p.${pin.page} — click to show or hide${pin.title ? `\n${pin.title}` : ""}`;
+      chip.addEventListener("click", () => void this.setHidden(pin, !pin.hidden));
 
-    const badge = document.createElement("button");
-    badge.type = "button";
-    badge.className = "pin-badge";
-    badge.textContent = String(index + 1);
-    badge.title = `${pin.title || "Pin"}\nClick to bring it back.`;
-    badge.addEventListener("click", () => void this.setHidden(pin, false));
-    card.appendChild(badge);
-    return card;
+      const remove = document.createElement("span");
+      remove.className = "pin-chip-delete";
+      remove.textContent = "✕";
+      remove.title = "Remove this pin";
+      remove.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void this.remove(pin);
+      });
+      chip.appendChild(remove);
+      this.tray?.appendChild(chip);
+    });
   }
 
-  private card(pin: Pin, index: number): HTMLElement {
-    if (pin.hidden) return this.badge(pin, index);
-
+  private panel(pin: Pin, index: number): HTMLElement {
     const card = document.createElement("div");
     card.className = "pin-card";
     card.dataset.id = pin.id;
-    card.style.left = `${pin.offsetX * 100}%`;
-    card.style.top = `${pin.offsetY * 100}%`;
-    card.style.width = `${pin.width * 100}%`;
+    this.placeCard(card, pin);
     card.style.zIndex = String(10 + pin.z);
 
     const bar = document.createElement("div");
     bar.className = "pin-bar";
+    const label = document.createElement("span");
+    label.className = "pin-name";
+    label.textContent = `📌 ${index + 1} · p.${pin.page}`;
+    if (pin.title) label.title = pin.title;
+    bar.append(
+      label,
+      barButton("−", "Zoom out", () => void this.zoomPin(pin, card, 1 / ZOOM_STEP)),
+      barButton("+", "Zoom in", () => void this.zoomPin(pin, card, ZOOM_STEP)),
+      barButton("✕", "Hide", () => void this.setHidden(pin, true)),
+    );
 
-    const name = document.createElement("button");
-    name.className = "pin-name";
-    name.type = "button";
-    name.textContent = pin.title || "Pin";
-    name.title = `${pin.title || "Pin"}\nClick to rename.`;
-    name.addEventListener("click", () => void this.rename(pin));
-    bar.appendChild(name);
-
-    const hide = document.createElement("button");
-    hide.className = "pin-btn";
-    hide.type = "button";
-    hide.textContent = "Hide";
-    hide.title = "Hide this pin without deleting it";
-    hide.addEventListener("click", () => void this.setHidden(pin, true));
-
-    const remove = document.createElement("button");
-    remove.className = "pin-btn danger";
-    remove.type = "button";
-    remove.textContent = "×";
-    remove.title = "Remove this pin";
-    remove.addEventListener("click", () => void this.remove(pin));
-
-    bar.append(hide, remove);
-    card.appendChild(bar);
-
-    const picture = document.createElement("img");
-    picture.className = "pin-image";
-    picture.alt = pin.title || "Pinned part of the page";
-    const url = this.images.get(pin.id);
-    if (url) picture.src = url;
-    else picture.replaceWith(Object.assign(document.createElement("div"), {
-      className: "pin-missing",
-      textContent: "This pin's picture is missing.",
-    }));
-    card.appendChild(picture);
+    const wrap = document.createElement("div");
+    wrap.className = "pin-canvas-wrap";
+    const canvas = document.createElement("canvas");
+    wrap.appendChild(canvas);
 
     const grip = document.createElement("div");
     grip.className = "pin-grip";
-    grip.title = "Drag to make this pin bigger or smaller";
-    card.appendChild(grip);
+    grip.title = "Drag to resize";
 
-    // The whole card moves by its title bar, so the picture is never in the
-    // way of a click that means something else. Buttons in the bar (rename,
-    // hide, remove) must stay plain clicks: without this check, pressing one
-    // also armed a drag, which is wasted work at best and at worst a stray
-    // pointer capture that outlives the click.
+    card.append(bar, wrap, grip);
+
+    // Header buttons must stay plain clicks, so a press on one does not also
+    // start dragging the panel.
     bar.addEventListener("pointerdown", (e) => {
       if ((e.target as Element).closest("button")) return;
-      this.grab(e as PointerEvent, pin, card, "move");
+      this.grab(e, pin, card, canvas, "move");
     });
-    grip.addEventListener("pointerdown", (e) => this.grab(e as PointerEvent, pin, card, "size"));
+    grip.addEventListener("pointerdown", (e) => this.grab(e, pin, card, canvas, "size"));
+
+    this.paint(pin, canvas);
     return card;
   }
 
+  private placeCard(card: HTMLElement, pin: Pin): void {
+    card.style.left = `${pin.offsetX * 100}%`;
+    card.style.top = `${pin.offsetY * 100}%`;
+    card.style.width = `${pin.width * 100}%`;
+  }
+
+  /** Paints the pin's region into its canvas at the panel's current width. */
+  private paint(pin: Pin, canvas: HTMLCanvasElement): void {
+    const rect = regionOf(pin);
+    if (!rect || !this.doc.renderRegion) return;
+    const width = pin.width * this.pane.getBoundingClientRect().width;
+    // Not awaited: pdf.js paints across animation frames, which do not run in
+    // a hidden window, and nothing else waits on a pin being painted.
+    void this.doc.renderRegion(pin.page, rect, Math.max(40, width), canvas);
+  }
+
+  // ---------- panel actions ----------
+
+  private async zoomPin(pin: Pin, card: HTMLElement, factor: number): Promise<void> {
+    pin.width = clamp(pin.width * factor, MIN_WIDTH, MAX_WIDTH);
+    this.placeCard(card, pin);
+    const canvas = card.querySelector("canvas");
+    if (canvas) this.paint(pin, canvas);
+    await this.savePlacement(pin);
+  }
+
+  private async setHidden(pin: Pin, hidden: boolean): Promise<void> {
+    pin.hidden = hidden;
+    this.render();
+    await this.savePlacement(pin);
+  }
+
+  /** Removes a pin straight away, as Shelfmind's chip ✕ does. */
+  private async remove(pin: Pin): Promise<void> {
+    try {
+      await api.deletePin(pin.id);
+    } catch (e) {
+      this.report(e);
+      return;
+    }
+    this.pins = this.pins.filter((p) => p.id !== pin.id);
+    this.render();
+    this.onChange?.();
+  }
+
   /**
-   * Starts a card drag or resize.
+   * Starts a panel drag or resize.
    *
-   * Capture is taken on the element that received the press -- the title bar
-   * or the resize grip -- rather than on the scroller. The two are siblings
-   * under the pane, not ancestor and descendant, so a capture or a listener
-   * placed on the scroller depends on pointer events being retargeted there
-   * for the whole drag; taking capture on the element already in the event's
-   * own path needs no such retargeting and is what a card drag should do
-   * regardless.
+   * Capture is taken on the element that received the press -- the header or
+   * the resize corner -- which is in the event's own path, so the rest of the
+   * drag comes to it wherever the pointer goes.
    */
-  private grab(e: PointerEvent, pin: Pin, card: HTMLElement, mode: "move" | "size"): void {
+  private grab(e: PointerEvent, pin: Pin, card: HTMLElement, canvas: HTMLCanvasElement, mode: "move" | "size"): void {
     if (e.button !== 0 || this.moving) return;
     const start = this.normalisedInPane(e.clientX, e.clientY);
     if (!start) return;
@@ -438,7 +430,7 @@ export class PinLayer {
       pointer: e.pointerId,
       mode,
       start,
-      origin: { offsetX: pin.offsetX, offsetY: pin.offsetY, width: pin.width, hidden: pin.hidden },
+      origin: { offsetX: pin.offsetX, offsetY: pin.offsetY, width: pin.width },
     };
     card.classList.add(mode === "size" ? "resizing" : "moving");
 
@@ -450,16 +442,14 @@ export class PinLayer {
       const dx = here.x - live.start.x;
       const dy = here.y - live.start.y;
       if (live.mode === "move") {
-        // Clamped to the same range the backend uses, so the card stops where
+        // Clamped to the same range the backend uses, so the panel stops where
         // it will be stored rather than springing back on save.
         pin.offsetX = clamp(live.origin.offsetX + dx, 0, 0.98);
         pin.offsetY = clamp(live.origin.offsetY + dy, 0, 0.98);
       } else {
-        pin.width = clamp(live.origin.width + dx, 0.1, 0.9);
+        pin.width = clamp(live.origin.width + dx, MIN_WIDTH, MAX_WIDTH);
       }
-      card.style.left = `${pin.offsetX * 100}%`;
-      card.style.top = `${pin.offsetY * 100}%`;
-      card.style.width = `${pin.width * 100}%`;
+      this.placeCard(card, pin);
     };
 
     const finish = async () => {
@@ -470,13 +460,15 @@ export class PinLayer {
       const live = this.moving;
       this.moving = null;
       if (!live) return;
+      // The bitmap was only stretched while resizing; paint it sharp again.
+      if (live.mode === "size") this.paint(pin, canvas);
       await this.savePlacement(pin);
     };
 
     try {
       handle.setPointerCapture(e.pointerId);
     } catch {
-      // As with cropping: the drag just stops at the edge of the pane.
+      // The drag just stops at the edge of the pane.
     }
     handle.addEventListener("pointermove", move as EventListener);
     handle.addEventListener("pointerup", finish);
@@ -492,73 +484,21 @@ export class PinLayer {
         hidden: pin.hidden,
       });
       // The stored values are the clamped ones, so keep those rather than what
-      // was asked for, or the card would sit somewhere the next load undoes.
+      // was asked for, or the panel would sit somewhere the next load undoes.
       Object.assign(pin, stored);
     } catch (e) {
       this.report(e);
     }
   }
 
-  private async setHidden(pin: Pin, hidden: boolean): Promise<void> {
-    pin.hidden = hidden;
-    this.render();
-    await this.savePlacement(pin);
-  }
-
-  private async rename(pin: Pin): Promise<void> {
-    const next = await askText("Name this pin:", { value: pin.title });
-    // A dialog cancelled is null; one cleared is a deliberate blank. Only the
-    // first means "leave it alone".
-    if (next === null) return;
-    const title = next.trim();
-    if (!title) return;
-    try {
-      await api.renamePin(pin.id, title);
-      pin.title = title;
-      this.render();
-    } catch (e) {
-      this.report(e);
-    }
-  }
-
-  private async remove(pin: Pin): Promise<void> {
-    const yes = await askYesNo(`Remove “${pin.title || "this pin"}”?`, {
-      okLabel: "Remove",
-      danger: true,
-    });
-    if (!yes) return;
-    try {
-      await api.deletePin(pin.id);
-    } catch (e) {
-      this.report(e);
-      return;
-    }
-    this.pins = this.pins.filter((p) => p.id !== pin.id);
-    this.dropImage(pin.id);
-    this.render();
-    this.onChange?.();
-  }
-
-  /** Releases a pin's picture, so a removed one does not sit in memory. */
-  private dropImage(id: string): void {
-    const url = this.images.get(id);
-    if (!url) return;
-    URL.revokeObjectURL(url);
-    this.images.delete(id);
-  }
-
-  /** The pointer's position on a page, as a point in normalised page space. */
+  /** The pointer's position on a page, clamped into it, as page fractions. */
   private normalised(x: number, y: number, page: HTMLElement): { x: number; y: number } | null {
     const box = page.getBoundingClientRect();
     if (box.width <= 0 || box.height <= 0) return null;
-    const nx = (x - box.left) / box.width;
-    const ny = (y - box.top) / box.height;
-    // Outside the page means the drag ran off the edge; clamping keeps what was
-    // asked for inside the page rather than cropping from beyond it.
-    return { x: clamp(nx, 0, 1), y: clamp(ny, 0, 1) };
+    return { x: clamp((x - box.left) / box.width, 0, 1), y: clamp((y - box.top) / box.height, 0, 1) };
   }
 
-  /** The same, but across the whole pane, which is what a card moves within. */
+  /** The same, but across the whole pane, which is what a panel moves within. */
   private normalisedInPane(x: number, y: number): { x: number; y: number } | null {
     const box = this.pane.getBoundingClientRect();
     if (box.width <= 0 || box.height <= 0) return null;
@@ -570,23 +510,37 @@ export class PinLayer {
   }
 
   detach(): void {
-    for (const url of this.images.values()) URL.revokeObjectURL(url);
-    this.images.clear();
     this.host.remove();
+    if (this.tray) this.tray.textContent = "";
   }
 }
 
+/** The stored crop region of a pin. */
+function regionOf(pin: Pin): RegionRect | null {
+  try {
+    const parsed: unknown = JSON.parse(pin.geometry);
+    const r = Array.isArray(parsed) ? (parsed[0] as RegionRect) : null;
+    return r && r.w > 0 && r.h > 0 ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+function barButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "pin-btn";
+  el.textContent = label;
+  el.title = title;
+  el.addEventListener("click", onClick);
+  return el;
+}
+
 /**
- * Cuts a region out of a painted page into a JPEG.
+ * Cuts a region out of a painted page into a JPEG, for the backend's copy.
  *
  * The canvas is painted at the screen's resolution and shown at CSS size, so
- * the two are related by a ratio rather than being equal. That ratio is read
- * from the element rather than assumed, because it is whatever the page was
- * actually rendered at: a 2x display would otherwise crop the top-left quarter
- * of the page and call it the whole thing.
- *
- * The size it is shown at is passed in rather than measured, because the source
- * is a copy that is not in the document and so has no box to measure.
+ * the two are related by a ratio that is read rather than assumed.
  */
 async function cropToJpeg(
   source: HTMLCanvasElement,
@@ -602,16 +556,11 @@ async function cropToJpeg(
   out.height = Math.max(1, Math.round(rect.h * shownHeight));
   const ctx = out.getContext("2d");
   if (!ctx) return null;
-
-  // A crop is read from what is on screen, so it is scaled to fit the card
-  // rather than kept at full resolution: a pin is a glance, not a print, and a
-  // page-sized JPEG per pin is a lot of disk for something 200px wide.
   const target = 900;
   if (out.width > target) {
     out.height = Math.round((out.height * target) / out.width);
     out.width = target;
   }
-
   ctx.drawImage(
     source,
     rect.x * shownWidth * scale,
@@ -623,7 +572,6 @@ async function cropToJpeg(
     out.width,
     out.height,
   );
-
   return new Promise((resolve) => out.toBlob(resolve, "image/jpeg", 0.85));
 }
 
@@ -638,22 +586,17 @@ function span(a: { x: number; y: number }, b: { x: number; y: number }): Rect {
 }
 
 /**
- * What to call a card, before the user names it.
- *
- * The words under the crop, since that is what the card is a picture of, cut at
- * a word so it does not end mid-word, and a plain number when there are no
- * words at all. Never invented: a chart that cannot be named is better
- * described as "Pin 2" than as something plausible and wrong.
+ * What to call a pin: the words under the crop, cut at a word so it does not
+ * end mid-word, and a plain number when there are no words at all.
  *
  * Deliberately not split at a sentence boundary. Patterns are full of labels
  * that look like sentence ends — "Row 1:", "Size:", "Finished gauge:" — and
- * cutting at the first one names every card after its own heading.
+ * cutting at the first one names every pin after its own heading.
  */
 export function titleFor(quote: string, index: number): string {
   const text = quote.replace(/\s+/g, " ").trim();
   if (!text) return `Pin ${index}`;
   if (text.length <= TITLE_LIMIT) return text;
-  // Cut at the last space before the limit, so the name ends on a whole word.
   const cut = text.slice(0, TITLE_LIMIT - 1);
   const at = cut.lastIndexOf(" ");
   const short = `${(at > TITLE_LIMIT * 0.5 ? cut.slice(0, at) : cut).trimEnd()}…`;
@@ -669,6 +612,3 @@ function round4(rect: Rect): Rect {
   const r = (n: number) => Math.round(n * 10000) / 10000;
   return { x: r(rect.x), y: r(rect.y), w: r(rect.w), h: r(rect.h) };
 }
-
-/** Re-exported so the reader can convert a stored crop back to pixels. */
-export { fromPageRect, toPageRect };
