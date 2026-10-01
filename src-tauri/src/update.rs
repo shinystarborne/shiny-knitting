@@ -152,17 +152,47 @@ fn parse_tag(tag: &str) -> Option<Version> {
     Version::parse(tag.strip_prefix('v').unwrap_or(tag)).ok()
 }
 
+/// The version in an installer's file name, as Tauri writes it:
+/// `Shiny Knitting_0.3.2_x64-setup.exe` (GitHub turns the space into a dot).
+fn version_in_asset_name(name: &str) -> Option<Version> {
+    name.split('_').find_map(|part| Version::parse(part).ok())
+}
+
+/// The version a release would actually install.
+///
+/// Read from the installer's file name first, and only then from the tag,
+/// because here the two are not the same number. A beta is tagged in its
+/// cycle's name (`v0.3.0-beta.3`) while the build inside carries a plain,
+/// bumped version (`0.3.2`), since Tauri's installers cannot hold a
+/// prerelease label. Comparing tags against the installed build ranked every
+/// beta after the first *below* it -- `0.3.0-beta.3` < `0.3.1` in semver --
+/// so the check never offered anything to anyone on a 0.3 build.
+fn release_version(release: &Value) -> Option<Version> {
+    pick_asset(release)
+        .and_then(|(name, _, _)| version_in_asset_name(&name))
+        .or_else(|| parse_tag(release["tag_name"].as_str()?))
+}
+
+fn is_prerelease(release: &Value) -> bool {
+    release["prerelease"].as_bool().unwrap_or(false)
+}
+
 /// The newest release worth offering, or `None` when nothing beats `current`.
 ///
-/// Drafts and tags that are not semver are ignored; prereleases count only
-/// with `include_beta`. A release with no usable Windows installer asset
-/// counts as nothing to offer.
+/// Drafts and releases with no readable version are ignored. Prereleases
+/// count with `include_beta` -- or when the build running is itself a
+/// published prerelease: someone on a beta has to be offered the next beta,
+/// or they are stranded on it, since there may be no newer stable release to
+/// move to at all (there was none newer than 0.1.0 when this was written). A
+/// release with no usable Windows installer asset counts as nothing to offer.
 fn pick_release(releases: &[Value], include_beta: bool, current: &Version) -> Option<UpdateInfo> {
-    releases
-        .iter()
-        .filter(|r| !r["draft"].as_bool().unwrap_or(false))
-        .filter(|r| include_beta || !r["prerelease"].as_bool().unwrap_or(false))
-        .filter_map(|r| parse_tag(r["tag_name"].as_str()?).map(|v| (v, r)))
+    let live = releases.iter().filter(|r| !r["draft"].as_bool().unwrap_or(false));
+    let on_beta = live
+        .clone()
+        .any(|r| is_prerelease(r) && release_version(r).as_ref() == Some(current));
+    let include_beta = include_beta || on_beta;
+    live.filter(|r| include_beta || !is_prerelease(r))
+        .filter_map(|r| release_version(r).map(|v| (v, r)))
         .filter(|(v, _)| v > current)
         .max_by(|a, b| a.0.cmp(&b.0))
         .and_then(|(_, release)| build_info(release))
@@ -177,7 +207,7 @@ fn build_info(release: &Value) -> Option<UpdateInfo> {
             .as_str()
             .unwrap_or_default()
             .to_string(),
-        prerelease: release["prerelease"].as_bool().unwrap_or(false),
+        prerelease: is_prerelease(release),
         asset_name,
         asset_api_url,
         size_bytes,
@@ -443,6 +473,60 @@ mod tests {
         assert!(pick_release(&releases, true, &current).is_none());
     }
 
+    /// The releases feed as it actually stood at 0.3.2: every beta tagged in
+    /// its cycle's name, with the installer inside carrying the real build
+    /// version.
+    fn real_feed() -> Vec<Value> {
+        let rel = |tag: &str, pre: bool, v: &str| {
+            release(tag, pre, false, vec![
+                asset(&format!("Shiny.Knitting_{v}_x64-setup.exe"), 3_500_000),
+                asset(&format!("Shiny.Knitting_{v}_x64_en-US.msi"), 4_300_000),
+            ])
+        };
+        vec![
+            rel("v0.3.0-beta.3", true, "0.3.2"),
+            rel("v0.3.0-beta.2", true, "0.3.1"),
+            rel("v0.3.0-beta.1", true, "0.3.0"),
+            rel("v0.2.0-beta.2", true, "0.2.1"),
+            rel("v0.2.0-beta.1", true, "0.2.0"),
+            rel("v0.1.0", false, "0.1.0"),
+        ]
+    }
+
+    #[test]
+    fn the_installer_version_is_what_gets_compared_not_the_tag() {
+        assert_eq!(
+            version_in_asset_name("Shiny.Knitting_0.3.2_x64-setup.exe"),
+            Some(Version::new(0, 3, 2))
+        );
+        assert_eq!(version_in_asset_name("ShinyKnitting-setup.exe"), None);
+
+        // On 0.3.1 (beta.2), beta.3 is newer: its installer is 0.3.2, even
+        // though its tag, 0.3.0-beta.3, ranks below 0.3.1.
+        let picked = pick_release(&real_feed(), true, &Version::new(0, 3, 1)).expect("beta.3");
+        assert_eq!(picked.tag, "v0.3.0-beta.3");
+        assert_eq!(picked.asset_name, "Shiny.Knitting_0.3.2_x64-setup.exe");
+
+        // The newest build is never offered to itself.
+        assert!(pick_release(&real_feed(), true, &Version::new(0, 3, 2)).is_none());
+    }
+
+    #[test]
+    fn a_beta_build_follows_betas_even_with_the_box_unticked() {
+        // Every beta install is offered the newest beta, whatever the setting:
+        // otherwise, with no newer stable release, it is stranded for good.
+        for installed in ["0.2.0", "0.2.1", "0.3.0", "0.3.1"] {
+            let current = Version::parse(installed).unwrap();
+            let picked = pick_release(&real_feed(), false, &current)
+                .unwrap_or_else(|| panic!("{installed} was offered nothing"));
+            assert_eq!(picked.tag, "v0.3.0-beta.3", "from {installed}");
+        }
+        // A stable install still waits for the box before it sees a beta.
+        assert!(pick_release(&real_feed(), false, &Version::new(0, 1, 0)).is_none());
+        let picked = pick_release(&real_feed(), true, &Version::new(0, 1, 0)).expect("beta");
+        assert_eq!(picked.tag, "v0.3.0-beta.3");
+    }
+
     #[test]
     fn a_newer_beta_is_offered_only_with_beta_enabled() {
         let current = Version::new(0, 2, 1);
@@ -568,17 +652,16 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs the live GitHub releases feed"]
     async fn reaches_the_live_releases_feed() {
-        // Stable only: the newest stable (0.1.0) is older than this build.
+        // The feed must answer and parse. Nothing in it is newer than the
+        // build being tested -- which is either the newest release or one
+        // about to be published -- so nothing is offered either way.
         let outcome = run_check(false)
             .await
             .expect("the releases feed should answer");
         assert_eq!(outcome.current_version, env!("CARGO_PKG_VERSION"));
-        assert!(outcome.update.is_none(), "stable feed offered an update to a newer build");
+        assert!(outcome.update.is_none(), "offered an update older than this build");
 
-        // With betas: the newest prerelease is still this build's own tag
-        // (v0.2.0-beta.2 ships version 0.2.1), so no update either way — but
-        // the feed must parse and prereleases must be considered.
         let beta = run_check(true).await.expect("the releases feed should answer");
-        assert!(beta.update.is_none(), "the newest release is this build itself");
+        assert!(beta.update.is_none(), "offered a beta older than this build");
     }
 }
