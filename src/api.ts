@@ -482,12 +482,20 @@ export const TOOL_KINDS = [
 
 export type ToolKind = (typeof TOOL_KINDS)[number]["key"];
 
+/**
+ * The materials known by name, suggested in the form and stored by key. Any
+ * other material can be typed and is stored as typed. "other" predates that
+ * and is no longer suggested, but still reads back.
+ */
 export const TOOL_MATERIALS = [
   { key: "metal", label: "Metal" },
   { key: "aluminium", label: "Aluminium" },
+  { key: "steel", label: "Steel" },
   { key: "copper", label: "Copper" },
   { key: "bamboo", label: "Bamboo" },
   { key: "wood", label: "Wood" },
+  { key: "carbon", label: "Carbon" },
+  { key: "plastic", label: "Plastic" },
   { key: "other", label: "Other" },
 ] as const;
 

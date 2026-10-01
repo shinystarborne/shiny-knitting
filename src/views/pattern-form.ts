@@ -6,8 +6,10 @@ import {
   STATUSES,
   YARN_WEIGHT_OPTIONS,
   type Pattern,
+  type Tool,
 } from "../api";
 import { closestEl } from "../dom";
+import { ToolPicker } from "./tool-picker";
 import {
   coverUrl,
   extractFromDocument,
@@ -37,6 +39,13 @@ export class PatternForm {
   private filePath: string | null = null;
   private fileName = "";
   private tagList: string[] = [];
+  /** Every needle and hook, as read when the form opened. */
+  private tools: Tool[] = [];
+  /** The ones chosen for this pattern; saved with the form. */
+  private chosenTools = new Set<string>();
+  private picker: ToolPicker | null = null;
+  /** Taken back off the shared modal on close; see `close`. */
+  private teardown: (() => void)[] = [];
 
   private onDone: (pattern: Pattern) => void;
 
@@ -131,6 +140,10 @@ export class PatternForm {
             <input data-el="taginput" placeholder="Add a tag and press Enter" />
           </div>
         </div>
+        <div class="field">
+          <span>Needles &amp; hooks</span>
+          <div class="form-tools" data-el="tools"><p class="hint">Reading your needles and hooks…</p></div>
+        </div>
         <label class="field">
           <span>Notes</span>
           <textarea data-f="notes" placeholder="Anything worth remembering about this pattern.">${escapeHtml(
@@ -151,6 +164,55 @@ export class PatternForm {
     this.bind();
     this.renderTags();
     void this.paintCover();
+    void this.loadTools();
+  }
+
+  // ---------- needles and hooks ----------
+
+  private async loadTools(): Promise<void> {
+    const host = this.root.querySelector<HTMLElement>('[data-el="tools"]');
+    if (!host) return;
+    try {
+      this.tools = await api.listTools();
+    } catch {
+      this.tools = [];
+    }
+    const id = this.editing?.id;
+    this.chosenTools = new Set(id ? this.tools.filter((t) => t.patternId === id).map((t) => t.id) : []);
+    this.picker = new ToolPicker(
+      host,
+      (toolId) => {
+        this.chosenTools.add(toolId);
+        this.renderTools();
+      },
+      (toolId) => {
+        this.chosenTools.delete(toolId);
+        this.renderTools();
+      },
+    );
+    this.renderTools();
+  }
+
+  /**
+   * Draws the picker with the tools as they will be once the form is saved:
+   * one taken off this pattern shows as free, not as "on" this pattern.
+   */
+  private renderTools(): void {
+    const id = this.editing?.id;
+    const view = this.tools.map((t) =>
+      id && t.patternId === id && !this.chosenTools.has(t.id) ? { ...t, patternId: null, patternTitle: "", project: "" } : t,
+    );
+    this.picker?.render(view, this.chosenTools, "None chosen. Pick the ones you are using.");
+  }
+
+  /** Puts the chosen tools on the saved pattern, and frees the ones taken off. */
+  private async saveTools(patternId: string): Promise<void> {
+    for (const t of this.tools) {
+      const was = t.patternId === patternId;
+      const is = this.chosenTools.has(t.id);
+      if (is && !was) await api.setToolProject(t.id, patternId);
+      if (was && !is) await api.setToolProject(t.id, null);
+    }
   }
 
   private bind(): void {
@@ -190,7 +252,12 @@ export class PatternForm {
       }
     });
 
-    this.root.addEventListener("click", (e) => {
+    const onClick = (e: MouseEvent) => {
+      // Clicking the backdrop dismisses, but not a stray click inside the form.
+      if (e.target === this.root) {
+        this.close();
+        return;
+      }
       const btn = closestEl(e.target, "button[data-act]");
       if (!btn) return;
       if (btn.dataset.act === "cancel") this.close();
@@ -202,12 +269,13 @@ export class PatternForm {
       if (btn.dataset.act === "cover-file") void this.chooseCover();
       if (btn.dataset.act === "cover-reset") void this.resetCover();
       if (btn.dataset.act === "browse") void this.browseForFile();
-    });
-
-    // Clicking the backdrop dismisses, but not a stray click inside the form.
-    this.root.addEventListener("click", (e) => {
-      if (e.target === this.root) this.close();
-    });
+    };
+    // On the shared modal element, so taken off again on close. Left on, it
+    // went on hearing the clicks of every form opened after it: the needle
+    // form's Save also ran this form's save, against fields that were not
+    // there, and showed its error in the needle form.
+    this.root.addEventListener("click", onClick);
+    this.teardown.push(() => this.root.removeEventListener("click", onClick));
   }
 
   private async loadFile(file: File): Promise<void> {
@@ -365,7 +433,9 @@ export class PatternForm {
           notes: this.value("notes"),
           tags: this.tagList,
         };
-        this.onDone(await api.updatePattern(updated));
+        const saved = await api.updatePattern(updated);
+        await this.saveTools(saved.id);
+        this.onDone(saved);
       } else {
         if (!this.fileBytes && !this.filePath) throw new Error("Choose a file first.");
         const created = await api.addPattern({
@@ -383,6 +453,7 @@ export class PatternForm {
           notes: this.value("notes"),
           tags: this.tagList,
         });
+        await this.saveTools(created.id);
         this.onDone(created);
       }
       this.close();
@@ -399,6 +470,8 @@ export class PatternForm {
   }
 
   private close(): void {
+    for (const undo of this.teardown) undo();
+    this.teardown = [];
     this.root.className = "modal-backdrop hidden";
     this.root.innerHTML = "";
   }

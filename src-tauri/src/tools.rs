@@ -66,6 +66,25 @@ fn one_of(value: &str, allowed: &[&str], what: &str) -> Result<String, AppError>
     }
 }
 
+/// A material: a known one by its key, whatever its case ("Bamboo" is
+/// `bamboo`, and the American "aluminum" is `aluminium`), anything else as
+/// typed, tidied. Empty when not known.
+fn material(value: &str) -> String {
+    let typed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lower = typed.to_lowercase();
+    let lower = match lower.as_str() {
+        "aluminum" => "aluminium".to_string(),
+        "stainless steel" => "steel".to_string(),
+        "carbon fibre" | "carbon fiber" => "carbon".to_string(),
+        _ => lower,
+    };
+    if TOOL_MATERIALS.contains(&lower.as_str()) {
+        lower
+    } else {
+        typed.chars().take(40).collect()
+    }
+}
+
 /// Makes a tool consistent before it is stored. See the module comment.
 pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     let kind = input.kind.trim().to_lowercase();
@@ -101,7 +120,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     } else {
         String::new()
     };
-    let material = one_of(&input.material, TOOL_MATERIALS, "material")?;
+    let material = material(&input.material);
 
     // One project at a time: a pattern from the library, or a project named in
     // words, never both.
@@ -206,7 +225,9 @@ mod tests {
         let t = clean(input("straight")).unwrap();
         assert_eq!(t.brand, "ChiaoGoo");
         assert_eq!(t.material, "metal");
-        assert!(clean(ToolInput { material: "glass".into(), ..input("straight") }).is_err());
+        assert_eq!(clean(ToolInput { material: "  Casein   resin ".into(), ..input("straight") }).unwrap().material, "Casein resin", "any material can be typed");
+        assert_eq!(clean(ToolInput { material: "Carbon".into(), ..input("straight") }).unwrap().material, "carbon", "a known one is stored by its key");
+        assert_eq!(clean(ToolInput { material: "aluminum".into(), ..input("straight") }).unwrap().material, "aluminium");
         assert!(clean(ToolInput { cable_size: "huge".into(), ..input("tips") }).is_err());
         assert!(clean(ToolInput { material: "".into(), ..input("straight") }).is_ok(), "material may be unknown");
         assert!(clean(input("spindle")).is_err());

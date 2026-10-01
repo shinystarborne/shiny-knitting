@@ -3,16 +3,16 @@ import {
   CABLE_SIZES,
   STATUSES,
   TOOL_KINDS,
-  TOOL_MATERIALS,
   type Pattern,
   type Tool,
   type ToolInput,
   type ToolKind,
 } from "../api";
 import { closestEl } from "../dom";
+import { makeCombo } from "./combo";
+import { canonical, knownBrands, knownMaterials, materialLabel, materialValue, parseSizes } from "./tool-filter";
 
-/** Sizes offered as suggestions; any other size can still be typed. */
-const COMMON_SIZES = [2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.5, 5, 5.5, 6, 6.5, 7, 8, 9, 10, 12, 15];
+/** Lengths offered as suggestions; any other can still be typed. */
 const COMMON_LENGTHS = [10, 13, 15, 20, 23, 25, 30, 35, 40];
 const COMMON_CABLES = [23, 30, 40, 60, 80, 100, 120, 150];
 
@@ -29,7 +29,7 @@ const LENGTH_LABEL: Record<string, string> = {
   straight: "Needle length (cm)",
   dpn: "Needle length (cm)",
   tips: "Tip length (cm)",
-  hook: "Hook length (cm)",
+  hook: "Needle length (cm)",
 };
 
 /** The pattern picker's special values. */
@@ -50,6 +50,7 @@ export class ToolForm {
   private onDone: (tool: Tool) => void;
   private patterns: Pattern[] = [];
   private brands: string[] = [];
+  private materials: string[] = [];
 
   constructor(root: HTMLElement, editing: Tool | null, onDone: (tool: Tool) => void) {
     this.root = root;
@@ -63,7 +64,8 @@ export class ToolForm {
       api.listTools().catch(() => [] as Tool[]),
     ]);
     this.patterns = patterns;
-    this.brands = [...new Set(tools.map((t) => t.brand.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    this.brands = knownBrands(tools);
+    this.materials = knownMaterials(tools);
 
     const e = this.editing;
     const kind: ToolKind = e?.kind ?? "circular";
@@ -82,8 +84,9 @@ export class ToolForm {
           </label>
           <label class="field" data-show="size">
             <span>Size (mm)</span>
-            <input data-f="sizeMm" type="number" min="0" step="0.05" list="tool-sizes"
-              value="${e && e.sizeMm ? e.sizeMm : ""}" placeholder="e.g. 4 or 3.75" />
+            <input data-f="sizeMm" inputmode="decimal" autocomplete="off"
+              title="${e ? "" : "One size, or several for a set: 2.5, 3, 3.5"}"
+              value="${e && e.sizeMm ? e.sizeMm : ""}" placeholder="${e ? "e.g. 4 or 3.75" : "4, or a set: 3, 3.5, 4"}" />
           </label>
           <label class="field" data-show="length">
             <span data-el="length-label">${LENGTH_LABEL[kind] ?? "Length (cm)"}</span>
@@ -104,22 +107,21 @@ export class ToolForm {
           </label>
         </div>
         <p class="hint" data-el="kind-hint"></p>
+        <p class="hint set-preview" data-el="set-preview" hidden></p>
 
         <div class="field-row">
-          <label class="field">
+          <div class="field">
             <span>Brand</span>
-            <input data-f="brand" list="tool-brands" value="${escapeAttr(e?.brand ?? "")}" placeholder="e.g. ChiaoGoo" />
-          </label>
-          <label class="field">
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(e?.brand ?? "")}" placeholder="Type, or pick one you have" />
+          </div>
+          <div class="field">
             <span>Material</span>
-            <select data-f="material">
-              <option value="">Not sure</option>
-              ${TOOL_MATERIALS.map((m) => `<option value="${m.key}" ${e?.material === m.key ? "selected" : ""}>${m.label}</option>`).join("")}
-            </select>
-          </label>
+            <input data-f="material" aria-label="Material" value="${escapeAttr(e?.material ? materialLabel(e.material) : "")}"
+              placeholder="Type, or pick: metal, bamboo…" />
+          </div>
         </div>
 
-        <div class="field-row">
+        <div class="field-row" data-el="project-row">
           <label class="field">
             <span>In use for</span>
             <select data-f="project">
@@ -139,10 +141,8 @@ export class ToolForm {
           <textarea data-f="notes" placeholder="Anything worth remembering: a bent tip, part of a set…">${escapeHtml(e?.notes ?? "")}</textarea>
         </label>
 
-        <datalist id="tool-sizes">${COMMON_SIZES.map((n) => `<option value="${n}"></option>`).join("")}</datalist>
         <datalist id="tool-lengths">${COMMON_LENGTHS.map((n) => `<option value="${n}"></option>`).join("")}</datalist>
         <datalist id="tool-cables">${COMMON_CABLES.map((n) => `<option value="${n}"></option>`).join("")}</datalist>
-        <datalist id="tool-brands">${this.brands.map((b) => `<option value="${escapeAttr(b)}"></option>`).join("")}</datalist>
 
         <div class="modal-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
@@ -155,6 +155,10 @@ export class ToolForm {
     `;
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("change", this.onChange);
+    this.root.querySelector('[data-f="sizeMm"]')?.addEventListener("input", () => this.previewSet());
+    // Both take anything typed, and offer what is already in the box.
+    makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="brand"]')!, () => this.brands);
+    makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="material"]')!, () => this.materials);
     this.applyKind();
     (this.root.querySelector('[data-f="sizeMm"]') as HTMLInputElement | null)?.focus();
   }
@@ -204,9 +208,40 @@ export class ToolForm {
         : kind === "tips" || kind === "cable"
           ? "Cable size is the connector, which decides which tips fit which cables."
           : kind === "dpn"
-            ? "One entry for the whole set."
+            ? "One entry for the needles of one size together."
             : "";
     hint.hidden = !hint.textContent;
+    this.previewSet();
+  }
+
+  /**
+   * Says what Add will do when several sizes are typed -- a set, as an
+   * interchangeable set comes: one entry per size, sharing what the set has in
+   * common -- and puts the count on the button, so a set is never added by
+   * surprise.
+   *
+   * What a set does not share is a project: each size goes to whatever it is
+   * knitted with. So a set is added free, and "In use for" is hidden while
+   * one is typed rather than offering to put every size on one project.
+   */
+  private previewSet(): void {
+    const preview = this.root.querySelector<HTMLElement>('[data-el="set-preview"]');
+    const add = this.root.querySelector<HTMLButtonElement>('[data-act="save"]');
+    if (!preview || !add) return;
+    const { sizes } = parseSizes(this.value("sizeMm"));
+    const set = this.isSet();
+    preview.hidden = !set;
+    if (set) {
+      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes. Each is added free; put one on a project from its card, or from the pattern.`;
+    }
+    const projectRow = this.root.querySelector<HTMLElement>('[data-el="project-row"]');
+    if (projectRow) projectRow.hidden = set;
+    if (!this.editing) add.textContent = set ? `Add ${sizes.length}` : "Add";
+  }
+
+  /** Whether several sizes are typed for a new tool, which makes it a set. */
+  private isSet(): boolean {
+    return !this.editing && HAS.size(this.value("kind")) && parseSizes(this.value("sizeMm")).sizes.length > 1;
   }
 
   private onClick = (e: MouseEvent): void => {
@@ -230,12 +265,14 @@ export class ToolForm {
     const choice = this.value("project");
     return {
       kind,
-      sizeMm: HAS.size(kind) ? num(this.value("sizeMm")) : 0,
+      // The first size; a set's others are added by save() from the same input.
+      sizeMm: HAS.size(kind) ? (parseSizes(this.value("sizeMm")).sizes[0] ?? 0) : 0,
       lengthCm: HAS.length(kind) ? num(this.value("lengthCm")) : 0,
       cableCm: HAS.cable(kind) ? num(this.value("cableCm")) : 0,
       cableSize: HAS.connector(kind) ? this.value("cableSize") : "",
-      brand: this.value("brand").trim(),
-      material: this.value("material"),
+      // The same word in another case files under the spelling already used.
+      brand: canonical(this.value("brand"), this.brands),
+      material: materialValue(canonical(this.value("material"), this.materials)),
       patternId: choice && choice !== OTHER ? choice : null,
       project: choice === OTHER ? this.value("projectName").trim() : "",
       notes: this.value("notes"),
@@ -246,16 +283,41 @@ export class ToolForm {
     const buttons = [...this.root.querySelectorAll<HTMLButtonElement>(".modal-actions button")];
     buttons.forEach((b) => (b.disabled = true));
     try {
-      const input = this.input();
-      if (HAS.size(input.kind) && !(input.sizeMm > 0)) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
-      if (choiceNeedsName(this.value("project"), input.project)) throw new Error("Name the project, or choose a pattern.");
-      const saved = this.editing ? await api.updateTool(this.editing.id, input) : await api.addTool(input);
+      const set = this.isSet();
+      // A set is added free: its sizes do not share a project (see previewSet).
+      const input = set ? { ...this.input(), patternId: null, project: "" } : this.input();
+      const { sizes, bad } = HAS.size(input.kind) ? parseSizes(this.value("sizeMm")) : { sizes: [0], bad: [] };
+      if (bad.length) throw new Error(`“${bad[0]}” is not a size. Give sizes in millimetres, e.g. 4, or 2.5, 3, 3.5 for a set.`);
+      if (!sizes.length) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
+      if (this.editing && sizes.length > 1) throw new Error("This changes one needle or hook, so give it one size. Add a set with + Add.");
+      if (!set && choiceNeedsName(this.value("project"), input.project)) throw new Error("Name the project, or choose a pattern.");
+      let saved: Tool;
+      if (this.editing) {
+        saved = await api.updateTool(this.editing.id, input);
+      } else {
+        // A set is one entry per size, sharing the rest but no project. Added
+        // one at a time, in order, so a refusal partway names the size it
+        // stopped at.
+        saved = await api.addTool({ ...input, sizeMm: sizes[0] });
+        for (const size of sizes.slice(1)) {
+          try {
+            saved = await api.addTool({ ...input, sizeMm: size });
+          } catch (err) {
+            this.onDone(saved);
+            throw new Error(`Added up to ${saved.sizeMm} mm, then stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+      const what = saved.kind === "cable" ? "the cable" : sizes.length > 1 ? `${sizes.length}: ${sizes.join(", ")} mm` : `the ${saved.sizeMm} mm`;
       if (another) {
         // Everything stays filled in for the next one; the size is what
         // usually changes, so it is selected ready to be typed over.
-        this.showSaved(`Added the ${saved.kind === "cable" ? "cable" : `${saved.sizeMm} mm`}. Change what differs and add the next.`);
+        this.showSaved(`Added ${what}. Change what differs and add the next.`);
         const size = this.root.querySelector('[data-f="sizeMm"]') as HTMLInputElement | null;
         if (size && !size.closest<HTMLElement>("[data-show]")?.hidden) size.select();
+        // A brand or material typed for the first time is a choice for the next.
+        this.brands = withChoice(this.brands, saved.brand);
+        this.materials = withChoice(this.materials, materialLabel(saved.material));
         this.onDone(saved);
       } else {
         this.close();
@@ -288,6 +350,13 @@ export class ToolForm {
     this.root.className = "modal-backdrop hidden";
     this.root.innerHTML = "";
   }
+}
+
+/** The choices with one more, unless it is empty or already there in any case. */
+function withChoice(choices: string[], value: string): string[] {
+  const v = value.trim();
+  if (!v || choices.some((c) => c.toLowerCase() === v.toLowerCase())) return choices;
+  return [...choices, v];
 }
 
 const choiceNeedsName = (choice: string, name: string): boolean => choice === OTHER && !name;

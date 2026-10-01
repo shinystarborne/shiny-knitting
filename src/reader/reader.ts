@@ -283,6 +283,9 @@ export class ReaderView {
           <div class="doc-scroller" tabindex="0"></div>
         </div>
         <aside class="side-pane" ${sidebar ? "" : "hidden"}>
+          <!-- First, above the counter: a few lines, and the counter panel is
+               tall enough to push anything after it out of sight. -->
+          <div class="side-section" data-tool-panel></div>
           <div class="counter-slot"></div>
           <div class="side-section">
             <h3>Notes</h3>
@@ -291,7 +294,6 @@ export class ReaderView {
             )}</textarea>
             <p class="hint">Saved automatically.</p>
           </div>
-          <div class="side-section" data-tool-panel></div>
           <div class="side-section">
             <h3>Tags</h3>
             <div class="tag-row">${this.pattern.tags

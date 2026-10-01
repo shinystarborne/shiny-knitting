@@ -47,6 +47,64 @@ export function materialLabel(material: string): string {
   return TOOL_MATERIALS.find((m) => m.key === material)?.label ?? material;
 }
 
+/** A material as a filter key: a typed one in any case is one box. */
+export const materialKey = (material: string): string => material.trim().toLowerCase();
+
+/**
+ * Brands already used, one spelling each: the one used most, so a brand
+ * typed once in lower case does not become the suggestion.
+ */
+export function knownBrands(tools: Tool[]): string[] {
+  return mostUsedSpellings(tools.map((t) => t.brand));
+}
+
+/**
+ * Materials to suggest: the known ones, then any typed ones already used.
+ * "Other" is not suggested; a typed material says more.
+ */
+export function knownMaterials(tools: Tool[]): string[] {
+  const known = TOOL_MATERIALS.filter((m) => m.key !== "other").map((m) => m.label);
+  const typed = mostUsedSpellings(
+    tools.map((t) => t.material).filter((m) => !TOOL_MATERIALS.some((k) => k.key === materialKey(m))),
+  );
+  return [...known, ...typed];
+}
+
+/**
+ * What a typed material is stored as: a known one's key, whichever way it was
+ * written, or the text itself. The backend does the same, and also tidies.
+ */
+export function materialValue(typed: string): string {
+  const t = typed.trim();
+  const known = TOOL_MATERIALS.find((m) => m.key === t.toLowerCase() || m.label.toLowerCase() === t.toLowerCase());
+  return known ? known.key : t;
+}
+
+/** One spelling per word compared without case, the most used first in a tie. */
+function mostUsedSpellings(values: string[]): string[] {
+  const byKey = new Map<string, Map<string, number>>();
+  for (const raw of values) {
+    const v = raw.trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    const spellings = byKey.get(key) ?? new Map<string, number>();
+    spellings.set(v, (spellings.get(v) ?? 0) + 1);
+    byKey.set(key, spellings);
+  }
+  return [...byKey.values()]
+    .map((spellings) => [...spellings.entries()].sort((a, b) => b[1] - a[1])[0][0])
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The spelling already in use for a typed value, when it is the same word in
+ * another case: typing "chiaogoo" files the needle under "ChiaoGoo".
+ */
+export function canonical(typed: string, known: string[]): string {
+  const t = typed.trim();
+  return known.find((k) => k.toLowerCase() === t.toLowerCase()) ?? t;
+}
+
 export function cableSizeLabel(size: string): string {
   return CABLE_SIZES.find((c) => c.key === size)?.label ?? size;
 }
@@ -117,7 +175,7 @@ function matches(t: Tool, f: ToolFilter): boolean {
   }
   if (f.kind?.length && !f.kind.includes(t.kind)) return false;
   if (f.size?.length && (t.kind === "cable" || !f.size.includes(sizeKey(t.sizeMm)))) return false;
-  if (f.material?.length && !f.material.includes(t.material)) return false;
+  if (f.material?.length && !f.material.includes(materialKey(t.material))) return false;
   if (f.cableSize?.length && !f.cableSize.includes(t.cableSize)) return false;
   if (f.brand?.length && !f.brand.includes(brandKey(t.brand))) return false;
   return true;
@@ -169,7 +227,16 @@ export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "mat
     size: [...sizes.entries()]
       .sort((a, b) => a[1] - b[1])
       .map(([key, mm]) => ({ key, label: sizeLabel(mm), count: count((t) => t.kind !== "cable" && sizeKey(t.sizeMm) === key) })),
-    material: TOOL_MATERIALS.map((m) => ({ key: m.key, label: m.label, count: count((t) => t.material === m.key) })),
+    // The known materials always ("Other" only once something uses it), then
+    // any typed ones, so carbon or casein gets its own box.
+    material: [
+      ...TOOL_MATERIALS.map((m) => ({ key: m.key as string, label: m.label as string })).filter(
+        (m) => m.key !== "other" || tools.some((t) => t.material === "other"),
+      ),
+      ...knownMaterials(tools)
+        .filter((label) => !TOOL_MATERIALS.some((m) => m.label === label))
+        .map((label) => ({ key: materialKey(label), label })),
+    ].map((m) => ({ ...m, count: count((t) => materialKey(t.material) === m.key) })),
     cableSize: CABLE_SIZES.map((c) => ({ key: c.key, label: c.label, count: count((t) => t.cableSize === c.key) })),
     brand: [...brands.entries()]
       .sort((a, b) => a[1].localeCompare(b[1]))
@@ -180,4 +247,29 @@ export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "mat
 /** A number without trailing zeros: 4, 3.75, 2.5. */
 function trim(n: number): string {
   return String(Math.round(n * 100) / 100);
+}
+
+/**
+ * The sizes typed into the size field: one ("4"), or a set ("2.5, 3, 3.5").
+ *
+ * Sizes are separated by spaces, semicolons or commas. A lone comma between
+ * digits ("3,5", "3,75") is read as a decimal comma, which is how most of
+ * Europe writes 3.5: a list of whole sizes written without spaces ("3,4,5")
+ * has more than one comma, so it still reads as a list. Duplicates are
+ * dropped and the sizes sorted; anything that is not a size comes back in
+ * `bad`, to be named in an error.
+ */
+export function parseSizes(text: string): { sizes: number[]; bad: string[] } {
+  const sizes = new Set<number>();
+  const bad: string[] = [];
+  for (const piece of text.split(/[\s;]+/)) {
+    const parts = /^\d+,\d{1,2}$/.test(piece) ? [piece.replace(",", ".")] : piece.split(",");
+    for (const part of parts) {
+      if (!part) continue;
+      const n = Number(part);
+      if (Number.isFinite(n) && n > 0 && /^\d*\.?\d+$/.test(part)) sizes.add(Math.round(n * 100) / 100);
+      else bad.push(part);
+    }
+  }
+  return { sizes: [...sizes].sort((a, b) => a - b), bad };
 }

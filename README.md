@@ -150,20 +150,41 @@ kind asks only for what it has:
 
 Cable size is the connector — **mini, small, standard or large** — which is
 what decides which tips fit which cables. A circular's cable length is the
-length as sold, tip to tip. Every tool also has a brand, a material (**metal,
-aluminium, copper, bamboo, wood**, or other) and notes. A double-pointed set is
-one entry.
+length as sold, tip to tip. Every tool also has a brand, a material and notes.
+A double-pointed set is one entry.
+
+**Brand and material** are typed, or picked: **▾** lists the brands already in
+your box, and the materials (metal, aluminium, steel, copper, bamboo, wood,
+carbon, plastic, plus any you have typed before). Typing narrows the list;
+anything not on it — casein, rosewood — is kept as typed and gets its own
+filter box. A brand typed in another case ("chiaogoo") is filed under the
+spelling you already use.
+
+**Adding a set.** Type several sizes into Size — `2.75, 3, 3.25, 3.5, 4` — and
+**Add** makes one entry per size, sharing the kind, length, brand, material and
+notes; the button says how many ("Add 5") before anything is added. A comma
+between digits with nothing else around it (`3,5`) is read as a decimal comma,
+so `3,5` is 3.5 mm. A set is added free: its sizes do not share a project, so
+"In use for" is hidden while one is typed, and each size goes onto its own
+project afterwards.
 
 **Adding a run of them.** **Save and add another** keeps the form filled in, so
-a box of tips is entered by changing the size each time.
+needles that differ by more than the size are still quick to enter.
 
 **What it is on.** *In use for* is a pattern from your library (the ones you are
 knitting are listed first), or *something not in the library*, named in words.
 The pattern's name on a card opens it. **Free it** on the card takes a tool off
 its project. Removing a pattern frees its tools; the tools themselves stay.
 
-With a pattern open, the side pane lists its needles and hooks. Choose a free
-one and press **Use** to put it on the pattern, or ✕ to take one off.
+Needles can also be chosen from the pattern itself, in two places:
+
+- the **side pane** of an open pattern, at the top: choose one and press
+  **Use**, or ✕ to take one off; this saves at once
+- the pattern's **Details** form, which saves with the form, so needles can be
+  chosen while adding a pattern too
+
+Both offer free tools first, then the ones on another project — choosing one of
+those moves it here, since needles go from one project to the next.
 
 **Filters.** **Free** shows only what is not on a project. There are also
 **In use**, kind, size, material, cable size and brand. Boxes in one group widen
@@ -457,6 +478,8 @@ src/
     tools.ts           needles and hooks: cards, filters, Free it
     tool-form.ts       add/edit needle or hook dialog
     tool-filter.ts     filtering, facet counts and naming for needles and hooks
+    tool-picker.ts     choosing a project's needles: side pane and Details
+    combo.ts           a field you can type in or pick from
     pattern-form.ts    add/edit pattern dialog
     yarn-form.ts       add/edit yarn dialog, with lots and a photo
     settings.ts        updates and model settings, with the privacy notice

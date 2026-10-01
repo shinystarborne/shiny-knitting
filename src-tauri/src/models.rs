@@ -605,8 +605,13 @@ pub struct SuggestionResult {
 /// - `hook`: a crochet hook
 pub const TOOL_KINDS: &[&str] = &["straight", "circular", "dpn", "tips", "cable", "hook"];
 
-/// What a tool is made of. Empty is allowed: not everyone knows.
-pub const TOOL_MATERIALS: &[&str] = &["metal", "aluminium", "copper", "bamboo", "wood", "other"];
+/// The materials known by name, offered as suggestions and stored by these
+/// keys. Any other material can be typed and is kept as typed: there are more
+/// needle materials than any list (carbon, casein, glass, rosewood...).
+/// "other" is from before materials were free text, and still reads back.
+pub const TOOL_MATERIALS: &[&str] = &[
+    "metal", "aluminium", "steel", "copper", "bamboo", "wood", "carbon", "plastic", "other",
+];
 
 /// The connector size of an interchangeable tip or cable, which is what decides
 /// whether a tip fits a cable. Empty is allowed, for a set that has only one.
@@ -630,7 +635,7 @@ pub struct Tool {
     /// have one.
     pub cable_size: String,
     pub brand: String,
-    /// One of `TOOL_MATERIALS`, or empty.
+    /// A key from `TOOL_MATERIALS`, a material as typed, or empty.
     pub material: String,
     /// The pattern the tool is being used for. Cleared when that pattern is
     /// removed, which frees the tool.

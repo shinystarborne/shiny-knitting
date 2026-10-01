@@ -353,7 +353,14 @@ function seed() {
 
 // The rules of `tools::clean`, so the harness refuses what the app would.
 const TOOL_KINDS = ["straight", "circular", "dpn", "tips", "cable", "hook"];
-const TOOL_MATERIALS = ["metal", "aluminium", "copper", "bamboo", "wood", "other"];
+const TOOL_MATERIALS = ["metal", "aluminium", "steel", "copper", "bamboo", "wood", "carbon", "plastic", "other"];
+// A known material by its key, whatever its case; anything else as typed.
+const toolMaterial = (v) => {
+  const typed = String(v || "").split(/\s+/).filter(Boolean).join(" ");
+  const aliases = { aluminum: "aluminium", "stainless steel": "steel", "carbon fibre": "carbon", "carbon fiber": "carbon" };
+  const lower = aliases[typed.toLowerCase()] ?? typed.toLowerCase();
+  return TOOL_MATERIALS.includes(lower) ? lower : typed.slice(0, 40);
+};
 const CABLE_SIZES = ["mini", "small", "standard", "large"];
 function cleanTool(input) {
   const kind = String(input.kind || "").trim().toLowerCase();
@@ -386,7 +393,7 @@ function cleanTool(input) {
     cableCm: ["circular", "cable"].includes(kind) ? measure(input.cableCm, 1, 500, "cable length", "cm") : 0,
     cableSize: ["tips", "cable"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
     brand: String(input.brand || "").trim().slice(0, 80),
-    material: oneOf(input.material, TOOL_MATERIALS, "material"),
+    material: toolMaterial(input.material),
     patternId,
     project: patternId ? "" : String(input.project || "").trim().slice(0, 120),
     notes: String(input.notes || ""),
