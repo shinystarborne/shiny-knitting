@@ -39,6 +39,7 @@ const RELEASE = {
   assetName: "ShinyKnitting-0.3.0-setup.exe",
   assetApiUrl: "https://api.github.com/repos/shinystarborne/shiny-knitting/releases/assets/1",
   sizeBytes: 123,
+  pageUrl: "https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0",
 };
 
 // The settings dialog lives in the app's own modal host, not in one of
@@ -163,6 +164,13 @@ export async function verifyUpdates() {
     window.__runStartupUpdateCheck();
     await waitFor(() => document.querySelector('[data-act="update-available"]'), "the notice");
     check(results, "a seeded startup update adds the toolbar notice", true);
+    await waitFor(() => document.querySelector(".update-card"), "the update card");
+    check(results, "…and says so in a card, unasked", /A new version is ready/.test(document.querySelector(".update-card").textContent));
+    document.querySelector('.update-card [data-act="later"]').click();
+    check(results, "Later puts the card away, leaving the notice", !document.querySelector(".update-card") && !!document.querySelector('[data-act="update-available"]'));
+    window.__runStartupUpdateCheck();
+    await new Promise((r) => setTimeout(r, 300));
+    check(results, "…and the same version does not pop up again this session", !document.querySelector(".update-card"));
     // The notice updates in one go, after asking. The settings' own download
     // above already started an installer, so that is forgotten first.
     window.__installedUpdate = null;

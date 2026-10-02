@@ -175,9 +175,11 @@ class App {
     });
 
     await this.showLibrary();
-    // The quiet update check runs once the library is up; it never blocks
-    // startup and a failure says nothing.
+    // The update check runs once the library is up, and again every hour
+    // while the app is open, so a release made meanwhile still shows. It
+    // never blocks anything, and a failure says nothing.
     void this.runStartupUpdateCheck();
+    window.setInterval(() => void this.runStartupUpdateCheck(), UPDATE_CHECK_EVERY_MS);
   }
 
   /**
@@ -191,6 +193,7 @@ class App {
       if (outcome.skipped || !outcome.update) return;
       this.pendingUpdate = outcome.update;
       this.showUpdateNotice(outcome.update.tag);
+      this.showUpdateCard(outcome.update);
     } catch {
       // A failed check is a missed convenience, never an interruption.
     }
@@ -198,6 +201,47 @@ class App {
 
   /** The update the startup check found, for the notice to install. */
   private pendingUpdate: UpdateInfo | null = null;
+  /** The versions already announced this session, so "Later" means later. */
+  private announced = new Set<string>();
+
+  /**
+   * The card that says so: in the corner, over whatever is on screen, once
+   * per version per session. Update now updates; Later leaves the button by
+   * the gear for when it suits.
+   */
+  private showUpdateCard(update: UpdateInfo): void {
+    if (this.announced.has(update.tag)) return;
+    this.announced.add(update.tag);
+    document.querySelector(".update-card")?.remove();
+    const card = document.createElement("div");
+    card.className = "update-card";
+    card.setAttribute("role", "status");
+    card.innerHTML = `
+      <div class="update-card-head">
+        <strong>A new version is ready</strong>
+        <button class="ghost" data-act="later" aria-label="Later" title="Later: the button by the gear stays">×</button>
+      </div>
+      <p>${escapeText(update.name || update.tag)}${update.prerelease ? " <span class=\"pill\">beta</span>" : ""}</p>
+      <p class="hint">It updates in place and opens again by itself. Your library is not touched.</p>
+      <div class="update-card-actions">
+        ${update.pageUrl ? `<button class="link" data-act="notes">What's new</button>` : ""}
+        <span class="spacer"></span>
+        <button class="ghost" data-act="later">Later</button>
+        <button class="primary" data-act="update">Update now</button>
+      </div>`;
+    card.addEventListener("click", (e) => {
+      const btn = closestEl(e.target, "button[data-act]") as HTMLButtonElement | null;
+      const act = btn?.dataset.act;
+      if (act === "later") card.remove();
+      if (act === "notes") void api.openLink(update.pageUrl).catch(() => {});
+      if (act === "update" && btn) {
+        card.remove();
+        const notice = this.tabBar.querySelector<HTMLButtonElement>('[data-act="update-available"]');
+        void this.updateNow(notice ?? btn);
+      }
+    });
+    document.body.appendChild(card);
+  }
 
   /**
    * One click from the notice: asks, downloads, and hands over to the
@@ -552,6 +596,13 @@ class App {
     });
     dialog.open();
   }
+}
+
+/** How often the open app looks for an update; the backend allows at most one an hour. */
+const UPDATE_CHECK_EVERY_MS = 60 * 60 * 1000 + 30 * 1000;
+
+function escapeText(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 const root = document.getElementById("app");

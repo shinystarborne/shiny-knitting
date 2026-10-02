@@ -322,6 +322,8 @@ export interface UpdateInfo {
   /** The API URL the installer is downloaded from; browsers cannot fetch it. */
   assetApiUrl: string;
   sizeBytes: number;
+  /** The release's page, for "What's new"; empty if there is none. */
+  pageUrl: string;
 }
 
 /** What a manual "Check for updates" found. */

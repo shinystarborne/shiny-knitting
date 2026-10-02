@@ -61,7 +61,7 @@ export class SettingsDialog {
         </label>
         <label class="check">
           <input type="checkbox" data-f="checkOnStartup" ${u.checkOnStartup ? "checked" : ""} />
-          <span>Check automatically on startup</span>
+          <span>Check for updates automatically (at start, and every hour)</span>
         </label>
 
         <div class="model-row">

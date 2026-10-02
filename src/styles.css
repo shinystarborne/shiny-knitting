@@ -2850,3 +2850,31 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .project-pattern-tab:hover { border-color: var(--accent); }
 .project-pattern-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
 .project-pattern-links .link { font-size: 12px; }
+
+/* ---------- a new version is ready ---------- */
+
+.update-card {
+  position: fixed;
+  top: 58px;
+  right: 18px;
+  z-index: 80;
+  width: 320px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  animation: update-in 0.25s ease;
+}
+@keyframes update-in { from { opacity: 0; transform: translateY(-8px); } }
+.update-card p { margin: 0; }
+.update-card .hint { font-size: 12px; }
+.update-card-head { display: flex; align-items: center; justify-content: space-between; }
+.update-card-head button { padding: 0 8px; font-size: 15px; line-height: 22px; }
+.update-card-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.update-card-actions .spacer { flex: 1; }
+.update-card-actions button { padding: 5px 12px; font-size: 13px; }
+.update-card-actions .link { padding: 0; font-size: 12px; }

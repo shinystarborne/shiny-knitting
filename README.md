@@ -477,9 +477,11 @@ panel back for a quick check.
 **Updates.** **Settings → Updates** shows the version you have and checks for a
 newer one on request. Tick **Include beta releases** to be offered pre-releases
 as well as stable ones; a beta build is always offered the next beta, ticked or
-not, since otherwise it would have nowhere to go. With **Check automatically on startup** on, a quiet
-check runs once a day and an **Update available** button appears beside the
-settings gear only when there is something new. Click it (or **Update now** in
+not, since otherwise it would have nowhere to go. With **Check for updates
+automatically** on (it is, unless you turn it off), the app looks at every start
+and every hour while it is open. When there is something new, a card says so in
+the corner — **Update now**, **What's new**, or **Later** — and an **Update
+available** button stays beside the settings gear. Click either (or **Update now** in
 Settings) and, after one question, the app downloads the new version, closes,
 updates itself in place — a small progress window, nothing to click, no
 uninstalling — and opens again. Your library is untouched. This works from the

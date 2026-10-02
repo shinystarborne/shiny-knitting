@@ -22,8 +22,10 @@ type CmdResult<T> = AppResult<T>;
 const RELEASES_URL: &str =
     "https://api.github.com/repos/shinystarborne/shiny-knitting/releases?per_page=20";
 const SETTINGS_KEY: &str = "updates";
-/// How often the startup check is allowed to actually hit the network.
-const STARTUP_CHECK_INTERVAL_SECS: i64 = 24 * 60 * 60;
+/// How often the automatic check is allowed to actually hit the network. It
+/// runs at every start and every hour while the app is open; this keeps a
+/// quick restart from asking again, and stays far inside GitHub's limits.
+const STARTUP_CHECK_INTERVAL_SECS: i64 = 60 * 60;
 
 /// The installed version, as the build knows it.
 fn current_version() -> String {
@@ -67,6 +69,8 @@ pub struct UpdateInfo {
     /// clients.
     pub asset_api_url: String,
     pub size_bytes: u64,
+    /// The release's page on GitHub, for "What's new"; empty if it has none.
+    pub page_url: String,
 }
 
 /// What a manual check found.
@@ -211,6 +215,11 @@ fn build_info(release: &Value) -> Option<UpdateInfo> {
         asset_name,
         asset_api_url,
         size_bytes,
+        page_url: release["html_url"]
+            .as_str()
+            .filter(|u| u.starts_with("https://github.com/"))
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
@@ -429,6 +438,17 @@ mod tests {
     }
 
     #[test]
+    fn an_update_links_to_its_release_page_only_on_github() {
+        let mut r = release("v0.3.0-beta.10", true, false, vec![setup_asset()]);
+        r["html_url"] = json!("https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.10");
+        assert!(build_info(&r).unwrap().page_url.ends_with("/v0.3.0-beta.10"));
+        r["html_url"] = json!("https://example.com/somewhere");
+        assert_eq!(build_info(&r).unwrap().page_url, "");
+        r["html_url"] = Value::Null;
+        assert_eq!(build_info(&r).unwrap().page_url, "");
+    }
+
+    #[test]
     fn an_update_installs_without_questions_and_reopens_the_app() {
         for flag in ["/P", "/UPDATE", "/R"] {
             assert!(UPDATE_INSTALLER_ARGS.contains(&flag), "{flag} is missing");
@@ -616,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn the_startup_check_is_gated_by_the_setting_and_the_day() {
+    fn the_automatic_check_is_gated_by_the_setting_and_the_hour() {
         let on = |check_on_startup: bool, last_checked_at: i64| UpdateSettings {
             check_on_startup,
             last_checked_at,
@@ -625,12 +645,12 @@ mod tests {
         let now = 1_000_000;
 
         assert!(should_run_startup_check(now, &on(true, 0)));
-        // Exactly a day on, it runs again.
+        // Exactly an hour on, it runs again.
         assert!(should_run_startup_check(
             now,
             &on(true, now - STARTUP_CHECK_INTERVAL_SECS)
         ));
-        // Less than a day, it does not.
+        // Less than an hour, it does not.
         assert!(!should_run_startup_check(
             now,
             &on(true, now - STARTUP_CHECK_INTERVAL_SECS + 1)
