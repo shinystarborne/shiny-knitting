@@ -1,5 +1,7 @@
 import { api, isLive, projectStatusLabel, STATUSES, type Pattern, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
-import { askYesNo, say } from "../dialogs";
+import { askYesNo, dialogOpen, say } from "../dialogs";
+import { RowCounter } from "../reader/counter";
+import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { Board } from "./board";
 import { fromDateInput, toDateInput } from "./project-form";
@@ -17,6 +19,13 @@ export interface ProjectPageHooks {
 
 /** The longest side a project cover is kept at. */
 const COVER_SIDE = 1000;
+
+/** How the pattern sits on the page: open beside the board, a tab at the edge, or not there. */
+type PaneState = "open" | "minimised" | "closed";
+
+/** The narrowest the pattern pane and the board beside it may be, in pixels. */
+const PANE_MIN = 340;
+const BOARD_MIN = 260;
 
 /**
  * One project's own page: what it is down the side -- a cover, its name and
@@ -38,6 +47,15 @@ export class ProjectPage {
   private teardown: (() => void)[] = [];
   /** The name or notes typed and not yet saved. */
   private typingTimer: number | null = null;
+  /**
+   * The pattern's row counter, the same counts as in the pattern itself. Its
+   * element is kept across redraws of the side panel, so it keeps its state.
+   */
+  private counter: RowCounter | null = null;
+  private counterHost: HTMLElement | null = null;
+  private counterPattern: string | null = null;
+  /** The pattern, read beside the board. */
+  private reader: ReaderView | null = null;
 
   constructor(screen: HTMLElement, projectId: string, hooks: ProjectPageHooks) {
     this.screen = screen;
@@ -65,15 +83,48 @@ export class ProjectPage {
 
     this.root = document.createElement("div");
     this.root.className = "project-page";
-    this.root.innerHTML = `<aside class="project-side"></aside><div class="project-board"></div>`;
+    this.root.innerHTML = `
+      <aside class="project-side"></aside>
+      <div class="project-main">
+        <div class="project-board"></div>
+        <section class="project-pattern" hidden>
+          <div class="project-pattern-grip" title="Drag to make the pattern wider or narrower"></div>
+          <header class="project-pattern-bar">
+            <strong data-el="pattern-title"></strong>
+            <button class="ghost" data-pane="full" title="Open the pattern on its own, full size">Open full ↗</button>
+            <button class="ghost" data-pane="min" title="Minimise: it stays open at the edge" aria-label="Minimise">–</button>
+            <button class="ghost" data-pane="close" title="Close the pattern" aria-label="Close">×</button>
+          </header>
+          <div class="project-pattern-body"></div>
+        </section>
+        <button class="project-pattern-tab" data-pane="restore" hidden title="Show the pattern again">📄 <span>Pattern</span></button>
+      </div>`;
     this.screen.appendChild(this.root);
+    await this.syncCounter();
     this.renderSide();
+    this.bindPane();
 
     this.board = new Board(this.root.querySelector<HTMLElement>(".project-board")!, this.projectId, {
       project: () => this.project,
       openPattern: (id) => this.hooks.openPattern(id),
     });
     await this.board.mount();
+
+    // The pattern comes back the way it was left on this project.
+    const was = this.savedPane();
+    if (this.project.patternId && was !== "closed") await this.openPane(was);
+
+    // The count keys count here too, away from the pattern: a row, or a
+    // counter's own key. Not while typing, nor inside the pattern, which
+    // counts for itself.
+    const onKey = (e: KeyboardEvent) => {
+      if (!this.counter || dialogOpen() || e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      if (target.closest?.("input, textarea, select, [contenteditable], .project-pattern")) return;
+      if (this.counter.handleCountKey(e)) e.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    this.teardown.push(() => document.removeEventListener("keydown", onKey));
 
     // A picture pasted while the cover is chosen is the cover.
     const onPaste = (e: ClipboardEvent) => {
@@ -95,6 +146,8 @@ export class ProjectPage {
       void this.saveDetails();
     }
     for (const undo of this.teardown) undo();
+    this.reader?.destroy();
+    this.reader = null;
     this.board?.destroy();
     this.root?.remove();
   }
@@ -105,6 +158,7 @@ export class ProjectPage {
     if (!found) return this.hooks.removed();
     this.project = found;
     this.tools = await api.listTools().catch(() => this.tools);
+    await this.syncCounter();
     this.renderSide();
     await this.board?.refreshLinked();
   }
@@ -145,7 +199,15 @@ export class ProjectPage {
           ${this.patternOptions(p.patternId)}
         </select>
       </label>
-      ${p.patternId ? `<button class="link" data-act="open-pattern">Open the pattern</button>` : ""}
+      ${
+        p.patternId
+          ? `<div class="project-pattern-links">
+               <button class="ghost" data-act="show-pattern" title="Read the pattern here, beside the board">📄 Show the pattern here</button>
+               <button class="link" data-act="open-pattern" title="Open the pattern on its own">Open it full ↗</button>
+             </div>
+             <div data-el="counter"></div>`
+          : ""
+      }
 
       <div class="project-side-dates">
         <label class="field"><span>Started</span><input type="date" data-f="started" value="${toDateInput(p.startedAt)}" /></label>
@@ -180,6 +242,9 @@ export class ProjectPage {
 
       <button class="ghost danger-text" data-act="remove">Remove project</button>
     `;
+    // The counter's element is moved back in, not rebuilt, so it keeps its state.
+    const slot = side.querySelector('[data-el="counter"]');
+    if (slot && this.counterHost) slot.replaceWith(this.counterHost);
     side.onclick = (e) => void this.onClick(e);
     side.onchange = (e) => void this.onChange(e);
     // The name and notes save a moment after typing stops, too, so nothing
@@ -252,6 +317,7 @@ export class ProjectPage {
     const act = btn.dataset.act;
     if (act === "back") this.hooks.back();
     if (act === "open-pattern" && this.project.patternId) this.hooks.openPattern(this.project.patternId);
+    if (act === "show-pattern") await this.openPane("open");
     if (act === "edit-links") this.hooks.editLinks(this.project);
     if (act === "finish") this.hooks.finish(this.project);
     if (act === "cover-file") {
@@ -293,8 +359,147 @@ export class ProjectPage {
       this.typingTimer = null;
     }
     if (!(await this.saveDetails())) return;
+    // A different pattern has its own counter, and its own pages to show.
+    if (f === "pattern") {
+      this.closePane();
+      await this.syncCounter();
+    }
     // The pattern decides the Open link; the rest is already as typed.
     if (f === "pattern" || f === "name") this.renderSide();
+  }
+
+  // ---------- the pattern's counter ----------
+
+  /** A counter for the project's pattern; a new one when the pattern changed. */
+  private async syncCounter(): Promise<void> {
+    const patternId = this.project.patternId;
+    if (patternId === this.counterPattern) return;
+    this.counterPattern = patternId;
+    this.counterHost?.remove();
+    this.counterHost = null;
+    this.counter = null;
+    if (!patternId) return;
+    const host = document.createElement("div");
+    host.className = "side-section project-counter";
+    const counter = new RowCounter(host, patternId);
+    this.counterHost = host;
+    this.counter = counter;
+    await counter.refresh().catch(() => {});
+  }
+
+  // ---------- the pattern beside the board ----------
+
+  private paneKey(): string {
+    return `project-pattern:${this.projectId}`;
+  }
+
+  private savedPane(): PaneState {
+    try {
+      const v = localStorage.getItem(this.paneKey());
+      return v === "open" || v === "minimised" ? v : "closed";
+    } catch {
+      return "closed";
+    }
+  }
+
+  private setPane(state: PaneState): void {
+    const section = this.root.querySelector<HTMLElement>(".project-pattern")!;
+    section.hidden = state !== "open";
+    this.root.querySelector<HTMLElement>(".project-pattern-tab")!.hidden = state !== "minimised";
+    this.root.classList.toggle("pattern-open", state === "open");
+    try {
+      localStorage.setItem(this.paneKey(), state);
+    } catch {
+      // Remembering how the page was left is a nicety.
+    }
+    // A PDF fits its pages to the width it has, which just changed.
+    if (state === "open") requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  }
+
+  /** Shows the pattern beside the board, reading it in first if it is not there yet. */
+  private async openPane(state: PaneState = "open"): Promise<void> {
+    const patternId = this.project.patternId;
+    if (!patternId || !this.counter) return;
+    this.applyWidth();
+    if (!this.reader) {
+      let pattern: Pattern;
+      try {
+        pattern = await api.getPattern(patternId);
+      } catch {
+        return void (await say("That pattern could not be opened. It may have been removed.", "Pattern"));
+      }
+      this.root.querySelector<HTMLElement>('[data-el="pattern-title"]')!.textContent = pattern.title;
+      this.root.querySelector<HTMLElement>(".project-pattern-tab span")!.textContent = pattern.title;
+      // Shown before it is read in, so its pages are laid out at the pane's width.
+      this.setPane(state);
+      const body = this.root.querySelector<HTMLElement>(".project-pattern-body")!;
+      body.innerHTML = "";
+      this.reader = new ReaderView(body, pattern, "focus", { counter: this.counter });
+      await this.reader.mount();
+      return;
+    }
+    this.setPane(state);
+  }
+
+  private closePane(): void {
+    this.reader?.destroy();
+    this.reader = null;
+    if (this.root) this.setPane("closed");
+  }
+
+  private widthKey = "project-pattern-width";
+
+  /** The pane's width as it was last left, kept within the page. */
+  private applyWidth(px?: number): void {
+    const main = this.root.querySelector<HTMLElement>(".project-main")!;
+    let width = px;
+    if (width === undefined) {
+      try {
+        width = Number(localStorage.getItem(this.widthKey)) || 0;
+      } catch {
+        width = 0;
+      }
+    }
+    const room = main.clientWidth || window.innerWidth - 320;
+    if (!width) width = Math.round(room * 0.5);
+    width = Math.max(PANE_MIN, Math.min(room - BOARD_MIN, width));
+    main.style.setProperty("--pattern-width", `${width}px`);
+  }
+
+  private bindPane(): void {
+    const main = this.root.querySelector<HTMLElement>(".project-main")!;
+    main.addEventListener("click", (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>("[data-pane]")?.dataset.pane;
+      if (act === "min") this.setPane("minimised");
+      if (act === "restore") void this.openPane("open");
+      if (act === "close") this.closePane();
+      if (act === "full" && this.project.patternId) this.hooks.openPattern(this.project.patternId);
+    });
+    // Dragging the pane's left edge makes it wider or narrower.
+    const grip = this.root.querySelector<HTMLElement>(".project-pattern-grip")!;
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      main.classList.add("resizing");
+      const right = main.getBoundingClientRect().right;
+      const move = (ev: PointerEvent) => this.applyWidth(Math.round(right - ev.clientX));
+      const up = () => {
+        grip.removeEventListener("pointermove", move);
+        grip.removeEventListener("pointerup", up);
+        grip.removeEventListener("pointercancel", up);
+        main.classList.remove("resizing");
+        const width = parseInt(main.style.getPropertyValue("--pattern-width"), 10);
+        try {
+          if (width) localStorage.setItem(this.widthKey, String(width));
+        } catch {
+          // As above: a nicety.
+        }
+        window.dispatchEvent(new Event("resize"));
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up);
+      grip.addEventListener("pointercancel", up);
+    });
   }
 
   /**

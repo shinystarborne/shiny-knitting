@@ -440,6 +440,23 @@ export class RowCounter {
   }
 
   /**
+   * The count keys away from the reader -- on a project's page, say: the count
+   * up and count down keys count a row, and a counter's own key counts it.
+   * Nothing else, so the arrow and +/- keys keep their usual jobs there.
+   */
+  handleCountKey(e: KeyboardEvent): boolean {
+    if (!isPlainPress(e) || !e.code) return false;
+    const own = this.counters.find((c) => c.hotkey === e.code);
+    if (own) {
+      void this.countOne(own.id, e.shiftKey ? -1 : 1).catch((err) => console.error("Counting failed:", err));
+      return true;
+    }
+    if (e.code !== this.keys.up && e.code !== this.keys.down) return false;
+    void this.countRows(e.code === this.keys.up ? 1 : -1).catch((err) => console.error("Counting failed:", err));
+    return true;
+  }
+
+  /**
    * Applies the number keys while the reader has focus.
    *
    * The handled/not-handled decision is synchronous: the caller must be able

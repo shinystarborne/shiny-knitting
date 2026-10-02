@@ -37,6 +37,16 @@ function clamp(value: number, min: number, max: number): number {
  * toggle because a chart wants more document width and a text page benefits
  * from the notes being visible at the same time.
  */
+/**
+ * A reader shown inside something else -- a project's page -- rather than as
+ * its own screen. It has no way back, no layout switch and no side pane: the
+ * page around it has the notes, and the row counter is the page's own,
+ * handed in, so counting on either one is counting on both.
+ */
+export interface EmbeddedReader {
+  counter: RowCounter;
+}
+
 export class ReaderView {
   /**
    * The shared screen the reader is mounted into.
@@ -73,6 +83,8 @@ export class ReaderView {
    * discarded the pending notes write.
    */
   private notesTimer: number | null = null;
+  /** Set when the reader is shown inside a project's page. */
+  private embedded: EmbeddedReader | null;
   /** Click-outside dismissal for the floating counter panel, while it is open. */
   private fabDismiss: ((e: MouseEvent) => void) | null = null;
 
@@ -94,10 +106,12 @@ export class ReaderView {
     return this.pattern.id;
   }
 
-  constructor(screen: HTMLElement, pattern: Pattern, layout: Layout) {
+  constructor(screen: HTMLElement, pattern: Pattern, layout: Layout, embedded: EmbeddedReader | null = null) {
     this.screen = screen;
     this.pattern = pattern;
-    this.layout = layout;
+    this.embedded = embedded;
+    // Embedded, there is no side pane to show.
+    this.layout = embedded ? "focus" : layout;
   }
 
   async mount(): Promise<void> {
@@ -204,16 +218,21 @@ export class ReaderView {
     if (this.destroyed) return;
     this.refreshPinTool();
 
-    const slot = this.root.querySelector<HTMLElement>(".counter-slot");
-    if (!slot) return;
-    this.counter = new RowCounter(slot, this.pattern.id);
-    await this.counter.refresh();
-    if (this.destroyed) return;
+    if (this.embedded) {
+      // The page's counter, already loaded.
+      this.counter = this.embedded.counter;
+    } else {
+      const slot = this.root.querySelector<HTMLElement>(".counter-slot");
+      if (!slot) return;
+      this.counter = new RowCounter(slot, this.pattern.id);
+      await this.counter.refresh();
+      if (this.destroyed) return;
 
-    const projectHost = this.root.querySelector<HTMLElement>("[data-project-panel]");
-    if (projectHost) {
-      this.projectPanel = new ProjectPanel(projectHost, this.pattern.id);
-      void this.projectPanel.refresh();
+      const projectHost = this.root.querySelector<HTMLElement>("[data-project-panel]");
+      if (projectHost) {
+        this.projectPanel = new ProjectPanel(projectHost, this.pattern.id);
+        void this.projectPanel.refresh();
+      }
     }
 
     this.bindKeys();
@@ -229,13 +248,38 @@ export class ReaderView {
     colour?.addEventListener("input", () => this.marks?.setColour(colour.value));
   }
 
+  /** The side pane: the project, the counter, notes and tags. Not shown embedded. */
+  private sidePaneHtml(sidebar: boolean): string {
+    return `
+        <aside class="side-pane" ${sidebar ? "" : "hidden"}>
+          <!-- First, above the counter: a few lines, and the counter panel is
+               tall enough to push anything after it out of sight. -->
+          <div class="side-section" data-project-panel></div>
+          <div class="counter-slot"></div>
+          <div class="side-section">
+            <h3>Notes</h3>
+            <textarea class="notes-area" placeholder="Notes about this pattern...">${escapeHtml(
+              this.pattern.notes,
+            )}</textarea>
+            <p class="hint">Saved automatically.</p>
+          </div>
+          <div class="side-section">
+            <h3>Tags</h3>
+            <div class="tag-row">${this.pattern.tags
+              .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+              .join("")}</div>
+          </div>
+        </aside>`;
+  }
+
   private renderChrome(): void {
     const sidebar = this.layout === "split";
     this.root = document.createElement("div");
-    this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}`;
+    const embedded = !!this.embedded;
+    this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}${embedded ? " embedded" : ""}`;
     this.root.innerHTML = `
       <header class="reader-bar">
-        <button class="ghost back" data-act="back">← Library</button>
+        ${embedded ? "" : `<button class="ghost back" data-act="back">← Library</button>`}
         <div class="reader-title">
           <h2>${escapeHtml(this.pattern.title)}</h2>
           <p>
@@ -282,36 +326,18 @@ export class ReaderView {
           }
           <button data-act="describe" class="ghost icon-btn" hidden aria-label="Describe with your model"
             title="Describe this pattern with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
-          <button data-act="layout" class="ghost" title="Switch layout">
+          ${embedded ? "" : `<button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
-          </button>
+          </button>`}
           <button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>
-          <button data-act="edit" class="ghost" title="Edit details">Details</button>
+          ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
       </header>
       <div class="reader-body">
         <div class="doc-pane">
           <div class="doc-scroller" tabindex="0"></div>
         </div>
-        <aside class="side-pane" ${sidebar ? "" : "hidden"}>
-          <!-- First, above the counter: a few lines, and the counter panel is
-               tall enough to push anything after it out of sight. -->
-          <div class="side-section" data-project-panel></div>
-          <div class="counter-slot"></div>
-          <div class="side-section">
-            <h3>Notes</h3>
-            <textarea class="notes-area" placeholder="Notes about this pattern...">${escapeHtml(
-              this.pattern.notes,
-            )}</textarea>
-            <p class="hint">Saved automatically.</p>
-          </div>
-          <div class="side-section">
-            <h3>Tags</h3>
-            <div class="tag-row">${this.pattern.tags
-              .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
-              .join("")}</div>
-          </div>
-        </aside>
+        ${embedded ? "" : this.sidePaneHtml(sidebar)}
       </div>
       <div class="highlight-panel" hidden></div>
     `;
@@ -359,7 +385,7 @@ export class ReaderView {
     // The side pane is always in the DOM, so the counter keeps its state; the
     // focus layout just hides it. Show it on demand via the counter button.
     const sidePane = this.root.querySelector(".side-pane") as HTMLElement;
-    if (!sidebar) {
+    if (!sidebar && sidePane) {
       const fab = document.createElement("button");
       fab.className = "counter-fab";
       fab.textContent = "Counter";
@@ -384,8 +410,8 @@ export class ReaderView {
       this.root.querySelector(".reader-body")?.appendChild(fab);
     }
 
-    const notes = this.root.querySelector(".notes-area") as HTMLTextAreaElement;
-    notes.addEventListener("input", () => {
+    const notes = this.root.querySelector(".notes-area") as HTMLTextAreaElement | null;
+    notes?.addEventListener("input", () => {
       this.pattern.notes = notes.value;
       clearTimeout(this.notesTimer ?? undefined);
       this.notesTimer = window.setTimeout(() => {

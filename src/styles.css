@@ -2782,3 +2782,71 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 
 /* The tags dialog's chips. */
 .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; }
+
+/* ---------- the pattern beside a project's board ---------- */
+
+.project-main { position: relative; display: flex; min-width: 0; min-height: 0; }
+.project-main > .project-board { flex: 1; }
+.project-pattern {
+  position: relative;
+  flex: none;
+  width: var(--pattern-width, 50%);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+.project-pattern[hidden] { display: none; }
+.project-pattern-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.project-pattern-bar strong { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-pattern-bar button { padding: 3px 9px; font-size: 12px; }
+.project-pattern-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The reader inside: its bar wraps rather than pushing the pane wider. */
+.reader.embedded .reader-bar { flex-wrap: wrap; row-gap: 6px; }
+.reader.embedded .reader-title h2 { font-size: 14px; }
+.project-pattern-grip {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+}
+.project-pattern-grip:hover,
+.project-main.resizing .project-pattern-grip { background: rgba(229, 72, 77, 0.35); }
+.project-main.resizing { cursor: col-resize; user-select: none; }
+.project-main.resizing iframe,
+.project-main.resizing .project-pattern-body { pointer-events: none; }
+/* Minimised: a tab on the right edge brings it back. */
+.project-pattern-tab {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  writing-mode: vertical-rl;
+  padding: 12px 6px;
+  max-height: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 8px 0 0 8px;
+  border: 1px solid var(--border);
+  border-right: 0;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12px;
+}
+.project-pattern-tab[hidden] { display: none; }
+.project-pattern-tab:hover { border-color: var(--accent); }
+.project-pattern-links { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: -4px; }
+.project-pattern-links .link { font-size: 12px; }

@@ -268,6 +268,20 @@ asking. Pasting a web address makes a link and pasting words makes a note. New
 things go into free space near the middle of the view, and the board remembers
 where it was looked at.
 
+**The pattern beside the board.** **📄 Show the pattern here** opens the
+project's pattern in a pane beside its board — the whole reader, with marks,
+pins, zoom and the row line — so it can be followed while the board is in
+view. Drag the pane's left edge to make it wider or narrower; **–** minimises
+it to a tab on the right edge, which brings it back where it was; **×** closes
+it, and **Open full ↗** opens it on its own. The page remembers how it was
+left, and how wide.
+
+**Row counter.** A project with a pattern has the pattern's row counter on its
+page: the same counts as in the pattern itself, not a copy, so counting in
+either place counts in both. The count keys (J and K unless you chose others)
+and each counter's own key work on the page as well — in the pattern beside the
+board, or anywhere else on the page except while typing.
+
 **Saved as you go.** The name and notes save a moment after typing stops, and
 a note on the board does too, so opening another tab straight away loses
 nothing.
