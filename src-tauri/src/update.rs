@@ -549,6 +549,15 @@ mod tests {
     }
 
     #[test]
+    fn a_two_digit_build_is_newer_than_a_one_digit_one() {
+        let rel = |tag: &str, v: &str| release(tag, true, false, vec![asset(&format!("Shiny.Knitting_{v}_x64-setup.exe"), 1)]);
+        let feed = vec![rel("v0.3.0-beta.10", "0.3.10"), rel("v0.3.0-beta.9", "0.3.9")];
+        let picked = pick_release(&feed, false, &Version::new(0, 3, 9)).expect("beta.10 for 0.3.9");
+        assert_eq!(picked.tag, "v0.3.0-beta.10", "0.3.10 is after 0.3.9, not before");
+        assert!(pick_release(&feed, false, &Version::new(0, 3, 10)).is_none());
+    }
+
+    #[test]
     fn a_beta_build_follows_betas_even_with_the_box_unticked() {
         // Every beta install is offered the newest beta, whatever the setting:
         // otherwise, with no newer stable release, it is stranded for good.
