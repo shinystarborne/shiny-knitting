@@ -367,8 +367,10 @@ export class LibraryView {
       if (await api.hasAiHistory(id)) {
         row.insertAdjacentHTML(
           "afterbegin",
-          `<button class="card-tool" data-act="undo-ai" data-id="${id}"
-             title="Undo the last change your model made">Undo model change</button>`,
+          // An icon, its words shown only on hover or focus, so it does not
+          // crowd the row on every card the model has touched.
+          `<button class="card-undo" data-act="undo-ai" data-id="${id}"
+             aria-label="Undo model change"><span aria-hidden="true">↶</span><span class="card-undo-label">Undo model change</span></button>`,
         );
       }
     } catch {

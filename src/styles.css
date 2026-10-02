@@ -2645,3 +2645,36 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .inspo-name:focus { border-color: var(--border); background: var(--bg-input); }
 .inspo-saved { margin-right: auto; }
 .inspo-page .project-board { flex: 1; }
+
+/* Undo model change: an icon; its label appears above it on hover or focus. */
+.card-undo {
+  position: relative;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.card-undo:hover,
+.card-undo:focus-visible { color: var(--text); border-color: var(--border); }
+.card-undo-label {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 2;
+}
+.card-undo:hover .card-undo-label,
+.card-undo:focus-visible .card-undo-label { opacity: 1; }

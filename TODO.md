@@ -34,22 +34,28 @@ Open questions:
 ### Gauge swatch log
 
 A record of every gauge swatch you knit, because your real gauge is worth more
-than what the ball band says.
+than what the ball band says. **It lives in the stash.**
 
-- For each swatch: the **yarn** (from the stash, or typed in), the **needle**
-  (from Needles & hooks, or just a size), the stitch pattern, **stitches and
-  rows per 10 cm**, before and after blocking, a photo, the date and notes.
+- For each swatch: the **yarn** (from the stash), the **needle** (from Needles
+  & hooks, or just a size), the stitch pattern, **stitches and rows per 10 cm**,
+  before and after blocking, a photo, the date and notes.
+- **In the stash, choose to see Yarn or Swatches.** The Swatches view is a grid
+  of swatch cards (photo, gauge, needle). Clicking one shows everything about
+  the swatch **and the yarn it was knitted in**, with a way through to the yarn.
+- **A yarn shows its own swatches.** Opening a yarn lists the swatches knitted
+  in it, and you can add a new one from there with the yarn already chosen.
+- The yarn's card says it has been swatched ("22 sts / 30 rows on 4 mm").
 - Can be linked to a project.
-- Shown on the yarn's card in the stash ("swatched: 22 sts / 30 rows on 4 mm").
 - Later, the calculators (raglan, yoke, colourwork) offer your swatches as the
   gauge to use.
 
 Open questions:
 
-- Its own tab, or a section inside the stash?
 - Measured over 10 cm only, or any width (e.g. 23 sts over 11 cm, worked out
   per 10 cm)?
 - Inches as well as centimetres?
+- A swatch in yarn that is not in the stash (a friend's, or used up): allowed,
+  with the yarn typed in?
 
 ### Shopping list
 
