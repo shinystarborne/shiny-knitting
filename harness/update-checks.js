@@ -163,10 +163,22 @@ export async function verifyUpdates() {
     window.__runStartupUpdateCheck();
     await waitFor(() => document.querySelector('[data-act="update-available"]'), "the notice");
     check(results, "a seeded startup update adds the toolbar notice", true);
+    // The notice updates in one go, after asking. The settings' own download
+    // above already started an installer, so that is forgotten first.
+    window.__installedUpdate = null;
+    const ask = () => document.querySelector(".dialog-backdrop .dialog-card");
     document.querySelector('[data-act="update-available"]').click();
-    await waitFor(() => dialogEl(), "settings from the notice");
-    check(results, "the notice opens the settings dialog", true);
-    await closeSettings();
+    await waitFor(() => ask(), "the question from the notice");
+    check(results, "the notice asks before updating", /Update to/.test(ask().textContent));
+    ask().querySelector(".ghost").click();
+    await waitFor(() => !ask(), "the question to close");
+    check(results, "…and cancelling installs nothing", !window.__installedUpdate);
+    document.querySelector('[data-act="update-available"]').click();
+    await waitFor(() => ask(), "the question again");
+    ask().querySelector(".primary").click();
+    await waitFor(() => window.__installedUpdate, "the installer to be started");
+    check(results, "saying yes downloads it and starts the installer", window.__installedUpdate === "C:\\Temp\\ShinyKnitting-update-setup.exe", String(window.__installedUpdate));
+    window.__installedUpdate = null;
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err && err.message) || err));
   } finally {

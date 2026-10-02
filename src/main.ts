@@ -1,6 +1,6 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Tool, type Yarn } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Tool, type UpdateInfo, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
@@ -15,7 +15,7 @@ import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
 import { clearBoardImageCache, clearCoverCache, clearYarnPhotoCache, ensureCover } from "./covers";
-import { say } from "./dialogs";
+import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
@@ -80,8 +80,12 @@ class App {
 
     this.tabBar.addEventListener("click", (e) => {
       const act = closestEl(e.target, "button[data-act]")?.dataset.act;
-      if (act === "settings" || act === "update-available") {
+      if (act === "settings") {
         void this.openSettings();
+        return;
+      }
+      if (act === "update-available") {
+        void this.updateNow(closestEl(e.target, "button[data-act]") as HTMLButtonElement);
         return;
       }
       const tab = closestEl(e.target, "button[data-tab]");
@@ -185,22 +189,55 @@ class App {
     try {
       const outcome = await api.startupUpdateCheck();
       if (outcome.skipped || !outcome.update) return;
+      this.pendingUpdate = outcome.update;
       this.showUpdateNotice(outcome.update.tag);
     } catch {
       // A failed check is a missed convenience, never an interruption.
     }
   }
 
+  /** The update the startup check found, for the notice to install. */
+  private pendingUpdate: UpdateInfo | null = null;
+
   /**
-   * "Update available", beside the gear, on every tab. Clicking it opens
-   * Settings, where the download lives. A second check adds no second one.
+   * One click from the notice: asks, downloads, and hands over to the
+   * installer, which updates in place without questions and opens the app
+   * again. Nothing to uninstall, nothing to click through.
+   */
+  private async updateNow(button: HTMLButtonElement): Promise<void> {
+    const update = this.pendingUpdate;
+    if (!update) return void this.openSettings();
+    const ok = await askYesNo(
+      `Update to ${update.name}${update.prerelease ? " (beta)" : ""} now?\n\n` +
+        "It downloads, then the app closes, updates itself and opens again in a moment. " +
+        "Your patterns, stash and projects are not touched.",
+      { title: "Update", okLabel: "Update now" },
+    );
+    if (!ok) return;
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "Downloading…";
+    try {
+      const path = await api.downloadUpdate({ assetApiUrl: update.assetApiUrl, fileName: update.assetName });
+      button.textContent = "Updating…";
+      await api.installUpdate({ path });
+    } catch (err) {
+      button.disabled = false;
+      button.textContent = label;
+      await say(`The update could not be installed.\n\n${err instanceof Error ? err.message : String(err)}`, "Update");
+    }
+  }
+
+  /**
+   * "Update available", beside the gear, on every tab. Clicking it updates,
+   * after asking. A second check adds no second one.
    */
   private showUpdateNotice(tag: string): void {
     if (this.tabBar.querySelector('[data-act="update-available"]')) return;
     const button = document.createElement("button");
     button.className = "ghost tab-update";
     button.dataset.act = "update-available";
-    button.title = `${tag} is available`;
+    button.title = `${tag} is available: click to update`;
     button.textContent = "Update available";
     this.tabBar.querySelector(".tab-gear")?.before(button);
   }

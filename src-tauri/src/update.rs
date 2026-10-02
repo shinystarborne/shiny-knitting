@@ -378,12 +378,21 @@ fn validate_install_path(path: &Path) -> CmdResult<()> {
     Ok(())
 }
 
-/// Starts the downloaded installer and exits so it can replace the app.
+/// How the installer is started for an update, the way Tauri's own updater
+/// starts it: `/P` runs it passively -- a progress bar, nothing to click, and
+/// it closes itself; `/UPDATE` skips the "reinstall or uninstall?" page and
+/// leaves the shortcuts as they are; `/R` opens the app again when it is done.
+/// The library is never touched by an install, so nothing is lost.
+pub const UPDATE_INSTALLER_ARGS: [&str; 3] = ["/P", "/UPDATE", "/R"];
+
+/// Starts the downloaded installer as an update and exits so it can replace
+/// the app; the installer opens it again afterwards.
 #[tauri::command]
 pub fn install_update(app: tauri::AppHandle, path: String) -> CmdResult<()> {
     let path = PathBuf::from(path);
     validate_install_path(&path)?;
     std::process::Command::new(&path)
+        .args(UPDATE_INSTALLER_ARGS)
         .spawn()
         .map_err(|e| AppError::Message(format!("could not start the installer: {e}")))?;
     app.exit(0);
@@ -417,6 +426,14 @@ mod tests {
 
     fn setup_asset() -> Value {
         asset("ShinyKnitting-setup.exe", 1_000_000)
+    }
+
+    #[test]
+    fn an_update_installs_without_questions_and_reopens_the_app() {
+        for flag in ["/P", "/UPDATE", "/R"] {
+            assert!(UPDATE_INSTALLER_ARGS.contains(&flag), "{flag} is missing");
+        }
+        assert!(!UPDATE_INSTALLER_ARGS.contains(&"/S"), "passive, not silent: the progress shows");
     }
 
     #[test]

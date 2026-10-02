@@ -366,7 +366,8 @@ export class SettingsDialog {
     const button = document.createElement("button");
     button.className = "ghost";
     button.dataset.act = "download-update";
-    button.textContent = "Download and install";
+    button.textContent = "Update now";
+    button.title = "Downloads it, then the app closes, updates itself and opens again. Your library is not touched.";
     return button;
   }
 
