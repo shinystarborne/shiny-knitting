@@ -7,7 +7,7 @@ use crate::models::{
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
     Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
-    tidy_status, BoardPicture, InspirationBoard,
+    tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES,
 };
 
 #[cfg(test)]
@@ -440,6 +440,18 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !status_reset {
         conn.execute("UPDATE patterns SET status = '' WHERE status = 'want-to-knit'", [])?;
         set_setting(conn, "patterns_no_default_status", &true)?;
+    }
+    // A pattern with a project on the needles is in progress; ones started
+    // before that was automatic catch up, once.
+    let in_progress: bool = get_setting(conn, "patterns_in_progress_from_projects")?;
+    if !in_progress {
+        conn.execute(
+            "UPDATE patterns SET status = 'in-progress'
+             WHERE status IN ('', 'want-to-knit')
+               AND id IN (SELECT pattern_id FROM projects WHERE status = 'active' AND pattern_id IS NOT NULL)",
+            [],
+        )?;
+        set_setting(conn, "patterns_in_progress_from_projects", &true)?;
     }
 
     // The line is now off by default: most patterns are read rather than
@@ -1735,7 +1747,7 @@ const TOOL_SELECT: &str = "SELECT t.*, pr.id AS active_project_id, COALESCE(pr.n
      LEFT JOIN projects pr ON pr.id = (
          SELECT pt.project_id FROM project_tools pt
          JOIN projects p2 ON p2.id = pt.project_id
-         WHERE pt.tool_id = t.id AND p2.status = 'active'
+         WHERE pt.tool_id = t.id AND p2.status IN ('active', 'paused')
          LIMIT 1)";
 
 fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
@@ -1857,17 +1869,17 @@ fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> App
             .optional()?;
         match status.as_deref() {
             None => return Err(AppError::Message("That project is no longer there.".to_string())),
-            Some("active") => {}
+            Some(s) if is_live(s) => {}
             Some(_) => {
                 return Err(AppError::Message(
-                    "That project is finished, so nothing more can go on it.".to_string(),
+                    "That project is finished or frogged, so nothing more can go on it.".to_string(),
                 ))
             }
         }
     }
     conn.execute(
         "DELETE FROM project_tools WHERE tool_id = ?1 AND project_id <> COALESCE(?2, '')
-         AND project_id IN (SELECT id FROM projects WHERE status = 'active')",
+         AND project_id IN (SELECT id FROM projects WHERE status IN ('active', 'paused'))",
         params![tool_id, project_id],
     )?;
     if let Some(p) = project_id {
@@ -1942,7 +1954,7 @@ fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
 /// Every project: active ones first, the latest started first within each.
 pub fn list_projects(conn: &Connection) -> AppResult<Vec<Project>> {
     let mut stmt = conn.prepare(&format!(
-        "{PROJECT_SELECT} ORDER BY (pr.status = 'active') DESC, pr.started_at DESC, pr.created_at DESC"
+        "{PROJECT_SELECT} ORDER BY (pr.status = 'active') DESC, (pr.status = 'paused') DESC, pr.started_at DESC, pr.created_at DESC"
     ))?;
     let rows: Vec<Project> = stmt.query_map([], row_to_project)?.collect::<Result<_, _>>()?;
     rows.into_iter().map(|p| with_links(conn, p)).collect()
@@ -1996,8 +2008,18 @@ pub fn insert_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
         params![id, name, input.pattern_id, input.started_at.unwrap_or(now), input.notes, now],
     )?;
     sync_links(&tx, id, input)?;
+    pattern_in_progress(&tx, input.pattern_id.as_deref())?;
     tx.commit()?;
     get_project(conn, id)
+}
+
+/// A pattern being knitted is in progress: starting a project from it, or
+/// picking it for one that is active, says so.
+fn pattern_in_progress(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
+    if let Some(p) = pattern_id {
+        conn.execute("UPDATE patterns SET status = 'in-progress' WHERE id = ?1", params![p])?;
+    }
+    Ok(())
 }
 
 /// Saves a project's details. While it is active its tools and yarns are
@@ -2008,8 +2030,8 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
     check_pattern(conn, input.pattern_id.as_deref())?;
     let name = project_name(conn, input)?;
     let tx = conn.unchecked_transaction()?;
-    // A finished project's end date can be corrected; an active one has none.
-    let finished_at = if current.status == "finished" {
+    // A finished or frogged project's end date can be corrected; a live one has none.
+    let finished_at = if !is_live(&current.status) {
         input.finished_at.or(current.finished_at)
     } else {
         None
@@ -2018,8 +2040,11 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
         "UPDATE projects SET name = ?2, pattern_id = ?3, started_at = ?4, notes = ?5, finished_at = ?6 WHERE id = ?1",
         params![id, name, input.pattern_id, input.started_at.unwrap_or(current.started_at), input.notes, finished_at],
     )?;
-    if current.status == "active" {
+    if is_live(&current.status) {
         sync_links(&tx, id, input)?;
+    }
+    if current.status == "active" && input.pattern_id != current.pattern_id {
+        pattern_in_progress(&tx, input.pattern_id.as_deref())?;
     }
     tx.commit()?;
     get_project(conn, id)
@@ -2100,8 +2125,8 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
 /// record of what it was made with.
 pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppResult<Project> {
     let project = get_project(conn, id)?;
-    if project.status != "active" {
-        return Err(AppError::Message("That project is already finished.".to_string()));
+    if !is_live(&project.status) {
+        return Err(AppError::Message("That project is already finished or frogged.".to_string()));
     }
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
@@ -2163,6 +2188,61 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
 
 /// Removes a project. Its tools and yarns are freed with it -- the links go,
 /// the needles and yarn stay.
+/// Moves a project between active, paused and frogged.
+///
+/// Pausing keeps its needles and yarn: the knitting is still on them.
+/// Frogging releases them, as finishing does, and its yarn is simply back in
+/// the stash. A frogged project can be started again: what it had comes back
+/// to it, except a needle that has since gone onto another project. Finishing
+/// is its own step, with the leftovers (`finish_project`).
+pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResult<Project> {
+    if !PROJECT_STATUSES.contains(&status) {
+        return Err(AppError::Message(format!("A project cannot be “{status}”.")));
+    }
+    let project = get_project(conn, id)?;
+    if project.status == status {
+        return Ok(project);
+    }
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    match (project.status.as_str(), status) {
+        (from, "active" | "paused") if is_live(from) => {
+            tx.execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
+        }
+        (from, "frogged") if is_live(from) => {
+            tx.execute("UPDATE projects SET status = 'frogged', finished_at = ?2 WHERE id = ?1", params![id, now])?;
+            tx.execute("UPDATE project_tools SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL", params![id, now])?;
+            tx.execute("UPDATE project_yarns SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL", params![id, now])?;
+        }
+        ("frogged", "active" | "paused") => {
+            // Its needles come back unless another project has one now.
+            tx.execute(
+                "DELETE FROM project_tools WHERE project_id = ?1 AND tool_id IN (
+                     SELECT pt.tool_id FROM project_tools pt JOIN projects p ON p.id = pt.project_id
+                     WHERE pt.project_id <> ?1 AND p.status IN ('active', 'paused'))",
+                params![id],
+            )?;
+            tx.execute("UPDATE project_tools SET released_at = NULL WHERE project_id = ?1", params![id])?;
+            tx.execute("UPDATE project_yarns SET released_at = NULL WHERE project_id = ?1", params![id])?;
+            tx.execute("UPDATE projects SET status = ?2, finished_at = NULL WHERE id = ?1", params![id, status])?;
+            if status == "active" {
+                pattern_in_progress(&tx, project.pattern_id.as_deref())?;
+            }
+        }
+        ("finished", _) => {
+            return Err(AppError::Message("A finished project stays finished.".to_string()));
+        }
+        (_, "finished") => {
+            return Err(AppError::Message("Finishing a project asks about its leftovers: use Finish.".to_string()));
+        }
+        (from, to) => {
+            return Err(AppError::Message(format!("A project cannot go from {from} to {to}.")));
+        }
+    }
+    tx.commit()?;
+    get_project(conn, id)
+}
+
 pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     if changed == 0 {
@@ -2932,7 +3012,7 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
     yarn.projects = conn
         .prepare(
             "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
-             WHERE py.yarn_id = ?1 AND pr.status = 'active' ORDER BY pr.name",
+             WHERE py.yarn_id = ?1 AND pr.status IN ('active', 'paused') ORDER BY pr.name",
         )?
         .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;

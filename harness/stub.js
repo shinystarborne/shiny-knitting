@@ -420,7 +420,7 @@ function cleanTool(input) {
 /** A stored tool as the backend returns it: the active project it is on joined in. */
 function toolOut(t) {
   const link = store.projectTools.find(
-    (l) => l.toolId === t.id && store.projects.find((pr) => pr.id === l.projectId)?.status === "active",
+    (l) => l.toolId === t.id && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status),
   );
   const pr = link ? store.projects.find((x) => x.id === link.projectId) : null;
   const { projectId: _ignored, ...rest } = t;
@@ -463,14 +463,24 @@ function titleKey(title) {
   return words.join(" ");
 }
 
+/** Active or paused: its needles and yarn are in use. */
+function isLive(status) {
+  return status === "active" || status === "paused";
+}
+
+function inProgress(patternId) {
+  const p = patternId && store.patterns.find((x) => x.id === patternId);
+  if (p) p.status = "in-progress";
+}
+
 function placeTool(toolId, projectId) {
   if (projectId) {
     const pr = store.projects.find((x) => x.id === projectId);
     if (!pr) throw new Error("That project is no longer there.");
-    if (pr.status !== "active") throw new Error("That project is finished, so nothing more can go on it.");
+    if (!isLive(pr.status)) throw new Error("That project is finished or frogged, so nothing more can go on it.");
   }
   store.projectTools = store.projectTools.filter(
-    (l) => !(l.toolId === toolId && l.projectId !== projectId && store.projects.find((pr) => pr.id === l.projectId)?.status === "active"),
+    (l) => !(l.toolId === toolId && l.projectId !== projectId && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status)),
   );
   if (projectId && !store.projectTools.some((l) => l.toolId === toolId && l.projectId === projectId)) {
     store.projectTools.push({ projectId, toolId, addedAt: Date.now(), releasedAt: null });
@@ -605,7 +615,7 @@ function withYarnTotals(yarn) {
       store.projectYarns
         .filter((e) => e.yarnId === yarn.id)
         .map((e) => store.projects.find((pr) => pr.id === e.projectId))
-        .filter((pr) => pr && pr.status === "active")
+        .filter((pr) => pr && isLive(pr.status))
         .map((pr) => pr.name),
     ),
   ].sort();
@@ -1108,7 +1118,7 @@ const handlers = {
   list_projects: () =>
     store.projects
       .slice()
-      .sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1) || b.startedAt - a.startedAt)
+      .sort((a, b) => ["active", "paused"].indexOf(b.status) - ["active", "paused"].indexOf(a.status) || b.startedAt - a.startedAt)
       .map(projectOut),
   add_project: ({ input }) => {
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
@@ -1123,6 +1133,8 @@ const handlers = {
       store.projectYarns = store.projectYarns.filter((x) => x.projectId !== pr.id);
       throw e;
     }
+    // A pattern being knitted is in progress.
+    inProgress(pr.patternId);
     return projectOut(pr);
   },
   update_project: ({ id, input }) => {
@@ -1130,18 +1142,45 @@ const handlers = {
     if (!pr) throw new Error("That project is no longer there.");
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
     pr.name = projectName(input);
+    if (pr.status === "active" && (input.patternId || null) !== pr.patternId) inProgress(input.patternId);
     pr.patternId = input.patternId || null;
     pr.startedAt = input.startedAt ?? pr.startedAt;
     pr.notes = input.notes || "";
     // A finished project's end can be corrected; an active one has none.
-    if (pr.status === "finished" && input.finishedAt != null) pr.finishedAt = input.finishedAt;
-    if (pr.status === "active") syncLinks(id, input);
+    if (!isLive(pr.status) && input.finishedAt != null) pr.finishedAt = input.finishedAt;
+    if (isLive(pr.status)) syncLinks(id, input);
+    return projectOut(pr);
+  },
+  // As db::set_project_status.
+  set_project_status: ({ id, status }) => {
+    const pr = store.projects.find((x) => x.id === id);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (!["active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
+    if (pr.status === status) return projectOut(pr);
+    const now = Date.now();
+    if (pr.status === "finished") throw new Error("A finished project stays finished.");
+    if (status === "finished") throw new Error("Finishing a project asks about its leftovers: use Finish.");
+    if (isLive(pr.status) && isLive(status)) pr.status = status;
+    else if (isLive(pr.status) && status === "frogged") {
+      pr.status = "frogged";
+      pr.finishedAt = now;
+      for (const l of store.projectTools) if (l.projectId === id && !l.releasedAt) l.releasedAt = now;
+      for (const e of store.projectYarns) if (e.projectId === id && !e.releasedAt) e.releasedAt = now;
+    } else if (pr.status === "frogged") {
+      const busy = (toolId) => store.projectTools.some((l) => l.toolId === toolId && l.projectId !== id && isLive(store.projects.find((x) => x.id === l.projectId)?.status));
+      store.projectTools = store.projectTools.filter((l) => l.projectId !== id || !busy(l.toolId));
+      for (const l of store.projectTools) if (l.projectId === id) l.releasedAt = null;
+      for (const e of store.projectYarns) if (e.projectId === id) e.releasedAt = null;
+      pr.status = status;
+      pr.finishedAt = null;
+      if (status === "active") inProgress(pr.patternId);
+    }
     return projectOut(pr);
   },
   finish_project: ({ id, input }) => {
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("That project is no longer there.");
-    if (pr.status !== "active") throw new Error("That project is already finished.");
+    if (!isLive(pr.status)) throw new Error("That project is already finished or frogged.");
     const now = Date.now();
     for (const left of input.leftovers || []) {
       if (left.grams == null) continue;

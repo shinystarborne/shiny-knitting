@@ -1,4 +1,4 @@
-import { api, STATUSES, type Pattern, type Project, type ProjectInput, type Tool } from "../api";
+import { api, isLive, projectStatusLabel, STATUSES, type Pattern, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { Board } from "./board";
@@ -112,7 +112,8 @@ export class ProjectPage {
   private renderSide(): void {
     const p = this.project;
     const side = this.root.querySelector<HTMLElement>(".project-side")!;
-    const finished = p.status === "finished";
+    // Finished or frogged: what it used is a record now.
+    const finished = !isLive(p.status);
     const tools = p.toolIds.map((id) => this.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t);
     side.innerHTML = `
       <button class="ghost back" data-act="back">← Projects</button>
@@ -126,7 +127,16 @@ export class ProjectPage {
       </div>
 
       <input class="project-title" data-f="name" value="${esc(p.name)}" aria-label="Project name" />
-      <span class="pill ${finished ? "project-finished" : "project-active"}">${finished ? "Finished" : "Active"}</span>
+      ${
+        p.status === "finished"
+          ? `<span class="pill project-finished">Finished</span>`
+          : `<label class="field project-status"><span>Status</span>
+              <select data-f="status" title="Paused keeps its needles and yarn; frogged frees them">
+                ${(["active", "paused", "frogged"] as ProjectStatus[])
+                  .map((s) => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s === "active" && p.status === "frogged" ? "Active (start again)" : projectStatusLabel(s)}</option>`)
+                  .join("")}
+              </select></label>`
+      }
 
       <label class="field">
         <span>Pattern</span>
@@ -139,7 +149,7 @@ export class ProjectPage {
 
       <div class="project-side-dates">
         <label class="field"><span>Started</span><input type="date" data-f="started" value="${toDateInput(p.startedAt)}" /></label>
-        <label class="field"><span>Finished</span>${
+        <label class="field"><span>${p.status === "frogged" ? "Frogged" : "Finished"}</span>${
           finished
             ? `<input type="date" data-f="finished" value="${toDateInput(p.finishedAt ?? Date.now())}" />`
             : `<button class="ghost" data-act="finish" title="Release the needles and record the leftover yarn">Finish…</button>`
@@ -262,7 +272,7 @@ export class ProjectPage {
       await this.paintCover();
     }
     if (act === "remove") {
-      const what = this.project.status === "active" ? " Its needles and yarn go back to free; they are not removed." : "";
+      const what = isLive(this.project.status) ? " Its needles and yarn go back to free; they are not removed." : "";
       if (!(await askYesNo(`Remove the project “${this.project.name}” and its board?${what} This cannot be undone.`, { title: "Remove project", okLabel: "Remove", danger: true }))) return;
       try {
         await api.deleteProject(this.projectId);
@@ -277,6 +287,7 @@ export class ProjectPage {
   private async onChange(e: Event): Promise<void> {
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
+    if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));
     if (this.typingTimer !== null) {
       clearTimeout(this.typingTimer);
       this.typingTimer = null;
@@ -284,6 +295,26 @@ export class ProjectPage {
     if (!(await this.saveDetails())) return;
     // The pattern decides the Open link; the rest is already as typed.
     if (f === "pattern" || f === "name") this.renderSide();
+  }
+
+  /**
+   * Active, paused or frogged. Frogging frees the needles and yarn, so it
+   * asks first; starting a frogged one again takes back what is still free.
+   */
+  private async changeStatus(status: ProjectStatus): Promise<void> {
+    if (
+      status === "frogged" &&
+      !(await askYesNo(`Frog “${this.project.name}”? Its needles go back to free and its yarn back to the stash; they stay listed on it as a record.`, { title: "Frog project", okLabel: "Frog it" }))
+    ) {
+      this.renderSide();
+      return;
+    }
+    try {
+      this.project = await api.setProjectStatus(this.projectId, status);
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Project");
+    }
+    await this.refresh();
   }
 
   /** Saves the details as they stand on the page; false if that failed. */

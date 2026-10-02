@@ -553,13 +553,32 @@ export interface ProjectYarn {
   leftoverGrams: number | null;
 }
 
+/** Where a project is. Mirrors `models.rs::PROJECT_STATUSES`. */
+export type ProjectStatus = "active" | "paused" | "finished" | "frogged";
+
+export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "finished", label: "Finished" },
+  { value: "frogged", label: "Frogged" },
+];
+
+/** Active or paused: its needles and yarn are in use. */
+export function isLive(status: string): boolean {
+  return status === "active" || status === "paused";
+}
+
+export function projectStatusLabel(status: string): string {
+  return PROJECT_STATUSES.find((s) => s.value === status)?.label ?? status;
+}
+
 /** A piece of knitting, and what it is made with. Mirrors `models.rs::Project`. */
 export interface Project {
   id: string;
   name: string;
   patternId: string | null;
   patternTitle: string;
-  status: "active" | "finished";
+  status: ProjectStatus;
   startedAt: number;
   finishedAt: number | null;
   notes: string;
@@ -814,6 +833,8 @@ export const api = {
   finishProject: (id: string, leftovers: YarnLeftover[], finishedAt: number | null = null) =>
     invoke<Project>("finish_project", { id, input: { finishedAt, leftovers } }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
+  /** Active, paused or frogged; finishing goes through finishProject. */
+  setProjectStatus: (id: string, status: ProjectStatus) => invoke<Project>("set_project_status", { id, status }),
   setProjectCover: (projectId: string, bytes: number[]) => invoke<void>("set_project_cover", { projectId, bytes }),
   /** Raw binary, as `getCover` returns it. */
   getProjectCover: (projectId: string) => invoke<ArrayBuffer | ArrayBufferView>("get_project_cover", { projectId }),

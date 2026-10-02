@@ -14,6 +14,7 @@ import { coverUrl, ensureCover, forgetCover } from "../covers";
 import { MetadataScanner, undoPattern } from "../ai/scan";
 import { describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
 import { changeCover } from "./cover-dialog";
+import { editTags } from "./tags-dialog";
 import { sortOutDuplicates } from "./duplicates";
 import { paintLazily } from "./lazy";
 
@@ -187,6 +188,8 @@ export class LibraryView {
         }
       } else if (act === "want") {
         await this.toggleWant(btn.dataset.id!);
+      } else if (act === "more") {
+        this.openMenu(btn as HTMLButtonElement);
       } else if (act === "fill-covers") {
         await this.fillMissingCovers(btn as HTMLButtonElement);
       } else if (act === "cover") {
@@ -268,6 +271,132 @@ export class LibraryView {
     const url = fresh?.coverPath ? await coverUrl(patternId) : null;
     host.style.backgroundImage = url ? `url("${url}")` : "";
     cover.classList.toggle("has-cover", !!url);
+  }
+
+  // ---------- the card's ⋯ menu ----------
+
+  private menu: HTMLElement | null = null;
+
+  /**
+   * The ⋯ menu: the pattern's status (none, want to knit, in progress,
+   * finished, abandoned), its tags, its details, its cover, and starting a
+   * project, all without opening it.
+   */
+  private openMenu(button: HTMLButtonElement): void {
+    const id = button.dataset.id!;
+    const wasOpen = this.menu?.dataset.id === id;
+    this.closeMenu();
+    if (wasOpen) return;
+    const pattern = this.patterns.find((p) => p.id === id);
+    if (!pattern) return;
+    const menu = document.createElement("div");
+    menu.className = "card-menu";
+    menu.dataset.id = id;
+    menu.setAttribute("role", "menu");
+    const statuses = [{ value: "", label: "No status" }, ...STATUSES];
+    menu.innerHTML = `
+      <p class="card-menu-head">Status</p>
+      ${statuses
+        .map(
+          (st) => `<button role="menuitemradio" aria-checked="${pattern.status === st.value}" data-status="${st.value}"
+            class="${pattern.status === st.value ? "on" : ""}"><span class="tick">${pattern.status === st.value ? "✓" : ""}</span>${escapeHtml(st.label)}</button>`,
+        )
+        .join("")}
+      <hr />
+      <button role="menuitem" data-menu="tags"><span class="tick"></span>Tags…</button>
+      <button role="menuitem" data-menu="details"><span class="tick"></span>Details…</button>
+      <button role="menuitem" data-menu="cover"><span class="tick"></span>Cover…</button>
+      <button role="menuitem" data-menu="project"><span class="tick"></span>Start a project…</button>`;
+    document.body.appendChild(menu);
+    // Under the button, kept on screen.
+    const at = button.getBoundingClientRect();
+    const box = menu.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - box.width - 8, Math.max(8, at.right - box.width));
+    const below = at.bottom + 4 + box.height <= window.innerHeight - 8;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${below ? at.bottom + 4 : Math.max(8, at.top - 4 - box.height)}px`;
+    this.menu = menu;
+    menu.querySelector<HTMLElement>("button.on, button")?.focus();
+
+    menu.addEventListener("click", (e) => {
+      const item = (e.target as HTMLElement).closest<HTMLElement>("button");
+      if (!item) return;
+      this.closeMenu();
+      if (item.dataset.status !== undefined) void this.setStatus(id, item.dataset.status);
+      else void this.menuAction(id, item.dataset.menu!);
+    });
+    menu.addEventListener("keydown", (e) => {
+      const items = [...menu.querySelectorAll<HTMLElement>("button")];
+      const i = items.indexOf(document.activeElement as HTMLElement);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+      }
+    });
+    const away = (e: Event) => {
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        button.focus();
+      } else if (menu.contains(e.target as Node) || button.contains(e.target as Node)) {
+        return;
+      }
+      this.closeMenu();
+    };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", away, true);
+    this.results.addEventListener("scroll", away, { passive: true, once: true });
+    this.closeMenuListeners = () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", away, true);
+      this.results.removeEventListener("scroll", away);
+    };
+  }
+
+  private closeMenuListeners: (() => void) | null = null;
+
+  private closeMenu(): void {
+    this.closeMenuListeners?.();
+    this.closeMenuListeners = null;
+    this.menu?.remove();
+    this.menu = null;
+  }
+
+  private async setStatus(patternId: string, status: string): Promise<void> {
+    try {
+      await api.setPatternStatus(patternId, status);
+    } catch (err) {
+      return this.flash(err instanceof Error ? err.message : String(err), true);
+    }
+    await this.refreshCard(patternId);
+  }
+
+  private async menuAction(patternId: string, action: string): Promise<void> {
+    const pattern = this.patterns.find((p) => p.id === patternId);
+    if (!pattern) return;
+    if (action === "tags") {
+      const tags = await editTags(pattern.title, pattern.tags, this.facets.tags);
+      if (!tags) return;
+      try {
+        await api.updatePattern({ ...pattern, tags });
+      } catch (err) {
+        return this.flash(err instanceof Error ? err.message : String(err), true);
+      }
+      if (tags.some((t) => !this.facets.tags.includes(t))) this.facets.tags = [...new Set([...this.facets.tags, ...tags])].sort();
+      await this.refreshCard(patternId);
+    } else if (action === "details") {
+      this.root.dispatchEvent(new CustomEvent("edit-pattern-here", { bubbles: true, detail: pattern }));
+    } else if (action === "cover") {
+      if (await changeCover(pattern)) await this.afterCoverChange(patternId);
+    } else if (action === "project") {
+      this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId } }));
+    }
+  }
+
+  /** A pattern changed elsewhere (its details, a project started from it): its card again. */
+  async refreshPattern(patternId: string): Promise<void> {
+    await this.refreshCard(patternId);
   }
 
   /**
@@ -579,6 +708,8 @@ export class LibraryView {
           ${p.tags.length ? `<div class="card-tags">${p.tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
           <div class="card-tools-row">
             ${wantButton(p)}
+            <button class="card-more" data-act="more" data-id="${p.id}" aria-label="More"
+              title="Status, tags, details, cover, start a project">⋯</button>
             <button class="card-remove" data-delete="${p.id}"
               title="Remove this pattern from your library">Remove</button>
           </div>

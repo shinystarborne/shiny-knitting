@@ -1,5 +1,6 @@
 import {
   api,
+  isLive,
   CABLE_SIZES,
   TOOL_KINDS,
   type Project,
@@ -77,7 +78,7 @@ export class ToolForm {
       api.listProjects().catch(() => [] as Project[]),
       api.listTools().catch(() => [] as Tool[]),
     ]);
-    this.projects = projects.filter((p) => p.status === "active");
+    this.projects = projects.filter((p) => isLive(p.status));
     this.brands = knownBrands(tools);
     this.materials = knownMaterials(tools);
 

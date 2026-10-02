@@ -120,6 +120,12 @@ class App {
     this.screen.addEventListener("edit-pattern", (e) => {
       this.openForm((e as CustomEvent<Pattern>).detail);
     });
+    // The details, from a card's ⋯ menu: saved, the library stays where it was.
+    this.screen.addEventListener("edit-pattern-here", (e) => {
+      const pattern = (e as CustomEvent<Pattern>).detail;
+      const form = new PatternForm(this.freshModal(), pattern, (saved) => void this.activeLibrary?.refreshPattern(saved.id));
+      form.open();
+    });
     this.screen.addEventListener("add-yarn", (e) => {
       // A yarn in the detail is one to add another colour of.
       this.openYarnForm(null, (e as CustomEvent<Yarn | undefined>).detail ?? null);
@@ -384,6 +390,8 @@ class App {
         // ready for its board; one started from a pattern stays with it.
         if (!project && saved && this.currentTab === "projects" && !this.activeProjectPage) void this.showProjectPage(saved.id);
         else this.afterProjectChange();
+        // A project started from a card puts that pattern in progress; its card says so.
+        if (saved?.patternId) void this.activeLibrary?.refreshPattern(saved.patternId);
       },
       onFinish: (saved) => void this.openFinish(saved),
     });

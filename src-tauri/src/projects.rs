@@ -41,6 +41,12 @@ pub fn update_project(state: State<'_, AppState>, id: String, input: ProjectInpu
     db::update_project(&state.db(), &id, &tidy(input))
 }
 
+/// Active, paused or frogged; finishing is `finish_project`.
+#[tauri::command]
+pub fn set_project_status(state: State<'_, AppState>, id: String, status: String) -> CmdResult<Project> {
+    db::set_project_status(&state.db(), &id, &status)
+}
+
 #[tauri::command]
 pub fn finish_project(state: State<'_, AppState>, id: String, input: FinishInput) -> CmdResult<Project> {
     db::finish_project(&state.db(), &id, &input)

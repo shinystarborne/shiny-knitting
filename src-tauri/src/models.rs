@@ -51,6 +51,14 @@ pub type AppResult<T> = Result<T, AppError>;
 pub const STATUSES: &[&str] = &["want-to-knit", "in-progress", "finished", "abandoned"];
 
 /// A status as stored: a known one, or none.
+/// Where a project is: being knitted, put aside for now, done, or unravelled.
+pub const PROJECT_STATUSES: &[&str] = &["active", "paused", "finished", "frogged"];
+
+/// A project that still has its needles and yarn: being knitted, or paused.
+pub fn is_live(status: &str) -> bool {
+    status == "active" || status == "paused"
+}
+
 pub fn tidy_status(status: &str) -> &str {
     if STATUSES.contains(&status) { status } else { "" }
 }
@@ -707,7 +715,8 @@ pub struct Project {
     pub pattern_id: Option<String>,
     #[serde(default)]
     pub pattern_title: String,
-    /// "active", or "finished": a finished one keeps a record of what it used.
+    /// One of PROJECT_STATUSES. Active and paused ones have their needles and
+    /// yarn in use; finished and frogged ones keep a record of what they used.
     pub status: String,
     pub started_at: i64,
     pub finished_at: Option<i64>,

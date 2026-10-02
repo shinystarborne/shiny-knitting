@@ -1,4 +1,4 @@
-import { api, STATUSES, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
+import { api, isLive, projectStatusLabel, STATUSES, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { describe } from "./tool-filter";
@@ -52,15 +52,16 @@ export class ProjectForm {
     const e = this.editing;
     this.chosenTools = new Set(e?.toolIds ?? []);
     this.chosenYarns = (e?.yarns ?? []).map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId }));
-    const finished = e?.status === "finished";
+    // A finished or frogged project shows what it used, as a record.
+    const finished = !!e && !isLive(e.status);
     const patternId = e ? e.patternId : (this.preset.patternId ?? null);
     const started = toDateInput(e?.startedAt ?? Date.now());
 
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal project-form" role="dialog" aria-modal="true">
-        <h2>${e ? (finished ? "Finished project" : "Edit project") : "Start a project"}</h2>
-        ${finished ? `<p class="hint">Finished ${escapeHtml(longDate(e!.finishedAt ?? Date.now()))}. What it used stays listed here.</p>` : ""}
+        <h2>${e ? (finished ? `${projectStatusLabel(e.status)} project` : "Edit project") : "Start a project"}</h2>
+        ${finished ? `<p class="hint">${projectStatusLabel(e!.status)} ${escapeHtml(longDate(e!.finishedAt ?? Date.now()))}. What it used stays listed here.</p>` : ""}
 
         <div class="field-row">
           <label class="field">
@@ -260,7 +261,7 @@ export class ProjectForm {
   private async remove(): Promise<void> {
     const e = this.editing;
     if (!e) return;
-    const what = e.status === "active" ? " Its needles and yarn go back to free; they are not removed." : "";
+    const what = isLive(e.status) ? " Its needles and yarn go back to free; they are not removed." : "";
     if (!(await askYesNo(`Remove the project “${e.name}”?${what} This cannot be undone.`, { title: "Remove project", okLabel: "Remove", danger: true }))) {
       return;
     }

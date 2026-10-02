@@ -2236,7 +2236,9 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 }
 .project-title:hover { border-color: var(--border); }
 .project-side .pill { align-self: flex-start; margin-top: -6px; text-transform: none; }
-.project-side-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.project-side-dates { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.project-side-dates .field { min-width: 0; }
+.project-side-dates input { width: 100%; min-width: 0; padding-left: 8px; padding-right: 4px; }
 .project-side-dates button { width: 100%; }
 .project-side textarea { min-height: 90px; resize: vertical; }
 .project-side > .link { align-self: flex-start; font-size: 12px; margin-top: -6px; }
@@ -2725,3 +2727,58 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 /* An icon button's own display must not undo `hidden`. */
 .lib-icon[hidden],
 .icon-btn[hidden] { display: none; }
+
+/* Paused and frogged projects. */
+.pill.project-paused { background: rgba(242, 201, 76, 0.12); border-color: rgba(242, 201, 76, 0.6); color: #f2d27a; }
+.pill.project-frogged { background: rgba(140, 150, 165, 0.14); border-color: #6b7280; color: #c3c8d0; }
+.project-card.paused { border-left-color: #f2c94c; }
+.project-card.frogged { border-left-color: #6b7280; }
+.project-status select { width: 100%; }
+
+/* ---------- a pattern card's ⋯ menu ---------- */
+
+.card-more {
+  padding: 0 7px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 20px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.card-more:hover,
+.card-more:focus-visible { color: var(--text); border-color: var(--border); }
+.card-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+.card-menu-head { margin: 2px 8px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+.card-menu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+}
+.card-menu button:hover,
+.card-menu button:focus-visible { background: var(--bg-input); outline: none; }
+.card-menu button.on { color: var(--accent); }
+.card-menu .tick { width: 14px; flex: none; text-align: center; }
+.card-menu hr { width: 100%; border: 0; border-top: 1px solid var(--border); margin: 5px 0; }
+
+/* The tags dialog's chips. */
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; }

@@ -1,4 +1,4 @@
-import { api, type Project, type Tool } from "../api";
+import { api, isLive, type Project, type Tool } from "../api";
 import { describe } from "../views/tool-filter";
 
 /**
@@ -40,8 +40,8 @@ export class ProjectPanel {
       // A pane that cannot read its projects still reads the pattern.
     }
     const mine = projects.filter((p) => p.patternId === this.patternId);
-    const active = mine.filter((p) => p.status === "active");
-    const finished = mine.length - active.length;
+    const active = mine.filter((p) => isLive(p.status));
+    const finished = mine.filter((p) => p.status === "finished").length;
     const before = finished ? `<p class="hint">Finished ${finished === 1 ? "once" : `${finished} times`} before.</p>` : "";
 
     if (!active.length) {

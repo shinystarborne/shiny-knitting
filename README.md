@@ -139,6 +139,13 @@ the **Want to knit** filter lists just those. Libraries from before this have
 the old automatic "Want to knit" cleared once, on the first start, so the list
 means something; In progress, Finished and Abandoned are left as they were.
 
+**⋯ on a card** sets the status without opening the pattern — No status, Want
+to knit, In progress, Finished or Abandoned, with or without a project — and
+opens **Tags…** (add with Enter or a comma, the tags you already use offered as
+you type), **Details…**, **Cover…** and **Start a project…**. A pattern goes
+**In progress** by itself when a project is started from it or an active
+project is given it; patterns that already had an active project catch up once.
+
 **Yarn weight** filters on the standard weight scale — Lace, Fingering, Sport,
 DK, Worsted, Aran, Bulky, Chunky, Super chunky, Jumbo — lightest first, with a
 count beside each. A pattern states its weight however the designer liked, so
@@ -263,6 +270,14 @@ nothing.
 
 **While knitting.** An open pattern's side pane shows its project at the top —
 what is on it, and **Needles, yarn, finish…** to change any of it.
+
+**Status.** A project is **Active**, **Paused**, **Finished** or **Frogged**, set
+on its page. Paused keeps its needles and yarn in use — the knitting is still on
+them — and they can still be changed. Frogging asks first, then frees them as
+finishing does, keeping them listed as a record, and its yarn is simply back in
+the stash. A frogged project can be started again: it gets back what it had,
+except a needle that has gone onto another project since. The Projects tab
+filters by all four.
 
 **Finishing.** **Finish project…** releases every needle, hook and cable back to
 free, and asks what is left of each yarn: weigh it and type the grams. That
@@ -547,9 +562,16 @@ missing one, which is useful for a library that predates the feature.
 
 ## Filling in details with a model
 
-**Describe** in the toolbar reads the front of each pattern and fills in what
-it can. **Describe** on a single pattern does the same for just that one and
-shows you a before/after table.
+It is **off unless you switch it on**: **Settings → Describe patterns with a
+model**. While it is off there is no robot anywhere and nothing is ever sent;
+the model's own settings appear once it is on.
+
+The **robot** in the patterns toolbar reads the front of each pattern and fills
+in what it can; the robot in an open pattern does the same for just that one and
+shows you a before/after table. A run over the library carries on while you use
+the rest of the app: its panel can be minimised to a small bar, or closed, which
+leaves a robot and the count beside the settings gear to bring it back. **Stop**
+ends it after the pattern being read. Cards update one by one as it goes.
 
 The model is configured under **Settings**, and there is no provider list: any
 model serving an OpenAI-compatible API works, which covers Ollama, LM Studio,
@@ -614,6 +636,7 @@ src/
     lazy.ts            long grids, painted a page at a time with pictures read on sight
     cover-dialog.ts    changing a pattern's cover: paste, drop, choose, read again
     duplicates.ts      finding duplicate patterns and folding them into one
+    tags-dialog.ts     editing a pattern's tags from its card
     yarn-picker.ts     choosing a project's yarn, and its lot
     yarn-weight.ts     the weight table and cheat sheet, mirroring yarn.rs
     pattern-form.ts    add/edit pattern dialog
@@ -621,6 +644,7 @@ src/
     settings.ts        updates and model settings, with the privacy notice
   ai/
     scan.ts            running a scan, and undo
+    describe-run.ts    a run over the library that keeps going in the background
     excerpt.ts         pulling a short excerpt, or page images for a scan
   reader/
     reader.ts          reading screen, layout, key bindings

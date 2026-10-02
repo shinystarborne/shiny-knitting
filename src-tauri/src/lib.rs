@@ -111,6 +111,7 @@ pub fn run() {
             projects::add_project,
             projects::update_project,
             projects::finish_project,
+            projects::set_project_status,
             projects::delete_project,
             projects::set_project_cover,
             projects::get_project_cover,

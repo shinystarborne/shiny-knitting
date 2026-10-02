@@ -2293,6 +2293,56 @@ fn board_items_keyed_by_project_move_to_the_board_id() {
 }
 
 #[test]
+fn a_project_on_the_needles_puts_its_pattern_in_progress() {
+    let conn = test_db();
+    let p = sample(&conn, "Hat", "Ann", "", &[]);
+    let pr = project(&conn, "Hat for Tom", Some(&p.id));
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().status, "in-progress");
+    // Marked otherwise by hand, it stays so while the project is edited.
+    set_pattern_status(&conn, &p.id, "want-to-knit").unwrap();
+    update_project(&conn, &pr.id, &crate::models::ProjectInput { name: "Hat for Tom".into(), pattern_id: Some(p.id.clone()), ..Default::default() }).unwrap();
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().status, "want-to-knit");
+    // Picking another pattern for it puts that one in progress.
+    let q = sample(&conn, "Mittens", "Ann", "", &[]);
+    update_project(&conn, &pr.id, &crate::models::ProjectInput { name: "Hat for Tom".into(), pattern_id: Some(q.id.clone()), ..Default::default() }).unwrap();
+    assert_eq!(get_pattern(&conn, &q.id).unwrap().status, "in-progress");
+}
+
+#[test]
+fn projects_pause_frog_and_start_again() {
+    let conn = test_db();
+    let needle = insert_tool(&conn, "n", &crate::models::ToolInput { kind: "circular".into(), size_mm: 4.0, ..Default::default() }).unwrap();
+    let input = crate::models::ProjectInput { name: "Jumper".into(), tool_ids: vec![needle.id.clone()], ..Default::default() };
+    let pr = insert_project(&conn, "pr", &input).unwrap();
+
+    let paused = set_project_status(&conn, &pr.id, "paused").unwrap();
+    assert_eq!(paused.status, "paused");
+    assert_eq!(get_tool(&conn, &needle.id).unwrap().project_id.as_deref(), Some("pr"), "paused keeps its needles");
+    update_project(&conn, &pr.id, &crate::models::ProjectInput { tool_ids: vec![], ..input.clone() }).unwrap();
+    assert!(get_project(&conn, &pr.id).unwrap().tool_ids.is_empty(), "a paused project's needles can still be changed");
+    update_project(&conn, &pr.id, &input).unwrap();
+
+    let frogged = set_project_status(&conn, &pr.id, "frogged").unwrap();
+    assert_eq!(frogged.status, "frogged");
+    assert!(frogged.finished_at.is_some());
+    assert_eq!(get_tool(&conn, &needle.id).unwrap().project_id, None, "frogging frees its needles");
+    assert_eq!(frogged.tool_ids, vec![needle.id.clone()], "…and keeps the record");
+
+    // The needle goes onto something else; starting again gets back the rest.
+    let other = insert_project(&conn, "other", &crate::models::ProjectInput { name: "Socks".into(), tool_ids: vec![needle.id.clone()], ..Default::default() }).unwrap();
+    let again = set_project_status(&conn, &pr.id, "active").unwrap();
+    assert_eq!(again.status, "active");
+    assert_eq!(again.finished_at, None);
+    assert!(again.tool_ids.is_empty(), "a needle on another project stays there");
+    assert_eq!(get_tool(&conn, &needle.id).unwrap().project_id.as_deref(), Some(other.id.as_str()));
+
+    assert!(set_project_status(&conn, &pr.id, "finished").is_err(), "finishing has its own step");
+    assert!(set_project_status(&conn, &pr.id, "sideways").is_err());
+    finish_project(&conn, &pr.id, &crate::models::FinishInput::default()).unwrap();
+    assert!(set_project_status(&conn, &pr.id, "active").is_err(), "finished stays finished");
+}
+
+#[test]
 fn titles_match_whatever_a_download_added() {
     assert_eq!(title_key("Featherweight Lace Sock"), "featherweight lace sock");
     assert_eq!(title_key("featherweight-lace-sock (1).pdf"), "featherweight lace sock");
@@ -2352,7 +2402,7 @@ fn merging_copies_keeps_what_was_made_from_them() {
 
     let merged = merge_patterns(&conn, &keep.id, &[copy.id.clone()]).unwrap();
     assert_eq!(merged.tags, vec!["socks", "lace"], "tags joined, case-blind");
-    assert_eq!(merged.status, "want-to-knit");
+    assert_eq!(merged.status, "in-progress", "the copy's project had put it in progress");
     assert_eq!(merged.designer, "Jess");
     assert_eq!(merged.notes, "Use a smaller needle");
     assert_eq!(merged.yarn_weight, "fingering");

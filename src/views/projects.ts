@@ -1,10 +1,10 @@
-import { api, type Project } from "../api";
+import { api, isLive, PROJECT_STATUSES, projectStatusLabel, type Project, type ProjectStatus } from "../api";
 import { coverUrl, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { longDate } from "./project-form";
 import { paintLazily } from "./lazy";
 
-type Status = "active" | "finished";
+type Status = ProjectStatus;
 
 /**
  * The projects screen: everything being knitted, and everything finished.
@@ -92,12 +92,12 @@ export class ProjectsView {
 
   private renderFacets(): void {
     const count = (s: Status) => this.projects.filter((p) => p.status === s).length;
-    this.root.querySelector('[data-el="status"]')!.innerHTML = (["active", "finished"] as Status[])
+    this.root.querySelector('[data-el="status"]')!.innerHTML = PROJECT_STATUSES.map((x) => x.value)
       .map(
         (s) => `
           <label class="check${count(s) ? "" : " unused"}">
             <input type="checkbox" data-filter="status" value="${s}" ${this.status.has(s) ? "checked" : ""} />
-            <span>${s === "active" ? "Active" : "Finished"}</span>
+            <span>${projectStatusLabel(s)}</span>
             <em>${count(s)}</em>
           </label>`,
       )
@@ -139,7 +139,7 @@ export class ProjectsView {
   }
 
   private cardHtml(p: Project): string {
-    const finished = p.status === "finished";
+    const finished = !isLive(p.status);
     const tools = p.toolIds.length;
     const on = [
       tools ? `${tools} ${tools === 1 ? "needle or hook" : "needles & hooks"}` : "",
@@ -148,14 +148,14 @@ export class ProjectsView {
       .filter(Boolean)
       .join(" · ");
     const dates = finished
-      ? `Finished ${longDate(p.finishedAt ?? p.startedAt)}`
+      ? `${projectStatusLabel(p.status)} ${longDate(p.finishedAt ?? p.startedAt)}`
       : `Started ${longDate(p.startedAt)}`;
     return `
-      <article class="project-card${finished ? " finished" : " active"}" data-open="${p.id}">
+      <article class="project-card ${p.status}" data-open="${p.id}">
         <div class="project-card-cover"><span>${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span></div>
         <div class="project-head">
           <h3>${escapeHtml(p.name)}</h3>
-          <span class="pill ${finished ? "project-finished" : "project-active"}">${finished ? "Finished" : "Active"}</span>
+          <span class="pill project-${p.status}">${projectStatusLabel(p.status)}</span>
         </div>
         ${
           p.patternId
