@@ -20,10 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.9](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.9)** —
+  the pattern read beside a project's board, and the pattern's row counter on
+  the project's page. The one to test.
 - **[v0.3.0-beta.8](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.8)** —
   status and tags from a card's ⋯ menu, patterns in progress from their
   projects, paused and frogged projects, and describing with a model only when
-  switched on, running in the background. The one to test.
+  switched on, running in the background. Superseded by `beta.9`.
 - **[v0.3.0-beta.7](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.7)** —
   a page and a Miro-like board per project, Inspiration boards, Want to knit by
   choice, pattern covers by paste, finding duplicate patterns, faster big
