@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.10](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.10)** —
+  updates shown by themselves, at every start and every hour, and installed in
+  place in one click. The one to test.
 - **[v0.3.0-beta.9](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.9)** —
   the pattern read beside a project's board, and the pattern's row counter on
-  the project's page. The one to test.
+  the project's page. Superseded by `beta.10`.
 - **[v0.3.0-beta.8](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.8)** —
   status and tags from a card's ⋯ menu, patterns in progress from their
   projects, paused and frogged projects, and describing with a model only when
