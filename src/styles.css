@@ -2678,3 +2678,50 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 }
 .card-undo:hover .card-undo-label,
 .card-undo:focus-visible .card-undo-label { opacity: 1; }
+
+/* ---------- describing with a model ---------- */
+
+.lib-icon { display: inline-flex; align-items: center; justify-content: center; padding: 6px 9px; }
+.reader-tools .icon-btn.busy,
+.lib-icon.busy { opacity: 0.6; }
+.ai-rights { margin-top: -4px; }
+
+/* The run's panel floats over every screen, so leaving the library does not end it. */
+.describe-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 380px;
+  max-height: 60vh;
+  z-index: 60;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+.describe-panel[hidden] { display: none; }
+.describe-panel.done { border-color: var(--ok); }
+.describe-robot { display: inline-flex; color: var(--text-dim); }
+.describe-panel .describe-win { padding: 2px 8px; font-size: 14px; line-height: 1; }
+/* Minimised: one line with the count and the bar; a click opens it again. */
+.describe-panel.minimised { width: 240px; padding: 8px 12px; gap: 6px; cursor: pointer; }
+.describe-panel.minimised .scan-note,
+.describe-panel.minimised .scan-log,
+.describe-panel.minimised button { display: none; }
+.tab-describe {
+  align-self: center;
+  margin-bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  font-variant-numeric: tabular-nums;
+}
+/* An icon button's own display must not undo `hidden`. */
+.lib-icon[hidden],
+.icon-btn[hidden] { display: none; }

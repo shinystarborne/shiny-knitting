@@ -1418,6 +1418,7 @@ const handlers = {
   get_ai_settings: () => {
     if (!store.aiSettings) {
       store.aiSettings = {
+        enabled: false,
         baseUrl: "https://gen2.zeroval.eu/v1",
         model: "Qwen3.6-27B",
         fallbackModel: "Qwen3.6-27B",
@@ -1446,6 +1447,7 @@ const handlers = {
     ],
   }),
   suggest_metadata: ({ patternId, excerpt, images }) => {
+    if (!store.aiSettings?.enabled) throw new Error("Describing with a model is switched off in Settings.");
     const p = store.patterns.find((x) => x.id === patternId);
     if (!p) throw new Error("not found");
     // Record what the frontend actually sent, so the image fallback can be

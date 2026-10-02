@@ -470,8 +470,10 @@ class App {
     const host = this.screen.querySelector<HTMLElement>(".lib-body");
     if (!host) return;
     try {
+      const ai = await api.getAiSettings().catch(() => null);
       await runBulkAdd(host, files, {
         onAdded: (p) => void this.addCoverInBackground(p),
+        describeHint: !!ai?.enabled,
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

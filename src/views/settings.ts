@@ -2,7 +2,8 @@ import { api, type AiSettingsView, type ModelInfo, type UpdateInfo, type UpdateS
 import { closestEl } from "../dom";
 
 /**
- * The app settings: updates first, then the metadata model.
+ * The app settings: updates first, then describing patterns with a model,
+ * which is off unless switched on; its settings show only once it is.
  *
  * The model form leads with the address rather than a provider choice, because
  * that is the only thing that actually varies: a model on your own machine, one
@@ -68,7 +69,18 @@ export class SettingsDialog {
         </div>
         <em class="hint block" data-el="update-result"></em>
 
-        <h3>Metadata model</h3>
+        <h3>Describe patterns with a model</h3>
+        <label class="check">
+          <input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} />
+          <span>Use a model to fill in a pattern's details (designer, difficulty, needles, yarn, tags)</span>
+        </label>
+        <p class="hint block ai-rights">
+          The model never gets the whole pattern. Only its first pages are sent, the part
+          with the designer, sizes, gauge and materials, out of respect for the designer's
+          work; the rest of the pattern stays on your computer.
+        </p>
+
+        <div data-el="ai-section" ${s.enabled ? "" : "hidden"}>
         <p class="modal-intro">
           Any model that serves an OpenAI-compatible API will work — Ollama,
           LM Studio, vLLM, llama.cpp, or a hosted service.
@@ -160,6 +172,7 @@ export class SettingsDialog {
             <span>Include patterns that already have metadata</span>
           </label>
         </details>
+        </div>
 
         <div class="modal-actions">
           <button class="ghost" data-act="close">Cancel</button>
@@ -183,6 +196,11 @@ export class SettingsDialog {
   private bind(): void {
     const baseInput = this.root.querySelector('[data-f="baseUrl"]') as HTMLInputElement;
     baseInput.addEventListener("input", () => this.updatePrivacy());
+    // The model's own settings show only while it is switched on.
+    const enabled = this.root.querySelector('[data-f="enabled"]') as HTMLInputElement;
+    enabled.addEventListener("change", () => {
+      (this.root.querySelector('[data-el="ai-section"]') as HTMLElement).hidden = !enabled.checked;
+    });
 
     this.root.addEventListener("click", (e) => {
       const btn = closestEl(e.target, "button[data-act]");
@@ -273,6 +291,7 @@ export class SettingsDialog {
       this.root.querySelector(`[data-f="${field}"]`) as HTMLInputElement;
     return {
       ...this.settings,
+      enabled: get("enabled").checked,
       baseUrl: get("baseUrl").value.trim(),
       model: get("model").value.trim(),
       reasoningEffort: get("reasoningEffort").value,

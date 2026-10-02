@@ -1,3 +1,4 @@
+import { ROBOT } from "../ai/describe-run";
 import { api, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
 import { dialogOpen, say } from "../dialogs";
@@ -279,7 +280,8 @@ export class ReaderView {
                 </div>`
               : ""
           }
-          <button data-act="describe" class="ghost" title="Read this pattern's details with your model">Describe</button>
+          <button data-act="describe" class="ghost icon-btn" hidden aria-label="Describe with your model"
+            title="Describe this pattern with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
           <button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
           </button>
@@ -395,6 +397,12 @@ export class ReaderView {
     // Attached last, so everything above is in place before the element goes
     // on screen and can receive a click.
     this.screen.appendChild(this.root);
+
+    // The robot is there only when describing with a model is switched on.
+    void api.getAiSettings().then((ai) => {
+      const robot = this.root.querySelector<HTMLElement>('[data-act="describe"]');
+      if (robot) robot.hidden = !ai.enabled;
+    }).catch(() => {});
   }
 
   /**
@@ -414,9 +422,10 @@ export class ReaderView {
       return;
     }
 
-    const label = button.textContent;
+    if (!settings.enabled) return;
     button.disabled = true;
-    button.textContent = "Reading...";
+    button.classList.add("busy");
+    button.title = "Reading…";
     try {
       const result: SuggestionResult = await scanOne(this.pattern, settings);
       if (result.failed) {
@@ -432,7 +441,8 @@ export class ReaderView {
       await say(err instanceof Error ? err.message : String(err), "Describe");
     } finally {
       button.disabled = false;
-      button.textContent = label;
+      button.classList.remove("busy");
+      button.title = "Describe this pattern with your model: designer, difficulty, needles, yarn and tags";
     }
   }
 

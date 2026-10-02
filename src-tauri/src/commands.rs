@@ -621,10 +621,22 @@ const AI_SETTINGS_KEY: &str = "ai";
 /// The key never leaves the backend in plaintext: only a boolean is handed to
 /// the frontend, and only the provider calls get the real value.
 fn unlocked_ai_settings(state: &AppState) -> CmdResult<AiSettings> {
-    let mut settings: AiSettings = db::get_setting(&state.db(), AI_SETTINGS_KEY)?;
+    let mut settings = stored_ai_settings(&state.db())?;
     if !settings.api_key.is_empty() && crate::ai::secret::is_encrypted(&settings.api_key) {
         settings.api_key = crate::ai::secret::decrypt(&settings.api_key)
             .map_err(AppError::Message)?;
+    }
+    Ok(settings)
+}
+
+/// The AI settings as stored. Settings saved before the on/off switch existed
+/// were saved by someone setting the model up, so those count as on; anyone
+/// who never opened them starts with it off.
+pub(crate) fn stored_ai_settings(conn: &rusqlite::Connection) -> CmdResult<AiSettings> {
+    let raw: serde_json::Value = db::get_setting(conn, AI_SETTINGS_KEY)?;
+    let mut settings: AiSettings = serde_json::from_value(raw.clone()).unwrap_or_default();
+    if raw.is_object() && raw.get("enabled").is_none() {
+        settings.enabled = true;
     }
     Ok(settings)
 }
@@ -633,13 +645,15 @@ fn unlocked_ai_settings(state: &AppState) -> CmdResult<AiSettings> {
 /// plaintext key never crosses into the webview.
 #[tauri::command]
 pub fn get_ai_settings(state: State<'_, AppState>) -> CmdResult<AiSettingsView> {
-    let settings: AiSettings = db::get_setting(&state.db(), AI_SETTINGS_KEY)?;
+    let settings = stored_ai_settings(&state.db())?;
     Ok(AiSettingsView::from_settings(settings))
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsView {
+    #[serde(default)]
+    pub enabled: bool,
     pub base_url: String,
     pub model: String,
     pub fallback_model: String,
@@ -658,6 +672,7 @@ impl AiSettingsView {
     fn from_settings(s: AiSettings) -> Self {
         Self {
             is_local: crate::ai::is_local_model_server(&s),
+            enabled: s.enabled,
             base_url: s.base_url,
             model: s.model,
             fallback_model: s.fallback_model,
@@ -674,6 +689,7 @@ impl AiSettingsView {
     /// storage; it is never sent to or from the webview.
     fn to_settings(&self, stored: &AiSettings) -> AiSettings {
         AiSettings {
+            enabled: self.enabled,
             base_url: self.base_url.clone(),
             model: self.model.clone(),
             fallback_model: self.fallback_model.clone(),
@@ -695,7 +711,7 @@ pub fn save_ai_settings(
     api_key: Option<String>,
 ) -> CmdResult<AiSettingsView> {
     let conn = state.db();
-    let mut stored: AiSettings = db::get_setting(&conn, AI_SETTINGS_KEY)?;
+    let mut stored = stored_ai_settings(&conn)?;
 
     let mut next = settings.to_settings(&stored);
 
@@ -760,6 +776,10 @@ pub async fn suggest_metadata(
     images: Option<Vec<String>>,
 ) -> CmdResult<SuggestionResult> {
     let settings = unlocked_ai_settings(&state)?;
+    // Switched off means nothing is sent, whatever asks.
+    if !settings.enabled {
+        return Err(AppError::Message("Describing with a model is switched off in Settings.".to_string()));
+    }
     let before = db::get_pattern(&state.db(), &pattern_id)?;
 
     if settings.base_url.trim().is_empty() {
@@ -988,6 +1008,18 @@ pub fn clear_ai_history(state: State<'_, AppState>, pattern_id: String) -> CmdRe
 mod tests {
     use super::*;
     use crate::models::{CounterInput, PatternInput, Suggestion};
+
+    #[test]
+    fn the_model_switch_is_off_unless_the_model_was_set_up_before_it() {
+        let conn = crate::db::open_test_db();
+        assert!(!stored_ai_settings(&conn).unwrap().enabled, "never set up: off");
+        db::set_setting(&conn, AI_SETTINGS_KEY, &serde_json::json!({ "baseUrl": "http://localhost:1234/v1" })).unwrap();
+        let saved = stored_ai_settings(&conn).unwrap();
+        assert!(saved.enabled, "set up before the switch existed: on");
+        assert_eq!(saved.base_url, "http://localhost:1234/v1");
+        db::set_setting(&conn, AI_SETTINGS_KEY, &AiSettings { enabled: false, ..saved }).unwrap();
+        assert!(!stored_ai_settings(&conn).unwrap().enabled, "switched off: stays off");
+    }
 
     #[test]
     fn count_keys_default_to_j_and_k_and_must_differ() {

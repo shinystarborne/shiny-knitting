@@ -11,7 +11,8 @@ import {
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { coverUrl, ensureCover, forgetCover } from "../covers";
-import { MetadataScanner, summarise, undoPattern, type ScanOutcome } from "../ai/scan";
+import { MetadataScanner, undoPattern } from "../ai/scan";
+import { describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
 import { changeCover } from "./cover-dialog";
 import { sortOutDuplicates } from "./duplicates";
 import { paintLazily } from "./lazy";
@@ -41,9 +42,6 @@ export class LibraryView {
   private searchBox!: HTMLInputElement;
   private settings!: AiSettingsView;
 
-  /** Live state for a scan in progress, so it can be stopped. */
-  private scanning = false;
-  private stopRequested = false;
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -65,7 +63,8 @@ export class LibraryView {
           </select>
           <button data-act="fill-covers" class="ghost" title="Add missing covers">Covers</button>
           <button data-act="duplicates" class="ghost" title="Find patterns that are in the library more than once">Duplicates…</button>
-          <button data-act="scan" class="ghost" title="Describe patterns using your model">Describe</button>
+          <button data-act="scan" class="ghost lib-icon" hidden aria-label="Describe patterns with your model"
+            title="Describe patterns with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
           <button data-act="add" class="primary">+ Add pattern</button>
           <button data-act="add-folder" class="ghost" title="Add every PDF and EPUB in a folder">Add folder…</button>
         </div>
@@ -153,6 +152,15 @@ export class LibraryView {
     this.root.addEventListener("click", (e) => this.onClick(e));
 
     this.settings = await api.getAiSettings();
+    // The robot is there only when describing with a model is switched on.
+    this.root.querySelector<HTMLElement>('[data-act="scan"]')!.hidden = !this.settings.enabled;
+    // A run in the background changes patterns one at a time; each card is
+    // brought up to date where it is, without repainting the grid.
+    const onDescribed = (e: Event) => {
+      if (!this.root.isConnected) return window.removeEventListener("pattern-described", onDescribed);
+      void this.refreshCard((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener("pattern-described", onDescribed);
     this.facets = await api.getFacets();
     this.renderFacets();
     await this.reload();
@@ -181,8 +189,6 @@ export class LibraryView {
         await this.toggleWant(btn.dataset.id!);
       } else if (act === "fill-covers") {
         await this.fillMissingCovers(btn as HTMLButtonElement);
-      } else if (act === "stop-scan") {
-        this.stopRequested = true;
       } else if (act === "cover") {
         const pattern = this.patterns.find((p) => p.id === btn.dataset.id);
         if (pattern && (await changeCover(pattern))) await this.afterCoverChange(pattern.id);
@@ -291,7 +297,9 @@ export class LibraryView {
   // ---------- AI ----------
 
   private async startScan(): Promise<void> {
-    if (this.scanning) return;
+    // One run at a time; asking again shows the one going.
+    if (describing()) return showDescribePanel();
+    if (!this.settings.enabled) return;
     if (!this.settings.baseUrl.trim()) {
       this.root.dispatchEvent(
         new CustomEvent("open-settings", { bubbles: true, detail: this.settings }),
@@ -309,35 +317,28 @@ export class LibraryView {
       `Describe ${targets.length} pattern${targets.length === 1 ? "" : "s"} using ${
         this.settings.model || "your model"
       }?\n\n` +
-        `Only the start of each pattern is sent, to ${
+        `Only the first pages of each pattern are sent, to ${
           this.settings.isLocal ? "your own network" : this.settings.baseUrl
-        }.`,
+        }: the part with the designer, sizes and materials, never the whole pattern.\n\n` +
+        `It keeps going while you use the rest of the app.`,
       { title: "Describe with your model", okLabel: "Describe" },
     );
     if (!confirmed) return;
+    startDescribing(targets, this.settings);
+  }
 
-    this.scanning = true;
-    this.stopRequested = false;
-    this.showScanPanel(targets.length);
-
-    const scanner = new MetadataScanner(this.settings);
-    const outcomes: ScanOutcome[] = [];
-
-    const done = await scanner.scan(
-      targets,
-      (outcome, index) => {
-        outcomes.push(outcome);
-        this.updateScanPanel(outcome, index, targets.length, outcomes);
-        // Repaint as results land, so the card fills in behind the scan.
-        if (outcome.applied) void this.reloadQuietly();
-      },
-      () => this.stopRequested,
-    );
-
-    this.scanning = false;
-    this.finishScanPanel(done, this.stopRequested);
-    await this.reload();
-    await this.refreshUndoButtons();
+  /** One card brought up to date after the model changed its pattern. */
+  private async refreshCard(patternId: string): Promise<void> {
+    const fresh = await api.getPattern(patternId).catch(() => null);
+    const i = this.patterns.findIndex((p) => p.id === patternId);
+    if (!fresh || i < 0) return;
+    this.patterns[i] = fresh;
+    const card = this.results.querySelector<HTMLElement>(`.card[data-open="${patternId}"]`);
+    if (!card) return;
+    card.insertAdjacentHTML("afterend", this.cardHtml(fresh));
+    const next = card.nextElementSibling as HTMLElement;
+    card.remove();
+    await this.fillCard(next);
   }
 
   private async undoAi(patternId: string): Promise<void> {
@@ -376,68 +377,6 @@ export class LibraryView {
     } catch {
       // Not worth surfacing; the button simply does not appear.
     }
-  }
-
-  // ---------- panels ----------
-
-  private showScanPanel(total: number): void {
-    this.root.querySelector(".scan-panel")?.remove();
-    const panel = document.createElement("div");
-    panel.className = "scan-panel";
-    panel.innerHTML = `
-      <div class="scan-head">
-        <strong>Reading your patterns…</strong>
-        <span data-el="count">0 / ${total}</span>
-        <button class="ghost" data-act="stop-scan">Stop</button>
-      </div>
-      <div class="scan-bar"><div class="scan-fill" data-el="fill"></div></div>
-      <p class="scan-note" data-el="note">A local model can take a moment per pattern.</p>
-      <ul class="scan-log" data-el="log"></ul>
-    `;
-    this.root.querySelector(".lib-body")?.appendChild(panel);
-  }
-
-  private updateScanPanel(
-    outcome: ScanOutcome,
-    index: number,
-    total: number,
-    done: ScanOutcome[],
-  ): void {
-    const panel = this.root.querySelector(".scan-panel");
-    if (!panel) return;
-    panel.querySelector('[data-el="count"]')!.textContent = `${index + 1} / ${total}`;
-    panel.querySelector<HTMLElement>('[data-el="fill"]')!.style.width = `${Math.round(
-      ((index + 1) / total) * 100,
-    )}%`;
-
-    const log = panel.querySelector('[data-el="log"]')!;
-    const li = document.createElement("li");
-    if (!outcome.ok) {
-      li.className = "bad";
-      li.textContent = `${outcome.title} — ${outcome.error}`;
-    } else if (outcome.changed.length) {
-      li.className = "ok";
-      li.textContent = `${outcome.title} — added ${outcome.changed.join(", ")}`;
-    } else {
-      li.textContent = `${outcome.title} — nothing to add`;
-    }
-    log.appendChild(li);
-    log.scrollTop = log.scrollHeight;
-    void done;
-  }
-
-  private finishScanPanel(outcomes: ScanOutcome[], stopped: boolean): void {
-    const panel = this.root.querySelector(".scan-panel");
-    if (!panel) return;
-    panel.classList.add("done");
-    panel.querySelector('[data-act="stop-scan"]')?.remove();
-    const note = panel.querySelector('[data-el="note"]') as HTMLElement;
-    note.textContent = stopped
-      ? `Stopped. ${summarise(outcomes)}`
-      : summarise(outcomes);
-    // The log and bar have served their purpose.
-    panel.querySelector(".scan-bar")?.remove();
-    panel.querySelector('[data-el="count"]')?.remove();
   }
 
   /** A short-lived message under the toolbar. */
@@ -564,15 +503,6 @@ export class LibraryView {
   private listToken = 0;
 
   private async reload(): Promise<void> {
-    const token = ++this.listToken;
-    const patterns = await this.queryPatterns();
-    if (token !== this.listToken) return;
-    this.patterns = patterns;
-    this.paint();
-  }
-
-  /** Repaints without reloading from the database, used during a scan. */
-  private async reloadQuietly(): Promise<void> {
     const token = ++this.listToken;
     const patterns = await this.queryPatterns();
     if (token !== this.listToken) return;

@@ -253,6 +253,8 @@ export const MAX_PINS = 5;
 
 /** Mirrors `commands.rs::AiSettingsView`. */
 export interface AiSettingsView {
+  /** Describing patterns with a model is switched on. Off unless chosen. */
+  enabled: boolean;
   baseUrl: string;
   model: string;
   fallbackModel: string;

@@ -528,6 +528,10 @@ pub struct ExportRequest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AiSettings {
+    /// Whether describing patterns with a model is switched on at all. Off
+    /// unless chosen: with it off, nothing about the model is shown and
+    /// nothing is ever sent.
+    pub enabled: bool,
     /// Where the model server is, e.g. `http://192.168.1.20:1234/v1`. The `/v1`
     /// is optional; it is added for you if you leave it off.
     pub base_url: String,
@@ -556,6 +560,7 @@ pub struct AiSettings {
 impl Default for AiSettings {
     fn default() -> Self {
         Self {
+            enabled: false,
             base_url: "https://gen2.zeroval.eu/v1".to_string(),
             model: "Qwen3.6-27B".to_string(),
             fallback_model: "Qwen3.6-27B".to_string(),

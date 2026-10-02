@@ -57,6 +57,10 @@ export async function verifyBulkAdd() {
     wanted.filter((t) => store.patterns.some((p) => p.title === t));
 
   try {
+    // Describing is switched on, so the summary can point at it.
+    await window.__TAURI_INTERNALS__.invoke("get_ai_settings");
+    store.aiSettings.enabled = true;
+
     // --- a mixed folder adds its patterns, and only its patterns ---
     const before = store.patterns.length;
     window.__seedFolder("/patterns", [
