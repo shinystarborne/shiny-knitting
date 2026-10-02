@@ -1895,6 +1895,8 @@ fn a_yarn_round_trips_every_field() {
         metres_per_ball: 223,
         grams_per_ball: 50,
         notes: "For the shop sample.".to_string(),
+        fibres: vec![],
+        superwash: false,
         lots: vec![YarnLotInput {
             dye_lot: "L22".to_string(),
             balls: 4.0,
@@ -2340,6 +2342,40 @@ fn projects_pause_frog_and_start_again() {
     assert!(set_project_status(&conn, &pr.id, "sideways").is_err());
     finish_project(&conn, &pr.id, &crate::models::FinishInput::default()).unwrap();
     assert!(set_project_status(&conn, &pr.id, "active").is_err(), "finished stays finished");
+}
+
+#[test]
+fn designers_and_tags_come_counted_most_used_first() {
+    let conn = test_db();
+    sample(&conn, "A", "Ann", "", &["lace", "socks"]);
+    sample(&conn, "B", "Ann", "", &["Lace"]);
+    sample(&conn, "C", "Bo", "", &["lace", "LACE"]);
+    sample(&conn, "D", "Cy", "", &["hat"]);
+    let f = list_facets(&conn).unwrap();
+    let pairs = |c: &[FacetCount]| c.iter().map(|x| (x.value.clone(), x.count)).collect::<Vec<_>>();
+    assert_eq!(pairs(&f.designer_counts), vec![("Ann".into(), 2), ("Bo".into(), 1), ("Cy".into(), 1)]);
+    assert_eq!(pairs(&f.tag_counts), vec![("lace".into(), 3), ("hat".into(), 1), ("socks".into(), 1)], "counted once per pattern, any casing");
+}
+
+#[test]
+fn a_yarn_keeps_what_it_is_made_of() {
+    let conn = test_db();
+    let fibre = |name: &str, percent: f64| crate::models::Fibre { name: name.into(), percent };
+    let input = YarnInput {
+        name: "Sock".into(),
+        fibres: vec![fibre("  merino ", 75.0), fibre("polyamide", 20.0), fibre("Merino", 5.0), fibre("", 10.0), fibre("silk", 250.0)],
+        superwash: true,
+        ..YarnInput::default()
+    };
+    let y = insert_yarn(&conn, "y", &input).unwrap();
+    assert_eq!(y.fibres, vec![fibre("merino", 80.0), fibre("polyamide", 20.0), fibre("silk", 100.0)], "tidied: named twice is added, empty dropped, kept to 100");
+    assert!(y.superwash);
+    let mut changed = y.clone();
+    changed.fibres = vec![fibre("cotton", 100.0)];
+    changed.superwash = false;
+    let saved = update_yarn(&conn, &changed).unwrap();
+    assert_eq!(saved.fibres, vec![fibre("cotton", 100.0)]);
+    assert!(!saved.superwash);
 }
 
 #[test]

@@ -2878,3 +2878,41 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .update-card-actions .spacer { flex: 1; }
 .update-card-actions button { padding: 5px 12px; font-size: 13px; }
 .update-card-actions .link { padding: 0; font-size: 12px; }
+
+/* ---------- fibre content ---------- */
+
+.fibre-list { display: flex; flex-direction: column; gap: 6px; }
+.fibre-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px auto; gap: 6px; align-items: center; }
+.fibre-percent { display: flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.fibre-percent input { width: 100%; min-width: 0; }
+.fibre-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.fibre-actions input { flex: 1; min-width: 0; }
+.hint.bad { color: #ffb3b5; }
+.check.superwash { margin-top: 6px; }
+.check.superwash em { font-style: normal; margin-left: 4px; }
+.card-fibres { margin: 0; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- searching a long designer or tag list ---------- */
+
+.facet-search { width: 100%; margin: 0 0 6px; padding: 5px 8px; font-size: 12px; }
+.facet-search[hidden] { display: none; }
+.facet-all { display: block; margin-top: 6px; padding: 0; font-size: 12px; }
+.facet-all[hidden] { display: none; }
+.tag-btn em { font-style: normal; margin-left: 5px; opacity: 0.6; font-size: 10px; }
+.tag-btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+.dialog-card.facet-picker { max-width: 460px; }
+.facet-picker-bar { display: flex; gap: 8px; }
+.facet-picker-bar input { flex: 1; min-width: 0; }
+.facet-picker-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 4px;
+}
+.facet-picker-list .check { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; }
+.facet-picker-list .check:hover { background: var(--bg-input); }
+.facet-picker-list .check span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facet-picker-list .check em { font-style: normal; font-size: 11px; color: var(--text-dim); }

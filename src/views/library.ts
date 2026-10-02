@@ -4,6 +4,7 @@ import {
   DIFFICULTIES,
   STATUSES,
   type AiSettingsView,
+  type FacetCount,
   type FacetValues,
   type Filter,
   type Pattern,
@@ -15,6 +16,7 @@ import { MetadataScanner, undoPattern } from "../ai/scan";
 import { describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
 import { changeCover } from "./cover-dialog";
 import { editTags } from "./tags-dialog";
+import { pickFromAll } from "./facet-picker";
 import { sortOutDuplicates } from "./duplicates";
 import { paintLazily } from "./lazy";
 
@@ -37,7 +39,13 @@ export class LibraryView {
   private screen: HTMLElement;
   private root!: HTMLElement;
   private filter: Filter = { sort: "recent" };
-  private facets: FacetValues = { designers: [], needleSizes: [], yarnWeights: [], tags: [] };
+  private facets: FacetValues = { designers: [], designerCounts: [], needleSizes: [], yarnWeights: [], tags: [], tagCounts: [] };
+  /**
+   * The designers ticked. Kept here rather than read off the boxes, because
+   * the sidebar shows only the most used few: one ticked from the full list
+   * may have no box in it.
+   */
+  private designers = new Set<string>();
   private patterns: Pattern[] = [];
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
@@ -93,7 +101,9 @@ export class LibraryView {
           </div>
           <div class="filter-group" data-slot="designer">
             <h4>Designer</h4>
+            <input class="facet-search" type="search" data-search="designer" placeholder="Find a designer…" />
             <div class="facet-list"></div>
+            <button class="link facet-all" data-act="all-designers" hidden></button>
           </div>
           <div class="filter-group" data-slot="needle">
             <h4>Needle size</h4>
@@ -105,7 +115,9 @@ export class LibraryView {
           </div>
           <div class="filter-group" data-slot="tags">
             <h4>Tags</h4>
+            <input class="facet-search" type="search" data-search="tags" placeholder="Find a tag…" />
             <div class="tag-cloud"></div>
+            <button class="link facet-all" data-act="all-tags" hidden></button>
           </div>
           <button class="ghost clear-filters" data-act="clear">Clear all filters</button>
         </aside>
@@ -130,10 +142,22 @@ export class LibraryView {
       void this.reload();
     });
 
+    // The sidebar's own search over designers and tags: the lists narrow as
+    // it is typed, without a round trip.
+    this.root.addEventListener("input", (e) => {
+      const which = (e.target as HTMLElement).dataset.search;
+      if (which === "designer") this.renderDesigners();
+      if (which === "tags") this.renderTags();
+    });
+
     this.root.addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
       const field = input.dataset.filter;
       if (!field) return;
+      if (field === "designer") {
+        if (input.checked) this.designers.add(input.value);
+        else this.designers.delete(input.value);
+      }
       // Yarn weight is always a set: picking DK and Aran means "either", and
       // the query handles that directly, so there is no need to fan out into
       // separate requests the way the single-valued groups do.
@@ -186,6 +210,20 @@ export class LibraryView {
           this.renderFacets();
           await this.reload();
         }
+      } else if (act === "all-designers") {
+        await pickFromAll("All designers", this.facets.designerCounts, this.designers, () => {
+          this.renderDesigners();
+          void this.reload();
+        });
+      } else if (act === "all-tags") {
+        const chosen = new Set(this.filter.tags ?? []);
+        await pickFromAll("All tags", this.facets.tagCounts, chosen, (tag, on) => {
+          const now = (this.filter.tags ?? []).filter((t) => t !== tag);
+          this.filter.tags = on ? [...now, tag] : now;
+          if (!this.filter.tags.length) this.filter.tags = undefined;
+          this.renderTags();
+          void this.reload();
+        });
       } else if (act === "want") {
         await this.toggleWant(btn.dataset.id!);
       } else if (act === "more") {
@@ -221,6 +259,7 @@ export class LibraryView {
     const tag = closestEl(e.target, "[data-tag]");
     if (tag) {
       this.toggleTag(tag.dataset.tag!);
+      this.renderTags();
       await this.reload();
     }
   }
@@ -535,10 +574,7 @@ export class LibraryView {
             .join("")
         : '<p class="hint">None yet</p>';
 
-    this.root.querySelector('[data-slot="designer"] .facet-list')!.innerHTML = list(
-      this.facets.designers,
-      "designer",
-    );
+    this.renderDesigners();
     this.root.querySelector('[data-slot="needle"] .facet-list')!.innerHTML = list(
       this.facets.needleSizes,
       "needleSize",
@@ -564,11 +600,61 @@ export class LibraryView {
 
     YARN_LABELS.clear();
     for (const w of this.facets.yarnWeights) YARN_LABELS.set(w.key, w.label);
-    this.root.querySelector('[data-slot="tags"] .tag-cloud')!.innerHTML = this.facets.tags
-      .map(
-        (t) => `<button class="tag-btn" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</button>`,
-      )
-      .join("");
+    this.renderTags();
+  }
+
+  /**
+   * The designers in the sidebar: the ten most used and any ticked, or, while
+   * something is typed in its search, every one that matches. The rest are a
+   * click away in the full list.
+   */
+  private renderDesigners(): void {
+    const group = this.root.querySelector<HTMLElement>('[data-slot="designer"]')!;
+    const shown = this.facetShown(this.facets.designerCounts, this.designers, DESIGNERS_SHOWN, group);
+    group.querySelector(".facet-list")!.innerHTML = shown.length
+      ? shown
+          .map(
+            (d) => `<label class="check">
+                <input type="checkbox" data-filter="designer" value="${escapeHtml(d.value)}" ${this.designers.has(d.value) ? "checked" : ""} />
+                <span>${escapeHtml(d.value)}</span>
+                <em>${d.count}</em>
+              </label>`,
+          )
+          .join("")
+      : `<p class="hint">${this.facets.designerCounts.length ? "No designer by that name." : "None yet"}</p>`;
+  }
+
+  /** The tags, as the designers: the twenty most used and any chosen, or what matches the search. */
+  private renderTags(): void {
+    const group = this.root.querySelector<HTMLElement>('[data-slot="tags"]')!;
+    const chosen = new Set(this.filter.tags ?? []);
+    const shown = this.facetShown(this.facets.tagCounts, chosen, TAGS_SHOWN, group);
+    group.querySelector(".tag-cloud")!.innerHTML = shown.length
+      ? shown
+          .map(
+            (t) => `<button class="tag-btn${chosen.has(t.value) ? " on" : ""}" data-tag="${escapeHtml(t.value)}"
+              title="${t.count} pattern${t.count === 1 ? "" : "s"}">${escapeHtml(t.value)}<em>${t.count}</em></button>`,
+          )
+          .join("")
+      : `<p class="hint">${this.facets.tagCounts.length ? "No tag by that name." : "None yet"}</p>`;
+  }
+
+  /**
+   * Which of a long list the sidebar shows, and the "Show all" link under it:
+   * the most used `limit` with the chosen ones kept in, or every match for
+   * what is typed in the group's search.
+   */
+  private facetShown(items: FacetCount[], chosen: Set<string>, limit: number, group: HTMLElement): FacetCount[] {
+    const words = (group.querySelector<HTMLInputElement>(".facet-search")?.value ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = words.length
+      ? items.filter((i) => words.every((w) => i.value.toLowerCase().includes(w))).slice(0, SEARCH_SHOWN)
+      : [...items.slice(0, limit), ...items.slice(limit).filter((i) => chosen.has(i.value))];
+    const all = group.querySelector<HTMLButtonElement>(".facet-all")!;
+    all.hidden = items.length <= limit;
+    all.textContent = `Show all ${items.length}…`;
+    // The search only earns its place in a list longer than what is shown.
+    group.querySelector<HTMLElement>(".facet-search")!.hidden = items.length <= limit;
+    return shown;
   }
 
   private toggleTag(tag: string): void {
@@ -580,14 +666,19 @@ export class LibraryView {
 
   private clearFilters(): void {
     this.filter = { sort: this.filter.sort };
+    this.designers.clear();
+    this.root.querySelectorAll<HTMLInputElement>(".facet-search").forEach((i) => (i.value = ""));
+    this.renderDesigners();
+    this.renderTags();
     this.searchBox.value = "";
     this.root
       .querySelectorAll<HTMLInputElement>("input[data-filter]")
       .forEach((i) => (i.checked = false));
   }
 
-  /** The ticked values of one filter group; the boxes are the source of truth. */
+  /** The ticked values of one filter group; the boxes are the source of truth, except for designers. */
   private checkedValues(field: string): string[] {
+    if (field === "designer") return [...this.designers];
     return [...this.root.querySelectorAll<HTMLInputElement>(
       `input[data-filter="${field}"]:checked`,
     )].map((i) => i.value);
@@ -756,6 +847,11 @@ export class LibraryView {
     await this.reload();
   }
 }
+
+/** How many of the most used designers and tags the sidebar shows, and how many matches a search. */
+const DESIGNERS_SHOWN = 10;
+const TAGS_SHOWN = 20;
+const SEARCH_SHOWN = 60;
 
 function statusPill(status: string): string {
   // No status is no pill: most of a large library is simply there.

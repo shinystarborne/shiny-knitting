@@ -283,6 +283,16 @@ pub struct YarnLot {
     pub leftover: bool,
 }
 
+/// One fibre in a yarn, and its share: 75 for "75% wool". A share of 0 is a
+/// fibre whose share is not known.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Fibre {
+    pub name: String,
+    #[serde(default)]
+    pub percent: f64,
+}
+
 /// A yarn in the stash, with its lots and the quantities derived from them.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -302,6 +312,12 @@ pub struct Yarn {
     /// Photo file inside `library/yarn-photos`, or empty when there is none.
     pub photo_path: String,
     pub notes: String,
+    /// What it is made of, as the ball band gives it.
+    #[serde(default)]
+    pub fibres: Vec<Fibre>,
+    /// Treated so it can go in the washing machine.
+    #[serde(default)]
+    pub superwash: bool,
     pub added_at: i64,
     pub lots: Vec<YarnLot>,
     /// Grams left, summed over the lots.
@@ -333,6 +349,10 @@ pub struct YarnInput {
     pub grams_per_ball: i64,
     #[serde(default)]
     pub notes: String,
+    #[serde(default)]
+    pub fibres: Vec<Fibre>,
+    #[serde(default)]
+    pub superwash: bool,
     #[serde(default)]
     pub lots: Vec<YarnLotInput>,
 }

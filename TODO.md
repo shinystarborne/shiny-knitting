@@ -75,29 +75,6 @@ Open questions:
 - A shop or link and a price on each item?
 - Something to copy or print to take to the shop?
 
-### Yarn quality (fibre content)
-
-What a yarn is made of, on every yarn in the stash, and a filter for it.
-
-- The **fibres with their share**, as the ball band gives them: e.g. "75% wool,
-  25% polyamide", "100% merino", "70% mohair, 30% silk".
-- Pick fibres from a list (wool, merino, alpaca, mohair, silk, cotton, linen,
-  cashmere, yak, acrylic, polyamide/nylon, viscose…) or type your own, as brand
-  and material already work; the percentages should add up to 100.
-- Shown on the yarn's card ("75% wool · 25% polyamide").
-- **A filter in the stash by fibre:** "anything with merino", "only animal
-  fibres", "no acrylic". Useful for gifts too (see the wool allergy note under
-  Recipient measurements).
-- Typing in a known yarn's name fills in its fibres, as it already fills in
-  its metres.
-
-Open questions:
-
-- Also care and treatment: superwash, machine washable, hand-wash only?
-- Group fibres for the filter (animal, plant, synthetic), or only one by one?
-- Should a pattern's recommended yarn get a fibre content too, so "could I knit
-  this in something I have?" can match it?
-
 ### Shops
 
 The shops you buy from, as links with your own comments.
@@ -196,6 +173,8 @@ at once rare enough?
 
 ## Ideas (not agreed yet)
 
+- **Fibre content on patterns.** A pattern's recommended yarn given its fibres
+  too, so "could I knit this in something I have?" can match on them.
 - **Ravelry import.** Ravelry can export your library and stash; a one-time
   import would fill both tabs.
 - **Backup.** One click to save the whole library to a zip file.
@@ -227,6 +206,7 @@ at once rare enough?
   libraries. A ⋯ menu on every card for the status (No status, Want to knit, In
   progress, Finished, Abandoned), tags, details, cover and starting a project;
   a pattern goes In progress by itself when a project starts from it.
+  Designers and tags most used first, with a search and a full list.
 - **Describing with a model:** off unless switched on; a robot icon; only the
   first pages are sent; a run over the library keeps going in the background,
   behind a panel that minimises and closes.
@@ -235,7 +215,7 @@ at once rare enough?
   highlights, notes, drawings, pins.
 - **Stash:** yarn with lots, photos (pasted or dropped), weight from metres and
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
-  the same yarn.
+  the same yarn; fibre content and superwash, with Fibre and Made of filters.
 - **Needles & hooks:** inventory, sets, what each is used on, a Free filter.
 - **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project

@@ -3,6 +3,8 @@ import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
 import { paintLazily } from "./lazy";
+import { describeFibres, fibreKind } from "./fibres";
+import { mostUsedSpellings } from "./tool-filter";
 
 /**
  * The stash screen: every yarn you own, with what is left of it.
@@ -30,6 +32,10 @@ export class StashView {
   private yarns: Yarn[] = [];
   /** Ticked availability boxes; filtered here, over what the backend sent. */
   private use = new Set<Use>();
+  /** Ticked fibres, by name in lower case: a yarn with any of them. */
+  private fibre = new Set<string>();
+  /** Ticked "made of" boxes: a yarn must pass every one. */
+  private made = new Set<Made>();
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
 
@@ -59,6 +65,14 @@ export class StashView {
             <h4>Yarn weight</h4>
             <div class="facet-list weight-scale"></div>
           </div>
+          <div class="filter-group" data-slot="fibre">
+            <h4>Fibre</h4>
+            <div class="facet-list weight-scale"></div>
+          </div>
+          <div class="filter-group" data-slot="made">
+            <h4>Made of</h4>
+            <div class="facet-list weight-scale"></div>
+          </div>
           <button class="ghost clear-filters" data-act="clear">Clear filters</button>
         </aside>
 
@@ -85,6 +99,13 @@ export class StashView {
         this.paint();
         return;
       }
+      if (input.dataset.filter === "fibre" || input.dataset.filter === "made") {
+        const set = (input.dataset.filter === "fibre" ? this.fibre : this.made) as Set<string>;
+        if (input.checked) set.add(input.value);
+        else set.delete(input.value);
+        this.paint();
+        return;
+      }
       if (input.dataset.filter !== "yarnWeight") return;
       const checked = this.checkedValues();
       this.filter.yarnWeight = checked.length ? checked : undefined;
@@ -107,6 +128,8 @@ export class StashView {
       } else if (act === "clear") {
         this.filter = {};
         this.use.clear();
+        this.fibre.clear();
+        this.made.clear();
         this.searchBox.value = "";
         this.root
           .querySelectorAll<HTMLInputElement>("input[data-filter]")
@@ -207,19 +230,48 @@ export class StashView {
       .join("");
   }
 
+  /** The fibres in the stash, most used first, and the "made of" boxes. */
+  private renderFibres(): void {
+    const count = (name: string) => this.yarns.filter((y) => y.fibres.some((f) => f.name.toLowerCase() === name.toLowerCase())).length;
+    // Most used first, as with the library's designers and tags.
+    const names = mostUsedSpellings(this.yarns.flatMap((y) => y.fibres.map((f) => f.name))).sort((a, b) => count(b) - count(a));
+    const box = (filter: string, value: string, label: string, n: number, on: boolean) => `
+      <label class="check${n ? "" : " unused"}">
+        <input type="checkbox" data-filter="${filter}" value="${escapeHtml(value)}" ${on ? "checked" : ""} />
+        <span>${escapeHtml(label)}</span>
+        <em>${n}</em>
+      </label>`;
+    this.root.querySelector('[data-slot="fibre"] .facet-list')!.innerHTML = names.length
+      ? names.map((n) => box("fibre", n.toLowerCase(), n, count(n), this.fibre.has(n.toLowerCase()))).join("")
+      : '<p class="hint">None recorded yet. Add a yarn\'s fibres in its form.</p>';
+    this.root.querySelector('[data-slot="made"] .facet-list')!.innerHTML = MADE.map((m) =>
+      box("made", m.value, m.label, this.yarns.filter((y) => madeOf(y, m.value)).length, this.made.has(m.value)),
+    ).join("");
+  }
+
+  private shown(): Yarn[] {
+    return this.yarns.filter(
+      (y) =>
+        (!this.use.size || useOf(y).some((u) => this.use.has(u))) &&
+        (!this.fibre.size || y.fibres.some((f) => this.fibre.has(f.name.toLowerCase()))) &&
+        [...this.made].every((m) => madeOf(y, m)),
+    );
+  }
+
   private paint(): void {
     this.renderUse();
-    const yarns = this.use.size ? this.yarns.filter((y) => useOf(y).some((u) => this.use.has(u))) : this.yarns;
+    this.renderFibres();
+    const yarns = this.shown();
     if (!yarns.length) {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${
-            this.filter.search || this.filter.yarnWeight || this.use.size
+            this.filter.search || this.filter.yarnWeight || this.use.size || this.fibre.size || this.made.size
               ? "Nothing matches those filters"
               : "No yarn yet"
           }</h2>
           <p>${
-            this.filter.search || this.filter.yarnWeight || this.use.size
+            this.filter.search || this.filter.yarnWeight || this.use.size || this.fibre.size || this.made.size
               ? "Try removing a filter."
               : "Add a yarn to get started."
           }</p>
@@ -250,7 +302,9 @@ export class StashView {
           <div class="card-meta">
             ${yarnPill(y)}
             ${y.lots.some((l) => l.leftover) ? `<span class="pill yarn-leftover" title="What a finished project left over">Leftover</span>` : ""}
+            ${y.superwash ? `<span class="pill" title="Can go in the washing machine">Superwash</span>` : ""}
           </div>
+          ${y.fibres.length ? `<p class="card-fibres" title="${escapeHtml(describeFibres(y.fibres))}">${escapeHtml(describeFibres(y.fibres))}</p>` : ""}
           ${
             y.projects.length
               ? `<p class="card-use" title="${escapeHtml(y.projects.join(", "))}">In use: ${escapeHtml(y.projects.join(", "))}</p>`
@@ -300,6 +354,38 @@ export class StashView {
 
 /** Whether a yarn is free, on an active project, and holds a leftover. */
 type Use = "free" | "in-use" | "leftover";
+
+/** The "made of" boxes. Each narrows the list; ticking two means both. */
+type Made = "animal" | "no-animal" | "no-synthetic" | "superwash" | "not-superwash";
+
+const MADE: { value: Made; label: string }[] = [
+  { value: "animal", label: "Only animal fibres" },
+  { value: "no-animal", label: "No animal fibres" },
+  { value: "no-synthetic", label: "No synthetics" },
+  { value: "superwash", label: "Superwash" },
+  { value: "not-superwash", label: "Not superwash" },
+];
+
+/**
+ * Whether a yarn passes a "made of" box. Only what is recorded is judged: a
+ * yarn with no fibres given is neither all animal nor free of anything, since
+ * nothing is known.
+ */
+function madeOf(y: Yarn, m: Made): boolean {
+  const kinds = y.fibres.map((f) => fibreKind(f.name));
+  switch (m) {
+    case "animal":
+      return kinds.length > 0 && kinds.every((k) => k === "animal");
+    case "no-animal":
+      return kinds.length > 0 && !kinds.includes("animal");
+    case "no-synthetic":
+      return kinds.length > 0 && !kinds.includes("synthetic");
+    case "superwash":
+      return y.superwash;
+    case "not-superwash":
+      return !y.superwash;
+  }
+}
 
 function useOf(y: Yarn): Use[] {
   const out: Use[] = [y.projects.length ? "in-use" : "free"];

@@ -123,12 +123,22 @@ export interface YarnWeightFacet {
   count: number;
 }
 
+/** A designer or tag, and how many patterns it is on. */
+export interface FacetCount {
+  value: string;
+  count: number;
+}
+
 export interface FacetValues {
   designers: string[];
+  /** The same designers, most used first, with their counts. */
+  designerCounts: FacetCount[];
   needleSizes: string[];
   /** Every family in the table, in order, whether or not it is used. */
   yarnWeights: YarnWeightFacet[];
   tags: string[];
+  /** The tags, most used first, with their counts. */
+  tagCounts: FacetCount[];
 }
 
 export interface Filter {
@@ -372,6 +382,12 @@ export interface YarnLot {
 }
 
 /** Mirrors `models.rs::Yarn`. */
+/** One fibre in a yarn and its share: 75 for "75% wool"; 0 when not known. */
+export interface Fibre {
+  name: string;
+  percent: number;
+}
+
 export interface Yarn {
   id: string;
   name: string;
@@ -390,6 +406,10 @@ export interface Yarn {
   /** File name of the photo inside the library's covers folder, or "". */
   photoPath: string;
   notes: string;
+  /** What it is made of, as the ball band gives it. */
+  fibres: Fibre[];
+  /** Treated so it can go in the washing machine. */
+  superwash: boolean;
   addedAt: number;
   lots: YarnLot[];
   // The last three are derived by the backend from the lots; they are sent
@@ -425,6 +445,8 @@ export interface YarnInput {
   metresPerBall: number;
   gramsPerBall: number;
   notes: string;
+  fibres?: Fibre[];
+  superwash?: boolean;
   lots: YarnLotInput[];
 }
 

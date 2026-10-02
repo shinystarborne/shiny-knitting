@@ -463,6 +463,29 @@ function titleKey(title) {
   return words.join(" ");
 }
 
+/** As db::by_use: each value counted once per pattern, most used first. */
+function countedByUse(lists) {
+  const counts = new Map();
+  for (const list of lists) for (const v of new Set(list)) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.toLowerCase().localeCompare(b.value.toLowerCase()));
+}
+
+/** As db::tidy_fibres. */
+function tidyFibres(fibres) {
+  const out = [];
+  for (const f of fibres || []) {
+    const name = String(f.name || "").trim().replace(/\s+/g, " ");
+    if (!name) continue;
+    const percent = Number.isFinite(f.percent) ? Math.round(Math.min(100, Math.max(0, f.percent)) * 10) / 10 : 0;
+    const same = out.find((o) => o.name.toLowerCase() === name.toLowerCase());
+    if (same) same.percent = Math.min(100, same.percent + percent);
+    else out.push({ name, percent });
+  }
+  return out;
+}
+
 /** Active or paused: its needles and yarn are in use. */
 function isLive(status) {
   return status === "active" || status === "paused";
@@ -610,6 +633,8 @@ function withYarnTotals(yarn) {
       ? Math.round((out.gramsLeft / out.gramsPerBall) * out.metresPerBall)
       : 0;
   out.lots = out.lots.map((l) => ({ leftover: false, ...l }));
+  out.fibres = tidyFibres(out.fibres);
+  out.superwash = !!out.superwash;
   out.projects = [
     ...new Set(
       store.projectYarns
@@ -779,6 +804,8 @@ const handlers = {
       count: store.patterns.filter((p) => yarnFamily(p.yarnWeight) === key).length,
     })),
     tags: [...new Set(store.patterns.flatMap((p) => p.tags))].sort(),
+    designerCounts: countedByUse(store.patterns.map((p) => p.designer).filter(Boolean).map((d) => [d])),
+    tagCounts: countedByUse(store.patterns.map((p) => p.tags)),
   }),
   save_position: ({ id, page, scroll }) => {
     const p = store.patterns.find((x) => x.id === id);
@@ -1365,6 +1392,8 @@ const handlers = {
       gramsPerBall: input.gramsPerBall || 0,
       photoPath: "",
       notes: input.notes || "",
+      fibres: tidyFibres(input.fibres),
+      superwash: !!input.superwash,
       addedAt: Date.now(),
       lots: (input.lots || []).map((lot) => ({
         id: `l${store.nextId++}`,

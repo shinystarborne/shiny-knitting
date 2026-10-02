@@ -1,6 +1,7 @@
 import {
   api,
   YARN_WEIGHT_OPTIONS,
+  type Fibre,
   type Yarn,
   type YarnInput,
   type YarnLotInput,
@@ -14,6 +15,7 @@ import {
   yarnPhotoUrl,
 } from "../covers";
 import { makeCombo } from "./combo";
+import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 
@@ -63,6 +65,8 @@ export class YarnForm {
   private template: Yarn | null;
   /** Every yarn in the stash, for the brand and name lists and filling in. */
   private known: Yarn[] = [];
+  /** The fibre rows, as typed: a name and its share. */
+  private fibres: { name: string; percent: string }[] = [];
 
   constructor(root: HTMLElement, editing: Yarn | null, onDone: (y: Yarn) => void, template: Yarn | null = null) {
     this.root = root;
@@ -82,6 +86,9 @@ export class YarnForm {
           leftover: lot.leftover ?? false,
         }))
       : [emptyLot()];
+    const from = editing ?? this.template;
+    this.fibres = (from?.fibres ?? []).map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
+    if (!this.fibres.length) this.fibres.push({ name: "", percent: "" });
   }
 
   open(): void {
@@ -164,6 +171,19 @@ export class YarnForm {
             <em>2/2800</em> gives the single strand per 100 g, and is the same yarn.
           </p>
         </div>
+        <div class="field">
+          <span>Fibre content</span>
+          <div class="fibre-list" data-el="fibres"></div>
+          <div class="fibre-actions">
+            <button class="ghost" data-act="add-fibre" type="button">+ Add fibre</button>
+            <input data-el="fibre-text" placeholder="or type it as the ball band does: 75% wool, 25% polyamide" />
+          </div>
+          <p class="hint" data-el="fibre-total" hidden></p>
+          <label class="check superwash">
+            <input type="checkbox" data-f="superwash" ${base?.superwash ? "checked" : ""} />
+            <span>Superwash <em class="hint">treated, so it can go in the washing machine</em></span>
+          </label>
+        </div>
         <label class="field">
           <span>Notes</span>
           <textarea data-f="notes" placeholder="Anything worth remembering about this yarn.">${escapeHtml(
@@ -190,6 +210,7 @@ export class YarnForm {
 
     this.bind();
     this.renderLots();
+    this.renderFibres();
     void this.paintPhoto();
     this.weightHint();
 
@@ -242,6 +263,15 @@ export class YarnForm {
     fill("yarnWeight", from.yarnWeight, "weight");
     fill("metresPerBall", from.metresPerBall, "metres");
     fill("gramsPerBall", from.gramsPerBall, "grams per ball");
+    // Its fibres too, when none are typed yet.
+    this.readFibres();
+    if (from.fibres.length && !this.fibres.some((f) => f.name.trim())) {
+      this.fibres = from.fibres.map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
+      this.renderFibres();
+      filled.push("fibres");
+      const superwash = this.root.querySelector<HTMLInputElement>('[data-f="superwash"]');
+      if (superwash && from.superwash) superwash.checked = true;
+    }
     if (filled.length) {
       this.weightAuto = false;
       this.weightHint();
@@ -261,6 +291,14 @@ export class YarnForm {
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("input", this.onInput);
     this.root.querySelector('[data-f="name"]')?.addEventListener("change", () => this.fillFromKnown());
+    const fibreText = this.root.querySelector<HTMLInputElement>('[data-el="fibre-text"]');
+    fibreText?.addEventListener("change", () => this.takeFibreText());
+    fibreText?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.takeFibreText();
+      }
+    });
     // On the document: a paste with nothing focused goes to the body, not to
     // the form, and pasting a picture should work wherever the focus is.
     document.addEventListener("paste", this.onPaste);
@@ -309,6 +347,7 @@ export class YarnForm {
     const f = (e.target as HTMLElement).dataset.f;
     if (f === "yarnWeight") this.weightAuto = false;
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
+    if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
   };
 
   /**
@@ -379,6 +418,18 @@ export class YarnForm {
       this.lots.splice(Number(btn.dataset.lot), 1);
       this.renderLots();
     }
+    if (btn.dataset.act === "add-fibre") {
+      this.readFibres();
+      this.fibres.push({ name: "", percent: "" });
+      this.renderFibres();
+      this.root.querySelector<HTMLInputElement>(".fibre-row:last-child [data-fibre-name]")?.focus();
+    }
+    if (btn.dataset.act === "remove-fibre") {
+      this.readFibres();
+      this.fibres.splice(Number(btn.dataset.fibre), 1);
+      if (!this.fibres.length) this.fibres.push({ name: "", percent: "" });
+      this.renderFibres();
+    }
     if (btn.dataset.act === "photo-file") void this.choosePhoto();
     if (btn.dataset.act === "weight-help") {
       const help = this.root.querySelector<HTMLElement>('[data-el="weight-help"]');
@@ -425,6 +476,77 @@ export class YarnForm {
       boughtAt: field(row, "boughtAt"),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
     }));
+  }
+
+  // ---------- fibres ----------
+
+  private renderFibres(): void {
+    const holder = this.root.querySelector('[data-el="fibres"]')!;
+    holder.innerHTML = this.fibres
+      .map(
+        (f, i) => `
+          <div class="fibre-row" data-fibre="${i}">
+            <input data-fibre-name value="${escapeAttr(f.name)}" placeholder="e.g. wool" aria-label="Fibre" />
+            <span class="fibre-percent"><input data-fibre-percent type="number" min="0" max="100" step="any"
+              value="${escapeAttr(f.percent)}" aria-label="Share" placeholder="%" />%</span>
+            <button class="ghost" data-act="remove-fibre" data-fibre="${i}" type="button" title="Remove this fibre">×</button>
+          </div>`,
+      )
+      .join("");
+    // Each one types, or picks: the fibres already in the stash first, then the usual ones.
+    for (const input of holder.querySelectorAll<HTMLInputElement>("[data-fibre-name]")) {
+      makeCombo(input, () => this.fibreChoices());
+    }
+    this.fibreHint();
+  }
+
+  private fibreChoices(): string[] {
+    const used = mostUsedSpellings(this.known.flatMap((y) => y.fibres.map((f) => f.name)));
+    const lower = new Set(used.map((u) => u.toLowerCase()));
+    return [...used, ...FIBRES.map((f) => f.name).filter((n) => !lower.has(n))];
+  }
+
+  private readFibres(): void {
+    const rows = this.root.querySelectorAll<HTMLElement>(".fibre-row");
+    if (!rows.length) return;
+    this.fibres = [...rows].map((row) => ({
+      name: row.querySelector<HTMLInputElement>("[data-fibre-name]")!.value,
+      percent: row.querySelector<HTMLInputElement>("[data-fibre-percent]")!.value,
+    }));
+  }
+
+  /** The fibres as they will be saved. */
+  private fibreValues(): Fibre[] {
+    this.readFibres();
+    const known = this.fibreChoices();
+    return this.fibres
+      .filter((f) => f.name.trim())
+      .map((f) => ({ name: canonical(f.name, known), percent: num(f.percent) }));
+  }
+
+  /** Whether the shares add up to the whole yarn. */
+  private fibreHint(): void {
+    const hint = this.root.querySelector<HTMLElement>('[data-el="fibre-total"]');
+    if (!hint) return;
+    this.readFibres();
+    const values = this.fibres.filter((f) => f.name.trim() || f.percent).map((f) => ({ name: f.name, percent: num(f.percent) }));
+    const total = fibreTotal(values);
+    hint.hidden = !values.some((v) => v.percent);
+    hint.classList.toggle("bad", total !== 100);
+    hint.textContent = total === 100 ? "Adds up to 100%." : `Adds up to ${total}%; a ball band's shares make 100%.`;
+  }
+
+  /** "75% wool, 25% polyamide" typed in one go becomes the rows. */
+  private takeFibreText(): void {
+    const field = this.root.querySelector<HTMLInputElement>('[data-el="fibre-text"]');
+    if (!field || !field.value.trim()) return;
+    const parsed = parseFibres(field.value);
+    if (!parsed.length) return;
+    this.readFibres();
+    const kept = this.fibres.filter((f) => f.name.trim());
+    this.fibres = [...kept, ...parsed.map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }))];
+    field.value = "";
+    this.renderFibres();
   }
 
   // ---------- photo ----------
@@ -507,6 +629,8 @@ export class YarnForm {
         metresPerBall: num(this.value("metresPerBall")),
         gramsPerBall: num(this.value("gramsPerBall")),
         notes: this.value("notes"),
+        fibres: this.fibreValues(),
+        superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,
       };
 
       let saved: Yarn;

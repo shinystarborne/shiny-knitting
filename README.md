@@ -139,6 +139,12 @@ them to a row rather than stretching them. The left sidebar filters. Status, dif
 needle size, and yarn weight are checkboxes; tags are buttons you can combine.
 The search box covers title, designer, notes, and tags.
 
+**Designers and tags** show the most used first, with their counts: the ten
+most used designers and twenty most used tags, plus any you have ticked. A
+search field above each finds the rest as you type, and **Show all…** opens the
+whole list in a dialog — searchable, most used or A–Z — where ticking one filters
+the library straight away.
+
 A large library stays quick: cards are drawn a page at a time as the grid is
 scrolled, and a cover is read only when its card is about to come into view.
 The stash, needles, projects and inspiration boards work the same way.
@@ -335,6 +341,17 @@ left of it: "4 × 100 g · 240 g left · ~528 m". A yarn on an active project sa
 which ("In use: Gift hat"), and one holding a project's leftover is tagged
 **Leftover**; **Availability** down the side filters on Free, In use and
 Leftover. A lot's **Leftover** box can also be ticked or cleared by hand.
+
+**What it is made of.** A yarn's **Fibre content** is its fibres and their
+shares, as the ball band gives them: pick each fibre from the list (or type your
+own) with its percentage, or type the whole thing in one go — "75% wool, 25%
+polyamide", "Wolle 80 %, Polyamid 20 %" — and it is split into rows. The form
+says whether the shares add up to 100%. **Superwash** is a box of its own. The
+card shows "75% wool · 25% polyamide" and a Superwash pill. Down the side,
+**Fibre** filters on any fibre in the stash (most used first; ticking two means
+either), and **Made of** on Only animal fibres, No animal fibres (for someone who
+cannot wear wool), No synthetics, Superwash and Not superwash; a yarn with no
+fibres recorded passes none of the fibre boxes, since nothing is known about it.
 
 **Another colour of the same yarn** is quick: **+ Colour** on a card opens a new
 yarn with its brand, name, weight and ball band filled in, so only the

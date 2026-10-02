@@ -422,6 +422,13 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "counters", "hotkey")? {
         conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
     }
+    // What a yarn is made of, and whether it is superwash.
+    if !column_exists(conn, "yarns", "fibres")? {
+        conn.execute("ALTER TABLE yarns ADD COLUMN fibres TEXT NOT NULL DEFAULT '[]'", [])?;
+    }
+    if !column_exists(conn, "yarns", "superwash")? {
+        conn.execute("ALTER TABLE yarns ADD COLUMN superwash INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
@@ -1063,12 +1070,33 @@ pub struct YarnWeightFacet {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Facets {
+    /// Alphabetical.
     pub designers: Vec<String>,
+    /// The same designers with how many patterns each has, most first: the
+    /// sidebar shows the top few of a long list, and searches the rest.
+    pub designer_counts: Vec<FacetCount>,
     pub needle_sizes: Vec<String>,
     /// Every family in the standard table, in table order, whether or not any
     /// pattern uses it, so the sidebar reads the same for everyone.
     pub yarn_weights: Vec<YarnWeightFacet>,
+    /// Alphabetical.
     pub tags: Vec<String>,
+    /// The tags with how many patterns carry each, most first.
+    pub tag_counts: Vec<FacetCount>,
+}
+
+/// A designer or tag, and how many patterns it is on.
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FacetCount {
+    pub value: String,
+    pub count: i64,
+}
+
+/// Most used first; the same count, alphabetically.
+fn by_use(mut counts: Vec<FacetCount>) -> Vec<FacetCount> {
+    counts.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.to_lowercase().cmp(&b.value.to_lowercase())));
+    counts
 }
 
 pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
@@ -1155,11 +1183,34 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
     }
     tags.sort_by_key(|t| t.to_lowercase());
 
+    // Each tag counted once per pattern, whatever its casing there.
+    let mut tag_counts: Vec<FacetCount> = tags.iter().map(|t| FacetCount { value: t.clone(), count: 0 }).collect();
+    {
+        let mut stmt = conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for r in rows {
+            let mut list: Vec<String> = serde_json::from_str::<Vec<String>>(&r?).unwrap_or_default().iter().map(|t| t.to_lowercase()).collect();
+            list.sort();
+            list.dedup();
+            for t in list {
+                if let Some(c) = tag_counts.iter_mut().find(|c| c.value.to_lowercase() == t) {
+                    c.count += 1;
+                }
+            }
+        }
+    }
+    let designer_counts: Vec<FacetCount> = conn
+        .prepare("SELECT designer, COUNT(*) FROM patterns WHERE designer <> '' GROUP BY designer")?
+        .query_map([], |r| Ok(FacetCount { value: r.get(0)?, count: r.get(1)? }))?
+        .collect::<Result<_, _>>()?;
+
     Ok(Facets {
         designers: column("designer")?,
+        designer_counts: by_use(designer_counts),
         needle_sizes: column("needle_size")?,
         yarn_weights,
         tags,
+        tag_counts: by_use(tag_counts),
     })
 }
 
@@ -2994,6 +3045,8 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         grams_per_ball: row.get("grams_per_ball")?,
         photo_path: row.get("photo_path")?,
         notes: row.get("notes")?,
+        fibres: serde_json::from_str(&row.get::<_, String>("fibres")?).unwrap_or_default(),
+        superwash: row.get("superwash")?,
         added_at: row.get("added_at")?,
         lots: Vec::new(),
         grams_left: 0,
@@ -3087,6 +3140,27 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
     Ok(out)
 }
 
+/// A fibre content as stored: names trimmed, empty ones dropped, a fibre
+/// named twice (in any case) counted once with its shares added, and each
+/// share kept between 0 and 100. Whether they add up to 100 is for the form to
+/// point out; a ball band that says "wool, nylon" with no shares is still
+/// worth keeping.
+pub fn tidy_fibres(fibres: &[crate::models::Fibre]) -> String {
+    let mut out: Vec<crate::models::Fibre> = Vec::new();
+    for f in fibres {
+        let name: String = f.name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(40).collect();
+        if name.is_empty() {
+            continue;
+        }
+        let percent = if f.percent.is_finite() { (f.percent.clamp(0.0, 100.0) * 10.0).round() / 10.0 } else { 0.0 };
+        match out.iter_mut().find(|o| o.name.eq_ignore_ascii_case(&name)) {
+            Some(o) => o.percent = (o.percent + percent).min(100.0),
+            None => out.push(crate::models::Fibre { name, percent }),
+        }
+    }
+    serde_json::to_string(&out).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Stores a new yarn with its lots, in one transaction so a failure halfway
 /// cannot leave a yarn with only some of its lots.
 pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<Yarn> {
@@ -3094,8 +3168,8 @@ pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<
     tx.execute(
         "INSERT INTO yarns
          (id, name, brand, colourway, yarn_weight, yarn_weight_family,
-          metres_per_ball, grams_per_ball, photo_path, notes, added_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10)",
+          metres_per_ball, grams_per_ball, photo_path, notes, added_at, fibres, superwash)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10,?11,?12)",
         params![
             id,
             input.name,
@@ -3106,7 +3180,9 @@ pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<
             input.metres_per_ball,
             input.grams_per_ball,
             input.notes,
-            now_ms()
+            now_ms(),
+            tidy_fibres(&input.fibres),
+            input.superwash
         ],
     )?;
     for lot in &input.lots {
@@ -3153,7 +3229,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute(
         "UPDATE yarns SET name=?2, brand=?3, colourway=?4, yarn_weight=?5,
-         yarn_weight_family=?6, metres_per_ball=?7, grams_per_ball=?8, notes=?9
+         yarn_weight_family=?6, metres_per_ball=?7, grams_per_ball=?8, notes=?9,
+         fibres=?10, superwash=?11
          WHERE id=?1",
         params![
             yarn.id,
@@ -3166,7 +3243,9 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             crate::yarn::family_of(&yarn.yarn_weight),
             yarn.metres_per_ball,
             yarn.grams_per_ball,
-            yarn.notes
+            yarn.notes,
+            tidy_fibres(&yarn.fibres),
+            yarn.superwash
         ],
     )?;
     if changed == 0 {
