@@ -162,6 +162,13 @@ Choose pages from a pattern (for example one pattern out of a big EPUB
 collection) and save them as a PDF. The part that writes the PDF is finished
 and tested; the screen to choose pages is not built.
 
+### Two projects from one pattern
+
+The row counter belongs to the pattern, so two projects knitted from the same
+pattern share their counts. A counter per project, started from the pattern's,
+would keep them apart. Open question: worth it, or is knitting one pattern twice
+at once rare enough?
+
 ---
 
 ## Ideas (not agreed yet)
@@ -193,8 +200,13 @@ and tested; the screen to choose pages is not built.
 ## Already built
 
 - **Patterns:** library, search, filters, covers (pasted, dropped or read from
-  the file), Want to knit, add a whole folder, find duplicates, describe with a
-  model, a page at a time for big libraries.
+  the file), add a whole folder, find duplicates, a page at a time for big
+  libraries. A ⋯ menu on every card for the status (No status, Want to knit, In
+  progress, Finished, Abandoned), tags, details, cover and starting a project;
+  a pattern goes In progress by itself when a project starts from it.
+- **Describing with a model:** off unless switched on; a robot icon; only the
+  first pages are sent; a run over the library keeps going in the background,
+  behind a panel that minimises and closes.
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
   highlights, notes, drawings, pins.
@@ -202,11 +214,15 @@ and tested; the screen to choose pages is not built.
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
   the same yarn.
 - **Needles & hooks:** inventory, sets, what each is used on, a Free filter.
-- **Projects:** needles, hooks, cables and yarn in use; finishing frees them and
-  records leftovers; a page per project with a cover, dates and a board.
+- **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
+  and Frogged; finishing frees them and records leftovers; a page per project
+  with a cover, dates, a board, the pattern read beside the board (resizable,
+  minimises to a tab), and the pattern's own row counter.
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
-- **App:** in-app updates with betas, settings behind the gear.
+- **App:** updates found by themselves (at every start and every hour, with a
+  card that says so) and installed in place in one click, with betas; settings
+  behind the gear.
 
 ---
 
