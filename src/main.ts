@@ -1,6 +1,6 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Shop, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
@@ -15,24 +15,27 @@ import { ProjectForm } from "./views/project-form";
 import { FinishProjectDialog } from "./views/finish-project";
 import { ProjectPage } from "./views/project-page";
 import { InspirationPage, InspirationView } from "./views/inspiration";
+import { PeopleView, PersonPage } from "./views/people";
+import { SwatchesView } from "./views/swatches";
+import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearBoardImageCache, clearCoverCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
+import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
- * Inspiration, Stash, Needles & hooks, Wishlist or Shops — with Settings as a
+ * People, Inspiration, Stash, Needles & hooks, Wishlist or Shops — with Settings as a
  * gear at its right end, and the reader covers the Patterns tab when a
  * pattern is open.
  * The current layout choice is remembered for the session.
  */
 
-type Tab = "patterns" | "projects" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
+type Tab = "patterns" | "projects" | "people" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
@@ -46,6 +49,10 @@ class App {
   private activeProjectPage: ProjectPage | null = null;
   /** The inspiration board on screen, so leaving it saves what is being typed. */
   private activeInspirationPage: InspirationPage | null = null;
+  /** Which the Stash tab shows: the yarn, or the swatches. Kept while the app is open. */
+  private stashMode: "yarn" | "swatches" = "yarn";
+  /** The person on screen, so leaving saves what is being typed. */
+  private activePersonPage: PersonPage | null = null;
   /** The mounted library, so background work can ask it to repaint a card. */
   private activeLibrary: LibraryView | null = null;
   /** The wishlist or shops on screen, so a form saved over them keeps their filters. */
@@ -74,6 +81,7 @@ class App {
     this.tabBar.innerHTML = `
       <button class="tab active" data-tab="patterns">Patterns</button>
       <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="people">People</button>
       <button class="tab" data-tab="inspiration">Inspiration</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
@@ -111,6 +119,8 @@ class App {
         void this.showWishlist();
       } else if (tab.dataset.tab === "shops") {
         void this.showShops();
+      } else if (tab.dataset.tab === "people") {
+        void this.showPeople();
       } else if (tab.dataset.tab === "projects") {
         void this.showProjects();
       } else {
@@ -158,6 +168,19 @@ class App {
     });
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
+    });
+    this.screen.addEventListener("stash-mode", (e) => {
+      this.stashMode = (e as CustomEvent<string>).detail === "swatches" ? "swatches" : "yarn";
+      void this.showStash();
+    });
+    this.screen.addEventListener("add-swatch", (e) => {
+      void this.openSwatchForm(null, (e as CustomEvent<SwatchTemplate | undefined>).detail ?? {});
+    });
+    this.screen.addEventListener("edit-swatch", (e) => {
+      void this.openSwatchForm((e as CustomEvent<Swatch>).detail);
+    });
+    this.screen.addEventListener("open-person", (e) => {
+      void this.showPersonPage((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("open-inspiration", (e) => {
       void this.showInspirationPage((e as CustomEvent<string>).detail);
@@ -341,6 +364,8 @@ class App {
     this.activeProjectPage = null;
     this.activeInspirationPage?.destroy();
     this.activeInspirationPage = null;
+    this.activePersonPage?.destroy();
+    this.activePersonPage = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.activeWishlist = null;
@@ -350,6 +375,7 @@ class App {
     clearCoverCache();
     clearYarnPhotoCache();
     clearWishPhotoCache();
+    clearSwatchPhotoCache();
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
@@ -378,8 +404,8 @@ class App {
     this.navToken++;
     this.clearScreen();
     this.setActiveTab("stash");
-    const view = new StashView(this.screen);
-    await view.mount();
+    if (this.stashMode === "swatches") await new SwatchesView(this.screen).mount();
+    else await new StashView(this.screen).mount();
   }
 
   private async showProjects(): Promise<void> {
@@ -414,6 +440,27 @@ class App {
     this.setActiveTab("inspiration");
     const view = new InspirationView(this.screen);
     await view.mount();
+  }
+
+  private async showPeople(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("people");
+    await new PeopleView(this.screen).mount();
+  }
+
+  private async showPersonPage(id: string): Promise<void> {
+    const token = ++this.navToken;
+    this.clearScreen();
+    this.setActiveTab("people");
+    const page = new PersonPage(this.screen, id, {
+      back: () => void this.showPeople(),
+      openProject: (projectId) => void this.showProjectPage(projectId),
+    });
+    this.activePersonPage = page;
+    await page.mount();
+    if (token !== this.navToken) page.destroy();
   }
 
   private async showInspirationPage(id: string): Promise<void> {
@@ -506,7 +553,35 @@ class App {
       // any photo the form uploaded afterwards.
       void this.showStash();
     }, template);
+    form.swatchHooks = {
+      open: (swatch) => void this.openSwatchForm(swatch),
+      add: (y) => void this.openSwatchForm(null, { yarnId: y.id }),
+    };
     form.open();
+  }
+
+  /**
+   * A swatch's form, from the swatches, a yarn's form, or anywhere else. A
+   * save brings the stash up to date when it is on screen, for the swatch
+   * itself and the line on its yarn's card.
+   */
+  private async openSwatchForm(swatch: Swatch | null, template: SwatchTemplate = {}): Promise<void> {
+    const form = new SwatchForm(
+      this.freshModal(),
+      swatch,
+      () => {
+        if (this.currentTab === "stash") void this.showStash();
+      },
+      template,
+      {
+        openYarn: (yarnId) =>
+          void api
+            .getYarn(yarnId)
+            .then((yarn) => this.openYarnForm(yarn))
+            .catch(() => say("That yarn is no longer in the stash.")),
+      },
+    );
+    await form.open();
   }
 
   private async editProject(id: string): Promise<void> {
@@ -685,10 +760,14 @@ class App {
     }));
     // A missing setting (an older backend, or the harness) shows both.
     const needleSizeDisplay = await api.getNeedleSizeDisplay().catch(() => "both" as const);
-    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, needleSizeDisplay, () => {
-      // The library reads settings on mount; a reload picks up the new values.
-      // Elsewhere nothing shows them, so the screen is left as it is.
+    const measureUnit = await api.getMeasureUnit().catch(() => "cm" as const);
+    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, needleSizeDisplay, measureUnit, () => {
+      // The screens that show a setting read it on mount; a reload picks up
+      // the new values. Elsewhere nothing shows them, so the screen is left.
       if (this.activeLibrary) void this.showLibrary();
+      if (this.activePersonPage) void this.showPersonPage(this.activePersonPage.id);
+      else if (this.currentTab === "people") void this.showPeople();
+      else if (this.activeProjectPage) void this.activeProjectPage.refresh();
     });
     dialog.open();
   }

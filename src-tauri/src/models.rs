@@ -766,6 +766,11 @@ pub struct Project {
     /// The cover's file inside `library/project-covers`, or empty.
     #[serde(default)]
     pub cover_path: String,
+    /// Who it is for. Cleared, not deleted, when the person is removed.
+    #[serde(default)]
+    pub person_id: Option<String>,
+    #[serde(default)]
+    pub person_name: String,
     /// The tools on it: while active, those in use; once finished, those it used.
     pub tool_ids: Vec<String>,
     pub yarns: Vec<ProjectYarn>,
@@ -1061,6 +1066,166 @@ pub struct WishInput {
     pub project_id: Option<String>,
     #[serde(default)]
     pub notes: String,
+}
+
+// ---------- gauge swatches ----------
+
+/// A gauge swatch: what it was knitted in and on, and how many stitches and
+/// rows it has over 10 cm, before and after blocking.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Swatch {
+    pub id: String,
+    /// The yarn in the stash it was knitted in; None for yarn not in the stash.
+    pub yarn_id: Option<String>,
+    /// The yarn as typed, for yarn not in the stash; also what a removed
+    /// yarn was called, so its swatches still say.
+    pub yarn_text: String,
+    /// What to call the yarn: the stash yarn's brand and name, or the text.
+    #[serde(default)]
+    pub yarn_name: String,
+    #[serde(default)]
+    pub yarn_colourway: String,
+    /// The needle or hook from Needles & hooks; None for a size only.
+    pub tool_id: Option<String>,
+    /// The needle size in millimetres, 0 when not recorded.
+    pub needle_mm: f64,
+    /// "Stockinette", "Garter", "Rib 2x2"...
+    pub stitch: String,
+    /// Stitches and rows over 10 cm, before blocking; 0 when not counted.
+    pub sts: f64,
+    pub rows: f64,
+    /// The same after blocking; 0 when not counted (or not blocked).
+    pub sts_blocked: f64,
+    pub rows_blocked: f64,
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub project_name: String,
+    /// Its photo's file name in library/swatch-photos, or empty.
+    pub photo_path: String,
+    pub notes: String,
+    /// When it was knitted.
+    pub made_at: i64,
+    pub added_at: i64,
+}
+
+/// A swatch as the form sends it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SwatchInput {
+    #[serde(default)]
+    pub yarn_id: Option<String>,
+    #[serde(default)]
+    pub yarn_text: String,
+    #[serde(default)]
+    pub tool_id: Option<String>,
+    #[serde(default)]
+    pub needle_mm: f64,
+    #[serde(default)]
+    pub stitch: String,
+    #[serde(default)]
+    pub sts: f64,
+    #[serde(default)]
+    pub rows: f64,
+    #[serde(default)]
+    pub sts_blocked: f64,
+    #[serde(default)]
+    pub rows_blocked: f64,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub notes: String,
+    /// None for today.
+    #[serde(default)]
+    pub made_at: Option<i64>,
+}
+
+// ---------- people and their measurements ----------
+
+/// The measurements every person has a row for, by key, in the order shown.
+/// Mirrors `MEASUREMENTS` in `src/api.ts`, which has their names and how to
+/// take each. All are lengths in centimetres; a person can have more of their
+/// own (`Person::extra`), and a shoe size, which is not a length.
+pub const MEASUREMENTS: &[&str] = &[
+    "height",
+    "chest",
+    "waist",
+    "hips",
+    "neck",
+    "shoulders",
+    "upper_arm",
+    "wrist",
+    "arm_length",
+    "armhole_depth",
+    "back_length",
+    "head",
+    "hand",
+    "foot_length",
+    "foot_around",
+];
+
+/// Someone knitted for, with every set of their measurements.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    /// Colours they like, fibres they cannot wear, sizes they prefer.
+    pub notes: String,
+    /// Their own measurements beyond the standard ones, by name, in order.
+    pub extra: Vec<String>,
+    /// Every set, the newest first.
+    pub sets: Vec<MeasurementSet>,
+    /// How many projects are for them.
+    pub project_count: i64,
+    pub added_at: i64,
+}
+
+/// One time someone was measured. Values are centimetres, by measurement key:
+/// a standard key, or `x:` and the name of one of the person's own. A
+/// measurement not taken has no entry.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeasurementSet {
+    pub id: String,
+    pub person_id: String,
+    pub measured_at: i64,
+    pub values: std::collections::BTreeMap<String, f64>,
+    /// As bought: "EU 39", "US 8". Not a length, so not converted.
+    pub shoe_size: String,
+}
+
+/// A person as the page sends them.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub notes: String,
+    #[serde(default)]
+    pub extra: Vec<String>,
+}
+
+/// A set of measurements as the page sends it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MeasurementSetInput {
+    pub measured_at: i64,
+    #[serde(default)]
+    pub values: std::collections::BTreeMap<String, f64>,
+    #[serde(default)]
+    pub shoe_size: String,
+}
+
+/// How lengths are shown and typed: centimetres or inches. Stored in
+/// centimetres whichever is chosen.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum MeasureUnit {
+    #[default]
+    Cm,
+    In,
 }
 
 // ---------- duplicate patterns ----------

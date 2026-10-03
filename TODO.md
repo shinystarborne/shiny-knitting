@@ -31,49 +31,6 @@ Open questions:
   "Added 4 mm circular", "Rows counted today: 32"? Or only what you type?
 - A photo on an entry (progress pictures)?
 
-### Gauge swatch log
-
-A record of every gauge swatch you knit, because your real gauge is worth more
-than what the ball band says. **It lives in the stash.**
-
-- For each swatch: the **yarn** (from the stash), the **needle** (from Needles
-  & hooks, or just a size), the stitch pattern, **stitches and rows per 10 cm**,
-  before and after blocking, a photo, the date and notes.
-- **In the stash, choose to see Yarn or Swatches.** The Swatches view is a grid
-  of swatch cards (photo, gauge, needle). Clicking one shows everything about
-  the swatch **and the yarn it was knitted in**, with a way through to the yarn.
-- **A yarn shows its own swatches.** Opening a yarn lists the swatches knitted
-  in it, and you can add a new one from there with the yarn already chosen.
-- The yarn's card says it has been swatched ("22 sts / 30 rows on 4 mm").
-- Can be linked to a project.
-- Later, the calculators (raglan, yoke, colourwork) offer your swatches as the
-  gauge to use.
-
-Open questions:
-
-- Measured over 10 cm only, or any width (e.g. 23 sts over 11 cm, worked out
-  per 10 cm)?
-- Inches as well as centimetres?
-- A swatch in yarn that is not in the stash (a friend's, or used up): allowed,
-  with the yarn typed in?
-
-### Recipient measurements
-
-The people you knit for, with their measurements.
-
-- A person: name, and a set of measurements, e.g. chest, waist, hips, neck,
-  head, wrist, upper arm, arm length, back length, foot length, shoe size.
-- **The date they were measured**, with older sets kept, because children grow.
-- Notes: colours they like, fibres they cannot wear (wool allergy!).
-- A project can say who it is for, and its page shows their measurements.
-- Later, the calculators use them.
-
-Open questions:
-
-- A fixed list of measurements, or your own as well?
-- Centimetres, inches, or a choice per person?
-- Its own tab, or inside Settings or Projects?
-
 ---
 
 ## Later
@@ -99,8 +56,10 @@ hand?
 
 ### Knitting calculators and a chart designer
 
-They all need measurements (see Recipient measurements) and a gauge (see Gauge
-swatch log), so those two come first.
+They all need measurements and a gauge, and both are built now: the People
+tab's measurements (in cm), and the stash's swatches (sts and rows per 10 cm,
+the blocked gauge when there is one). A calculator offers a person and a
+swatch, and still takes a gauge typed in for a swatch not logged.
 
 **Raglan calculator.** Measurements and gauge in; stitches, rows and raglan
 increases out. Open questions:
@@ -194,6 +153,12 @@ at once rare enough?
 - **Stash:** yarn with lots, photos (pasted or dropped), weight from metres and
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
   the same yarn; fibre content and superwash, with Fibre and Made of filters.
+- **Gauge swatches:** in the stash, beside the yarn: the yarn (from the stash
+  or typed in), the needle (from the box or a size), the stitch pattern, sts
+  and rows over 10 × 10 cm (or 4 × 4 in) before and after blocking, a photo,
+  the date, a project and notes. A yarn's card says it was swatched, and its
+  form lists its swatches and adds one in it; a removed yarn's swatches keep
+  its name.
 - **Needles & hooks:** inventory, sets, what each is used on, a Free filter.
 - **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project
@@ -206,6 +171,11 @@ at once rare enough?
   link reads the shop's page for the name, brand, price and picture and picks
   its shop; Got it moves an item to a dated Got section, and yarn and needles
   go on into the stash or Needles & hooks with their form filled in.
+- **People:** the people you knit for, in their own tab: notes, and their
+  measurements as dated sets, older ones kept and each newer value showing how
+  much it changed; a standard list (with how to take each) plus their own;
+  stored in cm, shown and typed in cm or inches (Settings). A project says who
+  it is for, and its page shows their latest measurements.
 - **Shops:** name, web address, tags and your comment, searched by all of
   them, with the tags as filters; the name looked up from the shop's own page
   (and Look up names for shops still named after their address); two rows of

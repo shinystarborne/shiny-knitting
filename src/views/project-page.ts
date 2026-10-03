@@ -1,4 +1,4 @@
-import { api, isLive, projectStatusLabel, STATUSES, type Pattern, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, MEASUREMENTS, projectStatusLabel, STATUSES, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ReaderView } from "../reader/reader";
@@ -6,6 +6,8 @@ import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } fro
 import { Board } from "./board";
 import { fromDateInput, toDateInput } from "./project-form";
 import { describe } from "./tool-filter";
+import { latestShoeSize, latestValue, measurementLabel, showLengthWithUnit } from "./measure";
+import { longDate } from "./project-form";
 
 export interface ProjectPageHooks {
   back(): void;
@@ -43,6 +45,9 @@ export class ProjectPage {
   private project!: Project;
   private patterns: Pattern[] = [];
   private tools: Tool[] = [];
+  /** The people a project can be for, and how their measurements are shown. */
+  private people: Person[] = [];
+  private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
   /** The name or notes typed and not yet saved. */
@@ -76,9 +81,11 @@ export class ProjectPage {
       return;
     }
     this.project = found;
-    [this.patterns, this.tools] = await Promise.all([
+    [this.patterns, this.tools, this.people, this.unit] = await Promise.all([
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.listTools().catch(() => [] as Tool[]),
+      api.listPeople().catch(() => [] as Person[]),
+      api.getMeasureUnit().catch(() => "cm" as const),
     ]);
 
     this.root = document.createElement("div");
@@ -158,6 +165,8 @@ export class ProjectPage {
     if (!found) return this.hooks.removed();
     this.project = found;
     this.tools = await api.listTools().catch(() => this.tools);
+    this.people = await api.listPeople().catch(() => this.people);
+    this.unit = await api.getMeasureUnit().catch(() => this.unit);
     await this.syncCounter();
     this.renderSide();
     await this.board?.refreshLinked();
@@ -208,6 +217,16 @@ export class ProjectPage {
              <div data-el="counter"></div>`
           : ""
       }
+
+      <label class="field">
+        <span>For</span>
+        <select data-f="person">
+          <option value="">No one in particular</option>
+          ${this.people.map((pe) => `<option value="${esc(pe.id)}" ${pe.id === p.personId ? "selected" : ""}>${esc(pe.name)}</option>`).join("")}
+        </select>
+        ${this.people.length ? "" : `<span class="hint">Add the people you knit for in the People tab.</span>`}
+      </label>
+      ${this.personMeasures()}
 
       <div class="project-side-dates">
         <label class="field"><span>Started</span><input type="date" data-f="started" value="${toDateInput(p.startedAt)}" /></label>
@@ -274,6 +293,29 @@ export class ProjectPage {
     void this.paintCover();
   }
 
+  /**
+   * The latest measurements of the person it is for: every one they have,
+   * since which matter depends on what is being knitted.
+   */
+  private personMeasures(): string {
+    const person = this.people.find((pe) => pe.id === this.project.personId);
+    if (!person) return "";
+    const keys = [...MEASUREMENTS.map((m) => m.key as string), ...person.extra.map((e) => `x:${e}`)];
+    const known = keys.map((key) => ({ key, v: latestValue(person, key) })).filter((m) => m.v);
+    const shoe = latestShoeSize(person);
+    const newest = known.reduce((at, m) => Math.max(at, m.v!.at), 0);
+    const rows = [
+      ...known.map((m) => `<li><span>${esc(measurementLabel(m.key))}</span><b>${esc(showLengthWithUnit(m.v!.cm, this.unit))}</b></li>`),
+      ...(shoe ? [`<li><span>Shoe size</span><b>${esc(shoe)}</b></li>`] : []),
+    ];
+    return `
+      <div class="side-section project-person">
+        <h3>${esc(person.name)}'s measurements${newest ? ` <span class="hint">${esc(longDate(newest))}</span>` : ""}</h3>
+        ${rows.length ? `<ul class="person-measures">${rows.join("")}</ul>` : `<p class="hint">None taken yet.</p>`}
+        <button class="link" data-act="open-person">${rows.length ? "All their measurements" : "Measure them"} ↗</button>
+      </div>`;
+  }
+
   private patternOptions(chosen: string | null): string {
     const order = (p: Pattern) => {
       const i = ["in-progress", "want-to-knit"].indexOf(p.status);
@@ -319,6 +361,9 @@ export class ProjectPage {
     if (act === "open-pattern" && this.project.patternId) this.hooks.openPattern(this.project.patternId);
     if (act === "show-pattern") await this.openPane("open");
     if (act === "edit-links") this.hooks.editLinks(this.project);
+    if (act === "open-person" && this.project.personId) {
+      this.root.dispatchEvent(new CustomEvent("open-person", { bubbles: true, detail: this.project.personId }));
+    }
     if (act === "finish") this.hooks.finish(this.project);
     if (act === "cover-file") {
       const input = document.createElement("input");
@@ -354,6 +399,15 @@ export class ProjectPage {
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
     if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));
+    // Who it is for is saved on its own, so saving the details never clears it.
+    if (f === "person") {
+      try {
+        this.project = await api.setProjectPerson(this.projectId, (e.target as HTMLSelectElement).value || null);
+      } catch (err) {
+        await say(err instanceof Error ? err.message : String(err), "Project");
+      }
+      return this.renderSide();
+    }
     if (this.typingTimer !== null) {
       clearTimeout(this.typingTimer);
       this.typingTimer = null;

@@ -8,9 +8,11 @@ mod external;
 mod link_preview;
 mod models;
 mod needle_size;
+mod people;
 mod state;
 mod projects;
 mod shopping;
+mod swatches;
 mod tools;
 mod update;
 mod yarn;
@@ -132,6 +134,24 @@ pub fn run() {
             projects::add_inspiration_board,
             projects::rename_inspiration_board,
             projects::delete_inspiration_board,
+            swatches::list_swatches,
+            swatches::add_swatch,
+            swatches::update_swatch,
+            swatches::delete_swatch,
+            swatches::set_swatch_photo,
+            swatches::get_swatch_photo,
+            swatches::remove_swatch_photo,
+            people::list_people,
+            people::get_person,
+            people::add_person,
+            people::update_person,
+            people::delete_person,
+            people::add_measurement_set,
+            people::update_measurement_set,
+            people::delete_measurement_set,
+            people::set_project_person,
+            people::get_measure_unit,
+            people::save_measure_unit,
             shopping::list_shops,
             shopping::add_shop,
             shopping::update_shop,

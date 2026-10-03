@@ -2,6 +2,7 @@ import {
   api,
   YARN_WEIGHT_OPTIONS,
   type Fibre,
+  type Swatch,
   type Yarn,
   type YarnInput,
   type YarnLotInput,
@@ -19,6 +20,8 @@ import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 import type { YarnStart } from "./shopping";
+import { swatchLine } from "./measure";
+import { longDate } from "./project-form";
 
 /** One lot row in the editor, kept as strings while the form is open. */
 interface LotRow {
@@ -70,6 +73,11 @@ export class YarnForm {
    * its picture.
    */
   private start: (YarnStart & { photo: Blob | null }) | null;
+  /**
+   * Opening a swatch of this yarn, or adding one in it. Set by whoever opens
+   * the form; without them the form has no Swatches section.
+   */
+  swatchHooks: { open(swatch: Swatch): void; add(yarn: Yarn): void } | null = null;
   /** Every yarn in the stash, for the brand and name lists and filling in. */
   private known: Yarn[] = [];
   /** The fibre rows, as typed: a name and its share. */
@@ -217,6 +225,8 @@ export class YarnForm {
           <p class="hint">Weigh a partial ball and put the grams in; the metres left are worked out from that.</p>
         </div>
 
+        ${e && this.swatchHooks ? `<div class="field"><span>Swatches</span><div class="yarn-swatches" data-el="swatches"><p class="hint">…</p></div></div>` : ""}
+
         <div class="modal-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
           <button class="primary" data-act="save">${e ? "Save changes" : "Add to stash"}</button>
@@ -230,6 +240,7 @@ export class YarnForm {
     this.renderFibres();
     void this.paintPhoto();
     this.weightHint();
+    void this.renderSwatches();
 
     // Brand and name are typed, or picked from what is already in the stash;
     // picking a name fills in the rest of that yarn (see fillFromKnown).
@@ -423,6 +434,32 @@ export class YarnForm {
    * left behind would still fire for the next form: the old instance's Save
    * would run alongside the new one's, and a yarn would be added twice.
    */
+  /** This yarn's swatches, the newest first, for its Swatches section. */
+  private swatchList: Swatch[] = [];
+
+  /** Lists the swatches knitted in this yarn, each opening its own form. */
+  private async renderSwatches(): Promise<void> {
+    const host = this.root.querySelector<HTMLElement>('[data-el="swatches"]');
+    const yarn = this.editing;
+    if (!host || !yarn) return;
+    const [swatches, unit] = await Promise.all([
+      api.listSwatches().catch(() => [] as Swatch[]),
+      api.getMeasureUnit().catch(() => "cm" as const),
+    ]);
+    this.swatchList = swatches.filter((s) => s.yarnId === yarn.id);
+    host.innerHTML = `
+      ${
+        this.swatchList.length
+          ? `<ul class="tool-list">${this.swatchList
+              .map(
+                (s) => `<li><button class="link" type="button" data-act="open-swatch" data-id="${escapeAttr(s.id)}">${escapeHtml(swatchLine(s, unit))}${s.stitch ? ` · ${escapeHtml(s.stitch)}` : ""}</button><span class="hint">${escapeHtml(longDate(s.madeAt))}</span></li>`,
+              )
+              .join("")}</ul>`
+          : `<p class="hint">Not swatched yet.</p>`
+      }
+      <div><button class="ghost" type="button" data-act="add-swatch">+ Add a swatch</button></div>`;
+  }
+
   private onClick = (e: MouseEvent): void => {
     // Clicking the backdrop dismisses, but not a stray click inside the form.
     if (e.target === this.root) {
@@ -433,6 +470,15 @@ export class YarnForm {
     if (!btn) return;
     if (btn.dataset.act === "cancel") this.close();
     if (btn.dataset.act === "save") void this.save();
+    // A swatch opens in its own form, in place of this one.
+    if (btn.dataset.act === "open-swatch" || btn.dataset.act === "add-swatch") {
+      const hooks = this.swatchHooks;
+      const yarn = this.editing;
+      const swatch = this.swatchList.find((s) => s.id === btn.dataset.id);
+      this.close();
+      if (hooks && swatch) hooks.open(swatch);
+      else if (hooks && yarn) hooks.add(yarn);
+    }
     if (btn.dataset.act === "add-lot") {
       this.readLots();
       this.lots.push(emptyLot());

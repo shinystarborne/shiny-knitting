@@ -272,6 +272,40 @@ pub fn delete_board_image_file(state: &AppState, file_name: &str) {
     }
 }
 
+// ---------- swatch photos ----------
+
+pub fn swatch_photos_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("swatch-photos")
+}
+
+/// Saves a swatch's photo, replacing any previous one.
+pub fn set_swatch_photo(state: &AppState, swatch_id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    remove_swatch_photo(state, swatch_id).ok();
+    let file_name = write_file(&swatch_photos_dir(state), swatch_id, ext, &bytes)?;
+    db::set_swatch_photo(&state.db(), swatch_id, &file_name)
+}
+
+pub fn remove_swatch_photo(state: &AppState, swatch_id: &str) -> AppResult<()> {
+    let name = db::get_swatch(&state.db(), swatch_id)?.photo_path;
+    delete_swatch_photo_file(state, &name);
+    db::set_swatch_photo(&state.db(), swatch_id, "")
+}
+
+pub fn read_swatch_photo(state: &AppState, swatch_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::get_swatch(&state.db(), swatch_id)?.photo_path;
+    let path = existing_file(&swatch_photos_dir(state), &name)
+        .ok_or_else(|| AppError::Message("This swatch has no photo.".into()))?;
+    read_file(path)
+}
+
+/// Deletes a stored swatch photo by its file name, best effort.
+pub fn delete_swatch_photo_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&swatch_photos_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 // ---------- wishlist pictures ----------
 
 pub fn wish_photos_dir(state: &AppState) -> PathBuf {

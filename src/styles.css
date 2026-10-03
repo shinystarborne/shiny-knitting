@@ -3089,3 +3089,203 @@ button.tag.shop-tag:hover { color: var(--text); border-color: var(--border); }
 button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 .shop-card .shop-comment { -webkit-line-clamp: 4; }
 .shops .filters .hint { margin: 0; font-size: 12px; }
+
+/* ---------- people ---------- */
+
+.person-grid { grid-template-columns: repeat(auto-fill, 260px); align-content: start; }
+.person-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  height: 250px;
+  overflow: hidden;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.person-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.person-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.person-head > div { min-width: 0; }
+.person-head h3 { margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.person-head .hint { margin: 0; font-size: 11px; }
+.person-initial {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  font-weight: 600;
+}
+/* A measurement a line: its name, then the figure at the right edge. */
+.person-measures { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.person-measures li { display: flex; justify-content: space-between; gap: 10px; }
+.person-measures li span { color: var(--text-dim); }
+.person-measures li b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.person-card .person-measures { flex-shrink: 1; min-height: 0; overflow: hidden; }
+.person-notes {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.person-none { margin: 0; }
+.person-card .card-tools-row { margin-top: auto; align-items: center; }
+.person-card .card-tools-row .card-remove { margin-left: 0; }
+.person-card .card-tools-row .hint { font-size: 11px; }
+.person-card .spacer { flex: 1; }
+
+/* A person's page: the bar across the top, notes down the side, the table in the rest. */
+.person-page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.person-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr; }
+.person-side {
+  border-right: 1px solid var(--border);
+  background: var(--bg-raised);
+  padding: 14px 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.person-side textarea { min-height: 140px; resize: vertical; }
+.person-projects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.person-main { overflow: auto; padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.person-toolbar { display: flex; align-items: center; gap: 12px; align-self: stretch; }
+.person-toolbar h2 { margin: 0; font-size: 16px; }
+.person-toolbar h2 .hint { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.person-toolbar .spacer { flex: 1; }
+/* Its full height: the page scrolls, not a box inside it. Wide with many
+   dates, it scrolls sideways on its own, the names staying put. */
+.measure-wrap { max-width: 100%; overflow-x: auto; flex-shrink: 0; }
+
+/* The table: a row per measurement, a column per date, newest first. */
+.measure-table { border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.measure-table th,
+.measure-table td { padding: 3px 6px; border-bottom: 1px solid var(--border); }
+.measure-table thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.measure-corner { text-align: left; color: var(--text-dim); font-weight: 400; font-size: 11px; }
+.measure-label {
+  text-align: left;
+  font-weight: 500;
+  white-space: nowrap;
+  padding-right: 14px;
+  cursor: help;
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+}
+.measure-help {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 9px;
+  color: var(--text-dim);
+  vertical-align: 1px;
+}
+.measure-date { white-space: nowrap; text-align: left; }
+.measure-date input { width: 130px; padding: 4px 6px; font-size: 12px; }
+.measure-date .hint { font-size: 10px; margin-left: 4px; }
+.measure-table td { white-space: nowrap; }
+.measure-table td input { width: 72px; padding: 4px 6px; font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+.measure-table td input::placeholder { color: var(--text-dim); opacity: 0.5; }
+.measure-delta { display: inline-block; min-width: 34px; margin-left: 4px; font-size: 11px; color: #8fdca0; font-variant-numeric: tabular-nums; }
+.measure-remove { padding: 0 5px; font-size: 12px; line-height: 18px; color: var(--text-dim); border-color: transparent; background: transparent; }
+.measure-remove:hover { color: var(--accent); border-color: var(--accent); }
+
+/* On a project's page: who it is for, and their latest measurements. */
+.project-person h3 .hint { font-weight: 400; font-size: 11px; }
+.project-person .person-measures { margin: 4px 0 6px; }
+
+/* ---------- gauge swatches ---------- */
+
+/* The tab's title with a switch beside it: Stash, then Yarn | Swatches. */
+.lib-title { display: flex; align-items: center; gap: 14px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 5px 14px; font-size: 13px; color: var(--text-dim); }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { color: var(--text); background: transparent; }
+.seg button.on { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+
+.swatch-grid { grid-template-columns: repeat(auto-fill, 230px); align-content: start; }
+.swatch-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  height: 345px;
+  overflow: hidden;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.swatch-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.swatch-photo {
+  flex: none;
+  height: 170px;
+  background: var(--bg-input) center / cover no-repeat;
+  display: grid;
+  place-items: center;
+}
+/* No photo: a knitted texture, and the stitch pattern's name on it. */
+.swatch-photo.none {
+  background-image: repeating-linear-gradient(60deg, transparent 0 6px, rgba(255, 255, 255, 0.04) 6px 8px),
+    repeating-linear-gradient(-60deg, transparent 0 6px, rgba(255, 255, 255, 0.04) 6px 8px);
+}
+.swatch-photo span { color: var(--text-dim); font-size: 13px; }
+.swatch-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; }
+.swatch-gauge { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.swatch-gauge b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.swatch-gauge span { font-size: 11px; color: var(--text-dim); }
+.swatch-gauge .pill { margin-left: auto; text-transform: none; }
+.pill.swatch-blocked { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; }
+/* What blocking did: the counts before, and wider or narrower, longer or shorter. */
+.swatch-before { margin: 0; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swatch-blocking { margin: 2px 0; font-size: 13px; color: #8fdca0; }
+.swatch-blocking[hidden] { display: none; }
+.gauge-table th .hint { font-weight: 400; }
+.swatch-needle,
+.swatch-yarn { margin: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swatch-yarn { color: var(--text-dim); }
+.swatch-card .card-tools-row { margin-top: auto; align-items: center; }
+.swatch-card .card-tools-row .card-remove { margin-left: 0; }
+.swatch-card .card-tools-row .hint { font-size: 11px; }
+.swatch-card .spacer { flex: 1; }
+
+/* A yarn's card says it was swatched. */
+.card-swatched { margin: 0; font-size: 11px; color: #8fdca0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The form: the photo beside what it was knitted in, then the gauge as a small table. */
+.swatch-form { max-width: 640px; }
+.swatch-main-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; align-items: start; }
+.swatch-photo-box { width: 140px; height: 140px; background-size: cover; }
+.swatch-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.swatch-form .field[hidden],
+.swatch-form .swatch-yarn-info[hidden] { display: none; }
+.swatch-form .swatch-needle,
+.swatch-form .swatch-when { grid-template-columns: 1fr 1fr; }
+/* A needle from the box has its own size: its name gets the whole row. */
+.swatch-form .swatch-needle:has([data-el="size-field"][hidden]) { grid-template-columns: 1fr; }
+.swatch-yarn-info { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-dim); }
+.gauge-table { border-collapse: collapse; margin: 4px 0; }
+.gauge-table th { text-align: left; font-weight: 500; font-size: 12px; color: var(--text-dim); padding: 2px 12px 2px 0; }
+.gauge-table td { padding: 3px 8px 3px 0; }
+.gauge-table input { width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+.swatch-form textarea { min-height: 60px; resize: vertical; }
+
+/* A yarn form's swatches. */
+.yarn-swatches { display: flex; flex-direction: column; gap: 6px; }
+.yarn-swatches .tool-list li { display: flex; justify-content: space-between; gap: 10px; }

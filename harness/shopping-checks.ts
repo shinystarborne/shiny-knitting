@@ -153,7 +153,7 @@ export async function verifyShopping() {
     // ---------- the wishlist ----------
     tab("wishlist");
     await waitFor(() => wishCards().length === 4, "the wishlist cards");
-    check(results, "the tabs are there, in order", [...document.querySelectorAll<HTMLElement>(".tab-bar .tab")].map((t) => t.dataset.tab).join(",") === "patterns,projects,inspiration,stash,tools,wishlist,shops");
+    check(results, "the tabs are there, in order", [...document.querySelectorAll<HTMLElement>(".tab-bar .tab")].map((t) => t.dataset.tab).join(",") === "patterns,projects,people,inspiration,stash,tools,wishlist,shops");
     check(results, "what is wanted comes first, newest first", wanted() === "w3,w2,w1", wanted());
     check(results, "what was got is under Got", got() === "w4" && /Got\s*1/.test(document.querySelector(".wish-section h3")?.textContent ?? ""));
     const w1 = wishCard("w1")!;

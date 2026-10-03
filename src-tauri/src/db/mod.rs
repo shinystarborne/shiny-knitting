@@ -8,7 +8,7 @@ use crate::models::{
     Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
-    WishInput,
+    WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput,
 };
 
 #[cfg(test)]
@@ -308,6 +308,49 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         CREATE INDEX IF NOT EXISTS idx_wishlist_shop ON wishlist(shop_id);
         CREATE INDEX IF NOT EXISTS idx_wishlist_project ON wishlist(project_id);
 
+        -- A gauge swatch. Its yarn, needle and project only link: removing
+        -- one leaves the swatch, and a removed yarn's name is kept in
+        -- yarn_text. Counts are per 10 cm, 0 when not counted.
+        CREATE TABLE IF NOT EXISTS swatches (
+            id            TEXT PRIMARY KEY,
+            yarn_id       TEXT REFERENCES yarns(id) ON DELETE SET NULL,
+            yarn_text     TEXT NOT NULL DEFAULT '',
+            tool_id       TEXT REFERENCES tools(id) ON DELETE SET NULL,
+            needle_mm     REAL NOT NULL DEFAULT 0,
+            stitch        TEXT NOT NULL DEFAULT '',
+            sts           REAL NOT NULL DEFAULT 0,
+            rows          REAL NOT NULL DEFAULT 0,
+            sts_blocked   REAL NOT NULL DEFAULT 0,
+            rows_blocked  REAL NOT NULL DEFAULT 0,
+            project_id    TEXT REFERENCES projects(id) ON DELETE SET NULL,
+            photo_path    TEXT NOT NULL DEFAULT '',
+            notes         TEXT NOT NULL DEFAULT '',
+            made_at       INTEGER NOT NULL,
+            added_at      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_swatches_yarn ON swatches(yarn_id);
+
+        -- Someone knitted for. `extra` is the names of their own measurements,
+        -- beyond the standard ones, as a JSON list.
+        CREATE TABLE IF NOT EXISTS people (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            notes       TEXT NOT NULL DEFAULT '',
+            extra       TEXT NOT NULL DEFAULT '[]',
+            added_at    INTEGER NOT NULL
+        );
+
+        -- One time someone was measured: centimetres by measurement key, as
+        -- a JSON object, so a person's own measurements need no column.
+        CREATE TABLE IF NOT EXISTS measurement_sets (
+            id           TEXT PRIMARY KEY,
+            person_id    TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+            measured_at  INTEGER NOT NULL,
+            measures     TEXT NOT NULL DEFAULT '{}',
+            shoe_size    TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_measurement_sets_person ON measurement_sets(person_id);
+
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
         CREATE TABLE IF NOT EXISTS page_rotations (
@@ -487,6 +530,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     if !column_exists(conn, "wishlist", "photo_path")? {
         conn.execute("ALTER TABLE wishlist ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // Who a project is for.
+    if !column_exists(conn, "projects", "person_id")? {
+        conn.execute("ALTER TABLE projects ADD COLUMN person_id TEXT REFERENCES people(id) ON DELETE SET NULL", [])?;
     }
     if !column_exists(conn, "wishlist", "brand")? {
         conn.execute("ALTER TABLE wishlist ADD COLUMN brand TEXT NOT NULL DEFAULT ''", [])?;
@@ -2101,6 +2148,8 @@ fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> App
 }
 
 pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
+    // A swatch knitted on it keeps the size.
+    conn.execute("UPDATE swatches SET tool_id = NULL WHERE tool_id = ?1", params![id])?;
     let changed = conn.execute("DELETE FROM tools WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
@@ -2122,13 +2171,16 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         notes: row.get("notes")?,
         created_at: row.get("created_at")?,
         cover_path: row.get("cover_path")?,
+        person_id: row.get("person_id")?,
+        person_name: row.get("person_name")?,
         tool_ids: Vec::new(),
         yarns: Vec::new(),
     })
 }
 
-const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title
-     FROM projects pr LEFT JOIN patterns p ON p.id = pr.pattern_id";
+const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title, COALESCE(pe.name, '') AS person_name
+     FROM projects pr LEFT JOIN patterns p ON p.id = pr.pattern_id
+     LEFT JOIN people pe ON pe.id = pr.person_id";
 
 /// Fills in a project's tools and yarns.
 fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
@@ -2460,6 +2512,7 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
     // What was wanted for it is still wanted, for nothing in particular.
     conn.execute("UPDATE wishlist SET project_id = NULL WHERE project_id = ?1", params![id])?;
+    conn.execute("UPDATE swatches SET project_id = NULL WHERE project_id = ?1", params![id])?;
     Ok(())
 }
 
@@ -3043,6 +3096,264 @@ pub fn delete_wish(conn: &Connection, id: &str) -> AppResult<String> {
     let photo = get_wish(conn, id)?.photo_path;
     conn.execute("DELETE FROM wishlist WHERE id = ?1", params![id])?;
     Ok(photo)
+}
+
+// ---------- gauge swatches ----------
+
+/// A swatch with its yarn's and project's names joined in.
+const SWATCH_SELECT: &str = "SELECT s.*,
+     CASE WHEN y.id IS NULL THEN s.yarn_text ELSE TRIM(y.brand || ' ' || y.name) END AS yarn_name,
+     COALESCE(y.colourway, '') AS yarn_colourway,
+     COALESCE(p.name, '') AS project_name
+     FROM swatches s
+     LEFT JOIN yarns y ON y.id = s.yarn_id
+     LEFT JOIN projects p ON p.id = s.project_id";
+
+fn row_to_swatch(row: &rusqlite::Row) -> rusqlite::Result<Swatch> {
+    Ok(Swatch {
+        id: row.get("id")?,
+        yarn_id: row.get("yarn_id")?,
+        yarn_text: row.get("yarn_text")?,
+        yarn_name: row.get("yarn_name")?,
+        yarn_colourway: row.get("yarn_colourway")?,
+        tool_id: row.get("tool_id")?,
+        needle_mm: row.get("needle_mm")?,
+        stitch: row.get("stitch")?,
+        sts: row.get("sts")?,
+        rows: row.get("rows")?,
+        sts_blocked: row.get("sts_blocked")?,
+        rows_blocked: row.get("rows_blocked")?,
+        project_id: row.get("project_id")?,
+        project_name: row.get("project_name")?,
+        photo_path: row.get("photo_path")?,
+        notes: row.get("notes")?,
+        made_at: row.get("made_at")?,
+        added_at: row.get("added_at")?,
+    })
+}
+
+/// Every swatch, the most recently knitted first.
+pub fn list_swatches(conn: &Connection) -> AppResult<Vec<Swatch>> {
+    let mut stmt = conn.prepare(&format!("{SWATCH_SELECT} ORDER BY s.made_at DESC, s.added_at DESC"))?;
+    let rows = stmt.query_map([], row_to_swatch)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_swatch(conn: &Connection, id: &str) -> AppResult<Swatch> {
+    conn.query_row(&format!("{SWATCH_SELECT} WHERE s.id = ?1"), params![id], row_to_swatch)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That swatch is no longer there.".to_string()))
+}
+
+/// Refuses a yarn, needle or project that is not there, with a message
+/// rather than a foreign key error.
+fn check_swatch_links(conn: &Connection, input: &SwatchInput) -> AppResult<()> {
+    let exists = |sql: &str, id: &str| -> AppResult<bool> {
+        Ok(conn.query_row(sql, params![id], |_| Ok(())).optional()?.is_some())
+    };
+    for (id, sql, what) in [
+        (&input.yarn_id, "SELECT 1 FROM yarns WHERE id = ?1", "That yarn is no longer in the stash."),
+        (&input.tool_id, "SELECT 1 FROM tools WHERE id = ?1", "That needle is no longer in Needles & hooks."),
+        (&input.project_id, "SELECT 1 FROM projects WHERE id = ?1", "That project is no longer there."),
+    ] {
+        if let Some(id) = id.as_deref() {
+            if !exists(sql, id)? {
+                return Err(AppError::Message(what.to_string()));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Stores a new swatch. The input is expected to have been through
+/// `swatches::clean`, which gives it a date.
+pub fn insert_swatch(conn: &Connection, id: &str, input: &SwatchInput) -> AppResult<Swatch> {
+    check_swatch_links(conn, input)?;
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO swatches (id, yarn_id, yarn_text, tool_id, needle_mm, stitch, sts, rows, sts_blocked, rows_blocked,
+                               project_id, notes, made_at, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            id, input.yarn_id, input.yarn_text, input.tool_id, input.needle_mm, input.stitch, input.sts, input.rows,
+            input.sts_blocked, input.rows_blocked, input.project_id, input.notes, input.made_at.unwrap_or(now), now
+        ],
+    )?;
+    get_swatch(conn, id)
+}
+
+pub fn update_swatch(conn: &Connection, id: &str, input: &SwatchInput) -> AppResult<Swatch> {
+    check_swatch_links(conn, input)?;
+    let current = get_swatch(conn, id)?;
+    conn.execute(
+        "UPDATE swatches SET yarn_id = ?2, yarn_text = ?3, tool_id = ?4, needle_mm = ?5, stitch = ?6, sts = ?7, rows = ?8,
+                sts_blocked = ?9, rows_blocked = ?10, project_id = ?11, notes = ?12, made_at = ?13
+         WHERE id = ?1",
+        params![
+            id, input.yarn_id, input.yarn_text, input.tool_id, input.needle_mm, input.stitch, input.sts, input.rows,
+            input.sts_blocked, input.rows_blocked, input.project_id, input.notes, input.made_at.unwrap_or(current.made_at)
+        ],
+    )?;
+    get_swatch(conn, id)
+}
+
+pub fn set_swatch_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE swatches SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That swatch is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+/// Removes a swatch, returning its photo's file name for the caller to delete.
+pub fn delete_swatch(conn: &Connection, id: &str) -> AppResult<String> {
+    let photo = get_swatch(conn, id)?.photo_path;
+    conn.execute("DELETE FROM swatches WHERE id = ?1", params![id])?;
+    Ok(photo)
+}
+
+/// A needle's size, for a swatch knitted on it.
+pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
+    Ok(conn.query_row("SELECT size_mm FROM tools WHERE id = ?1", params![id], |r| r.get(0)).optional()?)
+}
+
+// ---------- people and their measurements ----------
+
+fn row_to_set(row: &rusqlite::Row) -> rusqlite::Result<MeasurementSet> {
+    Ok(MeasurementSet {
+        id: row.get("id")?,
+        person_id: row.get("person_id")?,
+        measured_at: row.get("measured_at")?,
+        values: serde_json::from_str(&row.get::<_, String>("measures")?).unwrap_or_default(),
+        shoe_size: row.get("shoe_size")?,
+    })
+}
+
+/// A person with all their sets, newest first, and how many projects are for them.
+fn person_with_sets(conn: &Connection, id: String, name: String, notes: String, extra: String, added_at: i64) -> AppResult<Person> {
+    let sets = conn
+        .prepare("SELECT * FROM measurement_sets WHERE person_id = ?1 ORDER BY measured_at DESC, rowid DESC")?
+        .query_map(params![id], row_to_set)?
+        .collect::<Result<_, _>>()?;
+    let project_count = conn.query_row("SELECT COUNT(*) FROM projects WHERE person_id = ?1", params![id], |r| r.get(0))?;
+    Ok(Person { id, name, notes, extra: serde_json::from_str(&extra).unwrap_or_default(), sets, project_count, added_at })
+}
+
+/// Everyone, by name.
+pub fn list_people(conn: &Connection) -> AppResult<Vec<Person>> {
+    let rows: Vec<(String, String, String, String, i64)> = conn
+        .prepare("SELECT id, name, notes, extra, added_at FROM people ORDER BY name COLLATE NOCASE, added_at")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+        .collect::<Result<_, _>>()?;
+    rows.into_iter().map(|(id, n, no, e, a)| person_with_sets(conn, id, n, no, e, a)).collect()
+}
+
+pub fn get_person(conn: &Connection, id: &str) -> AppResult<Person> {
+    let (name, notes, extra, added_at): (String, String, String, i64) = conn
+        .query_row("SELECT name, notes, extra, added_at FROM people WHERE id = ?1", params![id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That person is no longer there.".to_string()))?;
+    person_with_sets(conn, id.to_string(), name, notes, extra, added_at)
+}
+
+/// Adds a person, with a first set to fill in, dated now. The input is
+/// expected to have been through `people::clean_person`.
+pub fn insert_person(conn: &Connection, id: &str, input: &PersonInput) -> AppResult<Person> {
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO people (id, name, notes, extra, added_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, input.name, input.notes, serde_json::to_string(&input.extra)?, now],
+    )?;
+    tx.execute(
+        "INSERT INTO measurement_sets (id, person_id, measured_at) VALUES (?1, ?2, ?3)",
+        params![uuid::Uuid::new_v4().to_string(), id, now],
+    )?;
+    tx.commit()?;
+    get_person(conn, id)
+}
+
+/// Replaces a person's name, notes and own measurements. A measurement of
+/// their own that is gone takes its values with it, from every set.
+pub fn update_person(conn: &Connection, id: &str, input: &PersonInput) -> AppResult<Person> {
+    let before = get_person(conn, id)?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE people SET name = ?2, notes = ?3, extra = ?4 WHERE id = ?1",
+        params![id, input.name, input.notes, serde_json::to_string(&input.extra)?],
+    )?;
+    let gone: Vec<String> = before.extra.iter().filter(|e| !input.extra.contains(e)).map(|e| format!("x:{e}")).collect();
+    if !gone.is_empty() {
+        for set in &before.sets {
+            let mut values = set.values.clone();
+            values.retain(|k, _| !gone.contains(k));
+            if values.len() != set.values.len() {
+                tx.execute("UPDATE measurement_sets SET measures = ?2 WHERE id = ?1", params![set.id, serde_json::to_string(&values)?])?;
+            }
+        }
+    }
+    tx.commit()?;
+    get_person(conn, id)
+}
+
+/// Removes a person and their measurements. Their projects stay, for no one.
+pub fn delete_person(conn: &Connection, id: &str) -> AppResult<()> {
+    // The foreign keys do this too, where they are on; said here so it never
+    // depends on that.
+    conn.execute("UPDATE projects SET person_id = NULL WHERE person_id = ?1", params![id])?;
+    conn.execute("DELETE FROM measurement_sets WHERE person_id = ?1", params![id])?;
+    let changed = conn.execute("DELETE FROM people WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That person is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+/// Adds a set of measurements. The input is expected to have been through
+/// `people::clean_set`. Returns the person, with it.
+pub fn insert_measurement_set(conn: &Connection, id: &str, person_id: &str, input: &MeasurementSetInput) -> AppResult<Person> {
+    get_person(conn, person_id)?;
+    conn.execute(
+        "INSERT INTO measurement_sets (id, person_id, measured_at, measures, shoe_size) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, person_id, input.measured_at, serde_json::to_string(&input.values)?, input.shoe_size],
+    )?;
+    get_person(conn, person_id)
+}
+
+/// The person a set belongs to.
+pub fn set_owner(conn: &Connection, set_id: &str) -> AppResult<String> {
+    conn.query_row("SELECT person_id FROM measurement_sets WHERE id = ?1", params![set_id], |r| r.get(0))
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("Those measurements are no longer there.".to_string()))
+}
+
+pub fn update_measurement_set(conn: &Connection, id: &str, input: &MeasurementSetInput) -> AppResult<Person> {
+    let person = set_owner(conn, id)?;
+    conn.execute(
+        "UPDATE measurement_sets SET measured_at = ?2, measures = ?3, shoe_size = ?4 WHERE id = ?1",
+        params![id, input.measured_at, serde_json::to_string(&input.values)?, input.shoe_size],
+    )?;
+    get_person(conn, &person)
+}
+
+pub fn delete_measurement_set(conn: &Connection, id: &str) -> AppResult<Person> {
+    let person = set_owner(conn, id)?;
+    conn.execute("DELETE FROM measurement_sets WHERE id = ?1", params![id])?;
+    get_person(conn, &person)
+}
+
+/// Says who a project is for, or no one.
+pub fn set_project_person(conn: &Connection, project_id: &str, person_id: Option<&str>) -> AppResult<Project> {
+    if let Some(p) = person_id {
+        get_person(conn, p)?;
+    }
+    let changed = conn.execute("UPDATE projects SET person_id = ?2 WHERE id = ?1", params![project_id, person_id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    get_project(conn, project_id)
 }
 
 // ---------- page rotations ----------
@@ -3695,6 +4006,13 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
 }
 
 pub fn delete_yarn(conn: &Connection, id: &str) -> AppResult<()> {
+    // Its swatches stay, and still say what they were knitted in.
+    conn.execute(
+        "UPDATE swatches SET yarn_text = COALESCE((SELECT TRIM(brand || ' ' || name) || CASE WHEN colourway <> '' THEN ', ' || colourway ELSE '' END
+                 FROM yarns WHERE id = ?1), yarn_text), yarn_id = NULL
+         WHERE yarn_id = ?1",
+        params![id],
+    )?;
     // Lots go with it via ON DELETE CASCADE.
     let changed = conn.execute("DELETE FROM yarns WHERE id = ?1", params![id])?;
     if changed == 0 {

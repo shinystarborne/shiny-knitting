@@ -14,8 +14,8 @@
       The check modules are listed for the same reason, so a driver can call
       window.__layoutChecks(), __rowChecks(), __annotationChecks(),
       __bulkAddChecks(), __updateChecks(), __yarnStashChecks(), __toolChecks()
-      __projectChecks(), __yarnWeightChecks(), __needleSizeChecks() and
-      __shoppingChecks().
+      __projectChecks(), __yarnWeightChecks(), __needleSizeChecks(),
+      __shoppingChecks(), __peopleChecks() and __swatchChecks().
 
       no-dialogs.js comes first so the harness behaves like the real app, where
       window.prompt, confirm and alert do not work. See the file for why.
@@ -33,6 +33,8 @@
     <script type="module" src="/harness/yarn-weight-checks.ts"></script>
     <script type="module" src="/harness/needle-size-checks.ts"></script>
     <script type="module" src="/harness/shopping-checks.ts"></script>
+    <script type="module" src="/harness/people-checks.ts"></script>
+    <script type="module" src="/harness/swatch-checks.ts"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

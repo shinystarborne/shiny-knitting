@@ -354,6 +354,49 @@ pictures and its colours, newest first, and the boards changed most recently
 come first. Removing a board removes what is on it; the patterns and yarn on it
 stay where they are.
 
+## Gauge swatches
+
+The **Stash** tab switches between its **Yarn** and its **Swatches**. A swatch
+records what it was knitted in — a yarn from the stash, or one typed in, for a
+friend's yarn or one long used up — and on (a needle from Needles & hooks, or
+just a size), its stitch pattern, and its stitches and rows counted over
+10 × 10 cm in the middle, before and after blocking, with a photo (pasted,
+dropped or chosen), the date, a project and notes. Counts are kept per 10 cm;
+with inches chosen in Settings they are shown and typed over 4 × 4 in. A
+swatch is known by its blocked gauge, as the calculators will use it; the count
+before blocking is optional, and with both the form and the card say what
+blocking did ("7% wider, 5% longer"), which some yarns — deadstock, cones —
+do a lot of. One counted only before blocking says **Not blocked yet**.
+
+A yarn's card says it was swatched ("Swatched: 22 sts × 30 rows on 4 mm", its
+newest), and its form lists its swatches, with **+ Add a swatch** starting one
+in that yarn. A swatch's form shows the yarn it was knitted in, with **Open the
+yarn**. Removing a yarn keeps its swatches, which still say what they were
+knitted in.
+
+## People
+
+The **People** tab is the people you knit for. **+ Add a person** asks for a
+name and opens their page: notes down the side (colours they like, fibres they
+cannot wear), the projects for them, and a table of their measurements, a row
+for each and a column for each time they were measured, the newest first.
+
+The rows are a standard set, each saying how to take it when pointed at —
+height, chest, waist, hips, neck, shoulder width, upper arm, wrist, arm
+length, armhole depth, back length, head, hand, foot length and around — then
+any of their own (**+ Add a measurement of their own**: thumb length, calf),
+and a shoe size. **+ Measure again** adds a column dated today, with the last
+values as a guide, and older ones are kept, because children grow: each newer
+value says how much it changed since. Everything saves as it is typed; Enter
+moves down the column.
+
+Measurements are kept in centimetres and shown in centimetres or inches, as
+chosen in **Settings → Measurements**; a figure typed with its unit (`36 in`,
+`91 cm`) is read as that either way.
+
+A project's page has **For**, which says who it is for and shows their latest
+measurements under it, with a way to their page.
+
 ## Wishlist and shops
 
 The **Wishlist** tab is what you want to get: yarn, needles and hooks,
@@ -746,6 +789,11 @@ src/
     tool-picker.ts     choosing a project's needles: side pane and Details
     combo.ts           a field you can type in or pick from
     projects.ts        the projects tab
+    people.ts          the people tab, and a person's page with their measurements
+    measure.ts         lengths and gauges in cm or inches, and reading measurements over time
+    swatches.ts        the stash's swatches, and its Yarn | Swatches switch
+    swatch-form.ts     add/edit swatch dialog
+    photo-box.ts       a form's photo: pasted, dropped or chosen, stored on save
     project-form.ts    a project: its pattern, needles and yarn
     finish-project.ts  finishing one: releasing needles, recording leftovers
     project-page.ts    a project's own page: cover, details, and its board
@@ -788,6 +836,8 @@ src-tauri/src/
   yarn.rs              the standard yarn weight table, and reading a weight
   tools.rs             needles and hooks: what each kind keeps, and the commands
   projects.rs          projects: starting, finishing, and what puts things in use
+  people.rs            people and their measurements: what is kept, and the commands
+  swatches.rs          gauge swatches: what is kept, and the commands
   shopping.rs          shops and the wishlist: tidying web addresses and tags, and the commands
   link_preview.rs      reading a shop's page for the name, brand, price and picture
   annotations.rs        storing and editing marks

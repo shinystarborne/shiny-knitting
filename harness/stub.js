@@ -42,6 +42,11 @@ const store = {
   // read, as the backend's LEFT JOINs do.
   shops: [],
   wishes: [],
+  // Gauge swatches. Photos share the `covers` blob store, under "swatch:<id>".
+  swatches: [],
+  // People and their measurement sets, as the backend's two tables.
+  people: [],
+  measurementSets: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -377,6 +382,32 @@ function seed() {
   ];
   store.projectYarns = [];
 
+  // Swatches: two in a stash yarn, on a needle from the box and on a size
+  // only, one blocked; and one in a yarn not in the stash.
+  const swatch = (id, fields) => ({
+    id, yarnId: null, yarnText: "", toolId: null, needleMm: 0, stitch: "", sts: 0, rows: 0, stsBlocked: 0, rowsBlocked: 0,
+    projectId: null, photoPath: "", notes: "", madeAt: now, addedAt: now, ...fields,
+  });
+  store.swatches = [
+    swatch("sw1", { yarnId: "y1", toolId: "t1", needleMm: 2.5, stitch: "Stockinette", sts: 32, rows: 44, stsBlocked: 30, rowsBlocked: 42, madeAt: now - 86400000 * 20 }),
+    swatch("sw2", { yarnId: "y1", needleMm: 3, stitch: "Garter", sts: 28, rows: 52, madeAt: now - 86400000 * 10 }),
+    swatch("sw3", { yarnText: "Friend's merino", needleMm: 4, stitch: "Stockinette", sts: 22, rows: 30, madeAt: now - 86400000 * 400 }),
+  ];
+
+  // People: a child measured twice, a year apart, with one measurement of
+  // her own, and the gift hat knitted for her; and someone not measured yet.
+  const year = 365 * 86400000;
+  store.people = [
+    { id: "pe1", name: "Mo", notes: "Loves green. No mohair: it itches.", extra: ["Thumb length"], addedAt: now - 2 * year },
+    { id: "pe2", name: "Anna", notes: "", extra: [], addedAt: now - 1000 },
+  ];
+  store.measurementSets = [
+    { id: "ms1", personId: "pe1", measuredAt: now - year, values: { height: 110, chest: 58, head: 50, foot_length: 17 }, shoeSize: "EU 28" },
+    { id: "ms2", personId: "pe1", measuredAt: now - 86400000, values: { height: 116, chest: 60, head: 51, foot_length: 18.5, "x:Thumb length": 4 }, shoeSize: "EU 30" },
+    { id: "ms3", personId: "pe2", measuredAt: now - 1000, values: {}, shoeSize: "" },
+  ];
+  store.projects.find((p) => p.id === "pr2").personId = "pe1";
+
   // Shops: one with a comment worth searching, one on a subdomain-free site,
   // and one with no web address. The wishlist has one of each kind, one from
   // each state worth seeing: from a shop and for a project, from no shop,
@@ -502,6 +533,94 @@ function wishOut(w) {
   return clone({ ...w, shopName: sh?.name ?? "", shopUrl: sh?.url ?? "", projectName: pr?.name ?? "" });
 }
 
+// The rules of `swatches::clean`.
+function cleanSwatch(input) {
+  const link = (v) => (v && String(v).trim() ? String(v).trim() : null);
+  const count = (v, what) => {
+    const n = Number(v || 0);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`The ${what} have to be a number.`);
+    if (n > 150) throw new Error(`${n} ${what} in 10 cm is more than any swatch has — count over 10 cm only.`);
+    return Math.round(n * 10) / 10;
+  };
+  const yarnId = link(input.yarnId);
+  const toolId = link(input.toolId);
+  const toolSize = toolId ? store.tools.find((t) => t.id === toolId)?.sizeMm : 0;
+  const needle = toolSize > 0 ? toolSize : Number(input.needleMm || 0);
+  if (!Number.isFinite(needle) || needle < 0 || needle > 50) throw new Error("Give the needle size in millimetres, e.g. 4 or 3.75.");
+  if (yarnId && !store.yarns.some((y) => y.id === yarnId)) throw new Error("That yarn is no longer in the stash.");
+  if (toolId && !store.tools.some((t) => t.id === toolId)) throw new Error("That needle is no longer in Needles & hooks.");
+  const projectId = link(input.projectId);
+  if (projectId && !store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
+  return {
+    yarnId,
+    yarnText: yarnId ? "" : oneLine(input.yarnText, 120),
+    toolId,
+    needleMm: Math.round(needle * 100) / 100,
+    stitch: oneLine(input.stitch, 60),
+    sts: count(input.sts, "stitches"),
+    rows: count(input.rows, "rows"),
+    stsBlocked: count(input.stsBlocked, "stitches"),
+    rowsBlocked: count(input.rowsBlocked, "rows"),
+    projectId,
+    notes: String(input.notes || "").trim().slice(0, 4000),
+    madeAt: input.madeAt > 0 ? input.madeAt : null,
+  };
+}
+/** A swatch as the backend returns it: its yarn's and project's names joined in. */
+function swatchOut(s) {
+  const yarn = store.yarns.find((y) => y.id === s.yarnId);
+  return clone({
+    ...s,
+    yarnName: yarn ? [yarn.brand, yarn.name].filter(Boolean).join(" ") : s.yarnText,
+    yarnColourway: yarn?.colourway ?? "",
+    projectName: store.projects.find((p) => p.id === s.projectId)?.name ?? "",
+  });
+}
+
+// The rules of `people::clean_person` and `clean_set`.
+const MEASUREMENT_KEYS = ["height", "chest", "waist", "hips", "neck", "shoulders", "upper_arm", "wrist", "arm_length", "armhole_depth", "back_length", "head", "hand", "foot_length", "foot_around"];
+function cleanPerson(input) {
+  const name = oneLine(input.name, 120);
+  if (!name) throw new Error("Give them a name.");
+  const extra = [];
+  for (const raw of input.extra || []) {
+    const e = oneLine(raw, 40);
+    if (e && !extra.some((x) => x.toLowerCase() === e.toLowerCase())) extra.push(e);
+  }
+  return { name, notes: String(input.notes || "").trim().slice(0, 4000), extra: extra.slice(0, 30) };
+}
+function cleanSet(input, extra) {
+  const values = {};
+  for (const [key, value] of Object.entries(input.values || {})) {
+    const known = MEASUREMENT_KEYS.includes(key) || (key.startsWith("x:") && extra.includes(key.slice(2)));
+    if (!known) throw new Error(`“${key}” is not one of their measurements.`);
+    if (!Number.isFinite(value) || value < 0) throw new Error("A measurement has to be a number of centimetres.");
+    if (value > 300) throw new Error(`${value} cm is more than anyone measures — is it in the right unit?`);
+    if (value > 0) values[key] = Math.round(value * 100) / 100;
+  }
+  if (!(input.measuredAt > 0)) throw new Error("Give the date they were measured.");
+  return { measuredAt: input.measuredAt, values, shoeSize: oneLine(input.shoeSize, 20) };
+}
+/** A person as the backend returns them: every set, newest first, and their project count. */
+function personOut(p) {
+  const sets = store.measurementSets
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => s.personId === p.id)
+    .sort((a, b) => b.s.measuredAt - a.s.measuredAt || b.i - a.i)
+    .map(({ s }) => s);
+  return clone({ ...p, sets, projectCount: store.projects.filter((pr) => pr.personId === p.id).length });
+}
+function findPerson(id) {
+  const p = store.people.find((x) => x.id === id);
+  if (!p) throw new Error("That person is no longer there.");
+  return p;
+}
+function setOwner(id) {
+  const s = store.measurementSets.find((x) => x.id === id);
+  if (!s) throw new Error("Those measurements are no longer there.");
+  return s;
+}
+
 /** A stored tool as the backend returns it: the active project it is on joined in. */
 function toolOut(t) {
   const link = store.projectTools.find(
@@ -603,6 +722,8 @@ function projectOut(pr) {
     patternId: pattern ? pr.patternId : null,
     patternTitle: pattern ? pattern.title : "",
     coverPath: pr.coverPath || "",
+    personId: store.people.some((p) => p.id === pr.personId) ? pr.personId : null,
+    personName: store.people.find((p) => p.id === pr.personId)?.name ?? "",
     toolIds: store.projectTools.filter((l) => l.projectId === pr.id).map((l) => l.toolId),
     yarns: store.projectYarns
       .filter((e) => e.projectId === pr.id)
@@ -1252,6 +1373,7 @@ const handlers = {
     return toolOut(t);
   },
   delete_tool: ({ id }) => {
+    for (const s of store.swatches) if (s.toolId === id) s.toolId = null;
     const before = store.tools.length;
     store.tools = store.tools.filter((t) => t.id !== id);
     if (store.tools.length === before) throw new Error(`No needle or hook with id ${id}.`);
@@ -1360,6 +1482,7 @@ const handlers = {
     store.projectTools = store.projectTools.filter((l) => l.projectId !== id);
     store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id);
     for (const w of store.wishes) if (w.projectId === id) w.projectId = null;
+    for (const s of store.swatches) if (s.projectId === id) s.projectId = null;
   },
 
   set_project_cover: ({ projectId, bytes }) => {
@@ -1437,6 +1560,103 @@ const handlers = {
     const bytes = store.covers.get(`board:${id}`);
     if (!bytes) throw new Error("That picture is no longer there.");
     return Uint8Array.from(bytes).buffer;
+  },
+
+  // ---------- gauge swatches ----------
+  list_swatches: () => [...store.swatches].sort((a, b) => b.madeAt - a.madeAt || b.addedAt - a.addedAt).map(swatchOut),
+  add_swatch: ({ input }) => {
+    const now = Date.now();
+    const clean = cleanSwatch(input);
+    const s = { id: `sw${store.nextId++}`, ...clean, madeAt: clean.madeAt ?? now, photoPath: "", addedAt: now };
+    store.swatches.push(s);
+    return swatchOut(s);
+  },
+  update_swatch: ({ id, input }) => {
+    const s = store.swatches.find((x) => x.id === id);
+    if (!s) throw new Error("That swatch is no longer there.");
+    const clean = cleanSwatch(input);
+    Object.assign(s, clean, { madeAt: clean.madeAt ?? s.madeAt });
+    return swatchOut(s);
+  },
+  delete_swatch: ({ id }) => {
+    if (!store.swatches.some((x) => x.id === id)) throw new Error("That swatch is no longer there.");
+    store.covers.delete(`swatch:${id}`);
+    store.swatches = store.swatches.filter((x) => x.id !== id);
+  },
+  set_swatch_photo: ({ id, bytes }) => {
+    const s = store.swatches.find((x) => x.id === id);
+    if (!s) throw new Error("That swatch is no longer there.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    store.covers.set(`swatch:${id}`, Uint8Array.from(bytes));
+    s.photoPath = `${id}.jpg`;
+  },
+  get_swatch_photo: ({ id }) => {
+    const bytes = store.covers.get(`swatch:${id}`);
+    if (!bytes) throw new Error("This swatch has no photo.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  remove_swatch_photo: ({ id }) => {
+    const s = store.swatches.find((x) => x.id === id);
+    if (!s) throw new Error("That swatch is no longer there.");
+    store.covers.delete(`swatch:${id}`);
+    s.photoPath = "";
+  },
+
+  // ---------- people and their measurements ----------
+  list_people: () =>
+    store.people
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.addedAt - b.addedAt)
+      .map(personOut),
+  get_person: ({ id }) => personOut(findPerson(id)),
+  add_person: ({ input }) => {
+    const now = Date.now();
+    const p = { id: `pe${store.nextId++}`, ...cleanPerson(input), addedAt: now };
+    store.people.push(p);
+    store.measurementSets.push({ id: `ms${store.nextId++}`, personId: p.id, measuredAt: now, values: {}, shoeSize: "" });
+    return personOut(p);
+  },
+  update_person: ({ id, input }) => {
+    const p = findPerson(id);
+    const clean = cleanPerson(input);
+    const gone = p.extra.filter((e) => !clean.extra.includes(e)).map((e) => `x:${e}`);
+    for (const s of store.measurementSets) if (s.personId === id) for (const k of gone) delete s.values[k];
+    Object.assign(p, clean);
+    return personOut(p);
+  },
+  delete_person: ({ id }) => {
+    findPerson(id);
+    for (const pr of store.projects) if (pr.personId === id) pr.personId = null;
+    store.measurementSets = store.measurementSets.filter((s) => s.personId !== id);
+    store.people = store.people.filter((p) => p.id !== id);
+  },
+  add_measurement_set: ({ personId, input }) => {
+    const p = findPerson(personId);
+    store.measurementSets.push({ id: `ms${store.nextId++}`, personId, ...cleanSet(input, p.extra) });
+    return personOut(p);
+  },
+  update_measurement_set: ({ id, input }) => {
+    const s = setOwner(id);
+    const p = findPerson(s.personId);
+    Object.assign(s, cleanSet(input, p.extra));
+    return personOut(p);
+  },
+  delete_measurement_set: ({ id }) => {
+    const s = setOwner(id);
+    store.measurementSets = store.measurementSets.filter((x) => x.id !== id);
+    return personOut(findPerson(s.personId));
+  },
+  set_project_person: ({ projectId, personId }) => {
+    const pr = store.projects.find((x) => x.id === projectId);
+    if (personId) findPerson(personId);
+    if (!pr) throw new Error("That project is no longer there.");
+    pr.personId = personId || null;
+    return projectOut(pr);
+  },
+  get_measure_unit: () => store.measureUnit ?? "cm",
+  save_measure_unit: ({ unit }) => {
+    store.measureUnit = unit;
+    return unit;
   },
 
   // ---------- shops and the wishlist ----------
@@ -1672,6 +1892,13 @@ const handlers = {
     return withYarnTotals(next);
   },
   delete_yarn: ({ id }) => {
+    // Its swatches stay, and still say what they were knitted in.
+    const gone = store.yarns.find((y) => y.id === id);
+    for (const s of store.swatches) {
+      if (s.yarnId !== id) continue;
+      s.yarnText = `${[gone.brand, gone.name].filter(Boolean).join(" ")}${gone.colourway ? `, ${gone.colourway}` : ""}`;
+      s.yarnId = null;
+    }
     store.yarns = store.yarns.filter((y) => y.id !== id);
     store.projectYarns = store.projectYarns.filter((e) => e.yarnId !== id);
     // The photo goes too, as deleting a pattern takes its cover.

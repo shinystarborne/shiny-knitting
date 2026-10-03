@@ -1,10 +1,12 @@
-import { api, type Yarn, type YarnFilter, type YarnWeightFacet } from "../api";
+import { api, type MeasureUnit, type Swatch, type Yarn, type YarnFilter, type YarnWeightFacet } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
 import { paintLazily } from "./lazy";
 import { describeFibres, fibreKind } from "./fibres";
 import { mostUsedSpellings } from "./tool-filter";
+import { swatchLine } from "./measure";
+import { stashModeSwitch } from "./swatches";
 
 /**
  * The stash screen: every yarn you own, with what is left of it.
@@ -38,6 +40,9 @@ export class StashView {
   private made = new Set<Made>();
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
+  /** Each yarn's newest swatch, for its card. */
+  private swatched = new Map<string, Swatch>();
+  private unit: MeasureUnit = "cm";
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -48,7 +53,7 @@ export class StashView {
     this.root.className = "library stash";
     this.root.innerHTML = `
       <header class="lib-bar">
-        <h1>Stash</h1>
+        <div class="lib-title"><h1>Stash</h1>${stashModeSwitch("yarn")}</div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search name, brand, colourway..." />
           <button data-act="add" class="primary">+ Add yarn</button>
@@ -116,6 +121,13 @@ export class StashView {
 
     this.facets = await api.yarnFacets();
     this.renderFacets();
+    const [swatches, unit] = await Promise.all([
+      api.listSwatches().catch(() => [] as Swatch[]),
+      api.getMeasureUnit().catch(() => "cm" as const),
+    ]);
+    this.unit = unit;
+    // Newest first from the backend, so the first seen per yarn is its newest.
+    for (const s of swatches) if (s.yarnId && !this.swatched.has(s.yarnId)) this.swatched.set(s.yarnId, s);
     await this.reload();
   }
 
@@ -125,6 +137,8 @@ export class StashView {
       const act = btn.dataset.act;
       if (act === "add") {
         this.root.dispatchEvent(new CustomEvent("add-yarn", { bubbles: true }));
+      } else if (act === "stash-mode") {
+        this.root.dispatchEvent(new CustomEvent("stash-mode", { bubbles: true, detail: btn.dataset.mode }));
       } else if (act === "clear") {
         this.filter = {};
         this.use.clear();
@@ -310,6 +324,7 @@ export class StashView {
               ? `<p class="card-use" title="${escapeHtml(y.projects.join(", "))}">In use: ${escapeHtml(y.projects.join(", "))}</p>`
               : ""
           }
+          ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Its newest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
           <div class="card-tools-row">

@@ -1,4 +1,4 @@
-import { api, type AiSettingsView, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
+import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
 import { closestEl } from "../dom";
 
 /**
@@ -23,6 +23,8 @@ export class SettingsDialog {
   private updateSettings: UpdateSettings;
   /** How the library's needle size filter spells each size. */
   private needleSizeDisplay: NeedleSizeFormat;
+  /** Whether people's measurements are shown in centimetres or inches. */
+  private measureUnit: MeasureUnit;
   /** The update a check found, kept so a failed download can offer it again. */
   private availableUpdate: UpdateInfo | null = null;
   private onSaved: (settings: AiSettingsView) => void;
@@ -35,6 +37,7 @@ export class SettingsDialog {
     settings: AiSettingsView,
     updateSettings: UpdateSettings,
     needleSizeDisplay: NeedleSizeFormat,
+    measureUnit: MeasureUnit,
     onSaved: (settings: AiSettingsView) => void,
   ) {
     this.root = root;
@@ -42,6 +45,7 @@ export class SettingsDialog {
     this.savedSnapshot = settings;
     this.updateSettings = updateSettings;
     this.needleSizeDisplay = needleSizeDisplay;
+    this.measureUnit = measureUnit;
     this.onSaved = onSaved;
   }
 
@@ -87,6 +91,16 @@ export class SettingsDialog {
               .join("")}
           </select>
           <em class="hint">How the needle size filter in the library spells each size.</em>
+        </label>
+
+        <h3>Measurements</h3>
+        <label class="field">
+          <span>Show and type people's measurements in</span>
+          <select data-f="measureUnit">
+            <option value="cm" ${this.measureUnit === "cm" ? "selected" : ""}>Centimetres</option>
+            <option value="in" ${this.measureUnit === "in" ? "selected" : ""}>Inches</option>
+          </select>
+          <em class="hint">They are kept in centimetres either way, so changing this changes nothing you measured. A figure typed with its unit, like 36 in, is read as that.</em>
         </label>
 
         <h3>Describe patterns with a model</h3>
@@ -348,6 +362,7 @@ export class SettingsDialog {
     const saved = await this.persistAi();
     await api.saveUpdateSettings(this.collectUpdates());
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
+    await api.saveMeasureUnit((this.root.querySelector('[data-f="measureUnit"]') as HTMLSelectElement).value as MeasureUnit);
     return saved;
   }
 

@@ -626,6 +626,9 @@ export interface Project {
   createdAt: number;
   /** The cover's file name, or "" when it has none. */
   coverPath: string;
+  /** Who it is for; set with `setProjectPerson`, not with the details. */
+  personId: string | null;
+  personName: string;
   /** While active, the tools in use on it; once finished, those it used. */
   toolIds: string[];
   yarns: ProjectYarn[];
@@ -764,6 +767,97 @@ export interface LinkPreview {
   /** What the shop calls itself, or "" when the page does not say. */
   shopName: string;
 }
+
+// ---------- gauge swatches ----------
+
+/** A gauge swatch. Mirrors `models.rs::Swatch`. Counts are per 10 cm, 0 when not counted. */
+export interface Swatch {
+  id: string;
+  /** The stash yarn it was knitted in; null for yarn not in the stash. */
+  yarnId: string | null;
+  /** The yarn as typed, for one not in the stash (or a removed one's name). */
+  yarnText: string;
+  /** What to call the yarn: the stash yarn's brand and name, or the text. */
+  yarnName: string;
+  yarnColourway: string;
+  /** The needle from Needles & hooks; null for a size only. */
+  toolId: string | null;
+  needleMm: number;
+  stitch: string;
+  sts: number;
+  rows: number;
+  stsBlocked: number;
+  rowsBlocked: number;
+  projectId: string | null;
+  projectName: string;
+  photoPath: string;
+  notes: string;
+  madeAt: number;
+  addedAt: number;
+}
+
+export type SwatchInput = Pick<
+  Swatch,
+  "yarnId" | "yarnText" | "toolId" | "needleMm" | "stitch" | "sts" | "rows" | "stsBlocked" | "rowsBlocked" | "projectId" | "notes"
+> & { madeAt: number | null };
+
+// ---------- people and their measurements ----------
+
+/**
+ * The measurements every person has a row for, in order, with how to take
+ * each. The keys are `models.rs::MEASUREMENTS`. All are lengths, stored in
+ * centimetres.
+ */
+export const MEASUREMENTS = [
+  { key: "height", label: "Height", hint: "Standing straight, without shoes." },
+  { key: "chest", label: "Chest / bust", hint: "Around the fullest part of the chest, under the arms." },
+  { key: "waist", label: "Waist", hint: "Around the narrowest part." },
+  { key: "hips", label: "Hips", hint: "Around the fullest part." },
+  { key: "neck", label: "Neck", hint: "Around the base of the neck." },
+  { key: "shoulders", label: "Shoulder width", hint: "Across the back, from one shoulder point to the other." },
+  { key: "upper_arm", label: "Upper arm", hint: "Around the fullest part." },
+  { key: "wrist", label: "Wrist", hint: "Around the wrist bone." },
+  { key: "arm_length", label: "Arm length", hint: "From the underarm to the wrist, with the arm straight." },
+  { key: "armhole_depth", label: "Armhole depth", hint: "From the top of the shoulder straight down to the underarm." },
+  { key: "back_length", label: "Back length", hint: "From the bone at the nape of the neck down to the waist." },
+  { key: "head", label: "Head", hint: "Around the forehead, just above the ears." },
+  { key: "hand", label: "Hand", hint: "Around the knuckles, without the thumb." },
+  { key: "foot_length", label: "Foot length", hint: "From the back of the heel to the longest toe." },
+  { key: "foot_around", label: "Foot", hint: "Around the ball of the foot, where it is widest." },
+] as const;
+
+export type MeasurementKey = (typeof MEASUREMENTS)[number]["key"];
+
+/** How lengths are shown and typed; always stored in centimetres. */
+export type MeasureUnit = "cm" | "in";
+
+/** One time someone was measured. Mirrors `models.rs::MeasurementSet`. */
+export interface MeasurementSet {
+  id: string;
+  personId: string;
+  measuredAt: number;
+  /** Centimetres, by a MEASUREMENTS key or `x:` and one of the person's own. */
+  values: Record<string, number>;
+  /** As bought: "EU 39". */
+  shoeSize: string;
+}
+
+export type MeasurementSetInput = Omit<MeasurementSet, "id" | "personId">;
+
+/** Someone knitted for. Mirrors `models.rs::Person`. */
+export interface Person {
+  id: string;
+  name: string;
+  notes: string;
+  /** Their own measurements' names, beyond the standard ones. */
+  extra: string[];
+  /** Newest first. */
+  sets: MeasurementSet[];
+  projectCount: number;
+  addedAt: number;
+}
+
+export type PersonInput = Pick<Person, "name" | "notes" | "extra">;
 
 /** Patterns that look like copies of each other. Mirrors `models.rs::DuplicateGroup`. */
 export interface DuplicateGroup {
@@ -971,6 +1065,33 @@ export const api = {
   addInspirationBoard: (name: string) => invoke<InspirationBoard>("add_inspiration_board", { name }),
   renameInspirationBoard: (id: string, name: string) => invoke<InspirationBoard>("rename_inspiration_board", { id, name }),
   deleteInspirationBoard: (id: string) => invoke<void>("delete_inspiration_board", { id }),
+
+  // Gauge swatches. Listed whole: even a cork board's worth is a few hundred.
+  listSwatches: () => invoke<Swatch[]>("list_swatches"),
+  addSwatch: (input: SwatchInput) => invoke<Swatch>("add_swatch", { input }),
+  updateSwatch: (id: string, input: SwatchInput) => invoke<Swatch>("update_swatch", { id, input }),
+  deleteSwatch: (id: string) => invoke<void>("delete_swatch", { id }),
+  setSwatchPhoto: (id: string, bytes: number[]) => invoke<void>("set_swatch_photo", { id, bytes }),
+  /** Raw binary, as `getCover` returns it. */
+  getSwatchPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_swatch_photo", { id }),
+  removeSwatchPhoto: (id: string) => invoke<void>("remove_swatch_photo", { id }),
+
+  // People and their measurements. Each change returns the whole person, so
+  // the page shows what was stored.
+  listPeople: () => invoke<Person[]>("list_people"),
+  getPerson: (id: string) => invoke<Person>("get_person", { id }),
+  /** Comes with a first, empty set of measurements dated now. */
+  addPerson: (input: PersonInput) => invoke<Person>("add_person", { input }),
+  /** A measurement of their own left out of `extra` takes its values with it. */
+  updatePerson: (id: string, input: PersonInput) => invoke<Person>("update_person", { id, input }),
+  deletePerson: (id: string) => invoke<void>("delete_person", { id }),
+  addMeasurementSet: (personId: string, input: MeasurementSetInput) => invoke<Person>("add_measurement_set", { personId, input }),
+  updateMeasurementSet: (id: string, input: MeasurementSetInput) => invoke<Person>("update_measurement_set", { id, input }),
+  deleteMeasurementSet: (id: string) => invoke<Person>("delete_measurement_set", { id }),
+  /** Who a project is for, or no one with null. */
+  setProjectPerson: (projectId: string, personId: string | null) => invoke<Project>("set_project_person", { projectId, personId }),
+  getMeasureUnit: () => invoke<MeasureUnit>("get_measure_unit"),
+  saveMeasureUnit: (unit: MeasureUnit) => invoke<MeasureUnit>("save_measure_unit", { unit }),
 
   // Shops, and the wishlist. Web addresses are tidied by the backend, so use
   // the one that comes back.

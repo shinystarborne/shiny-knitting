@@ -2687,3 +2687,124 @@ fn a_library_from_the_first_shops_build_gains_the_new_columns() {
     let w = get_wish(&conn, "w1").unwrap();
     assert_eq!((w.photo_path.as_str(), w.stashed_at, w.brand.as_str()), ("", None, ""));
 }
+
+// ---------- people and their measurements ----------
+
+fn person(conn: &Connection, name: &str, extra: &[&str]) -> crate::models::Person {
+    let input = crate::models::PersonInput { name: name.into(), extra: extra.iter().map(|e| e.to_string()).collect(), ..Default::default() };
+    insert_person(conn, &uuid::Uuid::new_v4().to_string(), &input).unwrap()
+}
+
+fn values(pairs: &[(&str, f64)]) -> std::collections::BTreeMap<String, f64> {
+    pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+}
+
+#[test]
+fn a_new_person_has_a_set_to_fill_in_and_sets_come_newest_first() {
+    let conn = test_db();
+    let mo = person(&conn, "Mo", &[]);
+    assert_eq!(mo.sets.len(), 1, "one set, ready to fill in");
+    assert!(mo.sets[0].values.is_empty());
+    let first = &mo.sets[0];
+    update_measurement_set(&conn, &first.id, &crate::models::MeasurementSetInput { measured_at: 1000, values: values(&[("chest", 60.0)]), shoe_size: "EU 28".into() }).unwrap();
+    let later = crate::models::MeasurementSetInput { measured_at: 5000, values: values(&[("chest", 64.0)]), shoe_size: String::new() };
+    let mo = insert_measurement_set(&conn, "later", &mo.id, &later).unwrap();
+    assert_eq!(mo.sets.iter().map(|s| s.values["chest"]).collect::<Vec<_>>(), vec![64.0, 60.0], "older sets are kept, newest first");
+    assert_eq!(mo.sets[1].shoe_size, "EU 28");
+    let mo = delete_measurement_set(&conn, "later").unwrap();
+    assert_eq!(mo.sets.len(), 1);
+}
+
+#[test]
+fn a_measurement_of_their_own_that_goes_takes_its_values() {
+    let conn = test_db();
+    let mo = person(&conn, "Mo", &["Calf", "Thumb"]);
+    let set = &mo.sets[0];
+    update_measurement_set(&conn, &set.id, &crate::models::MeasurementSetInput { measured_at: 1, values: values(&[("x:Calf", 30.0), ("x:Thumb", 6.0), ("head", 52.0)]), shoe_size: String::new() }).unwrap();
+    let input = crate::models::PersonInput { name: "Mo".into(), notes: String::new(), extra: vec!["Thumb".into()] };
+    let mo = update_person(&conn, &mo.id, &input).unwrap();
+    assert_eq!(mo.extra, vec!["Thumb"]);
+    assert_eq!(mo.sets[0].values, values(&[("head", 52.0), ("x:Thumb", 6.0)]));
+}
+
+#[test]
+fn a_project_says_who_it_is_for_and_keeps_that_through_its_own_saves() {
+    let conn = test_db();
+    let mo = person(&conn, "Mo", &[]);
+    let hat = project(&conn, "Hat", None);
+    let hat = set_project_person(&conn, &hat.id, Some(&mo.id)).unwrap();
+    assert_eq!((hat.person_id.as_deref(), hat.person_name.as_str()), (Some(mo.id.as_str()), "Mo"));
+    let input = crate::models::ProjectInput { name: "Warm hat".into(), ..Default::default() };
+    assert_eq!(update_project(&conn, &hat.id, &input).unwrap().person_id.as_deref(), Some(mo.id.as_str()), "saving the details leaves who it is for");
+    assert_eq!(get_person(&conn, &mo.id).unwrap().project_count, 1);
+    assert!(set_project_person(&conn, &hat.id, Some("gone")).is_err());
+    delete_person(&conn, &mo.id).unwrap();
+    let hat = get_project(&conn, &hat.id).unwrap();
+    assert_eq!((hat.person_id, hat.person_name.as_str()), (None, ""), "removing them leaves the project, for no one");
+    assert!(get_person(&conn, &mo.id).is_err());
+}
+
+#[test]
+fn people_are_listed_by_name() {
+    let conn = test_db();
+    person(&conn, "zoe", &[]);
+    person(&conn, "Anna", &[]);
+    person(&conn, "Mo", &[]);
+    assert_eq!(list_people(&conn).unwrap().into_iter().map(|p| p.name).collect::<Vec<_>>(), vec!["Anna", "Mo", "zoe"]);
+}
+
+// ---------- gauge swatches ----------
+
+fn swatch(conn: &Connection, id: &str, input: crate::models::SwatchInput) -> crate::models::Swatch {
+    insert_swatch(conn, id, &input).unwrap()
+}
+
+#[test]
+fn a_swatch_names_its_yarn_from_the_stash_or_as_typed() {
+    let conn = test_db();
+    let mut input = YarnInput { name: "Alpaca".into(), brand: "Drops".into(), ..YarnInput::default() };
+    input.colourway = "Light grey".into();
+    let yarn = insert_yarn(&conn, "y1", &input).unwrap();
+    let s = swatch(&conn, "s1", crate::models::SwatchInput { yarn_id: Some(yarn.id.clone()), sts: 22.0, made_at: Some(5), ..Default::default() });
+    assert_eq!((s.yarn_name.as_str(), s.yarn_colourway.as_str(), s.made_at), ("Drops Alpaca", "Light grey", 5));
+    let typed = swatch(&conn, "s2", crate::models::SwatchInput { yarn_text: "Friend's merino".into(), made_at: Some(9), ..Default::default() });
+    assert_eq!(typed.yarn_name, "Friend's merino");
+    let ids: Vec<_> = list_swatches(&conn).unwrap().into_iter().map(|s| s.id).collect();
+    assert_eq!(ids, vec!["s2", "s1"], "the most recently knitted first");
+}
+
+#[test]
+fn removing_its_yarn_needle_or_project_keeps_the_swatch_and_what_it_was_knitted_in() {
+    let conn = test_db();
+    let mut input = YarnInput { name: "Alpaca".into(), brand: "Drops".into(), ..YarnInput::default() };
+    input.colourway = "Light grey".into();
+    let yarn = insert_yarn(&conn, "y1", &input).unwrap();
+    insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
+    let pr = project(&conn, "Hat", None);
+    swatch(&conn, "s1", crate::models::SwatchInput {
+        yarn_id: Some(yarn.id.clone()),
+        tool_id: Some("t1".into()),
+        needle_mm: 4.0,
+        project_id: Some(pr.id.clone()),
+        ..Default::default()
+    });
+    delete_yarn(&conn, &yarn.id).unwrap();
+    delete_tool(&conn, "t1").unwrap();
+    delete_project(&conn, &pr.id).unwrap();
+    let s = get_swatch(&conn, "s1").unwrap();
+    assert_eq!((s.yarn_id, s.tool_id, s.project_id), (None, None, None));
+    assert_eq!((s.yarn_name.as_str(), s.needle_mm), ("Drops Alpaca, Light grey", 4.0), "the yarn's name and the size stay");
+}
+
+#[test]
+fn a_swatch_refuses_links_that_are_not_there_and_hands_back_its_photo() {
+    let conn = test_db();
+    assert!(insert_swatch(&conn, "s1", &crate::models::SwatchInput { yarn_id: Some("gone".into()), ..Default::default() }).is_err());
+    assert!(insert_swatch(&conn, "s1", &crate::models::SwatchInput { tool_id: Some("gone".into()), ..Default::default() }).is_err());
+    swatch(&conn, "s1", crate::models::SwatchInput { sts: 20.0, ..Default::default() });
+    let made = get_swatch(&conn, "s1").unwrap().made_at;
+    let s = update_swatch(&conn, "s1", &crate::models::SwatchInput { sts: 21.0, made_at: None, ..Default::default() }).unwrap();
+    assert_eq!((s.sts, s.made_at), (21.0, made), "no date given keeps the date it had");
+    set_swatch_photo(&conn, "s1", "s1.jpg").unwrap();
+    assert_eq!(delete_swatch(&conn, "s1").unwrap(), "s1.jpg");
+}
