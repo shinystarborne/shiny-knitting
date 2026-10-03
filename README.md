@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.12](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.12)** —
+  the needle size filter: sizes read into millimetres however they are
+  written, with counts, shown as metric, US or both. The one to test.
 - **[v0.3.0-beta.11](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.11)** —
   yarn fibre content and superwash with their stash filters, and designers and
-  tags most used first, with a search and a full list. The one to test.
+  tags most used first, with a search and a full list. Superseded by `beta.12`.
 - **[v0.3.0-beta.10](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.10)** —
   updates shown by themselves, at every start and every hour, and installed in
   place in one click. Superseded by `beta.11`.
