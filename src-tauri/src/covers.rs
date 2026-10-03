@@ -272,6 +272,40 @@ pub fn delete_board_image_file(state: &AppState, file_name: &str) {
     }
 }
 
+// ---------- wishlist pictures ----------
+
+pub fn wish_photos_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("wish-photos")
+}
+
+/// Saves a wishlist item's picture, replacing any previous one.
+pub fn set_wish_photo(state: &AppState, wish_id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    remove_wish_photo(state, wish_id).ok();
+    let file_name = write_file(&wish_photos_dir(state), wish_id, ext, &bytes)?;
+    db::set_wish_photo(&state.db(), wish_id, &file_name)
+}
+
+pub fn remove_wish_photo(state: &AppState, wish_id: &str) -> AppResult<()> {
+    let name = db::get_wish(&state.db(), wish_id)?.photo_path;
+    delete_wish_photo_file(state, &name);
+    db::set_wish_photo(&state.db(), wish_id, "")
+}
+
+pub fn read_wish_photo(state: &AppState, wish_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::get_wish(&state.db(), wish_id)?.photo_path;
+    let path = existing_file(&wish_photos_dir(state), &name)
+        .ok_or_else(|| AppError::Message("This has no picture.".into()))?;
+    read_file(path)
+}
+
+/// Deletes a stored wishlist picture by its file name, best effort.
+pub fn delete_wish_photo_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&wish_photos_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 /// Deletes a stored project cover by its file name, best effort.
 pub fn delete_project_cover_file(state: &AppState, file_name: &str) {
     if let Some(path) = existing_file(&project_covers_dir(state), file_name) {

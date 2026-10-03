@@ -2916,3 +2916,172 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .facet-picker-list .check:hover { background: var(--bg-input); }
 .facet-picker-list .check span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .facet-picker-list .check em { font-style: normal; font-size: 11px; color: var(--text-dim); }
+
+/* ---------- wishlist ---------- */
+
+/* Cards the size of a needle's, with an edge coloured by what each is. */
+.wish-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  height: 200px;
+  overflow: hidden;
+  transition: border-color 0.12s ease, transform 0.12s ease, opacity 0.12s ease;
+}
+.wish-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.wish-card.kind-yarn { border-left-color: #c98bd0; }
+.wish-card.kind-tool { border-left-color: #5a8cdc; }
+.wish-card.kind-pattern { border-left-color: #e0a84f; }
+/* What was got steps back, but stays readable: it is the record of a purchase. */
+.wish-card.got { opacity: 0.6; border-left-color: var(--ok); }
+.wish-card.got:hover { opacity: 1; }
+.wish-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.wish-kind { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.pill.wish-got-pill { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; text-transform: none; }
+.wish-name {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.wish-meta,
+.wish-line,
+.wish-notes {
+  margin: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wish-meta { font-variant-numeric: tabular-nums; }
+.wish-line { display: flex; gap: 6px; min-width: 0; }
+.wish-line > :last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wish-label { color: var(--text-dim); flex: none; }
+.wish-notes { color: var(--text-dim); font-style: italic; }
+.wish-card .card-tools-row,
+.shop-card .card-tools-row { margin-top: auto; align-items: center; }
+.wish-card .card-tools-row .card-remove,
+.shop-card .card-tools-row .card-remove { margin-left: 0; white-space: nowrap; }
+/* Three buttons across a narrow card: closer together, so none wraps. */
+.wish-card .card-tools-row { gap: 0; }
+.wish-card .card-tools-row .card-remove { padding: 2px 6px; }
+.wish-card .spacer,
+.shop-card .spacer { flex: 1; }
+.card-remove.wish-got-btn:hover,
+.card-remove.wish-got-btn:focus-visible { color: #8fdca0; border-color: var(--ok); }
+.card-remove.wish-open:hover,
+.card-remove.wish-open:focus-visible,
+.card-remove.shop-wanted:hover,
+.card-remove.shop-wanted:focus-visible { color: var(--text); border-color: var(--border); }
+
+/* The line between what is still wanted and what was got, across the grid. */
+.wish-section {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.wish-section h3 { margin: 0; font-size: 14px; }
+.wish-section h3 em { font-style: normal; color: var(--text-dim); font-weight: 400; margin-left: 4px; }
+.wish-section button { font-size: 12px; padding: 3px 10px; }
+.wish-none { grid-column: 1 / -1; margin: 0; color: var(--text-dim); }
+
+.wish-form .field-row,
+.shop-form .field-row { grid-template-columns: 1fr 1fr; }
+.wish-form .wish-what { grid-template-columns: 170px 1fr; }
+.wish-form .hint[hidden] { display: none; }
+.wish-form textarea { min-height: 70px; resize: vertical; }
+
+/* ---------- shops ---------- */
+
+.shop-grid { grid-template-columns: repeat(auto-fill, 280px); align-content: start; }
+.shop-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px 10px;
+  height: 210px;
+  overflow: hidden;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.shop-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.shop-name { margin: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.shop-site { align-self: flex-start; max-width: 100%; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-site.none { font-style: italic; }
+/* The comment is the point of a shop here, so it gets the room, and keeps its lines. */
+.shop-comment {
+  margin: 4px 0 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.shop-form textarea { min-height: 110px; resize: vertical; }
+
+/* ---------- wishlist: pictures, fetching, into the stash ---------- */
+
+.wish-grid { grid-template-columns: repeat(auto-fill, 250px); align-content: start; }
+/* Words on the left, the picture on the right, both above the buttons. */
+.wish-main { display: flex; gap: 10px; min-height: 0; }
+.wish-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.wish-thumb {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  background: var(--bg-input) center / cover no-repeat;
+}
+.wish-card.got .wish-thumb { filter: saturate(0.6); }
+.wish-stashed { color: #8fdca0; }
+.card-remove.wish-stash-btn { color: #8fdca0; }
+.card-remove.wish-stash-btn:hover,
+.card-remove.wish-stash-btn:focus-visible { color: #8fdca0; border-color: var(--ok); }
+
+.wish-form { max-width: 640px; }
+.wish-link-row { display: flex; gap: 8px; }
+.wish-link-row input { flex: 1; min-width: 0; }
+.wish-link-row button { flex: none; white-space: nowrap; }
+.wish-form .hint[data-el="fetch-status"] { margin-top: 4px; }
+.wish-main-row { display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: start; }
+.wish-main-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wish-form .wish-three { grid-template-columns: 1fr 1fr 1fr; }
+.wish-photo-box {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: var(--bg-input) center / contain no-repeat;
+}
+.wish-photo-box.filled { border-style: solid; }
+.wish-photo-box.over { border-color: var(--accent); background-color: var(--accent-soft); }
+.wish-photo-actions { display: flex; gap: 4px; margin-top: 6px; }
+.wish-photo-actions button { font-size: 11px; padding: 3px 8px; }
+
+/* ---------- shops: tags ---------- */
+
+.shop-tags { display: flex; flex-wrap: wrap; gap: 4px; max-height: 44px; overflow: hidden; flex-shrink: 0; }
+button.tag.shop-tag { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 11px; }
+button.tag.shop-tag:hover { color: var(--text); border-color: var(--border); }
+button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.shop-card .shop-comment { -webkit-line-clamp: 4; }
+.shops .filters .hint { margin: 0; font-size: 12px; }

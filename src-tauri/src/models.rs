@@ -936,6 +936,130 @@ pub struct BoardPicture {
     pub id: String,
 }
 
+// ---------- shops and the wishlist ----------
+
+/// A shop you buy from: where it is on the web, and what you think of it.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Shop {
+    pub id: String,
+    pub name: String,
+    /// Its web address, always http or https; empty for a shop with none.
+    pub url: String,
+    /// Your own words about it: "Drops is cheapest here", "deadstock".
+    pub comment: String,
+    /// Your own labels: yarn, needles, deadstock, sale. Kept as typed, without
+    /// the same tag twice in another case.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// How many things still wanted on the wishlist are to be got here.
+    #[serde(default)]
+    pub wanted: i64,
+    pub added_at: i64,
+}
+
+/// A shop as the form sends it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShopInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// What a wishlist item is:
+/// - `yarn`
+/// - `tool`: needles, hooks or cables
+/// - `pattern`
+/// - `other`: notions, books, a swift...
+pub const WISH_KINDS: &[&str] = &["yarn", "tool", "pattern", "other"];
+
+/// Something you want to get.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Wish {
+    pub id: String,
+    /// One of `WISH_KINDS`.
+    pub kind: String,
+    pub name: String,
+    /// The maker, as typed or as the shop's page gives it: "DROPS", "ChiaoGoo".
+    #[serde(default)]
+    pub brand: String,
+    /// How much, as typed: "5 balls", "500 g", "a pair".
+    pub amount: String,
+    /// The price, as typed, with its currency: "€4.95 a ball".
+    pub price: String,
+    /// A link to it, http or https; empty when there is none.
+    pub url: String,
+    /// The shop to get it from. Cleared, not deleted, when the shop goes.
+    pub shop_id: Option<String>,
+    /// That shop's name and web address, for display; empty without one.
+    #[serde(default)]
+    pub shop_name: String,
+    #[serde(default)]
+    pub shop_url: String,
+    /// The project it is for. Cleared when the project is removed.
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub project_name: String,
+    pub notes: String,
+    /// The file name of its picture in library/wish-photos, or empty.
+    #[serde(default)]
+    pub photo_path: String,
+    /// When it was ticked as got; None while it is still wanted.
+    pub got_at: Option<i64>,
+    /// When it was added to the stash or to Needles & hooks from here; None
+    /// until then.
+    #[serde(default)]
+    pub stashed_at: Option<i64>,
+    pub added_at: i64,
+}
+
+/// What a shop's page says about the thing on it, as far as it says: read
+/// from the page's product data and its sharing tags. Anything not found is
+/// empty.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkPreview {
+    /// The address the page ended up at, after any redirects.
+    pub url: String,
+    pub title: String,
+    pub brand: String,
+    /// With its currency, e.g. "€4.95".
+    pub price: String,
+    /// The picture's address, made absolute.
+    pub image_url: String,
+    pub site_name: String,
+}
+
+/// A wishlist item as the form sends it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WishInput {
+    pub kind: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub amount: String,
+    #[serde(default)]
+    pub price: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub shop_id: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub notes: String,
+}
+
 // ---------- duplicate patterns ----------
 
 /// Patterns that look like the same one, and which to keep.

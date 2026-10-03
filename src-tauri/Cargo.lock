@@ -3215,6 +3215,7 @@ name = "shiny-knitting-app"
 version = "0.3.12"
 dependencies = [
  "base64 0.22.1",
+ "encoding_rs",
  "reqwest 0.12.28",
  "rusqlite",
  "semver",

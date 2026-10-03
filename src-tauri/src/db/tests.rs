@@ -2554,3 +2554,136 @@ fn merging_copies_keeps_what_was_made_from_them() {
     assert_eq!(get_project(&conn, &pr.id).unwrap().pattern_id.as_deref(), Some(keep.id.as_str()));
     assert_eq!(get_board_item(&conn, "card").unwrap().data["patternId"], keep.id.as_str());
 }
+
+// ---------- shops and the wishlist ----------
+
+fn shop(conn: &Connection, name: &str) -> crate::models::Shop {
+    let input = crate::models::ShopInput { name: name.into(), url: format!("https://{}.example.com", name.to_lowercase()), comment: String::new(), tags: vec!["yarn".into()] };
+    insert_shop(conn, &uuid::Uuid::new_v4().to_string(), &input).unwrap()
+}
+
+fn wish(conn: &Connection, name: &str, shop_id: Option<&str>, project_id: Option<&str>) -> crate::models::Wish {
+    let input = crate::models::WishInput {
+        kind: "yarn".into(),
+        name: name.into(),
+        shop_id: shop_id.map(str::to_string),
+        project_id: project_id.map(str::to_string),
+        ..Default::default()
+    };
+    insert_wish(conn, &uuid::Uuid::new_v4().to_string(), &input).unwrap()
+}
+
+#[test]
+fn a_wish_shows_its_shop_and_project_and_a_shop_counts_what_is_wanted_there() {
+    let conn = test_db();
+    let drops = shop(&conn, "Drops");
+    let hat = project(&conn, "Gift hat", None);
+    let alpaca = wish(&conn, "Alpaca", Some(&drops.id), Some(&hat.id));
+    assert_eq!((alpaca.shop_name.as_str(), alpaca.shop_url.as_str()), ("Drops", "https://drops.example.com"));
+    assert_eq!(alpaca.project_name, "Gift hat");
+    wish(&conn, "Merino", Some(&drops.id), None);
+    assert_eq!(get_shop(&conn, &drops.id).unwrap().wanted, 2);
+    set_wish_got(&conn, &alpaca.id, true).unwrap();
+    assert_eq!(get_shop(&conn, &drops.id).unwrap().wanted, 1, "what was got is no longer wanted there");
+}
+
+#[test]
+fn what_is_got_goes_below_what_is_still_wanted_and_can_go_back() {
+    let conn = test_db();
+    let first = wish(&conn, "First", None, None);
+    std::thread::sleep(std::time::Duration::from_millis(3));
+    wish(&conn, "Second", None, None);
+    let got = set_wish_got(&conn, &first.id, true).unwrap();
+    assert!(got.got_at.is_some());
+    let names: Vec<_> = list_wishes(&conn).unwrap().into_iter().map(|w| w.name).collect();
+    assert_eq!(names, vec!["Second", "First"]);
+    let back = set_wish_got(&conn, &first.id, false).unwrap();
+    assert_eq!(back.got_at, None);
+    assert!(set_wish_got(&conn, "gone", true).is_err());
+}
+
+#[test]
+fn removing_a_shop_or_project_leaves_the_wish_without_it() {
+    let conn = test_db();
+    let drops = shop(&conn, "Drops");
+    let hat = project(&conn, "Gift hat", None);
+    let alpaca = wish(&conn, "Alpaca", Some(&drops.id), Some(&hat.id));
+    delete_shop(&conn, &drops.id).unwrap();
+    delete_project(&conn, &hat.id).unwrap();
+    let after = get_wish(&conn, &alpaca.id).unwrap();
+    assert_eq!((after.shop_id, after.project_id), (None, None));
+    assert_eq!((after.shop_name.as_str(), after.project_name.as_str()), ("", ""));
+}
+
+#[test]
+fn a_wish_refuses_a_shop_or_project_that_is_not_there() {
+    let conn = test_db();
+    let input = crate::models::WishInput { kind: "yarn".into(), name: "Alpaca".into(), shop_id: Some("gone".into()), ..Default::default() };
+    assert!(insert_wish(&conn, "w1", &input).is_err());
+    let input = crate::models::WishInput { shop_id: None, project_id: Some("gone".into()), ..input };
+    assert!(insert_wish(&conn, "w1", &input).is_err());
+    let input = crate::models::WishInput { project_id: None, ..input };
+    insert_wish(&conn, "w1", &input).unwrap();
+    let edited = update_wish(&conn, "w1", &crate::models::WishInput { name: "Baby alpaca".into(), brand: "Drops".into(), ..input }).unwrap();
+    assert_eq!((edited.name.as_str(), edited.brand.as_str()), ("Baby alpaca", "Drops"));
+}
+
+#[test]
+fn shops_are_listed_by_name_whatever_the_case() {
+    let conn = test_db();
+    shop(&conn, "wollknoll");
+    shop(&conn, "Drops");
+    shop(&conn, "Lana Grossa");
+    let names: Vec<_> = list_shops(&conn).unwrap().into_iter().map(|s| s.name).collect();
+    assert_eq!(names, vec!["Drops", "Lana Grossa", "wollknoll"]);
+}
+
+#[test]
+fn a_shop_keeps_its_tags() {
+    let conn = test_db();
+    let drops = shop(&conn, "Drops");
+    assert_eq!(drops.tags, vec!["yarn"]);
+    let input = crate::models::ShopInput { name: "Drops".into(), tags: vec!["yarn".into(), "sale".into()], ..Default::default() };
+    assert_eq!(update_shop(&conn, &drops.id, &input).unwrap().tags, vec!["yarn", "sale"]);
+}
+
+#[test]
+fn adding_to_the_stash_makes_a_wish_got_and_wanting_it_again_undoes_both() {
+    let conn = test_db();
+    let alpaca = wish(&conn, "Alpaca", None, None);
+    let stashed = set_wish_stashed(&conn, &alpaca.id).unwrap();
+    assert!(stashed.got_at.is_some() && stashed.stashed_at.is_some());
+    let got = set_wish_got(&conn, &alpaca.id, true).unwrap();
+    assert!(got.stashed_at.is_some(), "ticking got again keeps it stashed");
+    let back = set_wish_got(&conn, &alpaca.id, false).unwrap();
+    assert_eq!((back.got_at, back.stashed_at), (None, None));
+}
+
+#[test]
+fn removing_a_wish_hands_back_its_picture() {
+    let conn = test_db();
+    let alpaca = wish(&conn, "Alpaca", None, None);
+    set_wish_photo(&conn, &alpaca.id, "w.jpg").unwrap();
+    assert_eq!(get_wish(&conn, &alpaca.id).unwrap().photo_path, "w.jpg");
+    assert_eq!(delete_wish(&conn, &alpaca.id).unwrap(), "w.jpg");
+    assert!(delete_wish(&conn, &alpaca.id).is_err());
+}
+
+#[test]
+fn a_library_from_the_first_shops_build_gains_the_new_columns() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE shops (id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL DEFAULT '',
+             comment TEXT NOT NULL DEFAULT '', added_at INTEGER NOT NULL);
+         INSERT INTO shops VALUES ('s1', 'Drops', '', '', 1);
+         CREATE TABLE wishlist (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL,
+             amount TEXT NOT NULL DEFAULT '', price TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '',
+             shop_id TEXT, project_id TEXT, notes TEXT NOT NULL DEFAULT '', got_at INTEGER, added_at INTEGER NOT NULL);
+         INSERT INTO wishlist (id, kind, name, added_at) VALUES ('w1', 'yarn', 'Alpaca', 1);",
+    )
+    .unwrap();
+    migrate(&conn).unwrap();
+    assert!(get_shop(&conn, "s1").unwrap().tags.is_empty());
+    let w = get_wish(&conn, "w1").unwrap();
+    assert_eq!((w.photo_path.as_str(), w.stashed_at, w.brand.as_str()), ("", None, ""));
+}

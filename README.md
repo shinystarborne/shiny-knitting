@@ -346,6 +346,46 @@ pictures and its colours, newest first, and the boards changed most recently
 come first. Removing a board removes what is on it; the patterns and yarn on it
 stay where they are.
 
+## Wishlist and shops
+
+The **Wishlist** tab is what you want to get: yarn, needles and hooks,
+patterns, or anything else. Each item has what it is, its brand, how much, a
+price (typed as you like, with its currency), a picture, a link to it, the shop
+to get it from, the project it is for, and notes.
+
+**Paste a link and the rest fills itself in.** The shop's page is read for the
+name, brand, price and picture of what is on it: from the product data shops
+publish for search engines, else from the tags they give link previews, else
+from the page's title. Only empty fields are filled, so nothing typed is
+replaced; **Fetch details** reads the page again. Some shops refuse anything
+that is not a browser (Etsy, Garnstudio), and then the form says so and the
+details are typed in as before. A picture can also be pasted with `Ctrl`+`V`,
+dropped on the box or chosen. The link picks the shop by itself when it is on
+the site of one in the Shops tab, and **+ New shop…** in the shop picker adds
+one without leaving the form, named after the link's site. The
+filters down the side are Kind, Shop and For, each counting what is still
+wanted; with one shop or project ticked, a new item starts with it chosen.
+**✓ Got it** moves an item down to **Got**, dated, where it stays as a record
+of what was bought until it is removed; **Want again** puts it back.
+
+Yarn and needles that were got have **+ Add to stash** or **+ Add to needles**
+on their card. It opens the yarn or needle form filled in from the item: for
+yarn the brand, name and colourway ("Air, Off White" or "Air – Off White"),
+the balls bought as its first lot, dated, and the picture as its photo; for
+needles the kind, size and length read from the name ("4 mm circular, 60 cm",
+in English or German). Saving it marks the item **In the stash**.
+
+The **Shops** tab is the shops you buy from: a name, a web address, tags
+(yarn, needles, deadstock, sale — your own, offered again on the next shop) and
+your own comment ("Drops is the cheapest here", "great prices on deadstock").
+The tags are filters down the side, where a shop must have every tag ticked,
+and a tag on a card ticks it. The search looks through the comments and tags
+as well as the names and addresses, the address on a card opens the shop in
+the browser, and **N things on your wishlist** goes to the wishlist filtered
+to that shop. A web address can be typed without
+`https://`; only web addresses are kept. Removing a shop keeps what was to be
+got there on the wishlist, with no shop.
+
 The gear at the right end of the tab bar opens **Settings**, from any tab.
 
 ## Yarn stash
@@ -677,7 +717,7 @@ Two settings worth knowing about, both under *More options*:
 
 ```
 src/
-  main.ts              app shell: the tab bar, swapping library, projects, inspiration, stash, tools and reader
+  main.ts              app shell: the tab bar, swapping library, projects, inspiration, stash, tools, wishlist, shops and reader
   api.ts               typed wrapper over the Tauri commands
   covers.ts            cover and yarn-photo extraction, downscaling, storage
   annotations.ts       mark coordinates, quote anchoring, rectangle merging
@@ -695,6 +735,11 @@ src/
     project-page.ts    a project's own page: cover, details, and its board
     board.ts           a board: notes, pictures, links and cards, laid out freely
     inspiration.ts     the inspiration tab and its boards
+    wishlist.ts        the wishlist tab: cards, filters, Got it
+    wish-form.ts       add/edit wishlist item dialog, picking a shop from a link
+    shops.ts           the shops tab
+    shop-form.ts       add/edit shop dialog
+    shopping.ts        searching, filters, link-to-shop matching, and reading an item into the stash
     lazy.ts            long grids, painted a page at a time with pictures read on sight
     cover-dialog.ts    changing a pattern's cover: paste, drop, choose, read again
     duplicates.ts      finding duplicate patterns and folding them into one
@@ -727,6 +772,8 @@ src-tauri/src/
   yarn.rs              the standard yarn weight table, and reading a weight
   tools.rs             needles and hooks: what each kind keeps, and the commands
   projects.rs          projects: starting, finishing, and what puts things in use
+  shopping.rs          shops and the wishlist: tidying web addresses and tags, and the commands
+  link_preview.rs      reading a shop's page for the name, brand, price and picture
   annotations.rs        storing and editing marks
 ```
 

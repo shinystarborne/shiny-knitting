@@ -693,6 +693,76 @@ export interface InspirationBoard {
   colours: string[];
 }
 
+// ---------- shops and the wishlist ----------
+
+/** A shop you buy from. Mirrors `models.rs::Shop`. */
+export interface Shop {
+  id: string;
+  name: string;
+  /** Always http or https; "" for a shop with no web address. */
+  url: string;
+  /** Your own words about it. */
+  comment: string;
+  /** Your own labels: yarn, deadstock, sale. */
+  tags: string[];
+  /** How many things still wanted are to be got here. */
+  wanted: number;
+  addedAt: number;
+}
+
+export type ShopInput = Pick<Shop, "name" | "url" | "comment" | "tags">;
+
+/** What a wishlist item is. The same keys as `models.rs::WISH_KINDS`. */
+export const WISH_KINDS = [
+  { key: "yarn", label: "Yarn" },
+  { key: "tool", label: "Needles & hooks" },
+  { key: "pattern", label: "Pattern" },
+  { key: "other", label: "Other" },
+] as const;
+
+export type WishKind = (typeof WISH_KINDS)[number]["key"];
+
+/** Something you want to get. Mirrors `models.rs::Wish`. */
+export interface Wish {
+  id: string;
+  kind: WishKind;
+  name: string;
+  brand: string;
+  /** As typed: "5 balls", "500 g". */
+  amount: string;
+  /** As typed, with its currency. */
+  price: string;
+  /** A link to it, or "". */
+  url: string;
+  shopId: string | null;
+  shopName: string;
+  shopUrl: string;
+  projectId: string | null;
+  projectName: string;
+  notes: string;
+  /** Its picture's file name, or "". */
+  photoPath: string;
+  /** When it was ticked as got; null while still wanted. */
+  gotAt: number | null;
+  /** When it was added to the stash or Needles & hooks from the wishlist. */
+  stashedAt: number | null;
+  addedAt: number;
+}
+
+export type WishInput = Pick<Wish, "kind" | "name" | "brand" | "amount" | "price" | "url" | "shopId" | "projectId" | "notes">;
+
+/** What a shop's page says about the thing on it; "" for what it does not say. */
+export interface LinkPreview {
+  /** Where the page ended up, after redirects. */
+  url: string;
+  title: string;
+  brand: string;
+  /** With its currency: "€4.95", or "Free". */
+  price: string;
+  imageUrl: string;
+  siteName: string;
+}
+
 /** Patterns that look like copies of each other. Mirrors `models.rs::DuplicateGroup`. */
 export interface DuplicateGroup {
   /** The files are identical; otherwise only the names match. */
@@ -899,6 +969,30 @@ export const api = {
   addInspirationBoard: (name: string) => invoke<InspirationBoard>("add_inspiration_board", { name }),
   renameInspirationBoard: (id: string, name: string) => invoke<InspirationBoard>("rename_inspiration_board", { id, name }),
   deleteInspirationBoard: (id: string) => invoke<void>("delete_inspiration_board", { id }),
+
+  // Shops, and the wishlist. Web addresses are tidied by the backend, so use
+  // the one that comes back.
+  listShops: () => invoke<Shop[]>("list_shops"),
+  addShop: (input: ShopInput) => invoke<Shop>("add_shop", { input }),
+  updateShop: (id: string, input: ShopInput) => invoke<Shop>("update_shop", { id, input }),
+  /** What was to be got there stays on the wishlist, with no shop. */
+  deleteShop: (id: string) => invoke<void>("delete_shop", { id }),
+  listWishes: () => invoke<Wish[]>("list_wishes"),
+  addWish: (input: WishInput) => invoke<Wish>("add_wish", { input }),
+  updateWish: (id: string, input: WishInput) => invoke<Wish>("update_wish", { id, input }),
+  /** Ticks it as got, today, or puts it back as still wanted. */
+  setWishGot: (id: string, got: boolean) => invoke<Wish>("set_wish_got", { id, got }),
+  /** It went into the stash or Needles & hooks: that makes it got, too. */
+  setWishStashed: (id: string) => invoke<Wish>("set_wish_stashed", { id }),
+  deleteWish: (id: string) => invoke<void>("delete_wish", { id }),
+  setWishPhoto: (id: string, bytes: number[]) => invoke<void>("set_wish_photo", { id, bytes }),
+  /** Raw binary, as `getCover` returns it. */
+  getWishPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_wish_photo", { id }),
+  removeWishPhoto: (id: string) => invoke<void>("remove_wish_photo", { id }),
+  /** Reads a shop's page for the name, brand, price and picture of what is on it. */
+  fetchLinkPreview: (url: string) => invoke<LinkPreview>("fetch_link_preview", { url }),
+  /** A picture from the web, raw, for the form to downscale before storing. */
+  fetchLinkImage: (url: string) => invoke<ArrayBuffer | ArrayBufferView>("fetch_link_image", { url }),
 
   listYarns: (filter: YarnFilter = {}) => invoke<Yarn[]>("list_yarns", { filter }),
   getYarn: (id: string) => invoke<Yarn>("get_yarn", { id }),

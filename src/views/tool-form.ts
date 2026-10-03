@@ -67,10 +67,14 @@ export class ToolForm {
   /** A set's connector changes, while "Changes with size…" is chosen. */
   private steps: ConnectorStep[] = [];
 
-  constructor(root: HTMLElement, editing: Tool | null, onDone: (tool: Tool) => void) {
+  /** What a new tool got from the wishlist starts with. */
+  private start: Partial<ToolInput> | null;
+
+  constructor(root: HTMLElement, editing: Tool | null, onDone: (tool: Tool) => void, start: Partial<ToolInput> | null = null) {
     this.root = root;
     this.editing = editing;
     this.onDone = onDone;
+    this.start = editing ? null : start;
   }
 
   async open(): Promise<void> {
@@ -83,12 +87,14 @@ export class ToolForm {
     this.materials = knownMaterials(tools);
 
     const e = this.editing;
-    const kind: ToolKind = e?.kind ?? "circular";
+    // What the fields show: the tool being edited, or what the wishlist said.
+    const v: Partial<ToolInput> | null = e ?? this.start;
+    const kind: ToolKind = v?.kind ?? "circular";
     const projectChoice = e?.projectId ?? FREE;
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal tool-form" role="dialog" aria-modal="true">
-        <h2>${e ? "Edit needle or hook" : "Add a needle or hook"}</h2>
+        <h2>${e ? "Edit needle or hook" : this.start ? "Add a needle or hook, from the wishlist" : "Add a needle or hook"}</h2>
 
         <div class="field-row">
           <label class="field">
@@ -101,23 +107,23 @@ export class ToolForm {
             <span>Size (mm)</span>
             <input data-f="sizeMm" inputmode="decimal" autocomplete="off"
               title="${e ? "" : "One size, or several for a set: 2.5, 3, 3.5"}"
-              value="${e && e.sizeMm ? e.sizeMm : ""}" placeholder="${e ? "e.g. 4 or 3.75" : "4, or a set: 3, 3.5, 4"}" />
+              value="${v?.sizeMm ? v.sizeMm : ""}" placeholder="${e ? "e.g. 4 or 3.75" : "4, or a set: 3, 3.5, 4"}" />
           </label>
           <label class="field" data-show="length">
             <span data-el="length-label">${LENGTH_LABEL[kind] ?? "Length (cm)"}</span>
             <input data-f="lengthCm" type="number" min="0" step="0.5" list="tool-lengths"
-              value="${e && e.lengthCm ? e.lengthCm : ""}" placeholder="e.g. 20" />
+              value="${v?.lengthCm ? v.lengthCm : ""}" placeholder="e.g. 20" />
           </label>
           <label class="field" data-show="cable">
             <span>Cable length (cm)</span>
             <input data-f="cableCm" type="number" min="0" step="1" list="tool-cables"
-              value="${e && e.cableCm ? e.cableCm : ""}" placeholder="e.g. 80" />
+              value="${v?.cableCm ? v.cableCm : ""}" placeholder="e.g. 80" />
           </label>
           <label class="field" data-show="connector">
             <span>Cable size</span>
             <select data-f="cableSize">
               <option value="">Not sure</option>
-              ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${e?.cableSize === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
+              ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${v?.cableSize === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
               <option value="${SPLIT}" data-el="split-option" hidden>Changes with size…</option>
             </select>
           </label>
@@ -129,11 +135,11 @@ export class ToolForm {
         <div class="field-row">
           <div class="field">
             <span>Brand</span>
-            <input data-f="brand" aria-label="Brand" value="${escapeAttr(e?.brand ?? "")}" placeholder="Type, or pick one you have" />
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(v?.brand ?? "")}" placeholder="Type, or pick one you have" />
           </div>
           <div class="field">
             <span>Material</span>
-            <input data-f="material" aria-label="Material" value="${escapeAttr(e?.material ? materialLabel(e.material) : "")}"
+            <input data-f="material" aria-label="Material" value="${escapeAttr(v?.material ? materialLabel(v.material) : "")}"
               placeholder="Type, or pick: metal, bamboo…" />
           </div>
         </div>
@@ -153,7 +159,7 @@ export class ToolForm {
 
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="Anything worth remembering: a bent tip, part of a set…">${escapeHtml(e?.notes ?? "")}</textarea>
+          <textarea data-f="notes" placeholder="Anything worth remembering: a bent tip, part of a set…">${escapeHtml(v?.notes ?? "")}</textarea>
         </label>
 
         <datalist id="tool-lengths">${COMMON_LENGTHS.map((n) => `<option value="${n}"></option>`).join("")}</datalist>

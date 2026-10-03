@@ -38,6 +38,10 @@ const store = {
   // "project:<id>".
   boardItems: [],
   inspirationBoards: [],
+  // Shops and the wishlist. A wish's shop and project names are joined in on
+  // read, as the backend's LEFT JOINs do.
+  shops: [],
+  wishes: [],
   // Pseudo content hashes of added patterns, for the duplicate rule in
   // add_pattern (see below).
   contentHashes: new Map(),
@@ -372,6 +376,25 @@ function seed() {
     { projectId: "pr2", toolId: "t2", addedAt: now, releasedAt: null },
   ];
   store.projectYarns = [];
+
+  // Shops: one with a comment worth searching, one on a subdomain-free site,
+  // and one with no web address. The wishlist has one of each kind, one from
+  // each state worth seeing: from a shop and for a project, from no shop,
+  // and already got.
+  store.shops = [
+    { id: "s1", name: "Wolle Rödel", url: "https://www.wolle-roedel.com", comment: "Drops is the cheapest here.", tags: ["yarn", "Sale"], addedAt: now - 3000 },
+    { id: "s2", name: "Deadstock Yarns", url: "https://deadstock.example.com", tags: ["yarn", "deadstock"], comment: "Great prices on deadstock.\nSlow to ship.", addedAt: now - 2000 },
+    { id: "s3", name: "The yarn shop in town", url: "", comment: "Saturday mornings only.", tags: ["needles"], addedAt: now - 1000 },
+  ];
+  const wish = (id, fields) => ({
+    id, kind: "yarn", name: "", brand: "", amount: "", price: "", url: "", shopId: null, projectId: null, notes: "", photoPath: "", gotAt: null, stashedAt: null, addedAt: now, ...fields,
+  });
+  store.wishes = [
+    wish("w1", { name: "Drops Alpaca, light grey mix", amount: "6 balls", price: "€3.95 a ball", url: "https://www.wolle-roedel.com/drops-alpaca", shopId: "s1", projectId: "pr2", addedAt: now - 4000 }),
+    wish("w2", { kind: "tool", name: "4 mm circular, 60 cm", notes: "For sleeves", addedAt: now - 3000 }),
+    wish("w3", { kind: "pattern", name: "Ankers Summer Shirt", url: "https://example.com/ankers", addedAt: now - 2000 }),
+    wish("w4", { name: "Merino leftovers", shopId: "s2", gotAt: now - 86400000 * 5, addedAt: now - 86400000 * 9 }),
+  ];
 }
 
 // The rules of `tools::clean`, so the harness refuses what the app would.
@@ -418,6 +441,67 @@ function cleanTool(input) {
     notes: String(input.notes || ""),
   };
 }
+// The rules of `shopping::clean_shop` and `clean_wish`.
+const WISH_KINDS = ["yarn", "tool", "pattern", "other"];
+/** `shopping::web_address`: https:// added when missing, anything but http(s) refused. */
+function webAddress(value) {
+  const typed = String(value || "").trim();
+  if (!typed) return "";
+  const refuse = () => new Error(`“${typed.slice(0, 60)}” is not a web address. Give one like https://www.drops.com, or drops.com.`);
+  if (/[\s\x00-\x1f]/.test(typed) || typed.length > 2000) throw refuse();
+  let url;
+  if (/^https?:\/\//i.test(typed)) url = typed.replace(/^[a-z]+/i, (m) => m.toLowerCase());
+  else if (typed.includes("://") || /^[a-z][a-z0-9+-]*:/i.test(typed)) throw refuse();
+  else url = `https://${typed.replace(/^\/+/, "")}`;
+  const host = url.split("://")[1].split(/[/?#]/)[0].split("@").pop().split(":")[0];
+  if (!host.includes(".")) throw refuse();
+  return url;
+}
+const oneLine = (v, max) => String(v || "").split(/\s+/).filter(Boolean).join(" ").slice(0, max);
+function cleanShop(input) {
+  const url = webAddress(input.url);
+  let name = oneLine(input.name, 120);
+  if (!name && url) name = url.split("://")[1].split(/[/?#:]/)[0].toLowerCase().replace(/^www\./, "");
+  if (!name) throw new Error("Give the shop a name, or its web address.");
+  const tags = [];
+  for (const raw of input.tags || []) {
+    const tag = oneLine(String(raw).trim().replace(/^#+/, ""), 40);
+    if (tag && !tags.some((t) => t.toLowerCase() === tag.toLowerCase())) tags.push(tag);
+  }
+  return { name, url, comment: String(input.comment || "").trim().slice(0, 4000), tags: tags.slice(0, 30) };
+}
+function cleanWish(input) {
+  const kind = String(input.kind || "").trim().toLowerCase();
+  if (!WISH_KINDS.includes(kind)) throw new Error("Choose what kind of thing this is.");
+  const name = oneLine(input.name, 200);
+  if (!name) throw new Error("Say what it is you want to get.");
+  const link = (v) => (v && String(v).trim() ? String(v).trim() : null);
+  const out = {
+    kind,
+    name,
+    brand: oneLine(input.brand, 80),
+    amount: oneLine(input.amount, 80),
+    price: oneLine(input.price, 80),
+    url: webAddress(input.url),
+    shopId: link(input.shopId),
+    projectId: link(input.projectId),
+    notes: String(input.notes || "").trim().slice(0, 4000),
+  };
+  if (out.shopId && !store.shops.some((x) => x.id === out.shopId)) throw new Error("That shop is no longer there.");
+  if (out.projectId && !store.projects.some((x) => x.id === out.projectId)) throw new Error("That project is no longer there.");
+  return out;
+}
+/** A shop as the backend returns it, with how many wanted things are to be got there. */
+function shopOut(sh) {
+  return clone({ ...sh, wanted: store.wishes.filter((w) => w.shopId === sh.id && w.gotAt === null).length });
+}
+/** A wish as the backend returns it, its shop's and project's names joined in. */
+function wishOut(w) {
+  const sh = store.shops.find((x) => x.id === w.shopId);
+  const pr = store.projects.find((x) => x.id === w.projectId);
+  return clone({ ...w, shopName: sh?.name ?? "", shopUrl: sh?.url ?? "", projectName: pr?.name ?? "" });
+}
+
 /** A stored tool as the backend returns it: the active project it is on joined in. */
 function toolOut(t) {
   const link = store.projectTools.find(
@@ -1275,6 +1359,7 @@ const handlers = {
     store.projects = store.projects.filter((x) => x.id !== id);
     store.projectTools = store.projectTools.filter((l) => l.projectId !== id);
     store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id);
+    for (const w of store.wishes) if (w.projectId === id) w.projectId = null;
   },
 
   set_project_cover: ({ projectId, bytes }) => {
@@ -1352,6 +1437,107 @@ const handlers = {
     const bytes = store.covers.get(`board:${id}`);
     if (!bytes) throw new Error("That picture is no longer there.");
     return Uint8Array.from(bytes).buffer;
+  },
+
+  // ---------- shops and the wishlist ----------
+  list_shops: () =>
+    store.shops
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.addedAt - b.addedAt)
+      .map(shopOut),
+  add_shop: ({ input }) => {
+    const sh = { id: `shop-${store.nextId++}`, ...cleanShop(input), addedAt: Date.now() };
+    store.shops.push(sh);
+    return shopOut(sh);
+  },
+  update_shop: ({ id, input }) => {
+    const sh = store.shops.find((x) => x.id === id);
+    if (!sh) throw new Error("That shop is no longer there.");
+    Object.assign(sh, cleanShop(input));
+    return shopOut(sh);
+  },
+  delete_shop: ({ id }) => {
+    if (!store.shops.some((x) => x.id === id)) throw new Error("That shop is no longer there.");
+    for (const w of store.wishes) if (w.shopId === id) w.shopId = null;
+    store.shops = store.shops.filter((x) => x.id !== id);
+  },
+  list_wishes: () =>
+    store.wishes
+      .slice()
+      .sort((a, b) => Number(a.gotAt !== null) - Number(b.gotAt !== null) || (b.gotAt ?? 0) - (a.gotAt ?? 0) || b.addedAt - a.addedAt)
+      .map(wishOut),
+  add_wish: ({ input }) => {
+    const w = { id: `wish-${store.nextId++}`, ...cleanWish(input), gotAt: null, addedAt: Date.now() };
+    store.wishes.push(w);
+    return wishOut(w);
+  },
+  update_wish: ({ id, input }) => {
+    const w = store.wishes.find((x) => x.id === id);
+    if (!w) throw new Error("That is no longer on the wishlist.");
+    Object.assign(w, cleanWish(input));
+    return wishOut(w);
+  },
+  set_wish_got: ({ id, got }) => {
+    const w = store.wishes.find((x) => x.id === id);
+    if (!w) throw new Error("That is no longer on the wishlist.");
+    w.gotAt = got ? Date.now() : null;
+    if (!got) w.stashedAt = null;
+    return wishOut(w);
+  },
+  set_wish_stashed: ({ id }) => {
+    const w = store.wishes.find((x) => x.id === id);
+    if (!w) throw new Error("That is no longer on the wishlist.");
+    const now = Date.now();
+    w.gotAt = w.gotAt ?? now;
+    w.stashedAt = now;
+    return wishOut(w);
+  },
+  delete_wish: ({ id }) => {
+    if (!store.wishes.some((x) => x.id === id)) throw new Error("That is no longer on the wishlist.");
+    store.covers.delete(`wish:${id}`);
+    store.wishes = store.wishes.filter((x) => x.id !== id);
+  },
+  set_wish_photo: ({ id, bytes }) => {
+    const w = store.wishes.find((x) => x.id === id);
+    if (!w) throw new Error("That is no longer on the wishlist.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    store.covers.set(`wish:${id}`, Uint8Array.from(bytes));
+    w.photoPath = `${id}.jpg`;
+  },
+  get_wish_photo: ({ id }) => {
+    const bytes = store.covers.get(`wish:${id}`);
+    if (!bytes) throw new Error("This has no picture.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  remove_wish_photo: ({ id }) => {
+    const w = store.wishes.find((x) => x.id === id);
+    if (!w) throw new Error("That is no longer on the wishlist.");
+    store.covers.delete(`wish:${id}`);
+    w.photoPath = "";
+  },
+  // Pages are not fetched: a test seeds what a page says in
+  // window.__linkPages, by address, as a preview or as the error to give.
+  // Each read is recorded in window.__linkReads.
+  fetch_link_preview: ({ url }) => {
+    const clean = webAddress(url);
+    if (!clean) throw new Error("Paste a link first.");
+    (window.__linkReads ??= []).push(clean);
+    const page = (window.__linkPages ?? {})[clean];
+    if (page === undefined) throw new Error("The page could not be reached. Check the link, and that you are online.");
+    if (typeof page === "string") throw new Error(page);
+    return clone({ url: clean, title: "", brand: "", price: "", imageUrl: "", siteName: "", ...page });
+  },
+  // Any picture address answers with a small drawn picture.
+  fetch_link_image: async ({ url }) => {
+    if (!webAddress(url)) throw new Error("There is no picture to fetch.");
+    const canvas = document.createElement("canvas");
+    canvas.width = 48;
+    canvas.height = 48;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#c98bd0";
+    ctx.fillRect(0, 0, 48, 48);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    return await blob.arrayBuffer();
   },
 
   // ---------- inspiration boards ----------

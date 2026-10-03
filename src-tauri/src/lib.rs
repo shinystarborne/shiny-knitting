@@ -5,10 +5,12 @@ mod covers;
 mod db;
 mod export;
 mod external;
+mod link_preview;
 mod models;
 mod needle_size;
 mod state;
 mod projects;
+mod shopping;
 mod tools;
 mod update;
 mod yarn;
@@ -130,6 +132,21 @@ pub fn run() {
             projects::add_inspiration_board,
             projects::rename_inspiration_board,
             projects::delete_inspiration_board,
+            shopping::list_shops,
+            shopping::add_shop,
+            shopping::update_shop,
+            shopping::delete_shop,
+            shopping::list_wishes,
+            shopping::add_wish,
+            shopping::update_wish,
+            shopping::set_wish_got,
+            shopping::delete_wish,
+            shopping::set_wish_stashed,
+            shopping::set_wish_photo,
+            shopping::get_wish_photo,
+            shopping::remove_wish_photo,
+            shopping::fetch_link_preview,
+            shopping::fetch_link_image,
             annotations::list_pins,
             annotations::pin_count,
             annotations::add_pin,

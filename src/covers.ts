@@ -186,7 +186,7 @@ function findOpf(files: Map<string, Uint8Array>): string | null {
  * of anything that would bloat it. Returns null for a file that is not an
  * image the browser can decode.
  */
-export async function prepareChosenImage(file: File): Promise<Blob | null> {
+export async function prepareChosenImage(file: Blob): Promise<Blob | null> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
@@ -340,6 +340,11 @@ const yarnPhotoCache = makeImageCache((id) => api.getYarnPhoto(id));
 export const yarnPhotoUrl = yarnPhotoCache.url;
 export const forgetYarnPhoto = yarnPhotoCache.forget;
 export const clearYarnPhotoCache = yarnPhotoCache.clear;
+
+const wishPhotoCache = makeImageCache((id) => api.getWishPhoto(id));
+export const wishPhotoUrl = wishPhotoCache.url;
+export const forgetWishPhoto = wishPhotoCache.forget;
+export const clearWishPhotoCache = wishPhotoCache.clear;
 
 const projectCoverCache = makeImageCache((id) => api.getProjectCover(id));
 export const projectCoverUrl = projectCoverCache.url;

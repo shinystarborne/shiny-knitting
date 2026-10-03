@@ -7,7 +7,8 @@ use crate::models::{
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
     Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
-    tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES,
+    tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
+    WishInput,
 };
 
 #[cfg(test)]
@@ -276,6 +277,37 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             updated_at  INTEGER NOT NULL
         );
 
+        -- A shop you buy from, with your own comment on it.
+        CREATE TABLE IF NOT EXISTS shops (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            url         TEXT NOT NULL DEFAULT '',
+            comment     TEXT NOT NULL DEFAULT '',
+            tags        TEXT NOT NULL DEFAULT '[]',
+            added_at    INTEGER NOT NULL
+        );
+
+        -- Something you want to get. It stays when it is got, with the date,
+        -- until it is removed; removing its shop or project only unlinks it.
+        CREATE TABLE IF NOT EXISTS wishlist (
+            id          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            brand       TEXT NOT NULL DEFAULT '',
+            amount      TEXT NOT NULL DEFAULT '',
+            price       TEXT NOT NULL DEFAULT '',
+            url         TEXT NOT NULL DEFAULT '',
+            shop_id     TEXT REFERENCES shops(id) ON DELETE SET NULL,
+            project_id  TEXT REFERENCES projects(id) ON DELETE SET NULL,
+            notes       TEXT NOT NULL DEFAULT '',
+            photo_path  TEXT NOT NULL DEFAULT '',
+            got_at      INTEGER,
+            stashed_at  INTEGER,
+            added_at    INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_wishlist_shop ON wishlist(shop_id);
+        CREATE INDEX IF NOT EXISTS idx_wishlist_project ON wishlist(project_id);
+
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
         CREATE TABLE IF NOT EXISTS page_rotations (
@@ -448,6 +480,20 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
     }
     move_tools_into_projects(conn)?;
+    // A shop's tags, and a wishlist item's picture and when it went into the
+    // stash: for a library made by the first build with shops in it.
+    if !column_exists(conn, "shops", "tags")? {
+        conn.execute("ALTER TABLE shops ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'", [])?;
+    }
+    if !column_exists(conn, "wishlist", "photo_path")? {
+        conn.execute("ALTER TABLE wishlist ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    if !column_exists(conn, "wishlist", "brand")? {
+        conn.execute("ALTER TABLE wishlist ADD COLUMN brand TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    if !column_exists(conn, "wishlist", "stashed_at")? {
+        conn.execute("ALTER TABLE wishlist ADD COLUMN stashed_at INTEGER", [])?;
+    }
     // A project's cover picture.
     if !column_exists(conn, "projects", "cover_path")? {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
@@ -2412,6 +2458,8 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
         return Err(AppError::NotFound("That project is no longer there.".to_string()));
     }
     conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
+    // What was wanted for it is still wanted, for nothing in particular.
+    conn.execute("UPDATE wishlist SET project_id = NULL WHERE project_id = ?1", params![id])?;
     Ok(())
 }
 
@@ -2771,6 +2819,230 @@ fn move_tools_into_projects(conn: &Connection) -> AppResult<()> {
     set_setting(&tx, "tools_into_projects", &true)?;
     tx.commit()?;
     Ok(())
+}
+
+// ---------- shops ----------
+
+/// A shop with how many wishlist items still wanted are to be got there.
+const SHOP_SELECT: &str = "SELECT s.*,
+     (SELECT COUNT(*) FROM wishlist w WHERE w.shop_id = s.id AND w.got_at IS NULL) AS wanted
+     FROM shops s";
+
+fn row_to_shop(row: &rusqlite::Row) -> rusqlite::Result<Shop> {
+    Ok(Shop {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        url: row.get("url")?,
+        comment: row.get("comment")?,
+        tags: serde_json::from_str(&row.get::<_, String>("tags")?).unwrap_or_default(),
+        wanted: row.get("wanted")?,
+        added_at: row.get("added_at")?,
+    })
+}
+
+/// Every shop, by name.
+pub fn list_shops(conn: &Connection) -> AppResult<Vec<Shop>> {
+    let mut stmt = conn.prepare(&format!("{SHOP_SELECT} ORDER BY s.name COLLATE NOCASE, s.added_at"))?;
+    let rows = stmt.query_map([], row_to_shop)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_shop(conn: &Connection, id: &str) -> AppResult<Shop> {
+    conn.query_row(&format!("{SHOP_SELECT} WHERE s.id = ?1"), params![id], row_to_shop)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That shop is no longer there.".to_string()))
+}
+
+/// Stores a new shop. The input is expected to have been through
+/// `shopping::clean_shop`.
+pub fn insert_shop(conn: &Connection, id: &str, input: &ShopInput) -> AppResult<Shop> {
+    conn.execute(
+        "INSERT INTO shops (id, name, url, comment, tags, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, input.name, input.url, input.comment, serde_json::to_string(&input.tags)?, now_ms()],
+    )?;
+    get_shop(conn, id)
+}
+
+pub fn update_shop(conn: &Connection, id: &str, input: &ShopInput) -> AppResult<Shop> {
+    let changed = conn.execute(
+        "UPDATE shops SET name = ?2, url = ?3, comment = ?4, tags = ?5 WHERE id = ?1",
+        params![id, input.name, input.url, input.comment, serde_json::to_string(&input.tags)?],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That shop is no longer there.".to_string()));
+    }
+    get_shop(conn, id)
+}
+
+/// Removes a shop. What was to be got there stays on the wishlist, with no shop.
+pub fn delete_shop(conn: &Connection, id: &str) -> AppResult<()> {
+    // The foreign key does this too, where foreign keys are on; said here so
+    // it never depends on that.
+    conn.execute("UPDATE wishlist SET shop_id = NULL WHERE shop_id = ?1", params![id])?;
+    let changed = conn.execute("DELETE FROM shops WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That shop is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+// ---------- wishlist ----------
+
+/// A wishlist item with its shop's and project's names joined in.
+const WISH_SELECT: &str = "SELECT w.*, COALESCE(s.name, '') AS shop_name, COALESCE(s.url, '') AS shop_url,
+     COALESCE(p.name, '') AS project_name
+     FROM wishlist w
+     LEFT JOIN shops s ON s.id = w.shop_id
+     LEFT JOIN projects p ON p.id = w.project_id";
+
+fn row_to_wish(row: &rusqlite::Row) -> rusqlite::Result<Wish> {
+    Ok(Wish {
+        id: row.get("id")?,
+        kind: row.get("kind")?,
+        name: row.get("name")?,
+        brand: row.get("brand")?,
+        amount: row.get("amount")?,
+        price: row.get("price")?,
+        url: row.get("url")?,
+        shop_id: row.get("shop_id")?,
+        shop_name: row.get("shop_name")?,
+        shop_url: row.get("shop_url")?,
+        project_id: row.get("project_id")?,
+        project_name: row.get("project_name")?,
+        notes: row.get("notes")?,
+        photo_path: row.get("photo_path")?,
+        got_at: row.get("got_at")?,
+        stashed_at: row.get("stashed_at")?,
+        added_at: row.get("added_at")?,
+    })
+}
+
+/// Everything on the wishlist: what is still wanted first, newest first, then
+/// what was got, most recently got first.
+pub fn list_wishes(conn: &Connection) -> AppResult<Vec<Wish>> {
+    let mut stmt = conn.prepare(&format!(
+        "{WISH_SELECT} ORDER BY w.got_at IS NOT NULL, w.got_at DESC, w.added_at DESC"
+    ))?;
+    let rows = stmt.query_map([], row_to_wish)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_wish(conn: &Connection, id: &str) -> AppResult<Wish> {
+    conn.query_row(&format!("{WISH_SELECT} WHERE w.id = ?1"), params![id], row_to_wish)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That is no longer on the wishlist.".to_string()))
+}
+
+/// Refuses a shop or project that is not there, with a message rather than
+/// a foreign key error.
+fn check_wish_links(conn: &Connection, input: &WishInput) -> AppResult<()> {
+    let exists = |sql: &str, id: &str| -> AppResult<bool> {
+        Ok(conn.query_row(sql, params![id], |_| Ok(())).optional()?.is_some())
+    };
+    if let Some(shop) = input.shop_id.as_deref() {
+        if !exists("SELECT 1 FROM shops WHERE id = ?1", shop)? {
+            return Err(AppError::Message("That shop is no longer there.".to_string()));
+        }
+    }
+    if let Some(project) = input.project_id.as_deref() {
+        if !exists("SELECT 1 FROM projects WHERE id = ?1", project)? {
+            return Err(AppError::Message("That project is no longer there.".to_string()));
+        }
+    }
+    Ok(())
+}
+
+/// Stores a new wishlist item, still wanted. The input is expected to have
+/// been through `shopping::clean_wish`.
+pub fn insert_wish(conn: &Connection, id: &str, input: &WishInput) -> AppResult<Wish> {
+    check_wish_links(conn, input)?;
+    conn.execute(
+        "INSERT INTO wishlist (id, kind, name, amount, price, url, shop_id, project_id, notes, added_at, brand)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            id,
+            input.kind,
+            input.name,
+            input.amount,
+            input.price,
+            input.url,
+            input.shop_id,
+            input.project_id,
+            input.notes,
+            now_ms(),
+            input.brand
+        ],
+    )?;
+    get_wish(conn, id)
+}
+
+/// Replaces an item's details; whether it was got is left as it is.
+pub fn update_wish(conn: &Connection, id: &str, input: &WishInput) -> AppResult<Wish> {
+    check_wish_links(conn, input)?;
+    let changed = conn.execute(
+        "UPDATE wishlist SET kind = ?2, name = ?3, amount = ?4, price = ?5, url = ?6,
+         shop_id = ?7, project_id = ?8, notes = ?9, brand = ?10
+         WHERE id = ?1",
+        params![
+            id,
+            input.kind,
+            input.name,
+            input.amount,
+            input.price,
+            input.url,
+            input.shop_id,
+            input.project_id,
+            input.notes,
+            input.brand
+        ],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+    }
+    get_wish(conn, id)
+}
+
+/// Ticks an item as got, today, or puts it back as still wanted; something
+/// still wanted is in no stash either.
+pub fn set_wish_got(conn: &Connection, id: &str, got: bool) -> AppResult<Wish> {
+    let changed = if got {
+        conn.execute("UPDATE wishlist SET got_at = ?2 WHERE id = ?1", params![id, now_ms()])?
+    } else {
+        conn.execute("UPDATE wishlist SET got_at = NULL, stashed_at = NULL WHERE id = ?1", params![id])?
+    };
+    if changed == 0 {
+        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+    }
+    get_wish(conn, id)
+}
+
+/// Records that an item went into the stash or Needles & hooks, which also
+/// makes it got, if it was not already.
+pub fn set_wish_stashed(conn: &Connection, id: &str) -> AppResult<Wish> {
+    let now = now_ms();
+    let changed = conn.execute(
+        "UPDATE wishlist SET got_at = COALESCE(got_at, ?2), stashed_at = ?2 WHERE id = ?1",
+        params![id, now],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+    }
+    get_wish(conn, id)
+}
+
+pub fn set_wish_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE wishlist SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+    }
+    Ok(())
+}
+
+/// Removes an item, returning its picture's file name for the caller to delete.
+pub fn delete_wish(conn: &Connection, id: &str) -> AppResult<String> {
+    let photo = get_wish(conn, id)?.photo_path;
+    conn.execute("DELETE FROM wishlist WHERE id = ?1", params![id])?;
+    Ok(photo)
 }
 
 // ---------- page rotations ----------

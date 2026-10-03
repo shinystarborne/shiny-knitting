@@ -57,40 +57,6 @@ Open questions:
 - A swatch in yarn that is not in the stash (a friend's, or used up): allowed,
   with the yarn typed in?
 
-### Shopping list
-
-Two lists of things to buy: **yarn**, and **needles & hooks**.
-
-- **Yarn:** name, brand, weight, colour, how much (grams, metres or balls),
-  and what it is for (a project, or nothing yet).
-- **Needles & hooks:** size, type, length or cable, and what it is for.
-- Tick an item as **bought** and it moves into the stash or into Needles &
-  hooks, with the form already filled in from the list.
-- Can be added to from a project ("I need another 200 g of this").
-
-Open questions:
-
-- Should the app suggest things, e.g. a project needs a 4 mm circular and none
-  is free, or a pattern needs 600 m and the stash has 400 m?
-- A shop or link and a price on each item?
-- Something to copy or print to take to the shop?
-
-### Shops
-
-The shops you buy from, as links with your own comments.
-
-- A shop: name, web address, and a **comment**, e.g. "Drops is the cheapest
-  here" or "great prices on deadstock".
-- Click to open the shop in the browser.
-- Search or filter by what the comments say (find "deadstock" or "Drops").
-- Fits with the Shopping list: an item can say which shop to buy it from.
-
-Open questions:
-
-- Tags as well as a comment (yarn, needles, deadstock, sale)?
-- A country or shipping note per shop?
-- Its own tab, or a part of the Shopping list?
-
 ### Recipient measurements
 
 The people you knit for, with their measurements.
@@ -121,6 +87,21 @@ status rather than a new kind of thing. Patterns marked **Want to knit** are a
 natural place to start one from.
 
 Open question: exact dates, rough ones, or both?
+
+### Wishlist, further
+
+The Wishlist and Shops tabs are built (see Already built). Not yet:
+
+- **Add to the wishlist from a project** ("I need another 200 g of this"),
+  with the project already chosen. The form already takes one.
+- **Suggestions:** a project needs a 4 mm circular and none is free, or a
+  pattern needs 600 m and the stash has 400 m.
+- **A list to take to the shop:** copy or print what is wanted from one shop.
+- **Shops that refuse to be read** (Etsy, Garnstudio: 403 to anything that is
+  not a browser). Reading the page in a hidden webview would get past most of
+  them, at the cost of running the shop's scripts.
+- **A pattern got from the wishlist into the library**, as yarn and needles go
+  into the stash: it needs the file, so it would open Add pattern.
 
 ### Finished gallery
 
@@ -223,6 +204,14 @@ at once rare enough?
   minimises to a tab), and the pattern's own row counter.
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
+- **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
+  brand, how much, a price, a picture, a link, a shop and a project; a pasted
+  link reads the shop's page for the name, brand, price and picture and picks
+  its shop; Got it moves an item to a dated Got section, and yarn and needles
+  go on into the stash or Needles & hooks with their form filled in.
+- **Shops:** name, web address, tags and your comment, searched by all of
+  them, with the tags as filters; opens in the browser; shows how much on the
+  wishlist is from it.
 - **App:** updates found by themselves (at every start and every hour, with a
   card that says so) and installed in place in one click, with betas; settings
   behind the gear.

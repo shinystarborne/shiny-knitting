@@ -56,7 +56,7 @@ async function main() {
     await wait(500);
   }
 
-  for (const name of ["__layoutChecks", "__rowChecks", "__annotationChecks", "__bulkAddChecks", "__updateChecks", "__yarnStashChecks", "__toolChecks", "__projectChecks", "__yarnWeightChecks", "__needleSizeChecks"]) {
+  for (const name of ["__layoutChecks", "__rowChecks", "__annotationChecks", "__bulkAddChecks", "__updateChecks", "__yarnStashChecks", "__toolChecks", "__projectChecks", "__yarnWeightChecks", "__needleSizeChecks", "__shoppingChecks"]) {
     const exists = await evalJs(`typeof window.${name}`);
     if (exists !== "function") {
       console.log(`${name}: NOT PRESENT (${exists})`);

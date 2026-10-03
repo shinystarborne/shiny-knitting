@@ -18,6 +18,7 @@ import { makeCombo } from "./combo";
 import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
+import type { YarnStart } from "./shopping";
 
 /** One lot row in the editor, kept as strings while the form is open. */
 interface LotRow {
@@ -63,16 +64,30 @@ export class YarnForm {
    * new.
    */
   private template: Yarn | null;
+  /**
+   * What a new yarn got from the wishlist starts with: its brand, name and
+   * colourway as the wishlist had them, the balls bought as its first lot, and
+   * its picture.
+   */
+  private start: (YarnStart & { photo: Blob | null }) | null;
   /** Every yarn in the stash, for the brand and name lists and filling in. */
   private known: Yarn[] = [];
   /** The fibre rows, as typed: a name and its share. */
   private fibres: { name: string; percent: string }[] = [];
 
-  constructor(root: HTMLElement, editing: Yarn | null, onDone: (y: Yarn) => void, template: Yarn | null = null) {
+  constructor(
+    root: HTMLElement,
+    editing: Yarn | null,
+    onDone: (y: Yarn) => void,
+    template: Yarn | null = null,
+    start: (YarnStart & { photo: Blob | null }) | null = null,
+  ) {
     this.root = root;
     this.editing = editing;
     this.onDone = onDone;
     this.template = editing ? null : template;
+    this.start = editing ? null : start;
+    this.pendingPhoto = this.start?.photo ?? null;
     // A new yarn starts with one empty lot row: a yarn you own is at least
     // one purchase, and the row is where that is said.
     this.lots = editing
@@ -85,7 +100,9 @@ export class YarnForm {
           boughtAt: lot.boughtAt != null ? toDateInput(lot.boughtAt) : "",
           leftover: lot.leftover ?? false,
         }))
-      : [emptyLot()];
+      : this.start
+        ? [{ ...emptyLot(), balls: this.start.balls ? String(this.start.balls) : "", boughtAt: toDateInput(this.start.boughtAt ?? Date.now()) }]
+        : [emptyLot()];
     const from = editing ?? this.template;
     this.fibres = (from?.fibres ?? []).map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
     if (!this.fibres.length) this.fibres.push({ name: "", percent: "" });
@@ -99,7 +116,7 @@ export class YarnForm {
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal yarn-form" role="dialog" aria-modal="true">
-        <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : "Add a yarn"}</h2>
+        <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : this.start ? "Add to the stash, from the wishlist" : "Add a yarn"}</h2>
 
         <div class="field">
           <span>Photo</span>
@@ -116,18 +133,18 @@ export class YarnForm {
         <div class="field-row">
           <div class="field">
             <span>Brand</span>
-            <input data-f="brand" aria-label="Brand" value="${escapeAttr(base?.brand ?? "")}" placeholder="Type, or pick one you have" />
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(base?.brand ?? this.start?.brand ?? "")}" placeholder="Type, or pick one you have" />
           </div>
           <div class="field yarn-name-field">
             <span>Name</span>
-            <input data-f="name" aria-label="Name" value="${escapeAttr(base?.name ?? "")}" placeholder="e.g. Felted Tweed — or pick one you have" />
+            <input data-f="name" aria-label="Name" value="${escapeAttr(base?.name ?? this.start?.name ?? "")}" placeholder="e.g. Felted Tweed — or pick one you have" />
           </div>
         </div>
         <p class="hint" data-el="known-hint" hidden></p>
         <div class="field-row">
           <label class="field">
             <span>Colourway</span>
-            <input data-f="colourway" value="${escapeAttr(e?.colourway ?? "")}" placeholder="e.g. Peat" />
+            <input data-f="colourway" value="${escapeAttr(e?.colourway ?? this.start?.colourway ?? "")}" placeholder="e.g. Peat" />
           </label>
           <label class="field">
             <span class="label-with-help">Yarn weight
@@ -187,7 +204,7 @@ export class YarnForm {
         <label class="field">
           <span>Notes</span>
           <textarea data-f="notes" placeholder="Anything worth remembering about this yarn.">${escapeHtml(
-            e?.notes ?? "",
+            e?.notes ?? this.start?.notes ?? "",
           )}</textarea>
         </label>
 
@@ -222,8 +239,16 @@ export class YarnForm {
     makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="name"]')!, () => this.knownNames());
     void api
       .listYarns({})
-      .then((yarns) => (this.known = yarns.filter((y) => y.id !== this.editing?.id)))
+      .then((yarns) => {
+        this.known = yarns.filter((y) => y.id !== this.editing?.id);
+        // Yarn from the wishlist that is already in the stash in another
+        // colour takes its weight, ball band and fibres from there.
+        if (this.start) this.fillFromKnown();
+      })
       .catch(() => {});
+    if (this.start) {
+      this.showKnownHint("Filled in from the wishlist. Check the name and colourway, and add what the ball band says.");
+    }
     if (this.template) {
       this.showKnownHint(`Filled in from ${this.template.name}${this.template.colourway ? ` (${this.template.colourway})` : ""}. Add the colourway, and its lots.`);
       (this.root.querySelector('[data-f="colourway"]') as HTMLInputElement | null)?.focus();

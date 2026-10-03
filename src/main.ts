@@ -1,10 +1,15 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Tool, type UpdateInfo, type Yarn } from "./api";
+import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Shop, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
 import { ToolForm } from "./views/tool-form";
+import { WishlistView } from "./views/wishlist";
+import { WishForm, type WishTemplate } from "./views/wish-form";
+import { ShopsView } from "./views/shops";
+import { ShopForm } from "./views/shop-form";
+import { shopTagFacets, toolStart, yarnStart, type WishFilter } from "./views/shopping";
 import { ProjectsView } from "./views/projects";
 import { ProjectForm } from "./views/project-form";
 import { FinishProjectDialog } from "./views/finish-project";
@@ -14,19 +19,20 @@ import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearBoardImageCache, clearCoverCache, clearYarnPhotoCache, ensureCover } from "./covers";
+import { clearBoardImageCache, clearCoverCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
- * Inspiration, Stash, or Needles & hooks — with Settings as a gear at its
- * right end, and the reader covers the Patterns tab when a pattern is open.
+ * Inspiration, Stash, Needles & hooks, Wishlist or Shops — with Settings as a
+ * gear at its right end, and the reader covers the Patterns tab when a
+ * pattern is open.
  * The current layout choice is remembered for the session.
  */
 
-type Tab = "patterns" | "projects" | "inspiration" | "stash" | "tools";
+type Tab = "patterns" | "projects" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
@@ -42,6 +48,9 @@ class App {
   private activeInspirationPage: InspirationPage | null = null;
   /** The mounted library, so background work can ask it to repaint a card. */
   private activeLibrary: LibraryView | null = null;
+  /** The wishlist or shops on screen, so a form saved over them keeps their filters. */
+  private activeWishlist: WishlistView | null = null;
+  private activeShops: ShopsView | null = null;
   private layout: Layout = "split";
 
   /**
@@ -68,6 +77,8 @@ class App {
       <button class="tab" data-tab="inspiration">Inspiration</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
+      <button class="tab" data-tab="wishlist">Wishlist</button>
+      <button class="tab" data-tab="shops">Shops</button>
       <span class="tab-spacer"></span>
       <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
@@ -96,6 +107,10 @@ class App {
         void this.showStash();
       } else if (tab.dataset.tab === "tools") {
         void this.showTools();
+      } else if (tab.dataset.tab === "wishlist") {
+        void this.showWishlist();
+      } else if (tab.dataset.tab === "shops") {
+        void this.showShops();
       } else if (tab.dataset.tab === "projects") {
         void this.showProjects();
       } else {
@@ -153,6 +168,22 @@ class App {
     this.screen.addEventListener("add-tool", () => void this.openToolForm(null));
     this.screen.addEventListener("edit-tool", (e) => {
       void this.openToolForm((e as CustomEvent<Tool>).detail);
+    });
+    this.screen.addEventListener("add-wish", (e) => {
+      void this.openWishForm(null, (e as CustomEvent<WishTemplate | undefined>).detail ?? {});
+    });
+    this.screen.addEventListener("edit-wish", (e) => {
+      void this.openWishForm((e as CustomEvent<Wish>).detail);
+    });
+    this.screen.addEventListener("open-wishlist", (e) => {
+      void this.showWishlist((e as CustomEvent<WishFilter | undefined>).detail ?? {});
+    });
+    this.screen.addEventListener("stash-wish", (e) => {
+      void this.stashWish((e as CustomEvent<Wish>).detail);
+    });
+    this.screen.addEventListener("add-shop", () => void this.openShopForm(null));
+    this.screen.addEventListener("edit-shop", (e) => {
+      void this.openShopForm((e as CustomEvent<Shop>).detail);
     });
     this.screen.addEventListener("open-settings", (e) => {
       void this.openSettings((e as CustomEvent<AiSettingsView | undefined>).detail);
@@ -312,10 +343,13 @@ class App {
     this.activeInspirationPage = null;
     clearBoardImageCache();
     this.activeLibrary = null;
+    this.activeWishlist = null;
+    this.activeShops = null;
     this.screen.innerHTML = "";
     // Cover and photo object URLs are tied to the elements that showed them.
     clearCoverCache();
     clearYarnPhotoCache();
+    clearWishPhotoCache();
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
@@ -401,6 +435,26 @@ class App {
     this.clearScreen();
     this.setActiveTab("tools");
     const view = new ToolsView(this.screen);
+    await view.mount();
+  }
+
+  private async showWishlist(filter: WishFilter = {}): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("wishlist");
+    const view = new WishlistView(this.screen, filter);
+    this.activeWishlist = view;
+    await view.mount();
+  }
+
+  private async showShops(): Promise<void> {
+    // As the library: no async gap after clearScreen, so no token is needed.
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("shops");
+    const view = new ShopsView(this.screen);
+    this.activeShops = view;
     await view.mount();
   }
 
@@ -509,6 +563,46 @@ class App {
     // form stays open over it.
     const form = new ToolForm(this.freshModal(), tool, () => void this.showTools());
     await form.open();
+  }
+
+  private async openWishForm(wish: Wish | null, template: WishTemplate = {}): Promise<void> {
+    // The list behind is read again on every save, "Save and add another"
+    // included, so what was added shows under the form as it is added. A shop
+    // added from the form is new on the Shops tab when it is next opened.
+    const form = new WishForm(this.freshModal(), wish, () => void this.activeWishlist?.reload(), template);
+    await form.open();
+  }
+
+  /**
+   * Yarn or needles got from the wishlist, into the stash or Needles & hooks:
+   * the form opens filled in from the item, its picture included, and saving
+   * it marks the item as in the stash. The wishlist stays on screen behind.
+   */
+  private async stashWish(wish: Wish): Promise<void> {
+    const done = () =>
+      void api
+        .setWishStashed(wish.id)
+        .then(() => this.activeWishlist?.reload())
+        .catch(() => {});
+    if (wish.kind === "yarn") {
+      let photo: Blob | null = null;
+      if (wish.photoPath) {
+        photo = await api
+          .getWishPhoto(wish.id)
+          .then((raw) => new Blob([toBytes(raw)], { type: "image/jpeg" }))
+          .catch(() => null);
+      }
+      new YarnForm(this.freshModal(), null, done, null, { ...yarnStart(wish), photo }).open();
+    } else if (wish.kind === "tool") {
+      await new ToolForm(this.freshModal(), null, done, toolStart(wish)).open();
+    }
+  }
+
+  private async openShopForm(shop: Shop | null): Promise<void> {
+    // The tags other shops have are offered as the form's tags are typed.
+    const known = shopTagFacets(await api.listShops().catch(() => [] as Shop[])).map((f) => f.label);
+    const form = new ShopForm(this.freshModal(), shop, () => void this.activeShops?.reload(), known);
+    form.open();
   }
 
   /** Reads the cover out of a newly added file without holding up the library. */
