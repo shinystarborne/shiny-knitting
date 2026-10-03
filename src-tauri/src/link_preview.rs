@@ -234,6 +234,7 @@ pub fn parse_page(html: &str, base: &Url) -> LinkPreview {
     .find(|i| !i.is_empty())
     .unwrap_or_default();
 
+    let shop_name = shop_name(&[tidy(&page.title), meta(&["og:title"])], &site_name, base.host_str().unwrap_or(""));
     LinkPreview {
         url: base.to_string(),
         title: tidy_title(&title, &site_name),
@@ -241,6 +242,83 @@ pub fn parse_page(html: &str, base: &Url) -> LinkPreview {
         price: format_price(&amount, &currency),
         image_url: absolute(&image, base),
         site_name,
+        shop_name,
+    }
+}
+
+/// A word reduced to its letters and digits, umlauts written out, so "Wolle
+/// Rödel" and `wolle-roedel` are the same.
+fn fold(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.to_lowercase().chars() {
+        match c {
+            'ä' => out.push_str("ae"),
+            'ö' => out.push_str("oe"),
+            'ü' => out.push_str("ue"),
+            'ß' => out.push_str("ss"),
+            'å' => out.push_str("aa"),
+            'æ' => out.push_str("ae"),
+            'ø' => out.push_str("oe"),
+            c if c.is_alphanumeric() => out.extend(c.to_string().chars().filter(|c| c.is_ascii_alphanumeric())),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// What a shop calls itself, from its page. A page's title is usually the
+/// shop's name and a slogan ("Wolle online kaufen | Wollplatz"), and the part
+/// that matches the site's address is the name. The page's own site name comes
+/// next: it is not always this shop's (Wollplatz.de calls itself Wolplein.nl,
+/// its Dutch parent). A title with no slogan to cut is the name as it is.
+/// Empty when nothing reads as a name; the caller names the shop after its
+/// address then.
+pub fn shop_name(titles: &[String], site_name: &str, host: &str) -> String {
+    let host = host.trim_start_matches("www.");
+    // The address without its ending, in parts: "shop.handgemacht-wolle.de"
+    // is "shop" and "handgemachtwolle".
+    let labels: Vec<String> = {
+        let parts: Vec<&str> = host.split('.').collect();
+        let keep = if parts.len() > 1 { &parts[..parts.len() - 1] } else { &parts[..] };
+        // Words any shop's address may have, which name no shop.
+        const GENERIC: &[&str] = &["shop", "store", "online", "www", "web", "my"];
+        keep.iter().map(|p| fold(p)).filter(|p| p.len() >= 3 && !GENERIC.contains(&p.as_str())).collect()
+    };
+    let matches = |candidate: &str| {
+        let f = fold(candidate);
+        f.len() >= 3 && labels.iter().any(|l| l == &f || (f.len() >= 4 && l.contains(&f)) || (l.len() >= 4 && f.contains(l.as_str())))
+    };
+    // The titles' parts, then the site name's: on a tie the site name wins,
+    // as it is usually the better spelled ("Knotten Wolle", not "KNOTTENWOLLE").
+    let segments: Vec<String> = titles
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once(site_name))
+        .flat_map(|t| {
+            tidy(t)
+                .split(['|', '–', '—', '·', ':', '▷', '•', '»', '›', '~'])
+                .flat_map(|s| s.split(" - ").map(|p| p.trim().to_string()).collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        })
+        .filter(|s| !s.is_empty() && s.chars().count() <= 60)
+        .collect();
+    // The closest match wins: the whole address, else the most of it.
+    let score = |s: &String| {
+        let f = fold(s);
+        if labels.contains(&f) { usize::MAX } else { f.len() }
+    };
+    if let Some(found) = segments.iter().filter(|s| matches(s)).max_by_key(|s| score(s)) {
+        return found.clone();
+    }
+    let site = tidy(site_name);
+    if !site.is_empty() && site.chars().count() <= 60 {
+        return site;
+    }
+    // A page called "Home" says nothing about whose home it is.
+    const NOT_NAMES: &[&str] = &["home", "startseite", "willkommen", "welcome", "shop", "index", "start", "homepage", "onlineshop"];
+    match titles.iter().map(|t| tidy(t)).find(|t| !t.is_empty()) {
+        Some(t) if t.chars().count() <= 30 && !t.contains(['|', '–', '—']) && !NOT_NAMES.contains(&fold(&t).as_str()) => t,
+        _ => String::new(),
     }
 }
 
@@ -667,6 +745,27 @@ mod tests {
         let p = parse_page("<html><body>Just a page</body></html>", &base());
         assert_eq!((p.title.as_str(), p.price.as_str(), p.image_url.as_str()), ("", "", ""));
         assert_eq!(parse_page("<meta property=\"og:image\" content=\"javascript:alert(1)\">", &base()).image_url, "", "only web pictures");
+    }
+
+    #[test]
+    fn a_shop_is_named_by_the_part_of_its_title_that_is_its_address() {
+        let name = |titles: &[&str], site: &str, host: &str| {
+            shop_name(&titles.iter().map(|t| t.to_string()).collect::<Vec<_>>(), site, host)
+        };
+        assert_eq!(name(&["Wolle online kaufen | Wollplatz.de"], "Wolplein.nl", "www.wollplatz.de"), "Wollplatz.de", "the title's match beats a parent company's site name");
+        assert_eq!(name(&["Wolle Rödel – Ihr Wollgeschäft"], "", "www.wolle-roedel.com"), "Wolle Rödel", "umlauts match their spelled-out address");
+        assert_eq!(name(&["LindeHobby - Wolle & Garn online kaufen"], "", "lindehobby.de"), "LindeHobby");
+        assert_eq!(name(&["Shop | Handgemacht Wolle"], "", "shop.handgemacht-wolle.de"), "Handgemacht Wolle", "shop. names no shop");
+        assert_eq!(name(&["Willkommen"], "Lieblingsgarn", "lieblingsgarn.de"), "Lieblingsgarn", "the site name when the title is no help");
+        assert_eq!(name(&["Wolle | Wolle Rödel"], "", "wolle-roedel.com"), "Wolle Rödel", "the closest match wins");
+        assert_eq!(name(&["Yarnstore"], "", "yarnstore.de"), "Yarnstore");
+        assert_eq!(name(&["Onlineshop von Lieblingsgarn ▷ Stricken • Häkeln"], "Lieblingsgarn", "lieblingsgarn.de"), "Lieblingsgarn", "other separators, and the site name's exact match");
+        assert_eq!(name(&["KNOTTENWOLLE"], "Knotten Wolle", "knottenwolle.de"), "Knotten Wolle", "on a tie, the site name's spelling");
+        assert_eq!(name(&["GRÜNDL WOLLE"], "Gründl", "gruendl.com"), "Gründl", "the whole address beats more than it");
+        assert_eq!(name(&["Startseite"], "Wollke - für ein gutes Gefühl", "wollke.shop"), "Wollke", "the site name without its slogan");
+        assert_eq!(name(&["Home"], "", "knottenwolle.de"), "", "a page called Home names nothing");
+        assert_eq!(name(&["Knit Happy"], "", "example.com"), "Knit Happy", "a short title with nothing else to go on");
+        assert_eq!(name(&["Hochwertige Wolle und Garne online bestellen | Versandkostenfrei ab 39 €"], "", "lanae-tricot.com"), "", "nothing reads as a name");
     }
 
     #[test]

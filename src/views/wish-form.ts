@@ -351,9 +351,16 @@ export class WishForm {
   private async newShop(): Promise<void> {
     const select = this.field<HTMLSelectElement>("shop");
     const site = siteOf(normalised(this.field("url").value));
+    // The question starts from what the shop calls itself, when its page says.
+    let suggested = site;
+    if (site) {
+      this.status("Looking up the shop's name…");
+      suggested = (await api.fetchShopName(normalised(this.field("url").value)).catch(() => "")) || site;
+      this.status("");
+    }
     const name = await askText("What is the shop called?", {
       title: "New shop",
-      value: site,
+      value: suggested,
       placeholder: "e.g. Wolle Rödel",
       okLabel: "Add the shop",
     });

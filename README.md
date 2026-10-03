@@ -383,7 +383,15 @@ The **Shops** tab is the shops you buy from: a name, a web address, tags
 (yarn, needles, deadstock, sale — your own, offered again on the next shop) and
 your own comment ("Drops is the cheapest here", "great prices on deadstock").
 The tags are filters down the side, where a shop must have every tag ticked,
-and a tag on a card ticks it. The search looks through the comments and tags
+and a tag on a card ticks it; a card shows two rows of tags, and **+N** names
+the rest when pointed at.
+
+**Paste a shop's address and its name fills itself in**, read from the shop's
+own home page: the part of its title that matches its address, else the name
+the site gives itself, else the address. An address pasted into the Name field
+moves to where it belongs. **Look up names** names every shop still named after
+its address at once; a shop that does not say its name, or will not be read,
+keeps the address, and anything can be renamed by hand. The search looks through the comments and tags
 as well as the names and addresses, the address on a card opens the shop in
 the browser, and **N things on your wishlist** goes to the wishlist filtered
 to that shop. A web address can be typed without

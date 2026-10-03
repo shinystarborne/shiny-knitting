@@ -88,21 +88,6 @@ natural place to start one from.
 
 Open question: exact dates, rough ones, or both?
 
-### Wishlist, further
-
-The Wishlist and Shops tabs are built (see Already built). Not yet:
-
-- **Add to the wishlist from a project** ("I need another 200 g of this"),
-  with the project already chosen. The form already takes one.
-- **Suggestions:** a project needs a 4 mm circular and none is free, or a
-  pattern needs 600 m and the stash has 400 m.
-- **A list to take to the shop:** copy or print what is wanted from one shop.
-- **Shops that refuse to be read** (Etsy, Garnstudio: 403 to anything that is
-  not a browser). Reading the page in a hidden webview would get past most of
-  them, at the cost of running the shop's scripts.
-- **A pattern got from the wishlist into the library**, as yarn and needles go
-  into the stash: it needs the file, so it would open Add pattern.
-
 ### Finished gallery
 
 Photos of finished things: several per project, with the pattern, yarn,
@@ -154,6 +139,18 @@ at once rare enough?
 
 ## Ideas (not agreed yet)
 
+- **Wishlist and Shops, further.** Both are done for now (see Already
+  built). Left over, if they turn out to be wanted:
+  - Add to the wishlist from a project ("I need another 200 g of this"),
+    with the project already chosen. The form already takes one.
+  - Suggestions: a project needs a 4 mm circular and none is free, or a
+    pattern needs 600 m and the stash has 400 m.
+  - A list to take to the shop: copy or print what is wanted from one shop.
+  - Shops that refuse to be read (Etsy, Garnstudio, Maschenfein: 401 or 403
+    to anything that is not a browser). Reading the page in a hidden webview
+    would get past most of them, at the cost of running the shop's scripts.
+  - A pattern got from the wishlist into the library, as yarn and needles go
+    into the stash: it needs the file, so it would open Add pattern.
 - **Fibre content on patterns.** A pattern's recommended yarn given its fibres
   too, so "could I knit this in something I have?" can match on them.
 - **Ravelry import.** Ravelry can export your library and stash; a one-time
@@ -210,8 +207,10 @@ at once rare enough?
   its shop; Got it moves an item to a dated Got section, and yarn and needles
   go on into the stash or Needles & hooks with their form filled in.
 - **Shops:** name, web address, tags and your comment, searched by all of
-  them, with the tags as filters; opens in the browser; shows how much on the
-  wishlist is from it.
+  them, with the tags as filters; the name looked up from the shop's own page
+  (and Look up names for shops still named after their address); two rows of
+  tags on a card and the rest as +N; opens in the browser; shows how much on
+  the wishlist is from it.
 - **App:** updates found by themselves (at every start and every hour, with a
   card that says so) and installed in place in one click, with betas; settings
   behind the gear.

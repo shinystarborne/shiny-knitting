@@ -72,6 +72,23 @@ export function shopForUrl(url: string, shops: Shop[]): Shop | undefined {
   return best;
 }
 
+/** Whether some typed text is a web address rather than a name: "https://…", or "knottenwolle.de". */
+export function looksLikeAddress(text: string): boolean {
+  const t = text.trim();
+  return /^https?:\/\//i.test(t) || /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(t);
+}
+
+/**
+ * Whether a shop is still named after its address, as one added by its
+ * address alone is: "knottenwolle.de", or the whole link typed as the name.
+ */
+export function namedAfterAddress(shop: Shop): boolean {
+  const name = shop.name.trim().toLowerCase();
+  if (/^https?:\/\//.test(name)) return true;
+  const site = siteOf(shop.url);
+  return !!site && name.replace(/^www\./, "").replace(/\/+$/, "") === site;
+}
+
 /**
  * Shops whose name, address, comment or tags have every word searched for,
  * and that have every tag ticked (tags compared without case).

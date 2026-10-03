@@ -761,6 +761,8 @@ export interface LinkPreview {
   price: string;
   imageUrl: string;
   siteName: string;
+  /** What the shop calls itself, or "" when the page does not say. */
+  shopName: string;
 }
 
 /** Patterns that look like copies of each other. Mirrors `models.rs::DuplicateGroup`. */
@@ -991,6 +993,8 @@ export const api = {
   removeWishPhoto: (id: string) => invoke<void>("remove_wish_photo", { id }),
   /** Reads a shop's page for the name, brand, price and picture of what is on it. */
   fetchLinkPreview: (url: string) => invoke<LinkPreview>("fetch_link_preview", { url }),
+  /** What a shop calls itself, read from its home page; "" when it does not say. */
+  fetchShopName: (url: string) => invoke<string>("fetch_shop_name", { url }),
   /** A picture from the web, raw, for the form to downscale before storing. */
   fetchLinkImage: (url: string) => invoke<ArrayBuffer | ArrayBufferView>("fetch_link_image", { url }),
 

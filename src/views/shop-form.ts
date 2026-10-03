@@ -1,14 +1,17 @@
 import { api, type Shop, type ShopInput } from "../api";
 import { closestEl } from "../dom";
 import { makeCombo } from "./combo";
+import { looksLikeAddress, siteOf } from "./shopping";
 
 /** Tags offered on a new shop's form before any shop has any. */
 const STARTER_TAGS = ["yarn", "needles", "patterns", "deadstock", "sale", "local", "secondhand"];
 
 /**
  * The add/edit dialog for a shop: its name, its web address, its tags, and
- * what you think of it. Only one of the name and the address is needed; a
- * shop given only its address is named after it.
+ * what you think of it. Only one of the name and the address is needed: an
+ * address given with no name has the shop's own name looked up on its home
+ * page, or else the shop is named after the address. An address typed in the
+ * Name field is moved to where it belongs, and looked up the same way.
  */
 export class ShopForm {
   private root: HTMLElement;
@@ -17,6 +20,10 @@ export class ShopForm {
   private tags: string[];
   /** The tags other shops have, offered as the tag field is typed in. */
   private known: string[];
+  /** Counts look-ups, so one overtaken by another address fills nothing in. */
+  private lookup = 0;
+  /** The name the last look-up filled in: a new address may replace that, never a typed one. */
+  private autoName = "";
 
   constructor(root: HTMLElement, editing: Shop | null, onDone: (shop: Shop) => void, known: string[] = []) {
     this.root = root;
@@ -39,9 +46,10 @@ export class ShopForm {
           </label>
           <label class="field">
             <span>Web address</span>
-            <input data-f="url" value="${escapeAttr(e?.url ?? "")}" placeholder="e.g. drops.com" autocomplete="off" spellcheck="false" />
+            <input data-f="url" value="${escapeAttr(e?.url ?? "")}" placeholder="Paste it: the name fills itself in" autocomplete="off" spellcheck="false" />
           </label>
         </div>
+        <p class="hint" data-el="name-status" hidden></p>
         <div class="field">
           <span>Tags</span>
           <div class="tag-editor">
@@ -71,7 +79,62 @@ export class ShopForm {
     });
     tagInput.addEventListener("change", () => this.takeTags());
     this.paintTags();
-    this.root.querySelector<HTMLInputElement>('[data-f="name"]')?.focus();
+    const name = this.field("name");
+    const url = this.field("url");
+    // A pasted address is looked up at once; a typed one when it is left.
+    url.addEventListener("paste", () => window.setTimeout(() => void this.lookUpName(), 0));
+    url.addEventListener("change", () => void this.lookUpName());
+    name.addEventListener("change", () => {
+      if (!looksLikeAddress(name.value) || url.value.trim()) return;
+      url.value = name.value.trim();
+      name.value = "";
+      void this.lookUpName();
+    });
+    name.focus();
+  }
+
+  private field(name: string): HTMLInputElement {
+    return this.root.querySelector<HTMLInputElement>(`[data-f="${name}"]`)!;
+  }
+
+  /**
+   * Fills an empty name from the shop's home page, or from its address when
+   * the page does not say or cannot be read. A name already there is kept.
+   */
+  private async lookUpName(): Promise<void> {
+    const typed = this.field("url").value.trim();
+    const current = this.field("name").value.trim();
+    if (!looksLikeAddress(typed) || (current && current !== this.autoName)) return;
+    const site = siteOf(/^https?:\/\//i.test(typed) ? typed : `https://${typed}`);
+    if (!site) return;
+    const token = ++this.lookup;
+    this.nameStatus("Looking up the shop's name…");
+    let found = "";
+    let readable = true;
+    try {
+      found = (await api.fetchShopName(typed)).trim();
+    } catch {
+      readable = false;
+    }
+    if (token !== this.lookup || !this.root.isConnected) return;
+    const name = this.field("name");
+    if (name.value.trim() && name.value.trim() !== this.autoName) return this.nameStatus("");
+    name.value = found || site;
+    this.autoName = name.value;
+    this.nameStatus(
+      found
+        ? "Named from the shop's page. Change it if you like."
+        : readable
+          ? "The shop's page does not say its name, so it is named after its address."
+          : "The shop's page could not be read, so it is named after its address.",
+    );
+  }
+
+  private nameStatus(text: string): void {
+    const el = this.root.querySelector<HTMLElement>('[data-el="name-status"]');
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = !text;
   }
 
   private tagInput(): HTMLInputElement {
@@ -162,6 +225,7 @@ export class ShopForm {
   }
 
   private close(): void {
+    this.lookup++;
     this.root.removeEventListener("click", this.onClick);
     this.root.removeEventListener("keydown", this.onKey);
     this.root.className = "modal-backdrop hidden";

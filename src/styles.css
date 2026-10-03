@@ -3017,7 +3017,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   flex-direction: column;
   gap: 4px;
   padding: 14px 16px 10px;
-  height: 210px;
+  height: 240px;
   overflow: hidden;
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
@@ -3079,7 +3079,11 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 
 /* ---------- shops: tags ---------- */
 
-.shop-tags { display: flex; flex-wrap: wrap; gap: 4px; max-height: 44px; overflow: hidden; flex-shrink: 0; }
+/* Two rows of tags at most; the rest fold into "+N" (see fitTags). The
+   position makes the chips' offsets relative to this box, for measuring. */
+.shop-tags { position: relative; display: flex; flex-wrap: wrap; gap: 4px; max-height: 50px; overflow: hidden; flex-shrink: 0; }
+.shop-tags .tag[hidden] { display: none; }
+.tag.shop-tag-more { font-size: 11px; border: 1px solid transparent; color: var(--text-dim); }
 button.tag.shop-tag { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 11px; }
 button.tag.shop-tag:hover { color: var(--text); border-color: var(--border); }
 button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }

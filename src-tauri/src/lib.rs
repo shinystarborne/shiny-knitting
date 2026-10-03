@@ -147,6 +147,7 @@ pub fn run() {
             shopping::remove_wish_photo,
             shopping::fetch_link_preview,
             shopping::fetch_link_image,
+            shopping::fetch_shop_name,
             annotations::list_pins,
             annotations::pin_count,
             annotations::add_pin,

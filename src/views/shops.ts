@@ -1,7 +1,7 @@
 import { api, type Shop } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { filterShops, shopTagFacets, siteOf, type Facet } from "./shopping";
+import { filterShops, namedAfterAddress, shopTagFacets, siteOf, type Facet } from "./shopping";
 
 /**
  * The Shops tab: the shops you buy from, with your own tags and comments.
@@ -11,6 +11,8 @@ import { filterShops, shopTagFacets, siteOf, type Facet } from "./shopping";
  * the tags down the side narrow to the shops that have every one ticked, and
  * a tag on a card ticks it. A card opens the shop in the browser from its
  * address, and its wishlist count goes to the Wishlist filtered to that shop.
+ * Shops still named after their address can have their own names looked up,
+ * all at once.
  */
 export class ShopsView {
   private screen: HTMLElement;
@@ -33,6 +35,7 @@ export class ShopsView {
         <h1>Shops</h1>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search shops, tags, comments..." />
+          <button data-act="lookup-names" class="ghost" hidden title="Name the shops still named after their address, from their own pages">Look up names</button>
           <button data-act="add" class="primary">+ Add a shop</button>
         </div>
       </header>
@@ -68,6 +71,43 @@ export class ShopsView {
     this.shops = await api.listShops();
     this.renderFacets();
     this.paint();
+    const lookup = this.root.querySelector<HTMLButtonElement>('[data-act="lookup-names"]')!;
+    if (!lookup.disabled) lookup.hidden = !this.shops.some(namedAfterAddress);
+  }
+
+  /**
+   * Names every shop still named after its address from its own home page,
+   * one at a time, the button counting. A shop whose page does not say, or
+   * will not be read, keeps its name; anything can still be renamed by hand.
+   */
+  private async lookUpNames(button: HTMLButtonElement): Promise<void> {
+    const todo = this.shops.filter(namedAfterAddress);
+    if (!todo.length) return;
+    button.disabled = true;
+    let named = 0;
+    const kept: string[] = [];
+    for (const [i, shop] of todo.entries()) {
+      button.textContent = `Looking up ${i + 1} of ${todo.length}…`;
+      const name = await api.fetchShopName(shop.url).catch(() => "");
+      if (!name || name.toLowerCase() === shop.name.trim().toLowerCase()) {
+        kept.push(shop.name);
+        continue;
+      }
+      try {
+        await api.updateShop(shop.id, { name, url: shop.url, comment: shop.comment, tags: shop.tags });
+        named++;
+      } catch {
+        kept.push(shop.name);
+      }
+    }
+    button.disabled = false;
+    button.textContent = "Look up names";
+    await this.reload();
+    const message = [
+      named ? `Named ${named === 1 ? "1 shop" : `${named} shops`} from their own pages.` : "No shop could be named from its page.",
+      kept.length ? `${kept.length === 1 ? "This one keeps its address" : "These keep their addresses"} as the name: ${kept.join(", ")}. Some shops do not say their name, or will not let apps read their pages; rename them by hand.` : "",
+    ];
+    await say(message.filter(Boolean).join("\n\n"), "Look up names");
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
@@ -75,6 +115,7 @@ export class ShopsView {
     if (btn) {
       const act = btn.dataset.act;
       if (act === "add") this.emit("add-shop", undefined);
+      if (act === "lookup-names") await this.lookUpNames(btn as HTMLButtonElement);
       if (act === "clear") {
         this.search = "";
         this.root.querySelector<HTMLInputElement>(".search")!.value = "";
@@ -127,6 +168,7 @@ export class ShopsView {
       return;
     }
     this.results.innerHTML = shown.map((s) => cardHtml(s, this.tags)).join("");
+    fitTags(this.results);
   }
 
   private async remove(id: string): Promise<void> {
@@ -156,7 +198,9 @@ function facetHtml(f: Facet, checked: boolean): string {
 function cardHtml(s: Shop, ticked: string[]): string {
   const site = siteOf(s.url);
   const wanted = s.wanted === 1 ? "1 thing on your wishlist" : `${s.wanted} things on your wishlist`;
-  const tags = s.tags
+  // Ticked tags first, so the ones filtered by are never folded away.
+  const tags = [...s.tags]
+    .sort((a, b) => Number(ticked.includes(b.toLowerCase())) - Number(ticked.includes(a.toLowerCase())))
     .map((t) => {
       const key = t.toLowerCase();
       const on = ticked.includes(key);
@@ -179,6 +223,41 @@ function cardHtml(s: Shop, ticked: string[]): string {
         <button class="card-remove" data-act="remove" data-id="${escapeHtml(s.id)}" title="Remove this shop">Remove</button>
       </div>
     </article>`;
+}
+
+/**
+ * Two rows of tags fit on a card; the rest fold into a "+N" that names them
+ * when pointed at, and the card itself opens them all. Measured once the
+ * cards are painted, since how many fit depends on the words.
+ */
+function fitTags(host: HTMLElement): void {
+  for (const box of host.querySelectorAll<HTMLElement>(".shop-tags")) {
+    const chips = [...box.querySelectorAll<HTMLElement>(".shop-tag")];
+    // Against the box's limit, not its height: once chips are hidden the box
+    // shrinks to what is left, and then nothing at its bottom edge "fits".
+    // Exact positions, too: a chip is 22.5 px, which offsetHeight rounds up.
+    const limit = parseFloat(getComputedStyle(box).maxHeight) || box.clientHeight;
+    const fits = (el: HTMLElement) => el.getBoundingClientRect().bottom - box.getBoundingClientRect().top <= limit + 0.5;
+    const hidden = chips.filter((c) => !fits(c));
+    if (!hidden.length) continue;
+    hidden.forEach((c) => (c.hidden = true));
+    const more = document.createElement("span");
+    more.className = "tag shop-tag-more";
+    box.appendChild(more);
+    const label = () => {
+      more.textContent = `+${hidden.length}`;
+      more.title = hidden.map((c) => c.textContent).join(", ");
+    };
+    label();
+    // The count needs room of its own: give it the last tag's place until it fits.
+    const shown = chips.filter((c) => !c.hidden);
+    while (!fits(more) && shown.length) {
+      const last = shown.pop()!;
+      last.hidden = true;
+      hidden.unshift(last);
+      label();
+    }
+  }
 }
 
 function escapeHtml(v: string): string {

@@ -231,6 +231,18 @@ pub async fn fetch_link_preview(url: String) -> CmdResult<LinkPreview> {
     crate::link_preview::fetch(&url).await
 }
 
+/// What a shop calls itself, read from its home page, whatever page of it the
+/// address is. Empty when the page does not say; the shop is then named after
+/// its address.
+#[tauri::command]
+pub async fn fetch_shop_name(url: String) -> CmdResult<String> {
+    let url = web_address(&url)?;
+    let home = reqwest::Url::parse(&url)
+        .map(|u| format!("{}/", u.origin().ascii_serialization()))
+        .map_err(|_| AppError::Message("Give the shop's web address first.".into()))?;
+    Ok(crate::link_preview::fetch(&home).await?.shop_name)
+}
+
 /// A picture from the web, as raw bytes for the form to downscale.
 #[tauri::command]
 pub async fn fetch_link_image(url: String) -> CmdResult<tauri::ipc::Response> {

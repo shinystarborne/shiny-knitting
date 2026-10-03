@@ -384,6 +384,32 @@ export async function verifyShopping() {
     search.value = "";
     search.dispatchEvent(new Event("input", { bubbles: true }));
 
+    // A shop with more tags than fit: two rows, never a chip cut in half, and the rest as +N.
+    const many = ["Free shipping over 79", "Pascuali", "BC Garn", "Gepard Garn", "Cardiff", "Knitting for Olive", "Sandnes Garn", "Schoppel", "Kremke", "Lana Grossa", "Laines du Nord", "deadstock"];
+    const s2 = store.shops.find((x) => x.id === "s2")!;
+    const s2Tags = s2.tags;
+    s2.tags = many;
+    tab("wishlist");
+    await waitFor(() => !!document.querySelector(".wishlist"), "the wishlist");
+    tab("shops");
+    await waitFor(() => !!shopCard("s2")?.querySelector(".shop-tag-more"), "the folded tags");
+    const box = shopCard("s2")!.querySelector<HTMLElement>(".shop-tags")!;
+    const visible = [...box.querySelectorAll<HTMLElement>(".tag")].filter((c) => !c.hidden);
+    const rows = new Set(visible.map((c) => c.offsetTop)).size;
+    const boxTop = box.getBoundingClientRect().top;
+    const whole = visible.every((c) => c.getBoundingClientRect().bottom - boxTop <= parseFloat(getComputedStyle(box).maxHeight) + 0.5);
+    check(results, "too many tags show as two whole rows", rows === 2 && whole, `${rows} rows`);
+    const more = box.querySelector<HTMLElement>(".shop-tag-more")!;
+    const shownTags = visible.filter((c) => c !== more).length;
+    check(results, "…and the rest as +N, naming them", more.textContent === `+${many.length - shownTags}` && more.title.split(", ").length === many.length - shownTags, `${more.textContent} / ${shownTags} shown`);
+    const comment = shopCard("s2")!.querySelector<HTMLElement>(".shop-comment")!;
+    check(results, "the comment still has its room below them", comment.getBoundingClientRect().bottom <= shopCard("s2")!.querySelector<HTMLElement>(".card-tools-row")!.getBoundingClientRect().top);
+    s2.tags = s2Tags;
+    tab("wishlist");
+    await waitFor(() => !!document.querySelector(".wishlist"), "the wishlist");
+    tab("shops");
+    await waitFor(() => shopCards().length === store.shops.length, "the shops again");
+
     (shopCard("s1")!.querySelector('[data-act="visit"]') as HTMLElement).click();
     check(results, "the site on a card opens the shop", opened().filter((u) => u === "https://www.wolle-roedel.com").length >= 2);
 
@@ -440,6 +466,68 @@ export async function verifyShopping() {
     check(results, "an edit shows on the card", true);
     check(results, "a tag still being typed is saved too", store.shops.find((x) => x.id === "s3")?.tags.join("|") === "local|yarn", store.shops.find((x) => x.id === "s3")?.tags.join("|"));
     check(results, "…and the card shows the tags", [...shopCard("s3")!.querySelectorAll(".shop-tag")].map((t) => t.textContent).join("|") === "local|yarn");
+
+    // ---------- shop names, looked up ----------
+    (window as unknown as { __shopNames: Record<string, string | false> }).__shopNames = {
+      "knotten.example.com": "Knotten Wolle",
+      "lindehobby.example.com": "LindeHobby",
+      "refuse.example.com": false,
+      "knottenwolle.example.com": "Knottenwolle",
+      "maschen.example.com": false,
+    };
+    const nameStatus = () => modal("shop-form")?.querySelector<HTMLElement>('[data-el="name-status"]')?.textContent ?? "";
+    const pasteUrl = (url: string) => {
+      const el = field("shop-form", "url")!;
+      el.value = url;
+      el.dispatchEvent(new Event("paste", { bubbles: true }));
+    };
+    (document.querySelector('.shops [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal("shop-form"), "the shop form");
+    pasteUrl("www.knotten.example.com/wolle/merino");
+    await waitFor(() => field("shop-form", "name")?.value === "Knotten Wolle", "the name to be looked up");
+    check(results, "a pasted address names the shop from its home page", /Named from the shop's page/.test(nameStatus()) && (window as unknown as { __shopLookups: string[] }).__shopLookups.includes("knotten.example.com"), nameStatus());
+    act("shop-form", "cancel");
+    await waitFor(() => !modal("shop-form"), "the form to close");
+
+    (document.querySelector('.shops [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal("shop-form"), "the shop form");
+    type("shop-form", "name", "https://lindehobby.example.com/");
+    await waitFor(() => field("shop-form", "name")?.value === "LindeHobby", "the address to move");
+    check(results, "an address typed as the name moves to the address, and the name is looked up", field("shop-form", "url")?.value === "https://lindehobby.example.com/");
+    act("shop-form", "cancel");
+    await waitFor(() => !modal("shop-form"), "the form to close");
+
+    (document.querySelector('.shops [data-act="add"]') as HTMLElement).click();
+    await waitFor(() => !!modal("shop-form"), "the shop form");
+    pasteUrl("refuse.example.com");
+    await waitFor(() => /could not be read/.test(nameStatus()), "the refusal");
+    check(results, "a shop that will not be read is named after its address", field("shop-form", "name")?.value === "refuse.example.com");
+    type("shop-form", "name", "");
+    type("shop-form", "name", "My own name");
+    pasteUrl("knotten.example.com");
+    await wait(200);
+    check(results, "a name already typed is kept", field("shop-form", "name")?.value === "My own name");
+    act("shop-form", "cancel");
+    await waitFor(() => !modal("shop-form"), "the form to close");
+
+    // Shops already named after their address, named all at once.
+    store.shops.push(
+      { id: "s9", name: "knottenwolle.example.com", url: "https://knottenwolle.example.com", comment: "", tags: [] },
+      { id: "s10", name: "https://maschen.example.com/", url: "https://maschen.example.com", comment: "", tags: [] },
+    );
+    tab("wishlist");
+    await waitFor(() => !!document.querySelector(".wishlist"), "the wishlist");
+    tab("shops");
+    const lookupButton = () => document.querySelector<HTMLButtonElement>('.shops [data-act="lookup-names"]');
+    await waitFor(() => !!shopCard("s9"), "the shops again");
+    check(results, "Look up names shows when shops are named after their address", !!lookupButton() && !lookupButton()!.hidden);
+    lookupButton()!.click();
+    await waitFor(() => !!document.querySelector(".dialog-card"), "the summary");
+    const summary = document.querySelector(".dialog-card .dialog-message")?.textContent ?? "";
+    check(results, "it names those it can, and says which keep their address", /Named 1 shop/.test(summary) && /https:\/\/maschen\.example\.com\//.test(summary), summary);
+    await answer("OK");
+    await waitFor(() => shopCard("s9")?.querySelector(".shop-name")?.textContent === "Knottenwolle", "the new name on the card");
+    check(results, "…and the card has the new name", store.shops.find((x) => x.id === "s9")?.name === "Knottenwolle" && store.shops.find((x) => x.id === "s10")?.name === "https://maschen.example.com/");
 
     // Remove one: what was to be got there stays, with no shop.
     (shopCard("s1")!.querySelector('[data-act="remove"]') as HTMLElement).click();

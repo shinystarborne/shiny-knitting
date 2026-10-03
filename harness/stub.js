@@ -1527,6 +1527,17 @@ const handlers = {
     if (typeof page === "string") throw new Error(page);
     return clone({ url: clean, title: "", brand: "", price: "", imageUrl: "", siteName: "", ...page });
   },
+  // A shop's name, seeded by site in window.__shopNames: a name, or false for
+  // a shop that refuses to be read. A site not seeded does not say its name.
+  fetch_shop_name: ({ url }) => {
+    const clean = webAddress(url);
+    if (!clean) throw new Error("Give the shop's web address first.");
+    const site = clean.split("://")[1].split(/[/?#:]/)[0].toLowerCase().replace(/^www[.]/, "");
+    (window.__shopLookups ??= []).push(site);
+    const named = (window.__shopNames ?? {})[site];
+    if (named === false) throw new Error("The page answered 403.");
+    return named ?? "";
+  },
   // Any picture address answers with a small drawn picture.
   fetch_link_image: async ({ url }) => {
     if (!webAddress(url)) throw new Error("There is no picture to fetch.");

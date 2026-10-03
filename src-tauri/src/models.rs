@@ -1035,6 +1035,9 @@ pub struct LinkPreview {
     /// The picture's address, made absolute.
     pub image_url: String,
     pub site_name: String,
+    /// What the shop calls itself, for naming a shop from its address; empty
+    /// when the page does not say.
+    pub shop_name: String,
 }
 
 /// A wishlist item as the form sends it.
