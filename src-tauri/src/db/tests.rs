@@ -223,6 +223,107 @@ fn a_library_built_before_yarn_weights_is_migrated() {
     assert!(columns("cover_path"), "the earlier migration still runs");
 }
 
+// ---------- needle sizes ----------
+
+/// A pattern with a stated needle size, for the size filter tests.
+fn with_needles(conn: &Connection, title: &str, size: &str) -> Pattern {
+    let mut p = sample(conn, title, "Someone", "want-to-knit", &[]);
+    p.needle_size = size.to_string();
+    update_pattern(conn, &p).expect("update")
+}
+
+/// A filter with only the needle sizes set.
+fn needle_filter(sizes: &[&str]) -> Filter {
+    Filter {
+        needle_sizes: Some(sizes.iter().map(|s| s.to_string()).collect()),
+        ..Filter::default()
+    }
+}
+
+/// The derived `needle_sizes` column as stored, parsed back.
+fn stored_sizes(conn: &Connection, id: &str) -> Vec<String> {
+    let raw: String = conn
+        .query_row("SELECT needle_sizes FROM patterns WHERE id = ?1", [id], |r| r.get(0))
+        .expect("row");
+    serde_json::from_str(&raw).expect("a JSON array")
+}
+
+#[test]
+fn the_needle_sizes_are_derived_when_a_pattern_is_written() {
+    let conn = test_db();
+    // sample() states "4mm", so insert derives it straight away.
+    let p = sample(&conn, "Sock", "A", "want-to-knit", &[]);
+    assert_eq!(stored_sizes(&conn, &p.id), vec!["4"]);
+
+    // Correcting the stated size re-derives the list, like the yarn family.
+    let p = with_needles(&conn, "Sock", "3.5mm and 4mm");
+    assert_eq!(stored_sizes(&conn, &p.id), vec!["3.5", "4"]);
+
+    // Something unrecognisable yields an empty list rather than a guess.
+    let p = with_needles(&conn, "Sock", "some needles");
+    assert_eq!(stored_sizes(&conn, &p.id), Vec::<String>::new());
+}
+
+#[test]
+fn patterns_can_be_filtered_by_needle_size() {
+    let conn = test_db();
+    with_needles(&conn, "Sock", "3.5mm and 4mm");
+    // Neighbours that a bare substring match would wrongly include.
+    with_needles(&conn, "Mitts", "4.5mm");
+    with_needles(&conn, "Blanket", "14mm");
+
+    let hits = |f: Filter| -> Vec<String> {
+        list_patterns(&conn, &f).unwrap().into_iter().map(|p| p.title).collect()
+    };
+    assert_eq!(hits(needle_filter(&["4"])), vec!["Sock"]);
+    assert_eq!(hits(needle_filter(&["3.5"])), vec!["Sock"]);
+    assert!(hits(needle_filter(&["5"])).is_empty());
+    // Several sizes are an OR within the group.
+    assert_eq!(hits(needle_filter(&["4", "5"])), vec!["Sock"]);
+    // An empty group filters nothing rather than everything.
+    assert_eq!(hits(needle_filter(&[])).len(), 3);
+
+    let facets = list_facets(&conn).unwrap();
+    let four = facets.needle_sizes.iter().find(|f| f.key == "4").expect("4 mm facet");
+    assert_eq!((four.mm.as_str(), four.us.as_str(), four.count), ("4 mm", "6", 1));
+    let keys: Vec<&str> = facets.needle_sizes.iter().map(|f| f.key.as_str()).collect();
+    assert_eq!(keys, vec!["3.5", "4", "4.5", "14"], "numeric order, smallest first");
+}
+
+#[test]
+fn a_library_built_before_needle_sizes_is_migrated() {
+    // The schema as it was before the derived column, with rows that already
+    // state a size and one that does not.
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    conn.execute_batch(
+        "CREATE TABLE patterns (
+             id TEXT PRIMARY KEY, title TEXT NOT NULL, designer TEXT NOT NULL DEFAULT '',
+             file_path TEXT NOT NULL, file_name TEXT NOT NULL, format TEXT NOT NULL,
+             status TEXT NOT NULL, difficulty TEXT NOT NULL DEFAULT '',
+             needle_size TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '[]',
+             notes TEXT NOT NULL DEFAULT '', added_at INTEGER NOT NULL,
+             last_opened_at INTEGER, last_page INTEGER NOT NULL DEFAULT 0,
+             last_scroll REAL NOT NULL DEFAULT 0
+         );
+         INSERT INTO patterns (id, title, file_path, file_name, format, status, needle_size, added_at)
+         VALUES ('a', 'Old Sock', 'C:/x.pdf', 'x.pdf', 'pdf', 'want-to-knit', 'US 6 and 5mm', 1);
+         INSERT INTO patterns (id, title, file_path, file_name, format, status, needle_size, added_at)
+         VALUES ('b', 'Unstated', 'C:/y.pdf', 'y.pdf', 'pdf', '', '', 1);
+        ",
+    )
+    .expect("seed old schema");
+
+    migrate(&conn).expect("migrate");
+
+    assert!(column_exists(&conn, "patterns", "needle_sizes").unwrap());
+    assert_eq!(stored_sizes(&conn, "a"), vec!["4", "5"]);
+    assert_eq!(stored_sizes(&conn, "b"), Vec::<String>::new(), "nothing stated, nothing derived");
+
+    // Idempotent: a second migrate leaves the derived sizes alone.
+    migrate(&conn).expect("second migrate");
+    assert_eq!(stored_sizes(&conn, "a"), vec!["4", "5"]);
+}
+
 #[test]
 fn insert_seeds_progress_and_highlight() {
     let conn = test_db();
@@ -389,8 +490,16 @@ fn facets_collect_distinct_values() {
 
     let facets = list_facets(&conn).unwrap();
     assert_eq!(facets.designers, vec!["Elizabeth", "Jess"]);
-    // Both used 4mm, so it appears once.
-    assert_eq!(facets.needle_sizes, vec!["4mm"]);
+    // All three used 4mm, so it appears once with a count of three.
+    assert_eq!(
+        facets.needle_sizes,
+        vec![NeedleSizeFacet {
+            key: "4".to_string(),
+            mm: "4 mm".to_string(),
+            us: "6".to_string(),
+            count: 3,
+        }]
+    );
     assert_eq!(facets.tags, vec!["colourwork", "lace", "socks"]);
 }
 

@@ -142,6 +142,15 @@ them to a row rather than stretching them. The left sidebar filters. Status, dif
 needle size, and yarn weight are checkboxes; tags are buttons you can combine.
 The search box covers title, designer, notes, and tags.
 
+**Needle size** filters on the sizes a pattern actually uses, in millimetres,
+however it was written: "3.5mm / US 4", "US 6", "US size 8", "US H-8" (hooks by
+their letter), "4 and 5", or a range like "3.5–4 mm". The text stays on the card
+as written; the filter lists each size once with a count, smallest first, and
+ticking two means either. **Settings → Needle sizes** spells them in the sidebar
+as Metric (4 mm), US (US 6) or Both. A UK size or a bare number with no system
+named is not guessed at beyond the obvious, so an old pattern written in old
+UK numbers is best corrected to millimetres in its details.
+
 **Designers and tags** show the most used first, with their counts: the ten
 most used designers and twenty most used tags, plus any you have ticked. A
 search field above each finds the rest as you type, and **Show all…** opens the

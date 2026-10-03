@@ -123,6 +123,21 @@ export interface YarnWeightFacet {
   count: number;
 }
 
+/** How the library's needle size filter spells each size. */
+export type NeedleSizeFormat = "metric" | "us" | "both";
+
+/**
+ * One row of the needle size filter: the canonical mm key it filters on, the
+ * metric label ("4 mm"), the US needle number ("" when there is none), and
+ * how many patterns use it.
+ */
+export interface NeedleSizeFacet {
+  key: string;
+  mm: string;
+  us: string;
+  count: number;
+}
+
 /** A designer or tag, and how many patterns it is on. */
 export interface FacetCount {
   value: string;
@@ -133,7 +148,8 @@ export interface FacetValues {
   designers: string[];
   /** The same designers, most used first, with their counts. */
   designerCounts: FacetCount[];
-  needleSizes: string[];
+  /** The canonical needle sizes in use, smallest first, with their labels and counts. */
+  needleSizes: NeedleSizeFacet[];
   /** Every family in the table, in order, whether or not it is used. */
   yarnWeights: YarnWeightFacet[];
   tags: string[];
@@ -146,7 +162,8 @@ export interface Filter {
   status?: string;
   designer?: string;
   difficulty?: string;
-  needleSize?: string;
+  /** Canonical needle size mm keys. Several means "any of these". */
+  needleSizes?: string[];
   /** Yarn weight families. Several means "any of these". */
   yarnWeight?: string[];
   tags?: string[];
@@ -782,6 +799,11 @@ export const api = {
   setCounterKey: (id: string, hotkey: string) => invoke<void>("set_counter_key", { id, hotkey }),
   getCountKeys: () => invoke<CountKeys>("get_count_keys"),
   saveCountKeys: (keys: CountKeys) => invoke<CountKeys>("save_count_keys", { keys }),
+
+  // How the library's needle size filter spells each size.
+  getNeedleSizeDisplay: () => invoke<NeedleSizeFormat>("get_needle_size_display"),
+  saveNeedleSizeDisplay: (display: NeedleSizeFormat) =>
+    invoke<void>("save_needle_size_display", { display }),
 
   getProgress: (patternId: string) => invoke<Progress>("get_progress", { patternId }),
   setTotalRows: (patternId: string, total: number) =>

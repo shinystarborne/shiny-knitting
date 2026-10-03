@@ -7,6 +7,7 @@ import {
   type FacetCount,
   type FacetValues,
   type Filter,
+  type NeedleSizeFormat,
   type Pattern,
 } from "../api";
 import { askYesNo } from "../dialogs";
@@ -19,6 +20,7 @@ import { editTags } from "./tags-dialog";
 import { pickFromAll } from "./facet-picker";
 import { sortOutDuplicates } from "./duplicates";
 import { paintLazily } from "./lazy";
+import { sizeLabel } from "./needle-size";
 
 /**
  * The library screen: covers, search, filters, and the pattern grid.
@@ -50,6 +52,8 @@ export class LibraryView {
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
   private settings!: AiSettingsView;
+  /** How the needle size filter spells each size; "both" until the setting is read. */
+  private needleFormat: NeedleSizeFormat = "both";
 
 
   constructor(screen: HTMLElement) {
@@ -158,12 +162,14 @@ export class LibraryView {
         if (input.checked) this.designers.add(input.value);
         else this.designers.delete(input.value);
       }
-      // Yarn weight is always a set: picking DK and Aran means "either", and
-      // the query handles that directly, so there is no need to fan out into
-      // separate requests the way the single-valued groups do.
-      if (field === "yarnWeight") {
+      // Needle size and yarn weight are always sets: picking 4 mm and 5 mm
+      // means "either", and the query handles that directly, so there is no
+      // need to fan out into separate requests the way the single-valued
+      // groups do.
+      if (field === "needleSize" || field === "yarnWeight") {
         const checked = this.checkedValues(field);
-        this.filter.yarnWeight = checked.length ? checked : undefined;
+        const key = field === "needleSize" ? "needleSizes" : "yarnWeight";
+        (this.filter as Record<string, unknown>)[key] = checked.length ? checked : undefined;
       } else {
         // The other groups are single-valued in the query, so the first
         // ticked value is kept here; reload() fans out over every ticked
@@ -177,6 +183,8 @@ export class LibraryView {
     this.root.addEventListener("click", (e) => this.onClick(e));
 
     this.settings = await api.getAiSettings();
+    // A missing setting (an older backend, or the harness) shows both.
+    this.needleFormat = await api.getNeedleSizeDisplay().catch(() => "both" as const);
     // The robot is there only when describing with a model is switched on.
     this.root.querySelector<HTMLElement>('[data-act="scan"]')!.hidden = !this.settings.enabled;
     // A run in the background changes patterns one at a time; each card is
@@ -561,24 +569,25 @@ export class LibraryView {
   // ---------- listing ----------
 
   private renderFacets(): void {
-    const list = (values: string[], field: string) =>
-      values.length
-        ? values
-            .map(
-              (v) =>
-                `<label class="check">
-                  <input type="checkbox" data-filter="${field}" value="${escapeHtml(v)}" />
-                  <span>${escapeHtml(v)}</span>
-                </label>`,
-            )
-            .join("")
-        : '<p class="hint">None yet</p>';
-
     this.renderDesigners();
-    this.root.querySelector('[data-slot="needle"] .facet-list')!.innerHTML = list(
-      this.facets.needleSizes,
-      "needleSize",
-    );
+
+    // Needle sizes come from the patterns as read, keyed by their canonical
+    // mm size; ticking several means "any of these". A re-render (after a
+    // delete, say) rebuilds the boxes, so the ticked ones are captured first
+    // and re-ticked, the way renderDesigners does from this.designers.
+    const needleList = this.root.querySelector('[data-slot="needle"] .facet-list')!;
+    const ticked = new Set(this.checkedValues("needleSize"));
+    needleList.innerHTML = this.facets.needleSizes.length
+      ? this.facets.needleSizes
+          .map(
+            (f) => `<label class="check">
+              <input type="checkbox" data-filter="needleSize" value="${escapeHtml(f.key)}"${ticked.has(f.key) ? " checked" : ""} />
+              <span>${escapeHtml(sizeLabel(f.mm, f.us, this.needleFormat))}</span>
+              <em>${f.count}</em>
+            </label>`,
+          )
+          .join("")
+      : '<p class="hint">None yet</p>';
 
     // Yarn weights come from the standard table rather than from the data, so
     // every family is listed whether or not it is used. A weight you have not
@@ -687,14 +696,15 @@ export class LibraryView {
   /**
    * Lists the patterns matching the current filter.
    *
-   * Status, difficulty, designer and needle size are single-valued in the
-   * query, but their filters allow several boxes to be ticked, meaning "any
-   * of these". Each combination of ticked values gets its own request and the
-   * results are merged, so every reload honours all ticked boxes rather than
-   * only the first of each group.
+   * Status, difficulty and designer are single-valued in the query, but their
+   * filters allow several boxes to be ticked, meaning "any of these". Each
+   * combination of ticked values gets its own request and the results are
+   * merged, so every reload honours all ticked boxes rather than only the
+   * first of each group. Needle size and yarn weight are sets in the query
+   * itself, so they go with every request as they are.
    */
   private async queryPatterns(): Promise<Pattern[]> {
-    const groups = ["status", "difficulty", "designer", "needleSize"].map((field) => ({
+    const groups = ["status", "difficulty", "designer"].map((field) => ({
       field,
       values: this.checkedValues(field),
     }));

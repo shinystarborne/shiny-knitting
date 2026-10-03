@@ -1,4 +1,5 @@
 import { WEIGHTS, familyOf } from "../src/views/yarn-weight";
+import { sizesOf, mmLabel, usLabel } from "../src/views/needle-size";
 
 /**
  * Test harness. Loads the real app code in a browser with a fake Tauri IPC
@@ -573,6 +574,17 @@ function yarnFamily(text) {
 }
 
 /**
+ * The canonical mm sizes of a pattern's free-text needle size, from the same
+ * module the sidebar's labels come from, which mirrors
+ * `src-tauri/src/needle_size.rs`. The backend stores them in a derived column
+ * on write; the stub derives them on read instead, the same place it derives
+ * the yarn family, so a corrected size filters under the new key at once.
+ */
+function needleSizesOf(pattern) {
+  return sizesOf(String(pattern.needleSize || ""));
+}
+
+/**
  * The image format a byte sequence actually is, by magic number, mirroring
  * `covers.rs::sniff`: [extension, mime], or null for anything that is not a
  * recognised image.
@@ -679,7 +691,11 @@ const handlers = {
     }
     if (filter?.status) out = out.filter((p) => p.status === filter.status);
     if (filter?.difficulty) out = out.filter((p) => p.difficulty === filter.difficulty);
-    if (filter?.needleSize) out = out.filter((p) => p.needleSize === filter.needleSize);
+    // Several canonical sizes mean "any of these", matching the EXISTS the
+    // real backend builds over the derived sizes.
+    if (filter?.needleSizes?.length) {
+      out = out.filter((p) => needleSizesOf(p).some((s) => filter.needleSizes.includes(s)));
+    }
     if (filter?.designer) out = out.filter((p) => p.designer === filter.designer);
     // Several weights mean "any of these", matching the SQL IN (...) the real
     // backend builds.
@@ -795,7 +811,18 @@ const handlers = {
   },
   get_facets: () => ({
     designers: [...new Set(store.patterns.map((p) => p.designer).filter(Boolean))].sort(),
-    needleSizes: [...new Set(store.patterns.map((p) => p.needleSize).filter(Boolean))].sort(),
+    needleSizes: (() => {
+      // Each derived size counted once per pattern that uses it (sizesOf
+      // already dedupes within a pattern), smallest first, with the labels
+      // travelling with the facet as the backend's NeedleSizeFacet does.
+      const counts = new Map();
+      for (const p of store.patterns) {
+        for (const key of needleSizesOf(p)) counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      return [...counts]
+        .map(([key, count]) => ({ key, mm: mmLabel(key), us: usLabel(key), count }))
+        .sort((a, b) => parseFloat(a.key) - parseFloat(b.key));
+    })(),
     // Every family is listed whether or not it is used, in table order, so the
     // sidebar reads the same way it does in the real app.
     yarnWeights: YARN_FAMILIES.map(([key, label]) => ({
@@ -859,6 +886,12 @@ const handlers = {
     }
     store.countKeys = { up: keys.up, down: keys.down };
     return clone(store.countKeys);
+  },
+  // How the sidebar spells the needle sizes: an app_settings-backed pair, as
+  // get_count_keys/save_count_keys above, defaulting to both systems.
+  get_needle_size_display: () => store.needleSizeDisplay ?? "both",
+  save_needle_size_display: ({ display }) => {
+    store.needleSizeDisplay = display;
   },
   update_counter: ({ id, name, target, excludedFromTotal }) => {
     const c = requireCounter(id);

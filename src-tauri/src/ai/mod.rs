@@ -23,7 +23,7 @@ Schema:
 {
   "designer": string,        // the pattern's author, empty string if not stated
   "difficulty": string,      // exactly one of: beginner, easy, intermediate, advanced
-  "needleSize": string,      // e.g. "4mm" or "US 6", empty string if not stated
+  "needleSize": string,      // every needle or hook size stated, separated by ";", each as written, e.g. "4mm; 5mm" or "US 6"; empty string if not stated
   "yarnWeight": string,      // the yarn weight, e.g. "DK", "4-ply worsted", "100 m/100g"
   "yarn": string,            // the yarn or fibre named, empty string if not stated
   "tags": string[],          // 2-6 short lowercase tags describing the object and technique
@@ -36,6 +36,9 @@ Rules:
 - yarnWeight is the weight, not the yarn. Give the standard name when the
   pattern uses one ("DK", "aran", "fingering", "4-ply"), otherwise the metre
   figure as written ("100 m/100g"). Do not convert between the two.
+- List every size the pattern states, separated by ";". Give each exactly as
+  written ("4mm", "US 6", "US H-8"); never convert between systems and never
+  merge several sizes into one phrase.
 - Tags must be single words or short lowercase phrases, no punctuation.
 - difficulty must be one of the four listed words, never blank.
 "#;
@@ -66,8 +69,8 @@ pub fn build_vision_prompt(title: &str, file_name: &str, page_count: usize) -> S
          This file has no text layer: it is a scan or a photograph, and there is \
          nothing to extract with text search. The {pages}, and you must read the \
          pattern from what you can see in them.\n\n\
-         Read the front page closely for the pattern's name, the designer, the \
-         needle size or hook size, the yarn, and any stated difficulty. A chart \
+         Read the front page closely for the pattern's name, the designer, \
+         every needle size or hook size stated, the yarn, and any stated difficulty. A chart \
          or a photograph of finished work is also worth a tag or two. Transcribe \
          only what is actually legible: an unreadable or absent detail must come \
          back as an empty string rather than a guess.\n\n\
@@ -221,7 +224,7 @@ pub fn parse_suggestion(value: &serde_json::Value) -> Suggestion {
         difficulty: difficulty.to_string(),
         needle_size: text("needleSize")
             .chars()
-            .take(40)
+            .take(120)
             .collect(),
         yarn_weight: text("yarnWeight").chars().take(40).collect(),
         yarn: text("yarn").chars().take(120).collect(),

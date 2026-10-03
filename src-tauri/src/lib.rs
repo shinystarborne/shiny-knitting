@@ -6,6 +6,7 @@ mod db;
 mod export;
 mod external;
 mod models;
+mod needle_size;
 mod state;
 mod projects;
 mod tools;
@@ -66,6 +67,8 @@ pub fn run() {
             commands::set_counter_key,
             commands::get_count_keys,
             commands::save_count_keys,
+            commands::get_needle_size_display,
+            commands::save_needle_size_display,
             commands::get_progress,
             commands::set_total_rows,
             commands::get_highlight,

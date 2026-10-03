@@ -80,8 +80,10 @@ pub struct Pattern {
     pub format: String,
     pub status: String,
     pub difficulty: String,
-    /// Free text needle size, e.g. "4mm" or "US 6". Kept as text because
-    /// needle sizing differs by region and users mix systems.
+    /// Free text needle size, e.g. "4mm" or "US 6". Kept as written because
+    /// needle sizing differs by region and users mix systems. The canonical
+    /// mm sizes derived from it by `needle_size::sizes_of` live in the
+    /// `needle_sizes` column, which is what filtering and the sidebar use.
     pub needle_size: String,
     /// Yarn weight as the pattern states it, e.g. "DK", "4-ply worsted", or
     /// "100 m/100g". Free text, because that is how patterns write it.
@@ -183,6 +185,25 @@ impl Default for CountKeys {
     fn default() -> Self {
         // J and K, which is what counting was before the keys could be chosen.
         Self { up: "KeyJ".into(), down: "KeyK".into() }
+    }
+}
+
+/// How needle and hook sizes are shown: in millimetres, as the US number, or
+/// both. Sizes are stored as canonical mm keys (see `needle_size.rs`), so
+/// this decides display only and never what is stored or filtered.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NeedleSizeDisplay {
+    Metric,
+    Us,
+    Both,
+}
+
+impl Default for NeedleSizeDisplay {
+    fn default() -> Self {
+        // Both, until chosen: showing only one system would misread a pattern
+        // that states only the other.
+        Self::Both
     }
 }
 

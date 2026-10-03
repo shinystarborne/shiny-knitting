@@ -589,7 +589,9 @@ class App {
       checkOnStartup: true,
       currentVersion: "",
     }));
-    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, () => {
+    // A missing setting (an older backend, or the harness) shows both.
+    const needleSizeDisplay = await api.getNeedleSizeDisplay().catch(() => "both" as const);
+    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, needleSizeDisplay, () => {
       // The library reads settings on mount; a reload picks up the new values.
       // Elsewhere nothing shows them, so the screen is left as it is.
       if (this.activeLibrary) void this.showLibrary();

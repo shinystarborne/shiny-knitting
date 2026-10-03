@@ -67,6 +67,7 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             status         TEXT NOT NULL DEFAULT '',
             difficulty     TEXT NOT NULL DEFAULT '',
             needle_size    TEXT NOT NULL DEFAULT '',
+            needle_sizes   TEXT NOT NULL DEFAULT '[]',
             yarn_weight     TEXT NOT NULL DEFAULT '',
             yarn_weight_family TEXT NOT NULL DEFAULT '',
             tags           TEXT NOT NULL DEFAULT '[]',
@@ -392,6 +393,19 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // be done in Rust: the family is derived from free text, which SQL has no
     // way to do per row.
     backfill_yarn_families(conn)?;
+
+    // The canonical mm sizes derived from the stated needle size, as a JSON
+    // array -- the same arrangement as the yarn family: the text is kept as
+    // written for display, and the derived column is what the filter and the
+    // sidebar facet match on, since free text cannot be matched per row in
+    // SQL.
+    if !column_exists(conn, "patterns", "needle_sizes")? {
+        conn.execute(
+            "ALTER TABLE patterns ADD COLUMN needle_sizes TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
+    backfill_needle_sizes(conn)?;
     // The ply counts changed meaning (4 ply is fingering, as in the UK and on
     // Ravelry, not worsted), so every stored family is worked out again once.
     let ply_fixed: bool = get_setting(conn, "yarn_families_ply_v2")?;
@@ -521,6 +535,38 @@ fn backfill_yarn_families(conn: &Connection) -> AppResult<()> {
         )?;
     }
     Ok(())
+}
+
+/// Fills in the derived needle sizes for any row that states a size but has
+/// none derived yet.
+///
+/// Idempotent in the same way as `backfill_yarn_families`: the `WHERE`
+/// matches nothing once every row is up to date, so no one-shot flag is
+/// needed.
+fn backfill_needle_sizes(conn: &Connection) -> AppResult<()> {
+    let stale: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT id, needle_size FROM patterns WHERE needle_size <> '' AND needle_sizes = '[]'")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        out
+    };
+    for (id, size) in stale {
+        conn.execute(
+            "UPDATE patterns SET needle_sizes = ?2 WHERE id = ?1",
+            params![id, needle_sizes_json(&size)],
+        )?;
+    }
+    Ok(())
+}
+
+/// The derived needle sizes of a stated size, as the JSON array stored in
+/// `patterns.needle_sizes`.
+fn needle_sizes_json(text: &str) -> String {
+    serde_json::to_string(&crate::needle_size::sizes_of(text)).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Fills in the content hash for any pattern added before hashing existed.
@@ -671,7 +717,9 @@ pub struct Filter {
     pub status: Option<String>,
     pub designer: Option<String>,
     pub difficulty: Option<String>,
-    pub needle_size: Option<String>,
+    /// Canonical mm needle sizes, e.g. "4". Several may be given to widen the
+    /// filter, the same way yarn weights are.
+    pub needle_sizes: Option<Vec<String>>,
     /// Standard yarn weight family, e.g. "dk". Several may be given to widen
     /// the filter, the same way tags are.
     pub yarn_weight: Option<Vec<String>>,
@@ -723,8 +771,21 @@ pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Patter
     if let Some(v) = filter.designer.as_ref().filter(|s| !s.is_empty()) {
         push_eq!("designer", v);
     }
-    if let Some(v) = filter.needle_size.as_ref().filter(|s| !s.is_empty()) {
-        push_eq!("needle_size", v);
+    // Needle sizes are stored as a JSON array of canonical mm keys, so match
+    // on the quoted key: a bare "4" would also hit "4.5" and "14". Several
+    // sizes are an OR within the group and an AND against everything else,
+    // which is how the other checkbox groups behave.
+    if let Some(sizes) = filter.needle_sizes.as_ref().filter(|s| !s.is_empty()) {
+        let mut clauses = Vec::new();
+        for key in sizes.iter().filter(|k| !k.is_empty()) {
+            let idx = next_index;
+            next_index += 1;
+            clauses.push(format!("needle_sizes LIKE ?{idx} ESCAPE '\\'"));
+            args.push(Box::new(format!("%\"{}\"%", escape_like(key))));
+        }
+        if !clauses.is_empty() {
+            sql.push_str(&format!(" AND ({})", clauses.join(" OR ")));
+        }
     }
 
     // Yarn weight is an OR within itself and an AND against everything else,
@@ -806,8 +867,8 @@ pub fn insert_pattern(
     conn.execute(
         "INSERT INTO patterns
          (id, title, designer, file_path, file_name, format, status, difficulty,
-          needle_size, yarn_weight, yarn_weight_family, tags, notes, added_at, cover_path, file_hash)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'',?15)",
+          needle_size, needle_sizes, yarn_weight, yarn_weight_family, tags, notes, added_at, cover_path, file_hash)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'',?16)",
         params![
             id,
             input.title,
@@ -818,6 +879,7 @@ pub fn insert_pattern(
             status,
             difficulty,
             input.needle_size,
+            needle_sizes_json(&input.needle_size),
             input.yarn_weight,
             crate::yarn::family_of(&input.yarn_weight),
             tags_json,
@@ -849,7 +911,7 @@ pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern
     };
     conn.execute(
         "UPDATE patterns SET title=?2, designer=?3, status=?4, difficulty=?5,
-         needle_size=?6, yarn_weight=?7, yarn_weight_family=?8, tags=?9, notes=?10
+         needle_size=?6, needle_sizes=?7, yarn_weight=?8, yarn_weight_family=?9, tags=?10, notes=?11
          WHERE id=?1",
         params![
             pattern.id,
@@ -858,6 +920,9 @@ pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern
             status,
             difficulty,
             pattern.needle_size,
+            // Re-derived on every write, like the family below, so correcting
+            // the stated size also corrects what the filter matches on.
+            needle_sizes_json(&pattern.needle_size),
             pattern.yarn_weight,
             // Re-derived on every write, so correcting the stated weight also
             // corrects the family the filter matches on.
@@ -1065,6 +1130,19 @@ pub struct YarnWeightFacet {
     pub count: i64,
 }
 
+/// One entry in the needle size filter: a canonical mm key with its labels in
+/// both systems and the number of patterns that use it. The labels travel
+/// with the facet so the frontend never re-derives them; `us` is empty for a
+/// size with no standard US number.
+#[derive(serde::Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NeedleSizeFacet {
+    pub key: String,
+    pub mm: String,
+    pub us: String,
+    pub count: i64,
+}
+
 /// Distinct designers, needle sizes, yarn weight families and tags, for
 /// populating the filter sidebar.
 #[derive(serde::Serialize)]
@@ -1075,7 +1153,8 @@ pub struct Facets {
     /// The same designers with how many patterns each has, most first: the
     /// sidebar shows the top few of a long list, and searches the rest.
     pub designer_counts: Vec<FacetCount>,
-    pub needle_sizes: Vec<String>,
+    /// Smallest first.
+    pub needle_sizes: Vec<NeedleSizeFacet>,
     /// Every family in the standard table, in table order, whether or not any
     /// pattern uses it, so the sidebar reads the same for everyone.
     pub yarn_weights: Vec<YarnWeightFacet>,
@@ -1204,10 +1283,43 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
         .query_map([], |r| Ok(FacetCount { value: r.get(0)?, count: r.get(1)? }))?
         .collect::<Result<_, _>>()?;
 
+    // Needle sizes are counted in Rust from the derived JSON arrays, like the
+    // tags below: each canonical key once per pattern, smallest first, with
+    // the mm and US labels filled in from the table.
+    let mut needle_sizes: Vec<NeedleSizeFacet> = Vec::new();
+    {
+        let mut stmt =
+            conn.prepare("SELECT needle_sizes FROM patterns WHERE needle_sizes <> '[]'")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        for r in rows {
+            let mut keys: Vec<String> = serde_json::from_str(&r?).unwrap_or_default();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                match needle_sizes.iter_mut().find(|f| f.key == key) {
+                    Some(f) => f.count += 1,
+                    None => needle_sizes.push(NeedleSizeFacet {
+                        mm: crate::needle_size::mm_label(&key),
+                        us: crate::needle_size::us_label(&key).to_string(),
+                        key,
+                        count: 1,
+                    }),
+                }
+            }
+        }
+    }
+    needle_sizes.sort_by(|a, b| {
+        let value = |key: &str| key.parse::<f64>().unwrap_or(f64::MAX);
+        value(&a.key)
+            .partial_cmp(&value(&b.key))
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.key.cmp(&b.key))
+    });
+
     Ok(Facets {
         designers: column("designer")?,
         designer_counts: by_use(designer_counts),
-        needle_sizes: column("needle_size")?,
+        needle_sizes,
         yarn_weights,
         tags,
         tag_counts: by_use(tag_counts),

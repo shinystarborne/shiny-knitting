@@ -6,8 +6,9 @@ use tauri::State;
 use crate::ai::{CompletionRequest, ModelInfo};
 use crate::db;
 use crate::models::{
-    AiSettings, AppError, CountKeys, CoverImage, Counter, CounterInput, HighlightSettings, Pattern,
-    PatternInput, PhotoInfo, Progress, ScannedFile, Suggestion, SuggestionResult, Yarn, YarnInput,
+    AiSettings, AppError, CountKeys, CoverImage, Counter, CounterInput, HighlightSettings,
+    NeedleSizeDisplay, Pattern, PatternInput, PhotoInfo, Progress, ScannedFile, Suggestion,
+    SuggestionResult, Yarn, YarnInput,
 };
 use crate::state::AppState;
 
@@ -377,6 +378,21 @@ pub fn save_count_keys(state: State<'_, AppState>, keys: CountKeys) -> CmdResult
     }
     db::set_setting(&state.db(), "count_keys", &keys)?;
     Ok(keys)
+}
+
+/// How needle and hook sizes are shown: metric, US, or both.
+#[tauri::command]
+pub fn get_needle_size_display(state: State<'_, AppState>) -> CmdResult<NeedleSizeDisplay> {
+    db::get_setting(&state.db(), "needle_size_display")
+}
+
+#[tauri::command]
+pub fn save_needle_size_display(
+    state: State<'_, AppState>,
+    display: NeedleSizeDisplay,
+) -> CmdResult<NeedleSizeDisplay> {
+    db::set_setting(&state.db(), "needle_size_display", &display)?;
+    Ok(display)
 }
 
 /// Both keys are needed and must differ: a key that counted up and down at

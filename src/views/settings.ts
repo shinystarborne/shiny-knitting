@@ -1,4 +1,4 @@
-import { api, type AiSettingsView, type ModelInfo, type UpdateInfo, type UpdateSettings } from "../api";
+import { api, type AiSettingsView, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
 import { closestEl } from "../dom";
 
 /**
@@ -21,6 +21,8 @@ export class SettingsDialog {
   /** What was saved when the dialog opened; a connection test rolls back to this. */
   private savedSnapshot: AiSettingsView;
   private updateSettings: UpdateSettings;
+  /** How the library's needle size filter spells each size. */
+  private needleSizeDisplay: NeedleSizeFormat;
   /** The update a check found, kept so a failed download can offer it again. */
   private availableUpdate: UpdateInfo | null = null;
   private onSaved: (settings: AiSettingsView) => void;
@@ -32,12 +34,14 @@ export class SettingsDialog {
     root: HTMLElement,
     settings: AiSettingsView,
     updateSettings: UpdateSettings,
+    needleSizeDisplay: NeedleSizeFormat,
     onSaved: (settings: AiSettingsView) => void,
   ) {
     this.root = root;
     this.settings = settings;
     this.savedSnapshot = settings;
     this.updateSettings = updateSettings;
+    this.needleSizeDisplay = needleSizeDisplay;
     this.onSaved = onSaved;
   }
 
@@ -68,6 +72,22 @@ export class SettingsDialog {
           <button class="ghost" data-act="check-updates">Check for updates</button>
         </div>
         <em class="hint block" data-el="update-result"></em>
+
+        <h3>Needle sizes</h3>
+        <label class="field">
+          <span>Show sizes in the library as</span>
+          <select data-f="needleSizeDisplay">
+            ${(["metric", "us", "both"] as NeedleSizeFormat[])
+              .map(
+                (v) =>
+                  `<option value="${v}" ${this.needleSizeDisplay === v ? "selected" : ""}>${
+                    v === "metric" ? "Metric (4 mm)" : v === "us" ? "US (US 6)" : "Both (4 mm / US 6)"
+                  }</option>`,
+              )
+              .join("")}
+          </select>
+          <em class="hint">How the needle size filter in the library spells each size.</em>
+        </label>
 
         <h3>Describe patterns with a model</h3>
         <label class="check">
@@ -308,6 +328,11 @@ export class SettingsDialog {
     return { includeBeta: get("includeBeta"), checkOnStartup: get("checkOnStartup") };
   }
 
+  private collectNeedleSizeDisplay(): NeedleSizeFormat {
+    return (this.root.querySelector('[data-f="needleSizeDisplay"]') as HTMLSelectElement)
+      .value as NeedleSizeFormat;
+  }
+
   /** Saves the model settings only; what a connection test saves and rolls back. */
   private async persistAi(): Promise<AiSettingsView> {
     const keyField = this.root.querySelector('[data-f="apiKey"]') as HTMLInputElement;
@@ -322,6 +347,7 @@ export class SettingsDialog {
   private async persist(): Promise<AiSettingsView> {
     const saved = await this.persistAi();
     await api.saveUpdateSettings(this.collectUpdates());
+    await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
     return saved;
   }
 
