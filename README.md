@@ -20,10 +20,14 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.14](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.14)** —
+  shops name themselves from their own pages (and Look up names for the ones
+  named after their address), and shop cards fold extra tags into +N. The one
+  to test.
 - **[v0.3.0-beta.13](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.13)** —
   the Wishlist and Shops tabs: a pasted link fills in the name, brand, price
-  and picture, what was got goes on into the stash, and shops have tags. The
-  one to test.
+  and picture, what was got goes on into the stash, and shops have tags.
+  Superseded by `beta.14`.
 - **[v0.3.0-beta.12](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.12)** —
   the needle size filter: sizes read into millimetres however they are
   written, with counts, shown as metric, US or both. Superseded by `beta.13`.
