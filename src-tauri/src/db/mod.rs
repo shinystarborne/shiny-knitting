@@ -8,7 +8,7 @@ use crate::models::{
     Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
-    WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput,
+    WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
 };
 
 #[cfg(test)]
@@ -308,6 +308,17 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         CREATE INDEX IF NOT EXISTS idx_wishlist_shop ON wishlist(shop_id);
         CREATE INDEX IF NOT EXISTS idx_wishlist_project ON wishlist(project_id);
 
+        -- A project's diary: what was typed, and the milestones the app wrote.
+        CREATE TABLE IF NOT EXISTS project_log (
+            id          TEXT PRIMARY KEY,
+            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            at          INTEGER NOT NULL,
+            text        TEXT NOT NULL DEFAULT '',
+            milestone   INTEGER NOT NULL DEFAULT 0,
+            photo_path  TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_log_project ON project_log(project_id);
+
         -- A gauge swatch. Its yarn, needle and project only link: removing
         -- one leaves the swatch, and a removed yarn's name is kept in
         -- yarn_text. Counts are per 10 cm, 0 when not counted.
@@ -530,6 +541,23 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     if !column_exists(conn, "wishlist", "photo_path")? {
         conn.execute("ALTER TABLE wishlist ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // The projects from before the log get their start, and their end, as
+    // milestones, so every log begins where its project did. Once only.
+    let log_backfilled: bool = get_setting(conn, "project_log_backfill")?;
+    if !log_backfilled {
+        let projects: Vec<(String, String, i64, Option<i64>)> = conn
+            .prepare("SELECT id, status, started_at, finished_at FROM projects")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<Result<_, _>>()?;
+        for (id, status, started, finished) in projects {
+            log_milestone(conn, &id, "Started", Some(started))?;
+            if let Some(end) = finished {
+                let what = if status == "frogged" { "Frogged" } else { "Finished" };
+                log_milestone(conn, &id, what, Some(end))?;
+            }
+        }
+        set_setting(conn, "project_log_backfill", &true)?;
     }
     // Who a project is for.
     if !column_exists(conn, "projects", "person_id")? {
@@ -2270,6 +2298,7 @@ pub fn insert_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
     )?;
     sync_links(&tx, id, input)?;
     pattern_in_progress(&tx, input.pattern_id.as_deref())?;
+    log_milestone(&tx, id, "Started", Some(input.started_at.unwrap_or(now)))?;
     tx.commit()?;
     get_project(conn, id)
 }
@@ -2306,6 +2335,17 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
     }
     if current.status == "active" && input.pattern_id != current.pattern_id {
         pattern_in_progress(&tx, input.pattern_id.as_deref())?;
+    }
+    if input.pattern_id != current.pattern_id {
+        let title: Option<String> = match input.pattern_id.as_deref() {
+            Some(p) => tx.query_row("SELECT title FROM patterns WHERE id = ?1", params![p], |r| r.get(0)).optional()?,
+            None => None,
+        };
+        let what = match title {
+            Some(t) => format!("Pattern: {t}"),
+            None => "No pattern now".to_string(),
+        };
+        log_milestone(&tx, id, &what, None)?;
     }
     tx.commit()?;
     get_project(conn, id)
@@ -2395,6 +2435,7 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
         "UPDATE projects SET status = 'finished', finished_at = ?2 WHERE id = ?1",
         params![id, input.finished_at.unwrap_or(now)],
     )?;
+    log_milestone(&tx, id, "Finished", Some(input.finished_at.unwrap_or(now)))?;
     tx.execute(
         "UPDATE project_tools SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL",
         params![id, now],
@@ -2469,8 +2510,10 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
     match (project.status.as_str(), status) {
         (from, "active" | "paused") if is_live(from) => {
             tx.execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
+            log_milestone(&tx, id, if status == "paused" { "Paused" } else { "Back on the needles" }, Some(now))?;
         }
         (from, "frogged") if is_live(from) => {
+            log_milestone(&tx, id, "Frogged", Some(now))?;
             tx.execute("UPDATE projects SET status = 'frogged', finished_at = ?2 WHERE id = ?1", params![id, now])?;
             tx.execute("UPDATE project_tools SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL", params![id, now])?;
             tx.execute("UPDATE project_yarns SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL", params![id, now])?;
@@ -2486,6 +2529,7 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
             tx.execute("UPDATE project_tools SET released_at = NULL WHERE project_id = ?1", params![id])?;
             tx.execute("UPDATE project_yarns SET released_at = NULL WHERE project_id = ?1", params![id])?;
             tx.execute("UPDATE projects SET status = ?2, finished_at = NULL WHERE id = ?1", params![id, status])?;
+            log_milestone(&tx, id, "Started again", Some(now))?;
             if status == "active" {
                 pattern_in_progress(&tx, project.pattern_id.as_deref())?;
             }
@@ -2513,6 +2557,7 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     // What was wanted for it is still wanted, for nothing in particular.
     conn.execute("UPDATE wishlist SET project_id = NULL WHERE project_id = ?1", params![id])?;
     conn.execute("UPDATE swatches SET project_id = NULL WHERE project_id = ?1", params![id])?;
+    conn.execute("DELETE FROM project_log WHERE project_id = ?1", params![id])?;
     Ok(())
 }
 
@@ -3096,6 +3141,83 @@ pub fn delete_wish(conn: &Connection, id: &str) -> AppResult<String> {
     let photo = get_wish(conn, id)?.photo_path;
     conn.execute("DELETE FROM wishlist WHERE id = ?1", params![id])?;
     Ok(photo)
+}
+
+// ---------- a project's log ----------
+
+fn row_to_log(row: &rusqlite::Row) -> rusqlite::Result<LogEntry> {
+    Ok(LogEntry {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        at: row.get("at")?,
+        text: row.get("text")?,
+        milestone: row.get::<_, i64>("milestone")? != 0,
+        photo_path: row.get("photo_path")?,
+    })
+}
+
+/// Writes a milestone into a project's log: when it started, paused,
+/// finished. `at` is when it happened, or now.
+pub fn log_milestone(conn: &Connection, project_id: &str, text: &str, at: Option<i64>) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO project_log (id, project_id, at, text, milestone) VALUES (?1, ?2, ?3, ?4, 1)",
+        params![uuid::Uuid::new_v4().to_string(), project_id, at.unwrap_or_else(now_ms), text],
+    )?;
+    Ok(())
+}
+
+/// A project's log, the newest first.
+pub fn list_project_log(conn: &Connection, project_id: &str) -> AppResult<Vec<LogEntry>> {
+    let mut stmt = conn.prepare("SELECT * FROM project_log WHERE project_id = ?1 ORDER BY at DESC, rowid DESC")?;
+    let rows = stmt.query_map(params![project_id], row_to_log)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_log_entry(conn: &Connection, id: &str) -> AppResult<LogEntry> {
+    conn.query_row("SELECT * FROM project_log WHERE id = ?1", params![id], row_to_log)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That log entry is no longer there.".to_string()))
+}
+
+/// Adds what was typed to a project's log, dated now unless a time is given.
+pub fn insert_log_entry(conn: &Connection, id: &str, project_id: &str, text: &str, at: Option<i64>) -> AppResult<LogEntry> {
+    get_project(conn, project_id)?;
+    conn.execute(
+        "INSERT INTO project_log (id, project_id, at, text, milestone) VALUES (?1, ?2, ?3, ?4, 0)",
+        params![id, project_id, at.unwrap_or_else(now_ms), text],
+    )?;
+    get_log_entry(conn, id)
+}
+
+/// Changes an entry's words and when it happened.
+pub fn update_log_entry(conn: &Connection, id: &str, text: &str, at: i64) -> AppResult<LogEntry> {
+    let changed = conn.execute("UPDATE project_log SET text = ?2, at = ?3 WHERE id = ?1", params![id, text, at])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That log entry is no longer there.".to_string()));
+    }
+    get_log_entry(conn, id)
+}
+
+pub fn set_log_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE project_log SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That log entry is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
+/// Removes an entry, returning its photo's file name for the caller to delete.
+pub fn delete_log_entry(conn: &Connection, id: &str) -> AppResult<String> {
+    let photo = get_log_entry(conn, id)?.photo_path;
+    conn.execute("DELETE FROM project_log WHERE id = ?1", params![id])?;
+    Ok(photo)
+}
+
+/// Every photo in a project's log, for removing the project.
+pub fn log_photos(conn: &Connection, project_id: &str) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT photo_path FROM project_log WHERE project_id = ?1 AND photo_path <> ''")?;
+    let rows = stmt.query_map(params![project_id], |r| r.get(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 // ---------- gauge swatches ----------

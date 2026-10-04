@@ -42,6 +42,8 @@ const store = {
   // read, as the backend's LEFT JOINs do.
   shops: [],
   wishes: [],
+  // Projects' logs. Photos share the `covers` blob store, under "log:<id>".
+  projectLog: [],
   // Gauge swatches. Photos share the `covers` blob store, under "swatch:<id>".
   swatches: [],
   // People and their measurement sets, as the backend's two tables.
@@ -382,6 +384,9 @@ function seed() {
   ];
   store.projectYarns = [];
 
+  // The seeded projects' logs begin where they did, as the backend's backfill makes them.
+  store.projectLog = store.projects.map((pr, i) => ({ id: `lg${i + 1}`, projectId: pr.id, at: pr.startedAt, text: "Started", milestone: true, photoPath: "", seq: i }));
+
   // Swatches: two in a stash yarn, on a needle from the box and on a size
   // only, one blocked; and one in a yarn not in the stash.
   const swatch = (id, fields) => ({
@@ -532,6 +537,15 @@ function wishOut(w) {
   const pr = store.projects.find((x) => x.id === w.projectId);
   return clone({ ...w, shopName: sh?.name ?? "", shopUrl: sh?.url ?? "", projectName: pr?.name ?? "" });
 }
+
+/** `db::log_milestone`: something the project did, written into its log. */
+function logMilestone(projectId, text, at) {
+  store.projectLog.push({ id: `lg${store.nextId++}`, projectId, at: at ?? Date.now(), text, milestone: true, photoPath: "", seq: store.nextId });
+}
+const logOut = (e) => {
+  const { seq: _seq, ...rest } = e;
+  return clone(rest);
+};
 
 // The rules of `swatches::clean`.
 function cleanSwatch(input) {
@@ -1401,6 +1415,7 @@ const handlers = {
     }
     // A pattern being knitted is in progress.
     inProgress(pr.patternId);
+    logMilestone(pr.id, "Started", pr.startedAt);
     return projectOut(pr);
   },
   update_project: ({ id, input }) => {
@@ -1409,6 +1424,10 @@ const handlers = {
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
     pr.name = projectName(input);
     if (pr.status === "active" && (input.patternId || null) !== pr.patternId) inProgress(input.patternId);
+    if ((input.patternId || null) !== pr.patternId) {
+      const title = store.patterns.find((p) => p.id === input.patternId)?.title;
+      logMilestone(id, title ? `Pattern: ${title}` : "No pattern now");
+    }
     pr.patternId = input.patternId || null;
     pr.startedAt = input.startedAt ?? pr.startedAt;
     pr.notes = input.notes || "";
@@ -1426,8 +1445,11 @@ const handlers = {
     const now = Date.now();
     if (pr.status === "finished") throw new Error("A finished project stays finished.");
     if (status === "finished") throw new Error("Finishing a project asks about its leftovers: use Finish.");
-    if (isLive(pr.status) && isLive(status)) pr.status = status;
-    else if (isLive(pr.status) && status === "frogged") {
+    if (isLive(pr.status) && isLive(status)) {
+      pr.status = status;
+      logMilestone(id, status === "paused" ? "Paused" : "Back on the needles", now);
+    } else if (isLive(pr.status) && status === "frogged") {
+      logMilestone(id, "Frogged", now);
       pr.status = "frogged";
       pr.finishedAt = now;
       for (const l of store.projectTools) if (l.projectId === id && !l.releasedAt) l.releasedAt = now;
@@ -1439,6 +1461,7 @@ const handlers = {
       for (const e of store.projectYarns) if (e.projectId === id) e.releasedAt = null;
       pr.status = status;
       pr.finishedAt = null;
+      logMilestone(id, "Started again", now);
       if (status === "active") inProgress(pr.patternId);
     }
     return projectOut(pr);
@@ -1455,6 +1478,7 @@ const handlers = {
     }
     pr.status = "finished";
     pr.finishedAt = input.finishedAt ?? now;
+    logMilestone(id, "Finished", pr.finishedAt);
     for (const l of store.projectTools) if (l.projectId === id && !l.releasedAt) l.releasedAt = now;
     for (const e of store.projectYarns) if (e.projectId === id && !e.releasedAt) e.releasedAt = now;
     for (const left of input.leftovers || []) {
@@ -1483,6 +1507,8 @@ const handlers = {
     store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id);
     for (const w of store.wishes) if (w.projectId === id) w.projectId = null;
     for (const s of store.swatches) if (s.projectId === id) s.projectId = null;
+    for (const e of store.projectLog) if (e.projectId === id) store.covers.delete(`log:${e.id}`);
+    store.projectLog = store.projectLog.filter((e) => e.projectId !== id);
   },
 
   set_project_cover: ({ projectId, bytes }) => {
@@ -1560,6 +1586,50 @@ const handlers = {
     const bytes = store.covers.get(`board:${id}`);
     if (!bytes) throw new Error("That picture is no longer there.");
     return Uint8Array.from(bytes).buffer;
+  },
+
+  // ---------- a project's log ----------
+  list_project_log: ({ projectId }) =>
+    store.projectLog
+      .filter((e) => e.projectId === projectId)
+      .sort((a, b) => b.at - a.at || b.seq - a.seq)
+      .map(logOut),
+  add_log_entry: ({ projectId, text }) => {
+    if (!store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
+    const e = { id: `lg${store.nextId++}`, projectId, at: Date.now(), text: String(text || "").trim().slice(0, 10000), milestone: false, photoPath: "", seq: store.nextId };
+    store.projectLog.push(e);
+    return logOut(e);
+  },
+  update_log_entry: ({ id, text, at }) => {
+    const e = store.projectLog.find((x) => x.id === id);
+    if (!e) throw new Error("That log entry is no longer there.");
+    if (!(at > 0)) throw new Error("Give the day it happened.");
+    e.text = String(text || "").trim().slice(0, 10000);
+    e.at = at;
+    return logOut(e);
+  },
+  delete_log_entry: ({ id }) => {
+    if (!store.projectLog.some((x) => x.id === id)) throw new Error("That log entry is no longer there.");
+    store.covers.delete(`log:${id}`);
+    store.projectLog = store.projectLog.filter((x) => x.id !== id);
+  },
+  set_log_photo: ({ id, bytes }) => {
+    const e = store.projectLog.find((x) => x.id === id);
+    if (!e) throw new Error("That log entry is no longer there.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    store.covers.set(`log:${id}`, Uint8Array.from(bytes));
+    e.photoPath = `${id}.jpg`;
+  },
+  get_log_photo: ({ id }) => {
+    const bytes = store.covers.get(`log:${id}`);
+    if (!bytes) throw new Error("This entry has no photo.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  remove_log_photo: ({ id }) => {
+    const e = store.projectLog.find((x) => x.id === id);
+    if (!e) throw new Error("That log entry is no longer there.");
+    store.covers.delete(`log:${id}`);
+    e.photoPath = "";
   },
 
   // ---------- gauge swatches ----------

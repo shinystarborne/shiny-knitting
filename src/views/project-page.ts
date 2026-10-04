@@ -3,7 +3,9 @@ import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
+import { closestEl } from "../dom";
 import { Board } from "./board";
+import { ProjectLog } from "./project-log";
 import { fromDateInput, toDateInput } from "./project-form";
 import { describe } from "./tool-filter";
 import { latestShoeSize, latestValue, measurementLabel, showLengthWithUnit } from "./measure";
@@ -18,6 +20,9 @@ export interface ProjectPageHooks {
   /** After the project was removed. */
   removed(): void;
 }
+
+/** Which each project's page showed last, its board or its log, while the app is open. */
+const shownOf = new Map<string, "board" | "log">();
 
 /** The longest side a project cover is kept at. */
 const COVER_SIDE = 1000;
@@ -61,6 +66,8 @@ export class ProjectPage {
   private counterPattern: string | null = null;
   /** The pattern, read beside the board. */
   private reader: ReaderView | null = null;
+  /** The project's log, made the first time it is shown. */
+  private log: ProjectLog | null = null;
 
   constructor(screen: HTMLElement, projectId: string, hooks: ProjectPageHooks) {
     this.screen = screen;
@@ -93,7 +100,12 @@ export class ProjectPage {
     this.root.innerHTML = `
       <aside class="project-side"></aside>
       <div class="project-main">
+        <div class="seg project-view-switch" role="tablist" aria-label="Show">
+          <button data-view="board" role="tab">Board</button>
+          <button data-view="log" role="tab">Log</button>
+        </div>
         <div class="project-board"></div>
+        <section class="project-log" hidden></section>
         <section class="project-pattern" hidden>
           <div class="project-pattern-grip" title="Drag to make the pattern wider or narrower"></div>
           <header class="project-pattern-bar">
@@ -116,6 +128,11 @@ export class ProjectPage {
       openPattern: (id) => this.hooks.openPattern(id),
     });
     await this.board.mount();
+    this.root.querySelector(".project-view-switch")!.addEventListener("click", (e) => {
+      const view = closestEl(e.target, "[data-view]")?.dataset.view;
+      if (view === "board" || view === "log") void this.show(view);
+    });
+    await this.show(shownOf.get(this.projectId) ?? "board");
 
     // The pattern comes back the way it was left on this project.
     const was = this.savedPane();
@@ -155,8 +172,25 @@ export class ProjectPage {
     for (const undo of this.teardown) undo();
     this.reader?.destroy();
     this.reader = null;
+    this.log?.destroy();
     this.board?.destroy();
     this.root?.remove();
+  }
+
+  /** Shows the board, or the log, which is read the first time it is shown. */
+  private async show(view: "board" | "log"): Promise<void> {
+    shownOf.set(this.projectId, view);
+    for (const b of this.root.querySelectorAll<HTMLElement>("[data-view]")) {
+      b.classList.toggle("on", b.dataset.view === view);
+      b.setAttribute("aria-selected", String(b.dataset.view === view));
+    }
+    this.root.querySelector<HTMLElement>(".project-board")!.hidden = view !== "board";
+    const host = this.root.querySelector<HTMLElement>(".project-log")!;
+    host.hidden = view !== "log";
+    if (view === "log" && !this.log) {
+      this.log = new ProjectLog(host, this.projectId);
+      await this.log.mount();
+    }
   }
 
   /** Re-reads the project after a dialog changed it: needles, yarn, finishing. */
@@ -170,6 +204,8 @@ export class ProjectPage {
     await this.syncCounter();
     this.renderSide();
     await this.board?.refreshLinked();
+    // A status change or finishing writes a milestone.
+    await this.log?.reload();
   }
 
   private renderSide(): void {
@@ -417,6 +453,8 @@ export class ProjectPage {
     if (f === "pattern") {
       this.closePane();
       await this.syncCounter();
+      // A new pattern is a milestone.
+      void this.log?.reload();
     }
     // The pattern decides the Open link; the rest is already as typed.
     if (f === "pattern" || f === "name") this.renderSide();

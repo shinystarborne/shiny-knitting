@@ -342,8 +342,18 @@ up; left empty, the stash stays as it was. It also offers to mark the pattern
 Finished. A finished project keeps the list of what it used and what was left,
 as a record.
 
-**Removing** a project frees what is on it; the needles and yarn stay. Removing
-a pattern keeps its projects, without the pattern.
+**The log.** A project's page switches between its **Board** and its **Log**,
+a diary of the knitting, the newest first, a day at a time. Type what happened
+— what you changed in the pattern, where you stopped, how the yarn behaves —
+and **Add to log** (or `Ctrl`+`Enter`) dates it by itself; a photo can go with
+it, or be an entry on its own (pasted, dropped or chosen; click it to see it
+bigger). The project writes its own milestones as they happen: started,
+paused, back on the needles, frogged, started again, a new pattern, finished.
+Any entry can be changed — its words, its day and time, its photo — or
+removed. A finished project keeps its log as its record.
+
+**Removing** a project frees what is on it; the needles and yarn stay, and its
+log goes with it. Removing a pattern keeps its projects, without the pattern.
 
 ## Inspiration
 
@@ -399,6 +409,39 @@ chosen in **Settings → Measurements**; a figure typed with its unit (`36 in`,
 
 A project's page has **For**, which says who it is for and shows their latest
 measurements under it, with a way to their page.
+
+## Calculators
+
+The **Calculators** tab does the sums. Each works out as it is typed, in
+centimetres or inches as Settings says, and remembers what was typed while the
+app is open. A gauge comes from one of your swatches (its blocked gauge) or is
+typed in.
+
+- **Raglan sweater**, top-down in the round. Pick someone from People to fill
+  in their chest, upper arm, wrist, neck, armhole depth and arm length; give the
+  body length and a fit (fitted, classic, relaxed, oversized), and adjust any
+  ease. Out come the numbers — cast-on, the split at the raglan lines, the
+  increase rounds and how they are spaced in the yoke's depth, the pieces at
+  the underarm, the body, the sleeve from upper arm to wrist, and what it all
+  measures — and the steps in words. When the body and sleeves need different
+  numbers of increase rounds, or the yoke is too shallow for them, it says so.
+- **Round yoke (lopapeysa)**, top-down in the round, from the same measurements
+  (its yoke depth filled in as the armhole depth + 2 cm, since a round yoke
+  covers the shoulders). Three increase rounds, or up to six for a rounder yoke,
+  each growing it by the same fraction and spaced as in Elizabeth Zimmermann's
+  percentage system; give the colourwork's repeat and every count fits it, with
+  one small round at the underarm to split evenly. Each increase round is
+  written out (`*K3, M1* 6 times, *K2, M1* 54 times`), then the split, body and
+  sleeves as for the raglan.
+- **Stitches for a size**: the stitches for a width, fitted to a stitch
+  pattern's repeat (a multiple of 4 plus 2), and the rows for a length, with
+  what they actually measure.
+- **Increase or decrease evenly**: written out for the round or a flat row —
+  `*K13, M1* 4 times, *K12, M1* 4 times` — with a minus for decreasing.
+- **Re-gauge a pattern**: its counts at your gauge for the same size, and what
+  they would measure knitted as written.
+
+**Copy** takes the result as text; **Save** puts it on a project's board.
 
 ## Wishlist and shops
 
@@ -794,6 +837,9 @@ src/
     projects.ts        the projects tab
     people.ts          the people tab, and a person's page with their measurements
     measure.ts         lengths and gauges in cm or inches, and reading measurements over time
+    calc.ts            the knitting arithmetic: the raglan, spreading evenly, sizes, re-gauging
+    calculators.ts     the calculators tab
+    project-log.ts     a project's log: entries, photos, milestones
     swatches.ts        the stash's swatches, and its Yarn | Swatches switch
     swatch-form.ts     add/edit swatch dialog
     photo-box.ts       a form's photo: pasted, dropped or chosen, stored on save

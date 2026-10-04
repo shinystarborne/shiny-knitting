@@ -14,22 +14,7 @@ knowing before working on it.
 
 ## Next up
 
-### Project log
-
-A **Log** on each project's page: a running diary of the knitting.
-
-- Type an entry and it gets the **date and time added automatically**; no date
-  to fill in.
-- Entries newest first, each one editable and removable.
-- What goes in: what you changed in the pattern, where you stopped, what you
-  would do differently next time, how the yarn behaves.
-- When the project is finished, the log stays with it as its record.
-
-Open questions:
-
-- Should the app add some entries by itself, e.g. "Started", "Finished",
-  "Added 4 mm circular", "Rows counted today: 32"? Or only what you type?
-- A photo on an entry (progress pictures)?
+Everything agreed so far is built. The next step is picked from Later.
 
 ---
 
@@ -61,18 +46,12 @@ tab's measurements (in cm), and the stash's swatches (sts and rows per 10 cm,
 the blocked gauge when there is one). A calculator offers a person and a
 swatch, and still takes a gauge typed in for a swatch not logged.
 
-**Raglan calculator.** Measurements and gauge in; stitches, rows and raglan
-increases out. Open questions:
+The Calculators tab has the top-down raglan in the round and the everyday
+helpers (see Already built). Still to come:
 
-- Which measurements, and which construction?
-- Top-down, bottom-up, or both?
-- Increase rules (every 2nd/4th row and so on): fixed, or configurable with a
-  sensible default?
-- Knit in the round or flat?
-
-**Round yoke (lopapeysa).** Like the raglan, but increases in rounds across the
-yoke. Probably a mode of the raglan calculator, since the measurements are the
-same.
+- **The raglan, further:** bottom-up; worked flat as a cardigan, with front
+  edges; a raised back neck with short rows; rib repeats that fit the counts
+  (2x2 wants a multiple of 4).
 
 **Colourwork chart designer.** A grid where one square is one stitch.
 
@@ -153,6 +132,12 @@ at once rare enough?
 - **Stash:** yarn with lots, photos (pasted or dropped), weight from metres and
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
   the same yarn; fibre content and superwash, with Fibre and Made of filters.
+- **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase
+  rounds fitted to the colourwork's repeat; and a top-down raglan in the round, from a person's
+  measurements and a swatch's blocked gauge (or both typed in) with the fit's
+  ease: the numbers, and the steps in words, copied or saved to a project's
+  board. And stitches for a size (fitted to a repeat), increasing or
+  decreasing evenly in the round or flat, and a pattern re-gauged to yours.
 - **Gauge swatches:** in the stash, beside the yarn: the yarn (from the stash
   or typed in), the needle (from the box or a size), the stitch pattern, sts
   and rows over 10 × 10 cm (or 4 × 4 in) before and after blocking, a photo,
@@ -160,6 +145,10 @@ at once rare enough?
   form lists its swatches and adds one in it; a removed yarn's swatches keep
   its name.
 - **Needles & hooks:** inventory, sets, what each is used on, a Free filter.
+- **Project log:** a diary on each project's page (Board | Log), the newest
+  first by day: entries dated by themselves, a photo each, changed or removed,
+  and milestones the project writes (started, paused, frogged, finished, a new
+  pattern).
 - **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project
   with a cover, dates, a board, the pattern read beside the board (resizable,

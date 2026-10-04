@@ -7,7 +7,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, InspirationBoard, Project, ProjectInput};
+use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, InspirationBoard, LogEntry, Project, ProjectInput};
 
 use super::state::AppState;
 
@@ -56,12 +56,72 @@ pub fn finish_project(state: State<'_, AppState>, id: String, input: FinishInput
 #[tauri::command]
 pub fn delete_project(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let (cover, images) = db::project_files(&state.db(), &id)?;
+    let log_photos = db::log_photos(&state.db(), &id)?;
     db::delete_project(&state.db(), &id)?;
     crate::covers::delete_project_cover_file(&state, &cover);
     for image in images {
         crate::covers::delete_board_image_file(&state, &image);
     }
+    for photo in log_photos {
+        crate::covers::delete_log_photo_file(&state, &photo);
+    }
     Ok(())
+}
+
+// ---------- the log ----------
+//
+// A diary of the knitting: what was typed, dated as it was written, and the
+// milestones the project's own changes write (see `db::log_milestone`).
+
+/// The longest an entry may be: a long evening's notes, not a pasted pattern.
+const MAX_LOG_TEXT: usize = 10_000;
+
+fn log_text(text: &str) -> String {
+    text.trim().chars().take(MAX_LOG_TEXT).collect()
+}
+
+#[tauri::command]
+pub fn list_project_log(state: State<'_, AppState>, project_id: String) -> CmdResult<Vec<LogEntry>> {
+    db::list_project_log(&state.db(), &project_id)
+}
+
+/// Adds an entry, dated now. Empty words are allowed: a photo may follow.
+#[tauri::command]
+pub fn add_log_entry(state: State<'_, AppState>, project_id: String, text: String) -> CmdResult<LogEntry> {
+    db::insert_log_entry(&state.db(), &uuid::Uuid::new_v4().to_string(), &project_id, &log_text(&text), None)
+}
+
+/// Changes an entry's words, and when it happened.
+#[tauri::command]
+pub fn update_log_entry(state: State<'_, AppState>, id: String, text: String, at: i64) -> CmdResult<LogEntry> {
+    if at <= 0 {
+        return Err(AppError::Message("Give the day it happened.".into()));
+    }
+    db::update_log_entry(&state.db(), &id, &log_text(&text), at)
+}
+
+#[tauri::command]
+pub fn delete_log_entry(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let photo = db::delete_log_entry(&state.db(), &id)?;
+    crate::covers::delete_log_photo_file(&state, &photo);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_log_photo(state: State<'_, AppState>, id: String, bytes: Vec<u8>) -> CmdResult<()> {
+    crate::covers::set_log_photo(&state, &id, bytes)
+}
+
+/// The photo's bytes, as a raw payload, like a cover.
+#[tauri::command]
+pub fn get_log_photo(state: State<'_, AppState>, id: String) -> CmdResult<tauri::ipc::Response> {
+    let (_mime, bytes) = crate::covers::read_log_photo(&state, &id)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+pub fn remove_log_photo(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    crate::covers::remove_log_photo(&state, &id)
 }
 
 // ---------- the cover ----------

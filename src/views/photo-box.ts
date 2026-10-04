@@ -19,6 +19,8 @@ export class PhotoBox {
     private box: HTMLElement,
     private stored: () => Promise<string | null>,
     private onError: (message: string) => void,
+    /** Whether a paste is this box's: false while another box on the page is the one in use. */
+    private wants: () => boolean = () => true,
   ) {
     box.addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -44,6 +46,8 @@ export class PhotoBox {
 
   private onPaste = (e: ClipboardEvent): void => {
     if (!this.box.isConnected) return this.destroy();
+    // Not while its part of the page is hidden, or another box is in use.
+    if (this.box.closest("[hidden]") || !this.wants()) return;
     const item = [...(e.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
     const file = item?.getAsFile();
     if (!file) return;

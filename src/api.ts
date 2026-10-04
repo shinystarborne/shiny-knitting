@@ -768,6 +768,20 @@ export interface LinkPreview {
   shopName: string;
 }
 
+// ---------- a project's log ----------
+
+/** One entry in a project's log. Mirrors `models.rs::LogEntry`. */
+export interface LogEntry {
+  id: string;
+  projectId: string;
+  /** When it happened. */
+  at: number;
+  text: string;
+  /** Written by the app: started, paused, finished… */
+  milestone: boolean;
+  photoPath: string;
+}
+
 // ---------- gauge swatches ----------
 
 /** A gauge swatch. Mirrors `models.rs::Swatch`. Counts are per 10 cm, 0 when not counted. */
@@ -1065,6 +1079,17 @@ export const api = {
   addInspirationBoard: (name: string) => invoke<InspirationBoard>("add_inspiration_board", { name }),
   renameInspirationBoard: (id: string, name: string) => invoke<InspirationBoard>("rename_inspiration_board", { id, name }),
   deleteInspirationBoard: (id: string) => invoke<void>("delete_inspiration_board", { id }),
+
+  // A project's log: newest first, milestones written by the backend itself.
+  listProjectLog: (projectId: string) => invoke<LogEntry[]>("list_project_log", { projectId }),
+  /** Dated now. */
+  addLogEntry: (projectId: string, text: string) => invoke<LogEntry>("add_log_entry", { projectId, text }),
+  updateLogEntry: (id: string, text: string, at: number) => invoke<LogEntry>("update_log_entry", { id, text, at }),
+  deleteLogEntry: (id: string) => invoke<void>("delete_log_entry", { id }),
+  setLogPhoto: (id: string, bytes: number[]) => invoke<void>("set_log_photo", { id, bytes }),
+  /** Raw binary, as `getCover` returns it. */
+  getLogPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_log_photo", { id }),
+  removeLogPhoto: (id: string) => invoke<void>("remove_log_photo", { id }),
 
   // Gauge swatches. Listed whole: even a cork board's worth is a few hundred.
   listSwatches: () => invoke<Swatch[]>("list_swatches"),

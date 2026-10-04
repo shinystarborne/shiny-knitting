@@ -1068,6 +1068,24 @@ pub struct WishInput {
     pub notes: String,
 }
 
+// ---------- a project's log ----------
+
+/// One entry in a project's log: something typed, or a milestone the app
+/// wrote when the project started, paused, finished and so on.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEntry {
+    pub id: String,
+    pub project_id: String,
+    /// When it happened: when it was written, unless changed.
+    pub at: i64,
+    pub text: String,
+    /// Written by the app, not typed.
+    pub milestone: bool,
+    /// Its photo's file name in library/log-photos, or empty.
+    pub photo_path: String,
+}
+
 // ---------- gauge swatches ----------
 
 /// A gauge swatch: what it was knitted in and on, and how many stitches and

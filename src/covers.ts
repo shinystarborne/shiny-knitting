@@ -346,6 +346,11 @@ export const wishPhotoUrl = wishPhotoCache.url;
 export const forgetWishPhoto = wishPhotoCache.forget;
 export const clearWishPhotoCache = wishPhotoCache.clear;
 
+const logPhotoCache = makeImageCache((id) => api.getLogPhoto(id));
+export const logPhotoUrl = logPhotoCache.url;
+export const forgetLogPhoto = logPhotoCache.forget;
+export const clearLogPhotoCache = logPhotoCache.clear;
+
 const swatchPhotoCache = makeImageCache((id) => api.getSwatchPhoto(id));
 export const swatchPhotoUrl = swatchPhotoCache.url;
 export const forgetSwatchPhoto = swatchPhotoCache.forget;

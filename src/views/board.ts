@@ -518,7 +518,8 @@ export class Board {
     const target = e.target as HTMLElement;
     const focused = document.activeElement as HTMLElement | null;
     if (target.closest?.("input, textarea, select, [data-cover]") || focused?.closest?.("input, textarea, select, [data-cover]")) return;
-    if (!this.root.isConnected) return;
+    // Not while the board is hidden behind the project's log.
+    if (!this.root.isConnected || this.root.closest("[hidden]")) return;
     const file = [...(e.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
     if (file) {
       e.preventDefault();

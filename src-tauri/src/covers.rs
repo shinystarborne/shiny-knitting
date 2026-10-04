@@ -272,6 +272,40 @@ pub fn delete_board_image_file(state: &AppState, file_name: &str) {
     }
 }
 
+// ---------- project log photos ----------
+
+pub fn log_photos_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("log-photos")
+}
+
+/// Saves a log entry's photo, replacing any previous one.
+pub fn set_log_photo(state: &AppState, entry_id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    remove_log_photo(state, entry_id).ok();
+    let file_name = write_file(&log_photos_dir(state), entry_id, ext, &bytes)?;
+    db::set_log_photo(&state.db(), entry_id, &file_name)
+}
+
+pub fn remove_log_photo(state: &AppState, entry_id: &str) -> AppResult<()> {
+    let name = db::get_log_entry(&state.db(), entry_id)?.photo_path;
+    delete_log_photo_file(state, &name);
+    db::set_log_photo(&state.db(), entry_id, "")
+}
+
+pub fn read_log_photo(state: &AppState, entry_id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::get_log_entry(&state.db(), entry_id)?.photo_path;
+    let path = existing_file(&log_photos_dir(state), &name)
+        .ok_or_else(|| AppError::Message("This entry has no photo.".into()))?;
+    read_file(path)
+}
+
+/// Deletes a stored log photo by its file name, best effort.
+pub fn delete_log_photo_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&log_photos_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 // ---------- swatch photos ----------
 
 pub fn swatch_photos_dir(state: &AppState) -> PathBuf {

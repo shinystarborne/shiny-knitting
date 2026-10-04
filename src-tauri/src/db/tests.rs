@@ -2808,3 +2808,70 @@ fn a_swatch_refuses_links_that_are_not_there_and_hands_back_its_photo() {
     set_swatch_photo(&conn, "s1", "s1.jpg").unwrap();
     assert_eq!(delete_swatch(&conn, "s1").unwrap(), "s1.jpg");
 }
+
+// ---------- a project's log ----------
+
+fn log_texts(conn: &Connection, project_id: &str) -> Vec<String> {
+    list_project_log(conn, project_id).unwrap().into_iter().map(|e| e.text).collect()
+}
+
+#[test]
+fn a_project_writes_its_milestones_into_its_log() {
+    let conn = test_db();
+    let p = sample(&conn, "Lace Sock", "", "", &[]);
+    let input = crate::models::ProjectInput { name: "Socks".into(), started_at: Some(1_000), ..Default::default() };
+    let pr = insert_project(&conn, "pr", &input).unwrap();
+    assert_eq!(list_project_log(&conn, &pr.id).unwrap()[0].at, 1_000, "started when it says it started");
+    set_project_status(&conn, &pr.id, "paused").unwrap();
+    set_project_status(&conn, &pr.id, "active").unwrap();
+    update_project(&conn, &pr.id, &crate::models::ProjectInput { name: "Socks".into(), pattern_id: Some(p.id.clone()), ..Default::default() }).unwrap();
+    update_project(&conn, &pr.id, &crate::models::ProjectInput { name: "Socks for Mo".into(), pattern_id: Some(p.id.clone()), ..Default::default() }).unwrap();
+    set_project_status(&conn, &pr.id, "frogged").unwrap();
+    set_project_status(&conn, &pr.id, "active").unwrap();
+    let texts = log_texts(&conn, &pr.id);
+    assert_eq!(
+        texts,
+        vec!["Started again", "Frogged", "Pattern: Lace Sock", "Back on the needles", "Paused", "Started"],
+        "newest first, and a rename is no milestone"
+    );
+    assert!(list_project_log(&conn, &pr.id).unwrap().iter().all(|e| e.milestone));
+    finish_project(&conn, &pr.id, &crate::models::FinishInput { finished_at: Some(9_999_999_999_999), leftovers: vec![] }).unwrap();
+    assert_eq!(log_texts(&conn, &pr.id)[0], "Finished");
+}
+
+#[test]
+fn what_is_typed_is_dated_and_can_be_changed_and_removed() {
+    let conn = test_db();
+    let pr = project(&conn, "Hat", None);
+    let entry = insert_log_entry(&conn, "e1", &pr.id, "Changed the decreases to every 4th row.", None).unwrap();
+    assert!(!entry.milestone && entry.at > 0);
+    assert_eq!(log_texts(&conn, &pr.id)[0], "Changed the decreases to every 4th row.", "now is after the start");
+    let edited = update_log_entry(&conn, "e1", "Decreases every 3rd row after all.", 5).unwrap();
+    assert_eq!((edited.text.as_str(), edited.at), ("Decreases every 3rd row after all.", 5));
+    assert_eq!(log_texts(&conn, &pr.id).last().unwrap(), "Decreases every 3rd row after all.", "redated before the start, it sorts there");
+    set_log_photo(&conn, "e1", "e1.jpg").unwrap();
+    assert_eq!(log_photos(&conn, &pr.id).unwrap(), vec!["e1.jpg"]);
+    assert_eq!(delete_log_entry(&conn, "e1").unwrap(), "e1.jpg");
+    assert!(insert_log_entry(&conn, "e2", "gone", "x", None).is_err(), "a log belongs to a project that is there");
+    delete_project(&conn, &pr.id).unwrap();
+    assert!(list_project_log(&conn, &pr.id).unwrap().is_empty(), "a removed project takes its log");
+}
+
+#[test]
+fn projects_from_before_the_log_get_their_start_and_end() {
+    let conn = Connection::open_in_memory().unwrap();
+    migrate(&conn).unwrap();
+    conn.execute("DELETE FROM app_settings WHERE key = 'project_log_backfill'", []).unwrap();
+    conn.execute_batch(
+        "INSERT INTO projects (id, name, status, started_at, finished_at, created_at) VALUES ('a', 'A', 'finished', 10, 20, 10);
+         INSERT INTO projects (id, name, status, started_at, finished_at, created_at) VALUES ('b', 'B', 'frogged', 30, 40, 30);
+         INSERT INTO projects (id, name, status, started_at, created_at) VALUES ('c', 'C', 'active', 50, 50);",
+    )
+    .unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(log_texts(&conn, "a"), vec!["Finished", "Started"]);
+    assert_eq!(log_texts(&conn, "b"), vec!["Frogged", "Started"]);
+    assert_eq!(list_project_log(&conn, "c").unwrap()[0].at, 50);
+    migrate(&conn).unwrap();
+    assert_eq!(log_texts(&conn, "c").len(), 1, "once only");
+}

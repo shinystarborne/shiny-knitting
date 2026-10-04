@@ -3289,3 +3289,111 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 /* A yarn form's swatches. */
 .yarn-swatches { display: flex; flex-direction: column; gap: 6px; }
 .yarn-swatches .tool-list li { display: flex; justify-content: space-between; gap: 10px; }
+
+/* ---------- calculators ---------- */
+
+/* The calculators down the side, each with what it does under its name. */
+.calc-nav { gap: 6px; }
+.calc-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.calc-pick b { font-weight: 600; font-size: 13px; }
+.calc-pick span { font-size: 11px; color: var(--text-dim); }
+.calc-pick:hover { background: var(--bg-input); }
+.calc-pick.on { background: var(--accent-soft); border-color: var(--accent); }
+
+.calc-main { overflow-y: auto; padding: 20px; }
+/* What goes in on the left, what comes out on the right; one above the other when narrow. */
+.calc-grid { display: grid; grid-template-columns: minmax(300px, 420px) minmax(320px, 1fr); gap: 28px; align-items: start; max-width: 1200px; }
+@media (max-width: 1000px) { .calc-grid { grid-template-columns: 1fr; } }
+.calc-inputs { display: flex; flex-direction: column; gap: 12px; }
+.calc-inputs h2,
+.calc-results h2 { margin: 0; font-size: 17px; }
+.calc-inputs h2 .hint { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.calc-inputs h3,
+.calc-results h3 { margin: 6px 0 0; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.calc-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px 10px; }
+.calc-field span { font-size: 12px; white-space: nowrap; }
+.calc-field input,
+.calc-pair input { text-align: right; font-variant-numeric: tabular-nums; }
+.calc-gauge { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); }
+.calc-gauge .field-label { font-size: 13px; font-weight: 600; }
+.calc-pair { grid-template-columns: 1fr 1fr; }
+.calc-gauge .hint { margin: 0; font-size: 11px; }
+
+.calc-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+.calc-wait { margin: 0; color: var(--text-dim); }
+.calc-table { border-collapse: collapse; font-size: 13px; }
+.calc-table th,
+.calc-table td { padding: 5px 12px 5px 0; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.calc-table tbody th { font-weight: 500; color: var(--text-dim); white-space: nowrap; }
+.calc-table td:nth-child(2) { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.calc-table td:last-child { color: var(--text-dim); }
+.calc-warnings { margin: 0; padding-left: 18px; color: #ffcf8a; font-size: 13px; }
+.calc-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.5; }
+.calc-big { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.calc-say { margin: 0; }
+.calc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.calc-actions select { width: auto; max-width: 240px; }
+
+/* ---------- a project's log ---------- */
+
+/* Board | Log, at the top of the project's main area, beside the board's tools. */
+.project-view-switch { position: absolute; top: 12px; left: 100px; z-index: 5; background: var(--bg-raised); }
+.project-main > .project-log { flex: 1; min-width: 0; overflow-y: auto; }
+.project-log[hidden],
+.project-board[hidden] { display: none; }
+.log-inner { max-width: 760px; margin: 0 auto; padding: 60px 24px 40px; display: flex; flex-direction: column; gap: 18px; }
+.log-compose { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); }
+.log-compose textarea,
+.log-entry.editing textarea { min-height: 70px; resize: vertical; }
+.log-compose-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.log-compose-bar .spacer { flex: 1; }
+.log-compose-bar button { font-size: 12px; }
+.log-photo-box {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  background: var(--bg-input) center / cover no-repeat;
+}
+.log-photo-box.filled { border-style: solid; }
+.log-photo-box.over { border-color: var(--accent); }
+.log-empty { margin: 0; }
+.log-day h3 { margin: 0 0 8px; font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.log-day { display: flex; flex-direction: column; gap: 8px; }
+.log-entry { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); display: flex; flex-direction: column; gap: 6px; }
+.log-entry.editing { gap: 8px; }
+.log-entry.editing input[type="datetime-local"] { align-self: flex-start; width: auto; }
+.log-head { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.log-head .spacer { flex: 1; }
+.log-head .card-remove { margin-left: 0; }
+.log-time { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.log-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+/* A milestone the project wrote: one quiet line, not a card. */
+.log-entry.milestone { background: transparent; border-style: dashed; padding: 6px 14px; }
+.log-milestone { font-weight: 600; color: #8fdca0; }
+.log-milestone::before { content: "● "; }
+.log-photo { max-width: 260px; max-height: 200px; border-radius: 8px; cursor: zoom-in; object-fit: cover; align-self: flex-start; }
+.log-photo.big { max-width: 100%; max-height: none; cursor: zoom-out; }
+/* Remove photo only when there is one. */
+.log-photo-box:not(.filled) ~ [data-act="photo-remove"],
+.log-photo-box:not(.filled) ~ [data-act="edit-photo-remove"] { display: none; }
+.log-list { display: flex; flex-direction: column; gap: 22px; }
