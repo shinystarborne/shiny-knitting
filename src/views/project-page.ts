@@ -126,6 +126,7 @@ export class ProjectPage {
     this.board = new Board(this.root.querySelector<HTMLElement>(".project-board")!, this.projectId, {
       project: () => this.project,
       openPattern: (id) => this.hooks.openPattern(id),
+      openLog: () => void this.show("log"),
     });
     await this.board.mount();
     this.root.querySelector(".project-view-switch")!.addEventListener("click", (e) => {
@@ -187,9 +188,15 @@ export class ProjectPage {
     this.root.querySelector<HTMLElement>(".project-board")!.hidden = view !== "board";
     const host = this.root.querySelector<HTMLElement>(".project-log")!;
     host.hidden = view !== "log";
+    // Each side catches up with what was written in the other: the log on
+    // its page, or its card on the board.
     if (view === "log" && !this.log) {
       this.log = new ProjectLog(host, this.projectId);
       await this.log.mount();
+    } else if (view === "log") {
+      await this.log?.reload();
+    } else if (this.log) {
+      await this.board?.refreshLog();
     }
   }
 

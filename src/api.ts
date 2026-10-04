@@ -654,7 +654,7 @@ export interface ProjectInput {
 }
 
 /** What can go on a board, a project's or an inspiration board. */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch";
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {

@@ -2875,3 +2875,13 @@ fn projects_from_before_the_log_get_their_start_and_end() {
     migrate(&conn).unwrap();
     assert_eq!(log_texts(&conn, "c").len(), 1, "once only");
 }
+
+#[test]
+fn a_log_card_belongs_on_a_project_board_only() {
+    let conn = test_db();
+    let pr = project(&conn, "Hat", None);
+    let board = insert_inspiration_board(&conn, "ib", "Ideas").unwrap();
+    let log = crate::models::BoardItemInput { kind: "log".into(), ..Default::default() };
+    assert!(insert_board_item(&conn, "on-project", &pr.id, &log).is_ok());
+    assert!(insert_board_item(&conn, "on-ideas", &board.id, &log).is_err(), "an inspiration board has no log");
+}

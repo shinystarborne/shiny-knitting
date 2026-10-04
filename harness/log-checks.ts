@@ -140,6 +140,37 @@ export async function verifyLog() {
     await waitFor(() => entries().length === before - 1, "the removal");
     check(results, "an entry can be removed", !mine(project.id).some((e) => e.text.startsWith("Pattern: ")));
 
+    // ---------- the log on the board ----------
+    view("board");
+    const board = () => page()!.querySelector<HTMLElement>(".board")!;
+    const logCards = () => [...board().querySelectorAll<HTMLElement>(".board-item.kind-log")];
+    const cardTexts = () => [...(logCards()[0]?.querySelectorAll(".board-log-entry") ?? [])].map((e) => e.querySelector("b, p")?.textContent ?? "");
+    (board().querySelector('[data-add="log"]') as HTMLElement).click();
+    await waitFor(() => logCards().length === 1, "the log card");
+    check(results, "the board's toolbar adds a log card, showing the log newest first", cardTexts()[0] === "Back on the needles" && cardTexts().includes("Started"), cardTexts().join("|"));
+    check(results, "…with its photos", !!logCards()[0].querySelector("[data-log-photo]"));
+    const field = logCards()[0].querySelector<HTMLInputElement>('[data-f="log-text"]')!;
+    check(results, "…ready to write in", document.activeElement === field);
+    field.value = "Written on the board.";
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await waitFor(() => cardTexts()[0] === "Written on the board.", "the card's entry");
+    check(results, "Enter in the card adds to the log", mine(project.id).some((e) => e.text === "Written on the board." && !e.milestone));
+    (board().querySelector('[data-add="log"]') as HTMLElement).click();
+    await wait(150);
+    check(results, "one log card is enough: the toolbar picks the one there", logCards().length === 1 && logCards()[0].classList.contains("selected"));
+    view("log");
+    await waitFor(() => texts()[0] === "Written on the board.", "the page's log");
+    check(results, "the log page shows what was written on the card", true);
+    area.value = "Written on the page.";
+    area.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+    await waitFor(() => texts()[0] === "Written on the page.", "the page's entry");
+    view("board");
+    await waitFor(() => cardTexts()[0] === "Written on the page.", "the card to catch up");
+    check(results, "…and the card what was written on the page", true);
+    (logCards()[0].querySelector('[data-act="open-log"]') as HTMLElement).click();
+    await waitFor(() => !log()!.hidden, "the log page");
+    check(results, "Open on the card shows the whole log", !!page()!.querySelector('[data-view="log"].on'));
+
     // The page remembers it was showing the log.
     tab("projects");
     await waitFor(() => !page(), "the projects");
@@ -147,6 +178,13 @@ export async function verifyLog() {
     check(results, "the page comes back showing the log", !log()!.hidden && !!page()!.querySelector('[data-view="log"].on'));
     view("board");
     check(results, "the board comes back", !page()!.querySelector<HTMLElement>(".project-board")!.hidden && log()!.hidden);
+
+    // An inspiration board has no project, so no log to show.
+    const ideas = await invoke<{ id: string }>("add_inspiration_board", { name: "Ideas for the log check" });
+    document.querySelector(".screen")!.dispatchEvent(new CustomEvent("open-inspiration", { bubbles: true, detail: ideas.id }));
+    await waitFor(() => !!document.querySelector(".inspo-page .board-tools"), "the inspiration board");
+    check(results, "an inspiration board offers no log card", !document.querySelector('.inspo-page [data-add="log"]') && !!document.querySelector('.inspo-page [data-add="note"]'));
+    await invoke("delete_inspiration_board", { id: ideas.id });
 
     await invoke("delete_project", { id: project.id });
     check(results, "a removed project takes its log and photos", mine(project.id).length === 0 && !store.covers.has(`log:${withPhoto.id}`));

@@ -856,7 +856,7 @@ pub struct FinishInput {
 /// - `yarn`: a yarn from the stash
 /// - `tool`: a needle, hook or cable
 /// - `swatch`: a colour
-pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch"];
+pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log"];
 
 /// One thing on a board, where it sits, and what it holds.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

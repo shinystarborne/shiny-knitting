@@ -3397,3 +3397,33 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .log-photo-box:not(.filled) ~ [data-act="photo-remove"],
 .log-photo-box:not(.filled) ~ [data-act="edit-photo-remove"] { display: none; }
 .log-list { display: flex; flex-direction: column; gap: 22px; }
+
+/* ---------- the log, on a project's board ---------- */
+
+/* The card moves by its header; its entries scroll and select like a page. */
+.kind-log { background: var(--bg-raised); border: 1px solid var(--border); overflow: hidden; }
+.board-log { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.board-log-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.board-log-head strong { flex: 1; font-size: 14px; }
+.board-log-head button,
+.board-log-compose button { font-size: 12px; padding: 3px 10px; }
+.board-log-compose { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: default; }
+.board-log-compose input { flex: 1; min-width: 0; padding: 5px 8px; font-size: 13px; }
+.board-log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: auto;
+  user-select: text;
+}
+.board-log-entry { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.board-log-when { font-size: 11px; color: var(--text-dim); }
+.board-log-entry p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.board-log-entry.milestone b { color: #8fdca0; font-weight: 600; }
+.board-log-entry.milestone b::before { content: "● "; }
+.board-log-photo { width: 100%; height: 140px; border-radius: 6px; background: var(--bg-input) center / cover no-repeat; }
+.board-log-empty { margin: 0; color: var(--text-dim); font-size: 13px; }

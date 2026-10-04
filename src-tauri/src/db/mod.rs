@@ -2739,6 +2739,13 @@ pub fn insert_board_item(conn: &Connection, id: &str, board_id: &str, input: &Bo
     if !BOARD_KINDS.contains(&input.kind.as_str()) {
         return Err(AppError::Message(format!("A board cannot hold a “{}”.", input.kind)));
     }
+    // A log card shows its project's log; an inspiration board has none.
+    if input.kind == "log" {
+        let project: Option<i64> = conn.query_row("SELECT 1 FROM projects WHERE id = ?1", params![board_id], |r| r.get(0)).optional()?;
+        if project.is_none() {
+            return Err(AppError::Message("Only a project's board can show its log.".to_string()));
+        }
+    }
     let data = item_data(input.data.as_ref().unwrap_or(&serde_json::json!({})))?;
     let top: i64 = conn.query_row(
         "SELECT COALESCE(MAX(z), 0) FROM board_items WHERE board_id = ?1",

@@ -148,7 +148,8 @@ at once rare enough?
 - **Project log:** a diary on each project's page (Board | Log), the newest
   first by day: entries dated by themselves, a photo each, changed or removed,
   and milestones the project writes (started, paused, frogged, finished, a new
-  pattern).
+  pattern). A live Log card on the project's board shows it and takes new
+  entries.
 - **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project
   with a cover, dates, a board, the pattern read beside the board (resizable,

@@ -1,6 +1,6 @@
-import { api, type BoardItem, type BoardKind, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, type BoardItem, type BoardKind, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
-import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, prepareBoardImage, yarnPhotoUrl } from "../covers";
+import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, logPhotoUrl, prepareBoardImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
 
 /**
@@ -79,6 +79,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   yarn: [200, 260],
   tool: [230, 110],
   swatch: [150, 180],
+  log: [340, 440],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -88,6 +89,8 @@ export interface BoardHooks {
   /** The project, for its own pattern, needles and yarn to come first in the pickers; null on an inspiration board. */
   project(): Project | null;
   openPattern(id: string): void;
+  /** Shows the project's whole log, from its card. */
+  openLog?(): void;
 }
 
 export interface BoardOptions {
@@ -106,6 +109,7 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>` },
   { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>` },
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
+  { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
 ];
 
 const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
@@ -131,6 +135,8 @@ export class Board {
   private patterns: Pattern[] = [];
   private yarns: Yarn[] = [];
   private tools: Tool[] = [];
+  /** The project's log, for a log card; empty on an inspiration board. */
+  private logEntries: LogEntry[] = [];
   /** A press in progress: panning the board, or moving or sizing an item. */
   private drag:
     | { mode: "pan"; pointer: number; sx: number; sy: number; vx: number; vy: number }
@@ -166,11 +172,12 @@ export class Board {
     this.world = this.root.querySelector(".board-world")!;
     this.bind();
 
-    [this.items, this.patterns, this.yarns, this.tools] = await Promise.all([
+    [this.items, this.patterns, this.yarns, this.tools, this.logEntries] = await Promise.all([
       api.listBoardItems(this.boardId),
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.listYarns({}).catch(() => [] as Yarn[]),
       api.listTools().catch(() => [] as Tool[]),
+      this.hooks.project() ? api.listProjectLog(this.boardId).catch(() => [] as LogEntry[]) : Promise.resolve([] as LogEntry[]),
     ]);
     this.view = this.savedView() ?? fitView(this.items, this.root.clientWidth || 900, this.root.clientHeight || 600);
     this.applyView();
@@ -221,14 +228,34 @@ export class Board {
     );
   }
 
-  /** Re-reads what the cards show: a pattern renamed, a yarn's photo changed. */
+  /** Re-reads what the cards show: a pattern renamed, a yarn's photo changed, the log written in. */
   async refreshLinked(): Promise<void> {
     [this.patterns, this.yarns, this.tools] = await Promise.all([
       api.listPatterns({}).catch(() => this.patterns),
       api.listYarns({}).catch(() => this.yarns),
       api.listTools().catch(() => this.tools),
     ]);
+    await this.refreshLog();
+  }
+
+  /** Re-reads the project's log, for its card: after it was written in elsewhere. */
+  async refreshLog(): Promise<void> {
+    if (this.hooks.project()) this.logEntries = await api.listProjectLog(this.boardId).catch(() => this.logEntries);
     this.render();
+  }
+
+  /** Adds what is typed in a log card to the project's log, dated now. */
+  private async addToLog(id: string): Promise<void> {
+    const input = this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${id}"] input[data-f="log-text"]`);
+    const text = input?.value.trim();
+    if (!input || !text) return void input?.focus();
+    try {
+      await api.addLogEntry(this.boardId, text);
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Log"));
+    }
+    await this.refreshLog();
+    this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${id}"] input[data-f="log-text"]`)?.focus();
   }
 
   // ---------- the view ----------
@@ -315,6 +342,12 @@ export class Board {
     const target = e.target as HTMLElement;
     if (target.closest(".board-tools, .board-zoom, button, input, select, a")) return;
     const el = this.itemEl(target);
+    // A log card's entries are read, scrolled and selected like a page: the
+    // card is picked, not dragged. It moves by its header.
+    if (el && target.closest(".board-log-list")) {
+      this.select(el.dataset.id!);
+      return;
+    }
     if (el && e.button === 0) {
       const id = el.dataset.id!;
       if (this.editing === id && target.closest("textarea")) return;
@@ -397,7 +430,8 @@ export class Board {
   }
 
   private onWheel(e: WheelEvent): void {
-    if ((e.target as HTMLElement).closest("textarea") && !e.ctrlKey) return;
+    // A note being read, or a log card's entries, scroll themselves.
+    if ((e.target as HTMLElement).closest("textarea, .board-log-list") && !e.ctrlKey) return;
     e.preventDefault();
     const box = this.root.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) {
@@ -424,6 +458,8 @@ export class Board {
     if (act === "remove") await this.remove(id);
     if (act === "open") this.open(id);
     if (act === "edit-link") await this.editLink(id);
+    if (act === "log-add") await this.addToLog(id);
+    if (act === "open-log") this.hooks.openLog?.();
     if (act === "note-colour") {
       const item = this.items.find((i) => i.id === id)!;
       await this.save(id, { data: { ...item.data, colour: btn.dataset.colour } });
@@ -451,10 +487,19 @@ export class Board {
     if (!item) return;
     if (item.kind === "note" || item.kind === "text") this.startEditing(item.id);
     else if (item.kind === "swatch") el.querySelector<HTMLInputElement>('input[type="color"]')?.click();
+    else if (item.kind === "log") this.hooks.openLog?.();
     else this.open(item.id);
   }
 
   private async onKey(e: KeyboardEvent): Promise<void> {
+    // Enter in a log card's field adds what is typed to the log.
+    const field = e.target as HTMLElement;
+    if (e.key === "Enter" && field.dataset?.f === "log-text") {
+      e.preventDefault();
+      const id = this.itemEl(field)?.dataset.id;
+      if (id) await this.addToLog(id);
+      return;
+    }
     if (this.editing) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -599,6 +644,12 @@ export class Board {
       if (!choices.length) return void (await say("There are no needles or hooks yet.", "Add a needle"));
       const id = await askChoice("Which needle, hook or cable?", choices, { title: "Add a needle" });
       if (id) await this.add("tool", at, { toolId: id });
+    } else if (kind === "log") {
+      // One log is enough: a second card would show the same.
+      const there = this.items.find((i) => i.kind === "log");
+      if (there) return this.select(there.id);
+      const item = await this.add("log", at, {});
+      if (item) this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${item.id}"] input[data-f="log-text"]`)?.focus();
     } else if (kind === "swatch") {
       const colour = SWATCHES[this.items.filter((i) => i.kind === "swatch").length % SWATCHES.length];
       const item = await this.add("swatch", at, { colour, label: "" });
@@ -793,6 +844,9 @@ export class Board {
           : `<div class="board-caption missing">A needle no longer in the box</div>`;
         break;
       }
+      case "log":
+        body = this.logHtml();
+        break;
       case "swatch": {
         const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour)) ? String(d.colour) : "#c94c6d";
         body = `
@@ -804,6 +858,34 @@ export class Board {
       }
     }
     return `<div class="${cls}" data-id="${item.id}" data-kind="${item.kind}" style="${style}">${body}${extra}${remove}${grip}</div>`;
+  }
+
+  /** A log card: a field to write in, and the entries, the newest first, with their photos. */
+  private logHtml(): string {
+    const when = (at: number) =>
+      new Date(at).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const entries = this.logEntries
+      .map(
+        (e) => `
+        <div class="board-log-entry${e.milestone ? " milestone" : ""}">
+          <span class="board-log-when">${esc(when(e.at))}</span>
+          ${e.text ? (e.milestone ? `<b>${esc(e.text)}</b>` : `<p>${esc(e.text)}</p>`) : ""}
+          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"></div>` : ""}
+        </div>`,
+      )
+      .join("");
+    return `
+      <div class="board-log">
+        <div class="board-log-head">
+          <strong>📓 Log</strong>
+          <button data-act="open-log" title="The whole log, to change or remove entries and add photos">Open ↗</button>
+        </div>
+        <div class="board-log-compose">
+          <input data-f="log-text" placeholder="What happened? Enter adds it" />
+          <button data-act="log-add">Add</button>
+        </div>
+        <div class="board-log-list">${entries || `<p class="board-log-empty">Nothing in the log yet.</p>`}</div>
+      </div>`;
   }
 
   /** Pictures, pattern covers and yarn photos, filled in once their bytes arrive. */
@@ -818,6 +900,7 @@ export class Board {
     await Promise.all([
       ...[...this.world.querySelectorAll<HTMLElement>("[data-picture]")].map((el) => paint(el, boardImageUrl(el.dataset.picture!))),
       ...[...this.world.querySelectorAll<HTMLElement>("[data-cover-of]")].map((el) => paint(el, coverUrl(el.dataset.coverOf!))),
+      ...[...this.world.querySelectorAll<HTMLElement>("[data-log-photo]")].map((el) => paint(el, logPhotoUrl(el.dataset.logPhoto!))),
       ...[...this.world.querySelectorAll<HTMLElement>("[data-yarn-of]")]
         .filter((el) => this.yarns.find((y) => y.id === el.dataset.yarnOf)?.photoPath)
         .map((el) => paint(el, yarnPhotoUrl(el.dataset.yarnOf!))),
@@ -837,6 +920,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   yarn: "yarn",
   tool: "needle",
   swatch: "colour",
+  log: "log card",
 };
 
 /**

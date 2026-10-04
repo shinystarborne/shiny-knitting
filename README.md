@@ -356,6 +356,12 @@ paused, back on the needles, frogged, started again, a new pattern, finished.
 Any entry can be changed — its words, its day and time, its photo — or
 removed. A finished project keeps its log as its record.
 
+The log can be on the board too: **📓 Log** in the board's toolbar adds a card
+that shows it, the newest first with its photos, and keeps up with it. Write in
+the card's field and Enter adds to the log; its entries scroll inside the card,
+which moves by its header; **Open ↗** (or a double-click) shows the whole log.
+One card is enough, and only a project's board has one.
+
 **Removing** a project frees what is on it; the needles and yarn stay, and its
 log goes with it. Removing a pattern keeps its projects, without the pattern.
 
