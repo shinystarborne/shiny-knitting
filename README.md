@@ -20,10 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.17](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.17)** —
+  a live Log card on a project's board, to read and write the log beside the
+  rest. The one to test.
 - **[v0.3.0-beta.16](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.16)** —
   the Calculators tab (a top-down raglan and round yoke from someone's
   measurements and a swatch, and the everyday sums), and a log on every
-  project. The one to test.
+  project. Superseded by `beta.17`.
 - **[v0.3.0-beta.15](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.15)** —
   the People tab, with measurements over time in cm or inches, and gauge
   swatches in the stash, before and after blocking. Superseded by `beta.16`.
