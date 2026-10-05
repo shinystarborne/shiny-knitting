@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.25](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.25)** —
+  a yarn's ball band shown small on its card and in its form, to open big
+  or add. The one to test.
 - **[v0.3.0-beta.24](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.24)** —
   how much of each yarn a project will take, in grams or balls, and lots
-  never weighed shown by their balls instead of 0 g. The one to test.
+  never weighed shown by their balls instead of 0 g. Superseded by `beta.25`.
 - **[v0.3.0-beta.23](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.23)** —
   the stash's metres in all, and Statistics: yarn added and used each month,
   in metres or grams. Superseded by `beta.24`.
