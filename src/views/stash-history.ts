@@ -1,4 +1,4 @@
-import { api, type Yarn } from "../api";
+import { api, type Yarn, type YarnUse } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { yarnPhotoUrl } from "../covers";
@@ -6,6 +6,7 @@ import { describeFibres } from "./fibres";
 import { paintLazily } from "./lazy";
 import { longDate } from "./project-form";
 import { stashModeSwitch } from "./swatches";
+import { usageByMonth, usageChartHtml, type MonthUse } from "./usage-chart";
 
 /**
  * The Stash tab's history: yarn you had, and used up, the most recently used
@@ -17,6 +18,10 @@ export class StashHistoryView {
   private root!: HTMLElement;
   private results!: HTMLElement;
   private yarns: Yarn[] = [];
+  private uses: YarnUse[] = [];
+  private months: MonthUse[] = [];
+  /** The month whose yarn is listed: the current one to start with. */
+  private chosen = 11;
   private search = "";
 
   constructor(screen: HTMLElement) {
@@ -33,10 +38,12 @@ export class StashHistoryView {
           <input class="search" type="search" placeholder="Search name, brand, colourway, project..." />
         </div>
       </header>
+      <section class="usage-panel" data-el="usage"></section>
       <main class="results"></main>
     `;
     this.screen.appendChild(this.root);
     this.results = this.root.querySelector(".results")!;
+    this.wireUsage();
     const box = this.root.querySelector<HTMLInputElement>(".search")!;
     box.addEventListener("input", () => {
       this.search = box.value.trim().toLowerCase();
@@ -47,8 +54,84 @@ export class StashHistoryView {
   }
 
   async reload(): Promise<void> {
-    this.yarns = (await api.listYarns({ used: "history" })).sort((a, b) => (b.usedUpAt ?? 0) - (a.usedUpAt ?? 0));
+    const [yarns, uses] = await Promise.all([api.listYarns({ used: "history" }), api.listYarnUsage().catch(() => [] as YarnUse[])]);
+    this.yarns = yarns.sort((a, b) => (b.usedUpAt ?? 0) - (a.usedUpAt ?? 0));
+    this.uses = uses;
+    this.months = usageByMonth(uses);
+    this.paintUsage();
     this.paint();
+  }
+
+  // ---------- yarn used, month by month ----------
+
+  private paintUsage(): void {
+    const panel = this.root.querySelector<HTMLElement>('[data-el="usage"]')!;
+    const head = `<div class="usage-head"><h2>Yarn used, month by month</h2>
+      <p class="hint">Metres used in each calendar month: what finished projects took (weighed before and after) and what was left of yarn marked used up. Counted from this version on.</p></div>`;
+    if (!this.uses.length) {
+      panel.innerHTML = `${head}<p class="usage-empty">Nothing counted yet. Finish a project and weigh what is left, or mark a yarn used up, and it shows here.</p>`;
+      return;
+    }
+    const m = this.months[this.chosen];
+    const fmt = (n: number) => n.toLocaleString("en-GB");
+    const yarnCount = new Set(m.uses.map((u) => u.yarnName)).size;
+    const rows = m.uses
+      .map((u) => {
+        const day = new Date(u.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+        return `<li><span>${esc(u.yarnName)}</span><b>${u.metres ? `${fmt(u.metres)} m` : "–"}</b><em>${fmt(u.grams)} g · ${esc(u.projectName || "marked used up")} · ${esc(day)}</em></li>`;
+      })
+      .join("");
+    const extra = [yarnCount ? `${yarnCount} yarn${yarnCount === 1 ? "" : "s"}` : "", m.gramsWithoutMetres ? `${fmt(m.gramsWithoutMetres)} g of it without metres per ball` : ""].filter(Boolean);
+    panel.innerHTML = `
+      ${head}
+      <div class="usage-body">
+        ${usageChartHtml(this.months, this.chosen)}
+        <div class="usage-detail">
+          <div class="usage-figure"><b>${fmt(m.metres)} m</b><span>used in ${esc(m.label)}</span>
+            <small>${[`${fmt(m.grams)} g`, ...extra].join(" · ")}</small></div>
+          ${rows ? `<ul class="usage-list">${rows}</ul>` : `<p class="hint">Nothing used this month.</p>`}
+        </div>
+      </div>
+      <details class="usage-table"><summary>The months as a table</summary>
+        <table class="calc-table"><thead><tr><th>Month</th><th>Metres</th><th>Grams</th></tr></thead><tbody>
+          ${[...this.months]
+            .reverse()
+            .map((x) => `<tr><td>${esc(x.label)}</td><td>${fmt(x.metres)}</td><td>${fmt(x.grams)}</td></tr>`)
+            .join("")}
+        </tbody></table>
+      </details>`;
+  }
+
+  /** Choosing a month lists its yarn; pointing at one, or tabbing to it, says its figures. */
+  private wireUsage(): void {
+    const panel = this.root.querySelector<HTMLElement>('[data-el="usage"]')!;
+    panel.addEventListener("click", (e) => {
+      const col = closestEl(e.target, "[data-month]");
+      if (!col) return;
+      this.chosen = Number(col.dataset.month);
+      this.paintUsage();
+      panel.querySelector<HTMLElement>(`[data-month="${this.chosen}"]`)?.focus();
+    });
+    const show = (e: Event) => {
+      const col = closestEl(e.target, "[data-month]");
+      const tip = panel.querySelector<HTMLElement>(".usage-tip");
+      if (!col || !tip) return;
+      tip.textContent = col.dataset.tip ?? "";
+      tip.hidden = false;
+      const plot = col.closest<HTMLElement>(".usage-plot")!.getBoundingClientRect();
+      const r = col.getBoundingClientRect();
+      tip.style.left = `${Math.min(Math.max(r.left + r.width / 2 - plot.left, 90), plot.width - 90)}px`;
+    };
+    const hide = () => {
+      const tip = panel.querySelector<HTMLElement>(".usage-tip");
+      if (tip) tip.hidden = true;
+    };
+    panel.addEventListener("pointerover", show);
+    panel.addEventListener("focusin", show);
+    panel.addEventListener("pointerout", (e) => {
+      if (!closestEl((e as PointerEvent).relatedTarget, "[data-month]")) hide();
+    });
+    panel.addEventListener("focusout", hide);
   }
 
   private paint(): void {

@@ -88,6 +88,7 @@ pub fn run() {
             commands::delete_yarn,
             commands::yarn_facets,
             commands::set_yarn_used_up,
+            commands::list_yarn_usage,
             commands::list_ball_bands,
             commands::add_ball_band,
             commands::rename_ball_bands,

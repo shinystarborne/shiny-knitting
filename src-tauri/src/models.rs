@@ -375,6 +375,25 @@ pub struct Yarn {
     pub used_in: Vec<String>,
 }
 
+/// Yarn used, when it was used: what a finished project took (weighed before
+/// and after), or what was left of a yarn marked used up. Kept with the
+/// yarn's and project's names, so a removed one still says.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnUse {
+    pub id: String,
+    pub yarn_id: Option<String>,
+    pub yarn_name: String,
+    pub project_id: Option<String>,
+    pub project_name: String,
+    pub at: i64,
+    pub grams: i64,
+    /// What the grams came to by the yarn's ball band then; 0 when it gave no metres per ball.
+    pub metres: i64,
+    /// "finished" (a project's) or "used-up" (a yarn marked so).
+    pub source: String,
+}
+
 /// A picture of a yarn's ball band (the paper round the ball), filed by the
 /// yarn's brand and name, not its colour: "Drops" / "Air" is every colour of
 /// Drops Air. A yarn can have several, a band's front and back.

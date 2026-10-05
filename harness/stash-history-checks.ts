@@ -9,6 +9,9 @@
  *   window.__stashHistoryChecks()
  */
 
+import { niceScale, usageByMonth } from "../src/views/usage-chart";
+import type { YarnUse } from "../src/api";
+
 interface CheckResult {
   name: string;
   ok: boolean;
@@ -31,6 +34,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 10000): Pr
 
 type StoredYarn = { id: string; name: string; usedUpAt?: number | null };
 type Store = {
+  yarnUsage: unknown[];
   yarns: StoredYarn[];
   ballBands: { id: string; brand: string; name: string }[];
   projects: { id: string }[];
@@ -58,6 +62,28 @@ async function paste(colour: string): Promise<void> {
   document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
 }
 
+/** The month arithmetic: calendar months, first day to last, in local time. */
+function pure(results: CheckResult[]): void {
+  const use = (at: Date, metres: number, grams = 10): YarnUse => ({ id: String(+at), yarnId: null, yarnName: "Y", projectId: null, projectName: "", at: +at, grams, metres, source: "finished" });
+  // 15 March 2028, a leap year.
+  const now = new Date(2028, 2, 15, 12).getTime();
+  const uses = [
+    use(new Date(2028, 1, 1, 0, 0, 0), 100), // the first moment of February
+    use(new Date(2028, 1, 29, 23, 59, 59), 50), // the last of February: a leap day
+    use(new Date(2028, 2, 1, 0, 0, 0), 7), // the first of March
+    use(new Date(2027, 2, 31, 23, 0), 999), // a year and more ago: not shown
+    use(new Date(2027, 3, 1, 9), 3, 40), // April last year: the first month shown
+    use(new Date(2028, 2, 2), 0, 25), // no metres per ball
+  ];
+  const months = usageByMonth(uses, now);
+  check(results, "twelve calendar months, the current one last", months.length === 12 && months[11].label === "March 2028" && months[0].label === "April 2027", `${months[0].label} … ${months[11].label}`);
+  check(results, "a month runs from its first moment to its last, a leap day too", months[10].metres === 150 && months[10].uses.length === 2, String(months[10].metres));
+  check(results, "…the next starts at midnight on the 1st", months[11].metres === 7 && months[11].grams === 35 && months[11].gramsWithoutMetres === 25, JSON.stringify([months[11].metres, months[11].grams]));
+  check(results, "…and what is older than the twelve is left out", months[0].metres === 3 && months.reduce((n, m) => n + m.metres, 0) === 160);
+  const scale = (max: number) => JSON.stringify(niceScale(max));
+  check(results, "the axis goes up in round steps", scale(437) === JSON.stringify({ top: 600, step: 200 }) && scale(1240) === JSON.stringify({ top: 1500, step: 500 }) && niceScale(0).top > 0, `${scale(437)} ${scale(1240)}`);
+}
+
 export async function verifyStashHistory() {
   const results: CheckResult[] = [];
   const store = (window as unknown as { __store: Store }).__store;
@@ -68,6 +94,8 @@ export async function verifyStashHistory() {
   const added: string[] = [];
 
   try {
+    pure(results);
+    store.yarnUsage = [];
     const yarn = async (name: string, brand: string, colourway: string) => {
       const y = await invoke<StoredYarn>("add_yarn", {
         input: { name, brand, colourway, yarnWeight: "Lace", metresPerBall: 150, gramsPerBall: 50, notes: "", fibres: [{ name: "alpaca", percent: 70 }], superwash: false, plans: [], lots: [{ balls: 2, gramsLeft: 100 }] },
@@ -83,6 +111,8 @@ export async function verifyStashHistory() {
     await waitFor(() => !document.querySelector(".stash"), "the library");
     tab("stash");
     await waitFor(() => !!document.querySelector('.lib-title [data-mode="yarn"]') && !!cardFor(air.id), "the stash");
+    const total = document.querySelector<HTMLElement>('[data-el="total"]')?.textContent ?? "";
+    check(results, "the stash says its metres and weight in all", /^In the stash: [\d,]+ m · [\d.,]+ k?g in \d+ yarns/.test(total), total);
     check(results, "the Stash switches between Yarn, Swatches, Ball bands and History", [...document.querySelectorAll<HTMLElement>(".lib-title [data-mode]")].map((b) => b.dataset.mode).join() === "yarn,swatches,bands,history");
     (cardFor(air.id)!.querySelector("[data-used-up]") as HTMLElement).click();
     await waitFor(() => !!dialog(), "the question");
@@ -107,6 +137,13 @@ export async function verifyStashHistory() {
     await waitFor(() => !!document.querySelector(".stash") && !!cardFor(air.id), "the stash");
     mode("history");
     await waitFor(() => !!cardFor(kid.id), "the finished project's yarn in the history");
+    const figure = document.querySelector<HTMLElement>(".usage-figure")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    const thisMonth = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    check(results, "the History shows the metres used this month: the 100 g the shawl took, by its ball band", figure.replace(/ ?used in /, " used in ").startsWith(`300 m used in ${thisMonth} 100 g · 1 yarn`), figure);
+    check(results, "…a column a month for twelve months, this one chosen", document.querySelectorAll(".usage-col").length === 12 && !!document.querySelector('.usage-col.chosen[data-month="11"]'));
+    const listed = document.querySelector(".usage-list li")?.textContent ?? "";
+    check(results, "…with what took it", /Drops Kid-Silk \(03 Pink\)\s*300 m\s*100 g · Lace shawl/.test(listed), listed);
+    check(results, "Back in the stash took back what marking it used up counted", store.yarnUsage.length === 1);
     check(results, "finishing a project with nothing left of a yarn puts it in the History, with what it went into", /Went into: Lace shawl/.test(cardFor(kid.id)!.textContent ?? ""), cardFor(kid.id)!.textContent ?? "");
 
     // ---------- ball bands ----------

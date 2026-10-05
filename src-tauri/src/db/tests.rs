@@ -2241,6 +2241,11 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
     assert_eq!(used.used_up_at, Some(1234), "nothing left of it anywhere: into the stash's history, dated");
     assert_eq!(used.used_in, vec!["Jumper"], "with what it went into");
     assert_eq!(get_yarn(&conn, &y.id).unwrap().used_up_at, None, "what has some left stays in the stash");
+    let uses = list_yarn_usage(&conn).unwrap();
+    let took = |name: &str| uses.iter().find(|u| u.yarn_name.contains(name)).map(|u| (u.grams, u.project_name.as_str(), u.at, u.source.as_str()));
+    assert_eq!(took("Felted Tweed"), Some((65, "Jumper", 1234, "finished")), "100 g before, 35 g left: 65 g used");
+    assert_eq!(took("Used up"), Some((50, "Jumper", 1234, "finished")));
+    assert_eq!(took("No lots"), None, "nothing weighed before, nothing known to be used");
     let made = get_yarn(&conn, &none.id).unwrap();
     assert_eq!(made.lots.len(), 1, "a lot is made to hold what is left");
     assert_eq!((made.lots[0].grams_left, made.lots[0].leftover), (12, true));
@@ -2992,4 +2997,20 @@ fn ball_bands_are_filed_by_brand_and_name() {
     assert_eq!(all.iter().filter(|b| b.brand == "Garnstudio").count(), 2, "every picture of the yarn moves");
     assert_eq!(delete_ball_band(&conn, "b1").unwrap(), "");
     assert_eq!(list_ball_bands(&conn).unwrap().len(), 2);
+}
+
+#[test]
+fn marking_a_yarn_used_up_counts_what_was_left_as_used() {
+    let conn = test_db();
+    let input = YarnInput { name: "Air".into(), brand: "Drops".into(), colourway: "01".into(), metres_per_ball: 150, grams_per_ball: 50, lots: vec![YarnLotInput { balls: 2.0, grams_left: 80, ..Default::default() }], ..YarnInput::default() };
+    insert_yarn(&conn, "y1", &input).unwrap();
+    set_yarn_used_up(&conn, "y1", Some(500)).unwrap();
+    let uses = list_yarn_usage(&conn).unwrap();
+    assert_eq!(uses.len(), 1);
+    assert_eq!((uses[0].grams, uses[0].metres, uses[0].yarn_name.as_str(), uses[0].at), (80, 240, "Drops Air (01)", 500), "80 g of a 150 m / 50 g ball is 240 m");
+    set_yarn_used_up(&conn, "y1", Some(900)).unwrap();
+    assert_eq!(list_yarn_usage(&conn).unwrap().len(), 1, "marked again, it is not counted twice");
+    set_yarn_used_up(&conn, "y1", None).unwrap();
+    assert!(list_yarn_usage(&conn).unwrap().is_empty(), "back in the stash, it was not used after all");
+    delete_yarn(&conn, "y1").unwrap();
 }

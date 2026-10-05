@@ -118,6 +118,9 @@ at once rare enough?
 
 ## Small fixes
 
+- **Ball band thumbnails.** A yarn's card and its form could show a small
+  picture of its ball band (from Stash → Ball bands, by brand and name), to
+  open it big, without going to the Ball bands view.
 - **Restore a removed pattern.** Removing is immediate and also deletes the
   file. A bin, or an Undo for a few seconds, would be kinder.
 - **Faster drag and drop.** Dropping a large PDF onto the app is slower than
@@ -146,6 +149,12 @@ at once rare enough?
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
   highlights, notes, drawings, pins.
+- **Stash totals and yarn used:** the stash's metres and weight, of all of
+  it or what the filters leave. Yarn used is recorded as it goes (a finished
+  project's, weighed before and after; what was left of yarn marked used up),
+  and the History shows the metres used each calendar month for the last
+  twelve, each month's yarn listed. Counted from 0.3.23: what was used before
+  was never recorded.
 - **Stash history and ball bands:** yarn used up (from its card, or by
   finishing a project with none of it left) leaves the stash for a History,
   with when and what it went into, and can come back. Ball bands: pictures of

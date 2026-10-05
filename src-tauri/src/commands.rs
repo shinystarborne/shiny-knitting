@@ -609,6 +609,12 @@ pub fn set_yarn_used_up(state: State<'_, AppState>, id: String, used: bool) -> C
     db::set_yarn_used_up(&state.db(), &id, at)
 }
 
+/// Every use of yarn recorded, for the stash's monthly figures.
+#[tauri::command]
+pub fn list_yarn_usage(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::YarnUse>> {
+    db::list_yarn_usage(&state.db())
+}
+
 #[tauri::command]
 pub fn list_ball_bands(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::BallBand>> {
     db::list_ball_bands(&state.db())

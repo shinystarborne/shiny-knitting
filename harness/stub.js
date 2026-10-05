@@ -50,6 +50,8 @@ const store = {
   charts: [],
   // Ball band pictures. Their bytes share the `covers` blob store, under "band:<id>".
   ballBands: [],
+  // Yarn used, when: as the backend's yarn_usage.
+  yarnUsage: [],
   // People and their measurement sets, as the backend's two tables.
   people: [],
   measurementSets: [],
@@ -928,6 +930,13 @@ function outcome(patternId) {
       .sort((a, b) => a.position - b.position)),
   };
 }
+/** As db::record_use: grams of a yarn used, with the metres they come to by its ball band. */
+function recordUse(yarn, project, at, grams, source) {
+  const metres = yarn.metresPerBall > 0 && yarn.gramsPerBall > 0 ? Math.round((grams / yarn.gramsPerBall) * yarn.metresPerBall) : 0;
+  const name = [yarn.brand, yarn.name].filter(Boolean).join(" ") + (yarn.colourway ? ` (${yarn.colourway})` : "");
+  store.yarnUsage.push({ id: `u${store.nextId++}`, yarnId: yarn.id, yarnName: name, projectId: project?.id ?? null, projectName: project?.name ?? "", at, grams, metres, source });
+}
+
 /** As db::band_names: one line each, the name needed, filed with a spelling already there. */
 function bandNames(brand, name) {
   const line = (v) => String(v ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
@@ -1575,6 +1584,7 @@ const handlers = {
         lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, location: "", boughtAt: null, leftover: false };
         yarn.lots.push(lot);
       }
+      if ((lot.gramsLeft || 0) > left.grams) recordUse(yarn, pr, pr.finishedAt, lot.gramsLeft - left.grams, "finished");
       lot.gramsLeft = left.grams;
       lot.leftover = left.grams > 0;
       // Nothing left of it anywhere: into the stash's history.
@@ -1762,9 +1772,16 @@ const handlers = {
   set_yarn_used_up: ({ id, used }) => {
     const y = store.yarns.find((x) => x.id === id);
     if (!y) throw new Error("That yarn is no longer there.");
-    y.usedUpAt = used ? Date.now() : null;
+    const left = y.lots.reduce((n, l) => n + (l.gramsLeft || 0), 0);
+    if (used && !y.usedUpAt && left > 0) recordUse(y, null, Date.now(), left, "used-up");
+    if (!used) {
+      const last = store.yarnUsage.filter((u) => u.yarnId === id && u.source === "used-up").sort((a, b) => b.at - a.at)[0];
+      store.yarnUsage = store.yarnUsage.filter((u) => u !== last);
+    }
+    y.usedUpAt = used ? (y.usedUpAt ?? Date.now()) : null;
     return withYarnTotals(y);
   },
+  list_yarn_usage: () => [...store.yarnUsage].sort((a, b) => b.at - a.at).map(clone),
   list_ball_bands: () =>
     [...store.ballBands].sort(
       (a, b) => a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" }) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.addedAt - b.addedAt,

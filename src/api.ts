@@ -484,6 +484,23 @@ export interface YarnInput {
   lots: YarnLotInput[];
 }
 
+/**
+ * Yarn used, when: what a finished project took (weighed before and after),
+ * or what was left of a yarn marked used up. Mirrors `models.rs::YarnUse`.
+ */
+export interface YarnUse {
+  id: string;
+  yarnId: string | null;
+  yarnName: string;
+  projectId: string | null;
+  projectName: string;
+  at: number;
+  grams: number;
+  /** By the yarn's ball band then; 0 when it had no metres per ball. */
+  metres: number;
+  source: "finished" | "used-up";
+}
+
 /** A picture of a ball band, filed by the yarn's brand and name. Mirrors `models.rs::BallBand`. */
 export interface BallBand {
   id: string;
@@ -1261,6 +1278,8 @@ export const api = {
   removeYarnPhoto: (yarnId: string) => invoke<void>("remove_yarn_photo", { yarnId }),
   /** Used up, into the stash's history; or, with false, back in the stash. */
   setYarnUsedUp: (id: string, used: boolean) => invoke<Yarn>("set_yarn_used_up", { id, used }),
+  /** Every use of yarn recorded, the newest first. */
+  listYarnUsage: () => invoke<YarnUse[]>("list_yarn_usage"),
 
   // Ball bands: pictures of the paper round a ball, filed by brand and name.
   listBallBands: () => invoke<BallBand[]>("list_ball_bands"),

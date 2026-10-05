@@ -53,7 +53,7 @@ export class StashView {
     this.root.className = "library stash";
     this.root.innerHTML = `
       <header class="lib-bar">
-        <div class="lib-title"><h1>Stash</h1>${stashModeSwitch("yarn")}</div>
+        <div class="lib-title"><h1>Stash</h1>${stashModeSwitch("yarn")}<span class="stash-total" data-el="total"></span></div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search name, brand, colourway..." />
           <button data-act="add" class="primary">+ Add yarn</button>
@@ -294,6 +294,7 @@ export class StashView {
     this.renderUse();
     this.renderFibres();
     const yarns = this.shown();
+    this.renderTotal(yarns);
     if (!yarns.length) {
       this.results.innerHTML = `
         <div class="empty">
@@ -316,6 +317,23 @@ export class StashView {
       pictures: ".cover[data-id]",
       paint: (cover) => this.loadPhoto(cover),
     });
+  }
+
+  /** How much yarn is shown, all of it in metres and grams: the whole stash, or what the filters leave. */
+  private renderTotal(yarns: Yarn[]): void {
+    const el = this.root.querySelector<HTMLElement>('[data-el="total"]');
+    if (!el) return;
+    const filtered = !!(this.filter.search || this.filter.yarnWeight || this.use.size || this.fibre.size || this.made.size);
+    const metres = yarns.reduce((n, y) => n + y.metresLeft, 0);
+    const grams = yarns.reduce((n, y) => n + y.gramsLeft, 0);
+    // Weighed, but with no metres per ball to say how far it goes.
+    const unknown = yarns.filter((y) => y.gramsLeft > 0 && !y.metresLeft).length;
+    const count = `${yarns.length} yarn${yarns.length === 1 ? "" : "s"}`;
+    el.textContent = `${filtered ? "Shown" : "In the stash"}: ${metres.toLocaleString("en-GB")} m · ${weight(grams)} in ${count}`;
+    el.title = unknown
+      ? `${unknown} of them ${unknown === 1 ? "has" : "have"} no metres per ball, so ${unknown === 1 ? "its" : "their"} grams are in the weight but not the metres.`
+      : "The grams weighed in each lot, and the metres they come to by the ball band.";
+    if (unknown) el.textContent += ` (${unknown} without metres)`;
   }
 
   private cardHtml(y: Yarn): string {
@@ -491,4 +509,9 @@ function fmt(n: number): string {
 
 function escapeHtml(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Grams as they read best: 850 g, or 2.15 kg. */
+function weight(grams: number): string {
+  return grams >= 1000 ? `${(grams / 1000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} kg` : `${grams} g`;
 }

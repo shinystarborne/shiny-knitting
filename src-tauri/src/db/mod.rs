@@ -414,6 +414,22 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_yarn_lots_yarn ON yarn_lots(yarn_id);
 
+        -- Yarn used, when: a finished project's, weighed before and after, or
+        -- what was left of a yarn marked used up. Names are kept, so a
+        -- removed yarn or project still says.
+        CREATE TABLE IF NOT EXISTS yarn_usage (
+            id            TEXT PRIMARY KEY,
+            yarn_id       TEXT REFERENCES yarns(id) ON DELETE SET NULL,
+            yarn_name     TEXT NOT NULL DEFAULT '',
+            project_id    TEXT REFERENCES projects(id) ON DELETE SET NULL,
+            project_name  TEXT NOT NULL DEFAULT '',
+            at            INTEGER NOT NULL,
+            grams         INTEGER NOT NULL,
+            metres        INTEGER NOT NULL DEFAULT 0,
+            source        TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_yarn_usage_at ON yarn_usage(at);
+
         -- A picture of a ball band, filed by the yarn's brand and name.
         CREATE TABLE IF NOT EXISTS ball_bands (
             id          TEXT PRIMARY KEY,
@@ -2499,6 +2515,11 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
         };
         match lot {
             Some(l) => {
+                // What the project took: the lot's weight before, less what is left.
+                let before: i64 = tx.query_row("SELECT grams_left FROM yarn_lots WHERE id = ?1", params![l], |r| r.get(0)).optional()?.unwrap_or(0);
+                if before > grams {
+                    record_use(&tx, &entry.yarn_id, Some((id, project.name.as_str())), input.finished_at.unwrap_or(now), before - grams, "finished")?;
+                }
                 tx.execute(
                     "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3 WHERE id = ?1",
                     params![l, grams, grams > 0],
@@ -3390,11 +3411,60 @@ pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
 /// Marks a yarn used up (now, or at `at`), into the stash's history; or, with
 /// None, back in the stash.
 pub fn set_yarn_used_up(conn: &Connection, id: &str, at: Option<i64>) -> AppResult<Yarn> {
-    let changed = conn.execute("UPDATE yarns SET used_up_at = ?2 WHERE id = ?1", params![id, at])?;
-    if changed == 0 {
-        return Err(AppError::NotFound("That yarn is no longer there.".to_string()));
+    let yarn = get_yarn(conn, id).map_err(|_| AppError::NotFound("That yarn is no longer there.".to_string()))?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("UPDATE yarns SET used_up_at = ?2 WHERE id = ?1", params![id, at])?;
+    match at {
+        // What was left of it was used: knitted up, given away, gone.
+        Some(at) if yarn.used_up_at.is_none() && yarn.grams_left > 0 => record_use(&tx, id, None, at, yarn.grams_left, "used-up")?,
+        // Back in the stash: it was not used after all.
+        None => {
+            tx.execute(
+                "DELETE FROM yarn_usage WHERE id = (SELECT id FROM yarn_usage WHERE yarn_id = ?1 AND source = 'used-up' ORDER BY at DESC LIMIT 1)",
+                params![id],
+            )?;
+        }
+        _ => {}
     }
+    tx.commit()?;
     get_yarn(conn, id)
+}
+
+/// Records grams of a yarn used, with the metres they came to by its ball band.
+fn record_use(conn: &Connection, yarn_id: &str, project: Option<(&str, &str)>, at: i64, grams: i64, source: &str) -> AppResult<()> {
+    let (name, brand, colourway, mpb, gpb): (String, String, String, i64, i64) = conn.query_row(
+        "SELECT name, brand, colourway, metres_per_ball, grams_per_ball FROM yarns WHERE id = ?1",
+        params![yarn_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    )?;
+    let metres = if mpb > 0 && gpb > 0 { (grams as f64 / gpb as f64 * mpb as f64).round() as i64 } else { 0 };
+    let yarn_name = [brand.as_str(), name.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" ")
+        + &if colourway.is_empty() { String::new() } else { format!(" ({colourway})") };
+    conn.execute(
+        "INSERT INTO yarn_usage (id, yarn_id, yarn_name, project_id, project_name, at, grams, metres, source)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![uuid::Uuid::new_v4().to_string(), yarn_id, yarn_name, project.map(|p| p.0), project.map(|p| p.1).unwrap_or(""), at, grams, metres, source],
+    )?;
+    Ok(())
+}
+
+/// Every use of yarn recorded, the newest first.
+pub fn list_yarn_usage(conn: &Connection) -> AppResult<Vec<crate::models::YarnUse>> {
+    let mut stmt = conn.prepare("SELECT * FROM yarn_usage ORDER BY at DESC, rowid DESC")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(crate::models::YarnUse {
+            id: r.get("id")?,
+            yarn_id: r.get("yarn_id")?,
+            yarn_name: r.get("yarn_name")?,
+            project_id: r.get("project_id")?,
+            project_name: r.get("project_name")?,
+            at: r.get("at")?,
+            grams: r.get("grams")?,
+            metres: r.get("metres")?,
+            source: r.get("source")?,
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 fn row_to_band(row: &rusqlite::Row) -> rusqlite::Result<BallBand> {
