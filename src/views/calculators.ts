@@ -4,8 +4,9 @@ import { closestEl } from "../dom";
 import { raglan, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
+import { ChartList } from "./charts";
 
-type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge";
+type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "charts";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "raglan", label: "Raglan sweater", hint: "Top-down, in the round" },
@@ -13,6 +14,7 @@ const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
   { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
+  { key: "charts", label: "Colourwork charts", hint: "Standard, or a round yoke's" },
 ];
 
 /** A round yoke's depth over the armhole's, in cm: it covers the shoulders too. */
@@ -55,11 +57,17 @@ const EASE_FIELDS: { key: keyof RaglanInput; label: string; hint: string; start:
  */
 const kept: { calc: Calc; values: Record<string, string>; unit: MeasureUnit | null } = { calc: "raglan", values: {}, unit: null };
 
+/** Which calculator the tab opens on next: the charts, coming back from one. */
+export function openCalculatorsOn(calc: Calc): void {
+  kept.calc = calc;
+}
+
 /**
  * The Calculators tab: a top-down raglan from someone's measurements and a
  * swatch, and the small sums of every day -- stitches for a size, increasing
  * evenly, a pattern at another gauge. Results come as numbers and as written
- * steps, which copy, or go onto a project's board.
+ * steps, which copy, or go onto a project's board. The colourwork charts are
+ * listed here too (see charts.ts).
  */
 export class CalculatorsView {
   private screen: HTMLElement;
@@ -176,6 +184,10 @@ export class CalculatorsView {
     if (calc === "size") this.main.innerHTML = this.sizeForm();
     if (calc === "evenly") this.main.innerHTML = this.evenlyForm();
     if (calc === "regauge") this.main.innerHTML = this.regaugeForm();
+    if (calc === "charts") {
+      this.main.innerHTML = "";
+      void new ChartList(this.main).mount();
+    }
     this.calculate();
   }
 

@@ -2885,3 +2885,35 @@ fn a_log_card_belongs_on_a_project_board_only() {
     assert!(insert_board_item(&conn, "on-project", &pr.id, &log).is_ok());
     assert!(insert_board_item(&conn, "on-ideas", &board.id, &log).is_err(), "an inspiration board has no log");
 }
+
+#[test]
+fn a_chart_is_stored_whole_and_listed_newest_first() {
+    use crate::models::{ChartColour, ChartData};
+    let conn = test_db();
+    let input = |name: &str, cells: &str| crate::models::ChartInput {
+        name: name.into(),
+        data: ChartData {
+            kind: "standard".into(),
+            width: 2,
+            height: 2,
+            cells: cells.into(),
+            colours: vec![ChartColour { name: "White".into(), hex: "#ffffff".into() }, ChartColour { name: "Red".into(), hex: "#cc0000".into() }],
+            repeats: 1,
+            ..Default::default()
+        },
+    };
+    let a = insert_chart(&conn, "c1", &input("Hearts", "0110")).unwrap();
+    assert_eq!((a.name.as_str(), a.data.cells.as_str(), a.data.colours[1].name.as_str()), ("Hearts", "0110", "Red"));
+    insert_chart(&conn, "c2", &input("Stars", "0000")).unwrap();
+    // Changed later, so first.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let changed = update_chart(&conn, "c1", &input("Hearts", "1111")).unwrap();
+    assert_eq!(changed.data.cells, "1111");
+    assert!(changed.updated_at >= changed.created_at);
+    let ids: Vec<_> = list_charts(&conn).unwrap().into_iter().map(|c| c.id).collect();
+    assert_eq!(ids, vec!["c1", "c2"]);
+    delete_chart(&conn, "c1").unwrap();
+    assert!(get_chart(&conn, "c1").is_err());
+    assert!(update_chart(&conn, "c1", &input("Gone", "0000")).is_err());
+    assert!(delete_chart(&conn, "c1").is_err());
+}

@@ -14,7 +14,14 @@ knowing before working on it.
 
 ## Next up
 
-Everything agreed so far is built. The next step is picked from Later.
+### How much yarn a project expects to use
+
+Choosing a yarn from the stash for a project says nothing about how much of
+it: the project shows it as 0 g, which is confusing. When a yarn is chosen,
+ask how much it is expected to take (grams, or balls, or "all of it"), show
+that on the project, and keep it apart from the leftovers recorded when the
+project is finished. Later it could warn when a yarn is promised to more
+projects than there is of it.
 
 ---
 
@@ -39,7 +46,7 @@ projects rather than something separate.
 Open question: made automatically when a project is finished, or added by
 hand?
 
-### Knitting calculators and a chart designer
+### Knitting calculators
 
 They all need measurements and a gauge, and both are built now: the People
 tab's measurements (in cm), and the stash's swatches (sts and rows per 10 cm,
@@ -53,12 +60,19 @@ helpers (see Already built). Still to come:
   edges; a raised back neck with short rows; rib repeats that fit the counts
   (2x2 wants a multiple of 4).
 
-**Colourwork chart designer.** A grid where one square is one stitch.
+### Colourwork charts, further
 
-- A heavier line every 10 stitches and 10 rows; another every 50?
-- Named colours with a legend (a chart without a key is not usable).
-- Export to PNG and PDF, printable at the real size.
-- Written row-by-row instructions as well as the picture?
+The designer is built (see Already built). Left over:
+
+- **Select, copy and paste** a block of squares, to repeat a motif or move it.
+- **Colours from the stash:** a chart colour linked to a yarn, so the legend
+  says which yarn and colourway.
+- **The round yoke calculator and a yoke chart together:** the calculator fits
+  its counts to a repeat, but a lopapeysa chart keeps its repeats and narrows
+  each one; the two work the other way round from each other. Open question:
+  fit the chart to the calculator's counts, or the calculator to the chart?
+- **Knitting from a chart:** a chart on a project's page with the current row
+  marked, counted like a pattern's rows.
 
 ### PDF export
 
@@ -138,6 +152,15 @@ at once rare enough?
   ease: the numbers, and the steps in words, copied or saved to a project's
   board. And stitches for a size (fitted to a repeat), increasing or
   decreasing evenly in the round or flat, and a pattern re-gauged to yours.
+- **Colourwork charts:** in the Calculators tab. A standard chart (flat, in
+  right- and wrong-side rows, or in the round) or a round yoke's repeat (a
+  lopapeysa's), with its decrease rounds, or increase rounds top-down, and the
+  squares with no stitch grey. Draw, fill, line, box, pick, mirror, undo; move,
+  flip and resize; named colours with a legend and symbols; a heavier line
+  every 10; long floats underlined. Beside it the chart tiled, or the yoke from
+  above, and the rows in words. A gauge gives squares the shape of stitches
+  and the size it comes out. Exported as a PNG, or a PDF at the real size (or
+  a square size), over several pages if need be; or put on a project's board.
 - **Gauge swatches:** in the stash, beside the yarn: the yarn (from the stash
   or typed in), the needle (from the box or a size), the stitch pattern, sts
   and rows over 10 × 10 cm (or 4 × 4 in) before and after blocking, a photo,

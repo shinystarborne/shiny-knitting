@@ -9,6 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
+    Chart, ChartInput,
 };
 
 #[cfg(test)]
@@ -361,6 +362,17 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             shoe_size    TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_measurement_sets_person ON measurement_sets(person_id);
+
+        -- A colourwork chart. Its grid, colours and shaping are one JSON
+        -- object (`ChartData`), read and written whole: a chart is edited as
+        -- a picture is, never queried square by square.
+        CREATE TABLE IF NOT EXISTS charts (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            data        TEXT NOT NULL,
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL
+        );
 
         -- A page the reader turned, for a chart printed sideways to fit. Only
         -- turned pages have a row; turning one back to upright removes it.
@@ -3344,6 +3356,61 @@ pub fn delete_swatch(conn: &Connection, id: &str) -> AppResult<String> {
 /// A needle's size, for a swatch knitted on it.
 pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
     Ok(conn.query_row("SELECT size_mm FROM tools WHERE id = ?1", params![id], |r| r.get(0)).optional()?)
+}
+
+// ---------- colourwork charts ----------
+
+fn row_to_chart(row: &rusqlite::Row) -> rusqlite::Result<Chart> {
+    let data: String = row.get("data")?;
+    Ok(Chart {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        data: serde_json::from_str(&data).unwrap_or_default(),
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+/// Every chart, the most recently changed first.
+pub fn list_charts(conn: &Connection) -> AppResult<Vec<Chart>> {
+    let mut stmt = conn.prepare("SELECT * FROM charts ORDER BY updated_at DESC, created_at DESC")?;
+    let rows = stmt.query_map([], row_to_chart)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_chart(conn: &Connection, id: &str) -> AppResult<Chart> {
+    conn.query_row("SELECT * FROM charts WHERE id = ?1", params![id], row_to_chart)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That chart is no longer there.".to_string()))
+}
+
+/// Stores a chart already made ready by `charts::clean`.
+pub fn insert_chart(conn: &Connection, id: &str, input: &ChartInput) -> AppResult<Chart> {
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO charts (id, name, data, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+        params![id, input.name, serde_json::to_string(&input.data)?, now],
+    )?;
+    get_chart(conn, id)
+}
+
+pub fn update_chart(conn: &Connection, id: &str, input: &ChartInput) -> AppResult<Chart> {
+    let changed = conn.execute(
+        "UPDATE charts SET name = ?2, data = ?3, updated_at = ?4 WHERE id = ?1",
+        params![id, input.name, serde_json::to_string(&input.data)?, now_ms()],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That chart is no longer there.".to_string()));
+    }
+    get_chart(conn, id)
+}
+
+pub fn delete_chart(conn: &Connection, id: &str) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM charts WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That chart is no longer there.".to_string()));
+    }
+    Ok(())
 }
 
 // ---------- people and their measurements ----------

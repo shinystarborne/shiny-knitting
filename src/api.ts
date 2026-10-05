@@ -815,6 +815,65 @@ export type SwatchInput = Pick<
   "yarnId" | "yarnText" | "toolId" | "needleMm" | "stitch" | "sts" | "rows" | "stsBlocked" | "rowsBlocked" | "projectId" | "notes"
 > & { madeAt: number | null };
 
+// ---------- colourwork charts ----------
+
+/** One colour of a chart. Mirrors `models.rs::ChartColour`. */
+export interface ChartColour {
+  name: string;
+  /** "#rrggbb". */
+  hex: string;
+}
+
+/**
+ * A round yoke's stretch of rounds with the same stitches in each repeat.
+ * Mirrors `models.rs::ChartSection`: from `row` (0 is the first round
+ * knitted) to the next section, `sts` stitches each repeat; `cols` are the
+ * columns its wider neighbour has and it does not.
+ */
+export interface ChartSection {
+  row: number;
+  sts: number;
+  cols: number[];
+}
+
+/**
+ * What a chart is. Mirrors `models.rs::ChartData`. Rows are in the order
+ * they are knitted, row 0 first (drawn at the bottom); columns left to right
+ * as drawn, so stitch 1 is the last column.
+ */
+export interface ChartData {
+  kind: "standard" | "yoke";
+  width: number;
+  height: number;
+  /** One character per square, row by row from row 0: a colour's index in hex. */
+  cells: string;
+  colours: ChartColour[];
+  /** A standard chart worked flat, in right- and wrong-side rows; else in the round. */
+  flat: boolean;
+  /** A yoke's repeats around. */
+  repeats: number;
+  /** A yoke knitted from the neck down; else from the hem up. */
+  topDown: boolean;
+  /** A yoke's shaping, the first at row 0; none for a standard chart. */
+  sections: ChartSection[];
+  /** Stitches and rows per 10 cm; 0 when not given. */
+  gauge: { sts: number; rows: number };
+  /** Symbols on the squares as well as colours. */
+  symbols: boolean;
+  /** Floats longer than this many stitches are pointed out; 0 for never. */
+  floatLimit: number;
+  notes: string;
+}
+
+/** Mirrors `models.rs::Chart`. */
+export interface Chart {
+  id: string;
+  name: string;
+  data: ChartData;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------- people and their measurements ----------
 
 /**
@@ -1100,6 +1159,19 @@ export const api = {
   /** Raw binary, as `getCover` returns it. */
   getSwatchPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_swatch_photo", { id }),
   removeSwatchPhoto: (id: string) => invoke<void>("remove_swatch_photo", { id }),
+
+  // Colourwork charts. Listed whole, squares and all: the list draws them.
+  listCharts: () => invoke<Chart[]>("list_charts"),
+  getChart: (id: string) => invoke<Chart>("get_chart", { id }),
+  addChart: (name: string, data: ChartData) => invoke<Chart>("add_chart", { input: { name, data } }),
+  updateChart: (id: string, name: string, data: ChartData) => invoke<Chart>("update_chart", { id, input: { name, data } }),
+  deleteChart: (id: string) => invoke<void>("delete_chart", { id }),
+  /**
+   * Asks where to save an exported chart and writes it: the path, or null if
+   * the dialog was cancelled. The bytes go raw, the name and kind in headers.
+   */
+  saveChartFile: (kind: "pdf" | "png", name: string, bytes: Uint8Array) =>
+    invoke<string | null>("save_chart_file", bytes, { headers: { "x-kind": kind, "x-name": encodeURIComponent(name) } }),
 
   // People and their measurements. Each change returns the whole person, so
   // the page shows what was stored.

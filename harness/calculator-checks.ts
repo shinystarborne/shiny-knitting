@@ -141,7 +141,7 @@ export async function verifyCalculators() {
 
     tab("calculators");
     await waitFor(() => !!view()?.querySelector(".calc-inputs"), "the calculators");
-    check(results, "the tab lists the calculators, the raglan first", [...view()!.querySelectorAll<HTMLElement>(".calc-pick")].map((b) => b.dataset.calc).join(",") === "raglan,yoke,size,evenly,regauge" && !!view()!.querySelector('.calc-pick.on[data-calc="raglan"]'));
+    check(results, "the tab lists the calculators, the raglan first", [...view()!.querySelectorAll<HTMLElement>(".calc-pick")].map((b) => b.dataset.calc).join(",") === "raglan,yoke,size,evenly,regauge,charts" && !!view()!.querySelector('.calc-pick.on[data-calc="raglan"]'));
     check(results, "with nothing given, it says what it needs first", /Give your gauge/.test(results_()), results_());
 
     // A swatch gives the gauge; typing one over it un-picks the swatch.

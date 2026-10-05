@@ -17,7 +17,8 @@ import { ProjectPage } from "./views/project-page";
 import { InspirationPage, InspirationView } from "./views/inspiration";
 import { PeopleView, PersonPage } from "./views/people";
 import { SwatchesView } from "./views/swatches";
-import { CalculatorsView } from "./views/calculators";
+import { CalculatorsView, openCalculatorsOn } from "./views/calculators";
+import { ChartPage } from "./views/charts";
 import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
 import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
@@ -54,6 +55,8 @@ class App {
   private stashMode: "yarn" | "swatches" = "yarn";
   /** The person on screen, so leaving saves what is being typed. */
   private activePersonPage: PersonPage | null = null;
+  /** The chart on screen, so leaving saves what was drawn last. */
+  private activeChartPage: ChartPage | null = null;
   /** The mounted library, so background work can ask it to repaint a card. */
   private activeLibrary: LibraryView | null = null;
   /** The wishlist or shops on screen, so a form saved over them keeps their filters. */
@@ -185,6 +188,9 @@ class App {
     });
     this.screen.addEventListener("open-person", (e) => {
       void this.showPersonPage((e as CustomEvent<string>).detail);
+    });
+    this.screen.addEventListener("open-chart", (e) => {
+      void this.showChartPage((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("open-inspiration", (e) => {
       void this.showInspirationPage((e as CustomEvent<string>).detail);
@@ -370,6 +376,8 @@ class App {
     this.activeInspirationPage = null;
     this.activePersonPage?.destroy();
     this.activePersonPage = null;
+    this.activeChartPage?.destroy();
+    this.activeChartPage = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.activeWishlist = null;
@@ -460,6 +468,21 @@ class App {
     this.clearScreen();
     this.setActiveTab("calculators");
     await new CalculatorsView(this.screen).mount();
+  }
+
+  private async showChartPage(id: string): Promise<void> {
+    const token = ++this.navToken;
+    this.clearScreen();
+    this.setActiveTab("calculators");
+    const page = new ChartPage(this.screen, id, {
+      back: () => {
+        openCalculatorsOn("charts");
+        void this.showCalculators();
+      },
+    });
+    this.activeChartPage = page;
+    await page.mount();
+    if (token !== this.navToken) page.destroy();
   }
 
   private async showPersonPage(id: string): Promise<void> {

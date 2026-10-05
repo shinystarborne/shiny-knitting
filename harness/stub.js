@@ -46,6 +46,8 @@ const store = {
   projectLog: [],
   // Gauge swatches. Photos share the `covers` blob store, under "swatch:<id>".
   swatches: [],
+  // Colourwork charts, their data stored whole as the backend's one table.
+  charts: [],
   // People and their measurement sets, as the backend's two tables.
   people: [],
   measurementSets: [],
@@ -895,6 +897,47 @@ function outcome(patternId) {
       .sort((a, b) => a.position - b.position)),
   };
 }
+// The rules of `charts::clean`: what a chart must be to be stored.
+function cleanChart({ name, data }) {
+  const d = clone(data);
+  const fail = (why) => {
+    throw new Error(why);
+  };
+  if (d.kind !== "standard" && d.kind !== "yoke") fail("A chart is a standard one or a round yoke.");
+  if (![d.width, d.height].every((v) => Number.isInteger(v) && v >= 1 && v <= 400)) fail("A chart is 1 to 400 squares each way.");
+  if (!d.colours.length || d.colours.length > 16) fail("A chart has 1 to 16 colours.");
+  d.colours.forEach((c, i) => {
+    if (!/^#[0-9a-f]{6}$/i.test(c.hex.trim())) fail(`“${c.hex}” is not a colour.`);
+    c.hex = c.hex.trim().toLowerCase();
+    c.name = c.name.split(/\s+/).filter(Boolean).join(" ").slice(0, 40) || `Colour ${i + 1}`;
+  });
+  if (d.cells.length !== d.width * d.height) fail("The chart's squares do not match its size.");
+  if (![...d.cells].every((ch) => /^[0-9a-f]$/.test(ch) && parseInt(ch, 16) < d.colours.length)) fail("A square is in a colour the chart does not have.");
+  if (d.kind === "standard") {
+    d.sections = [];
+    d.repeats = 1;
+    d.topDown = false;
+  } else {
+    d.flat = false;
+    if (!d.sections.length) d.sections = [{ row: 0, sts: d.width, cols: [] }];
+    // The order and widths of the shaping, as check_shaping refuses them.
+    const order = d.topDown ? [...d.sections].reverse() : d.sections;
+    if (d.sections[0].row !== 0 || order[0].sts !== d.width) fail("A yoke's shaping starts at its first round, the repeat whole at its widest.");
+    for (let i = 1; i < order.length; i++) {
+      if (order[i].sts >= order[i - 1].sts || order[i].cols.length !== order[i - 1].sts - order[i].sts) fail("A shaping round's columns do not match its stitches.");
+    }
+  }
+  d.floatLimit = Math.min(99, d.floatLimit);
+  d.notes = d.notes.trim().slice(0, 4000);
+  return { name: String(name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120) || "Untitled chart", data: d };
+}
+
+function findChart(id) {
+  const c = store.charts.find((x) => x.id === id);
+  if (!c) throw new Error("That chart is no longer there.");
+  return c;
+}
+
 const handlers = {
   list_patterns: ({ filter }) => {
     let out = store.patterns.slice();
@@ -1673,6 +1716,38 @@ const handlers = {
     s.photoPath = "";
   },
 
+  // ---------- colourwork charts ----------
+  list_charts: () => [...store.charts].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt).map(clone),
+  get_chart: ({ id }) => clone(findChart(id)),
+  add_chart: ({ input }) => {
+    const now = Date.now();
+    const c = { id: `ch${store.nextId++}`, ...cleanChart(input), createdAt: now, updatedAt: now };
+    store.charts.push(c);
+    return clone(c);
+  },
+  update_chart: ({ id, input }) => {
+    const c = findChart(id);
+    // Strictly later, so "the most recently changed first" holds even within a millisecond.
+    Object.assign(c, cleanChart(input), { updatedAt: Math.max(Date.now(), c.updatedAt + 1) });
+    return clone(c);
+  },
+  delete_chart: ({ id }) => {
+    findChart(id);
+    store.charts = store.charts.filter((x) => x.id !== id);
+  },
+  // The save dialog: the bytes come raw, the kind and name in headers. A test
+  // sets window.__nextSavePath (null cancels); the last export is kept.
+  save_chart_file: (bytes, options) => {
+    const headers = options?.headers ?? {};
+    const kind = headers["x-kind"];
+    const magic = kind === "pdf" ? [0x25, 0x50, 0x44, 0x46, 0x2d] : kind === "png" ? [0x89, 0x50, 0x4e, 0x47] : null;
+    if (!magic) throw new Error("A chart is saved as a PDF or a PNG picture.");
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (!magic.every((b, i) => data[i] === b)) throw new Error(`That is not a ${kind === "pdf" ? "PDF" : "PNG picture"}.`);
+    window.__lastExport = { kind, name: decodeURIComponent(headers["x-name"] ?? ""), bytes: data };
+    return window.__nextSavePath === undefined ? `C:/Charts/${decodeURIComponent(headers["x-name"] ?? "Chart")}.${kind}` : window.__nextSavePath;
+  },
+
   // ---------- people and their measurements ----------
   list_people: () =>
     store.people
@@ -2292,10 +2367,15 @@ window.addEventListener("unhandledrejection", (e) =>
 
 // Stand in for @tauri-apps/api/core's invoke.
 window.__TAURI_INTERNALS__ = {
-  invoke(cmd, args) {
+  invoke(cmd, args, options) {
     const handler = handlers[cmd];
     if (!handler) return Promise.reject(new Error(`no stub for command ${cmd}`));
-    return Promise.resolve(handler(args || {}));
+    // A raw payload (a Uint8Array) comes with its headers in the options.
+    try {
+      return Promise.resolve(handler(args || {}, options));
+    } catch (err) {
+      return Promise.reject(err);
+    }
   },
   transformCallback(cb) {
     return cb;

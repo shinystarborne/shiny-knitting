@@ -1273,3 +1273,96 @@ pub struct DuplicateEntry {
     /// The file's size in bytes, 0 when it cannot be read.
     pub file_size: u64,
 }
+
+// ---------- colourwork charts ----------
+
+/// One colour of a chart: what the legend calls it, and how it is drawn.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartColour {
+    pub name: String,
+    /// "#rrggbb".
+    pub hex: String,
+}
+
+/// A round yoke's stretch of rounds with the same stitches in each repeat.
+/// From `row` (0 is the first round knitted) up to the next section, each
+/// repeat has `sts` stitches. `cols` are the columns its wider neighbour has
+/// and it does not: where the decreases (or, top-down, the increases) go.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartSection {
+    pub row: i64,
+    pub sts: i64,
+    #[serde(default)]
+    pub cols: Vec<i64>,
+}
+
+/// Stitches and rows per 10 cm; 0 when not given.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartGauge {
+    pub sts: f64,
+    pub rows: f64,
+}
+
+fn one() -> i64 {
+    1
+}
+
+/// What a chart is: its grid and colours, and how it is knitted. Mirrors
+/// `ChartData` in `src/views/chart.ts`, which explains each field.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartData {
+    /// "standard" or "yoke".
+    pub kind: String,
+    pub width: i64,
+    pub height: i64,
+    /// One character per square, row by row from the first row knitted, each
+    /// a colour's index in hex ("0" to "f").
+    pub cells: String,
+    pub colours: Vec<ChartColour>,
+    /// A standard chart worked flat, in right- and wrong-side rows; else in
+    /// the round.
+    #[serde(default)]
+    pub flat: bool,
+    /// A yoke's repeats around.
+    #[serde(default = "one")]
+    pub repeats: i64,
+    /// A yoke knitted from the neck down.
+    #[serde(default)]
+    pub top_down: bool,
+    #[serde(default)]
+    pub sections: Vec<ChartSection>,
+    #[serde(default)]
+    pub gauge: ChartGauge,
+    /// Symbols drawn on the squares as well as colours.
+    #[serde(default)]
+    pub symbols: bool,
+    /// Floats longer than this many stitches are pointed out; 0 for never.
+    #[serde(default)]
+    pub float_limit: i64,
+    #[serde(default)]
+    pub notes: String,
+}
+
+/// A colourwork chart.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Chart {
+    pub id: String,
+    pub name: String,
+    pub data: ChartData,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// A chart as the page sends it.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ChartInput {
+    #[serde(default)]
+    pub name: String,
+    pub data: ChartData,
+}

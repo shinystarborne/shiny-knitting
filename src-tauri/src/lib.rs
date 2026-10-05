@@ -1,5 +1,6 @@
 mod ai;
 mod annotations;
+mod charts;
 mod commands;
 mod covers;
 mod db;
@@ -148,6 +149,12 @@ pub fn run() {
             swatches::set_swatch_photo,
             swatches::get_swatch_photo,
             swatches::remove_swatch_photo,
+            charts::list_charts,
+            charts::get_chart,
+            charts::add_chart,
+            charts::update_chart,
+            charts::delete_chart,
+            charts::save_chart_file,
             people::list_people,
             people::get_person,
             people::add_person,
