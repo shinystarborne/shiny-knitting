@@ -1,6 +1,7 @@
-import { api, isLive, projectStatusLabel, STATUSES, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
+import { api, isLive, projectStatusLabel, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
+import { mountPatternPicker } from "./pattern-picker";
 import { describe } from "./tool-filter";
 import { ToolPicker } from "./tool-picker";
 import { YarnPicker, type ChosenYarn } from "./yarn-picker";
@@ -64,13 +65,10 @@ export class ProjectForm {
         ${finished ? `<p class="hint">${projectStatusLabel(e!.status)} ${escapeHtml(longDate(e!.finishedAt ?? Date.now()))}. What it used stays listed here.</p>` : ""}
 
         <div class="field-row">
-          <label class="field">
+          <div class="field">
             <span>Pattern</span>
-            <select data-f="pattern">
-              <option value="">No pattern</option>
-              ${this.patternOptions(patternId)}
-            </select>
-          </label>
+            <div data-el="pattern-pick"></div>
+          </div>
           <label class="field">
             <span>Name</span>
             <input data-f="name" value="${escapeAttr(e?.name ?? "")}" placeholder="${escapeAttr(this.namePlaceholder(patternId))}" />
@@ -107,6 +105,7 @@ export class ProjectForm {
     `;
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("change", this.onChange);
+    mountPatternPicker(this.root.querySelector<HTMLElement>('[data-el="pattern-pick"]')!, this.patterns, patternId);
 
     if (finished) {
       this.renderRecord();
@@ -136,27 +135,6 @@ export class ProjectForm {
       this.renderTools();
       this.renderYarns();
     }
-  }
-
-  /** The library's patterns, the ones being knitted first. */
-  private patternOptions(chosen: string | null): string {
-    const order = (p: Pattern) => {
-      const i = ["in-progress", "want-to-knit"].indexOf(p.status);
-      return i < 0 ? 2 : i;
-    };
-    const groups = new Map<string, Pattern[]>();
-    for (const p of [...this.patterns].sort((a, b) => order(a) - order(b) || a.title.localeCompare(b.title))) {
-      const label = STATUSES.find((s) => s.value === p.status)?.label ?? "Other";
-      groups.set(label, [...(groups.get(label) ?? []), p]);
-    }
-    return [...groups.entries()]
-      .map(
-        ([label, list]) => `
-          <optgroup label="${escapeAttr(label)}">
-            ${list.map((p) => `<option value="${escapeAttr(p.id)}" ${p.id === chosen ? "selected" : ""}>${escapeHtml(p.title)}</option>`).join("")}
-          </optgroup>`,
-      )
-      .join("");
   }
 
   private namePlaceholder(patternId: string | null): string {

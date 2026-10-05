@@ -85,8 +85,18 @@ export async function verifyProjects() {
     await waitFor(() => !!form()?.querySelector('[data-el="tools"] .tool-add'), "the new project form");
     // Another suite may have renamed it, earlier in the same run.
     const p3 = store.patterns.find((p) => p.id === "p3")!.title;
-    change(f("pattern")!, "p3");
+    // The pattern is searched for, not scrolled to.
+    const search = form()!.querySelector<HTMLInputElement>(".pattern-pick-input")!;
+    const items = () => [...form()!.querySelectorAll<HTMLElement>(".pattern-pick-item")].map((li) => li.textContent?.trim().replace(/\s+/g, " ") ?? "");
+    search.focus();
+    check(results, "the pattern box lists the library when it is clicked into, no pattern first", items()[0] === "No pattern" && items().length === store.patterns.length + 1, items().join(" | "));
+    search.value = "long format";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "…and narrows to the patterns whose title, designer or tags have every word typed", items().length === 2 && items()[1].startsWith(p3), items().join(" | "));
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    check(results, "Enter picks the match", f("pattern")!.value === "p3" && search.value === p3 && !!form()!.querySelector<HTMLElement>(".pattern-pick-list")!.hidden, `${f("pattern")!.value} / ${search.value}`);
     check(results, "choosing a pattern offers its title as the name", f("name")!.placeholder.startsWith(p3), f("name")!.placeholder);
+    search.blur();
     const toolSel = () => form()!.querySelector<HTMLSelectElement>('[data-el="tools"] [data-el="tool-add"]')!;
     const toolUse = () => form()!.querySelector<HTMLButtonElement>('[data-el="tools"] [data-act="tool-use"]')!;
     change(toolSel(), "t3");

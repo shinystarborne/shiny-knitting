@@ -178,7 +178,9 @@ at once rare enough?
   and milestones the project writes (started, paused, frogged, finished, a new
   pattern). A live Log card on the project's board shows it and takes new
   entries.
-- **Projects:** needles, hooks, cables and yarn in use; Active, Paused, Finished
+- **Projects:** the pattern searched for by title, designer or tag (in
+  progress and wanted first), when starting one and on its page; needles,
+  hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project
   with a cover, dates, a board, the pattern read beside the board (resizable,
   minimises to a tab), and the pattern's own row counter.

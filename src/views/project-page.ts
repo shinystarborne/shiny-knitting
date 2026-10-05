@@ -1,9 +1,10 @@
-import { api, isLive, MEASUREMENTS, projectStatusLabel, STATUSES, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, MEASUREMENTS, projectStatusLabel, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
+import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
 import { fromDateInput, toDateInput } from "./project-form";
@@ -244,13 +245,10 @@ export class ProjectPage {
               </select></label>`
       }
 
-      <label class="field">
+      <div class="field">
         <span>Pattern</span>
-        <select data-f="pattern">
-          <option value="">No pattern</option>
-          ${this.patternOptions(p.patternId)}
-        </select>
-      </label>
+        <div data-el="pattern-pick"></div>
+      </div>
       ${
         p.patternId
           ? `<div class="project-pattern-links">
@@ -307,6 +305,7 @@ export class ProjectPage {
     // The counter's element is moved back in, not rebuilt, so it keeps its state.
     const slot = side.querySelector('[data-el="counter"]');
     if (slot && this.counterHost) slot.replaceWith(this.counterHost);
+    mountPatternPicker(side.querySelector<HTMLElement>('[data-el="pattern-pick"]')!, this.patterns, p.patternId);
     side.onclick = (e) => void this.onClick(e);
     side.onchange = (e) => void this.onChange(e);
     // The name and notes save a moment after typing stops, too, so nothing
@@ -357,21 +356,6 @@ export class ProjectPage {
         ${rows.length ? `<ul class="person-measures">${rows.join("")}</ul>` : `<p class="hint">None taken yet.</p>`}
         <button class="link" data-act="open-person">${rows.length ? "All their measurements" : "Measure them"} ↗</button>
       </div>`;
-  }
-
-  private patternOptions(chosen: string | null): string {
-    const order = (p: Pattern) => {
-      const i = ["in-progress", "want-to-knit"].indexOf(p.status);
-      return i < 0 ? 2 : i;
-    };
-    const groups = new Map<string, Pattern[]>();
-    for (const p of [...this.patterns].sort((a, b) => order(a) - order(b) || a.title.localeCompare(b.title))) {
-      const label = STATUSES.find((s) => s.value === p.status)?.label ?? "Other";
-      groups.set(label, [...(groups.get(label) ?? []), p]);
-    }
-    return [...groups.entries()]
-      .map(([label, list]) => `<optgroup label="${esc(label)}">${list.map((p) => `<option value="${esc(p.id)}" ${p.id === chosen ? "selected" : ""}>${esc(p.title)}</option>`).join("")}</optgroup>`)
-      .join("");
   }
 
   private async paintCover(): Promise<void> {

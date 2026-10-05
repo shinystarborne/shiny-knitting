@@ -2029,6 +2029,36 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .combo-list li:hover,
 .combo-list li.active { background: var(--accent-soft); color: #ffb3b5; }
 
+/* A project's pattern, searched for: the matches drop down under the box,
+   grouped in progress, wanted, then the rest. */
+.pattern-pick { position: relative; }
+.pattern-pick-list {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.pattern-pick-list[hidden] { display: none; }
+.pattern-pick-item { display: flex; flex-direction: column; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.pattern-pick-item:hover,
+.pattern-pick-item.active { background: var(--accent-soft); }
+.pattern-pick-item.chosen .pattern-pick-title { font-weight: 600; }
+.pattern-pick-title.none { color: var(--text-dim); font-style: italic; }
+.pattern-pick-designer { font-size: 11px; color: var(--text-dim); }
+.pattern-pick-group { padding: 8px 8px 2px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.pattern-pick-more { padding: 6px 8px; font-size: 12px; color: var(--text-dim); }
+
 /* The pattern form's needles and hooks: the same picker as the side pane. */
 .form-tools { display: flex; flex-direction: column; gap: 6px; }
 .form-tools select { font-size: 13px; min-width: 0; flex: 1; }
