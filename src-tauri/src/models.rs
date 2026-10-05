@@ -354,6 +354,10 @@ pub struct Yarn {
     /// What it is planned for.
     #[serde(default)]
     pub plans: Vec<YarnPlan>,
+    /// When it was used up: had, but used, and kept as the stash's history.
+    /// None while it is in the stash.
+    #[serde(default)]
+    pub used_up_at: Option<i64>,
     pub added_at: i64,
     pub lots: Vec<YarnLot>,
     /// Grams left, summed over the lots.
@@ -366,6 +370,23 @@ pub struct Yarn {
     /// The active projects using this yarn, by name. Empty when it is free.
     #[serde(default)]
     pub projects: Vec<String>,
+    /// Every project it was on, finished ones too, by name: what it went into.
+    #[serde(default)]
+    pub used_in: Vec<String>,
+}
+
+/// A picture of a yarn's ball band (the paper round the ball), filed by the
+/// yarn's brand and name, not its colour: "Drops" / "Air" is every colour of
+/// Drops Air. A yarn can have several, a band's front and back.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BallBand {
+    pub id: String,
+    pub brand: String,
+    pub name: String,
+    /// The picture's file in library/ball-bands.
+    pub photo_path: String,
+    pub added_at: i64,
 }
 
 /// What the add dialog sends. Everything but the name is optional.

@@ -16,7 +16,9 @@ import { FinishProjectDialog } from "./views/finish-project";
 import { ProjectPage } from "./views/project-page";
 import { InspirationPage, InspirationView } from "./views/inspiration";
 import { PeopleView, PersonPage } from "./views/people";
-import { SwatchesView } from "./views/swatches";
+import { SwatchesView, type StashMode } from "./views/swatches";
+import { StashHistoryView } from "./views/stash-history";
+import { BallBandsView } from "./views/ball-bands";
 import { CalculatorsView, openCalculatorsOn } from "./views/calculators";
 import { ChartPage } from "./views/charts";
 import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
@@ -24,7 +26,7 @@ import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
+import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearBallBandCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
@@ -52,7 +54,7 @@ class App {
   /** The inspiration board on screen, so leaving it saves what is being typed. */
   private activeInspirationPage: InspirationPage | null = null;
   /** Which the Stash tab shows: the yarn, or the swatches. Kept while the app is open. */
-  private stashMode: "yarn" | "swatches" = "yarn";
+  private stashMode: StashMode = "yarn";
   /** The person on screen, so leaving saves what is being typed. */
   private activePersonPage: PersonPage | null = null;
   /** The chart on screen, so leaving saves what was drawn last. */
@@ -177,7 +179,8 @@ class App {
       void this.showProjectPage((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("stash-mode", (e) => {
-      this.stashMode = (e as CustomEvent<string>).detail === "swatches" ? "swatches" : "yarn";
+      const mode = (e as CustomEvent<string>).detail;
+      this.stashMode = mode === "swatches" || mode === "bands" || mode === "history" ? mode : "yarn";
       void this.showStash();
     });
     this.screen.addEventListener("add-swatch", (e) => {
@@ -388,6 +391,7 @@ class App {
     clearYarnPhotoCache();
     clearWishPhotoCache();
     clearSwatchPhotoCache();
+    clearBallBandCache();
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
@@ -417,6 +421,8 @@ class App {
     this.clearScreen();
     this.setActiveTab("stash");
     if (this.stashMode === "swatches") await new SwatchesView(this.screen).mount();
+    else if (this.stashMode === "bands") await new BallBandsView(this.screen).mount();
+    else if (this.stashMode === "history") await new StashHistoryView(this.screen).mount();
     else await new StashView(this.screen).mount();
   }
 

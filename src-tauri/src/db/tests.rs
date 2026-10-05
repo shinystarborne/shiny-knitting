@@ -1762,6 +1762,7 @@ fn stash_filter(search: Option<&str>, weights: &[&str]) -> YarnFilter {
         } else {
             Some(weights.iter().map(|w| w.to_string()).collect())
         },
+        used: None,
     }
 }
 
@@ -2237,6 +2238,9 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
     assert!(left.projects.is_empty(), "the yarn is free again");
     let used = get_yarn(&conn, &gone.id).unwrap();
     assert_eq!((used.lots[0].grams_left, used.lots[0].leftover), (0, false), "0 g is used up, not a leftover");
+    assert_eq!(used.used_up_at, Some(1234), "nothing left of it anywhere: into the stash's history, dated");
+    assert_eq!(used.used_in, vec!["Jumper"], "with what it went into");
+    assert_eq!(get_yarn(&conn, &y.id).unwrap().used_up_at, None, "what has some left stays in the stash");
     let made = get_yarn(&conn, &none.id).unwrap();
     assert_eq!(made.lots.len(), 1, "a lot is made to hold what is left");
     assert_eq!((made.lots[0].grams_left, made.lots[0].leftover), (12, true));
@@ -2955,4 +2959,37 @@ fn a_yarn_is_planned_for_a_pattern_or_a_title() {
     let mut edited = after.clone();
     edited.plans = vec![];
     assert!(update_yarn(&conn, &edited).unwrap().plans.is_empty());
+}
+
+#[test]
+fn a_used_up_yarn_leaves_the_stash_for_its_history() {
+    let conn = test_db();
+    insert_yarn(&conn, "y1", &YarnInput { name: "Air".into(), brand: "Drops".into(), yarn_weight: "DK".into(), ..YarnInput::default() }).unwrap();
+    insert_yarn(&conn, "y2", &YarnInput { name: "Alpaca".into(), ..YarnInput::default() }).unwrap();
+    let ids = |used: Option<&str>| -> Vec<String> {
+        list_yarns(&conn, &YarnFilter { used: used.map(str::to_string), ..Default::default() }).unwrap().into_iter().map(|y| y.id).collect()
+    };
+    let used = set_yarn_used_up(&conn, "y1", Some(1234)).unwrap();
+    assert_eq!(used.used_up_at, Some(1234));
+    assert_eq!(ids(None), vec!["y2"], "the stash is what is not used up");
+    assert_eq!(ids(Some("history")), vec!["y1"]);
+    assert_eq!(ids(Some("all")).len(), 2);
+    assert!(yarn_facets(&conn).unwrap().iter().all(|f| f.count == 0), "the weight counts are the stash's");
+    set_yarn_used_up(&conn, "y1", None).unwrap();
+    assert_eq!(ids(None).len(), 2, "back in the stash");
+    assert!(set_yarn_used_up(&conn, "gone", None).is_err());
+}
+
+#[test]
+fn ball_bands_are_filed_by_brand_and_name() {
+    let conn = test_db();
+    insert_ball_band(&conn, "b1", " Drops ", "Air").unwrap();
+    let second = insert_ball_band(&conn, "b2", "DROPS", "air").unwrap();
+    assert_eq!((second.brand.as_str(), second.name.as_str()), ("Drops", "Air"), "filed with the one there, whatever the case");
+    assert!(insert_ball_band(&conn, "b3", "Drops", "  ").is_err(), "a band needs the yarn's name");
+    insert_ball_band(&conn, "b4", "", "Mystery wool").unwrap();
+    let all = rename_ball_bands(&conn, "drops", "AIR", "Garnstudio", "Air").unwrap();
+    assert_eq!(all.iter().filter(|b| b.brand == "Garnstudio").count(), 2, "every picture of the yarn moves");
+    assert_eq!(delete_ball_band(&conn, "b1").unwrap(), "");
+    assert_eq!(list_ball_bands(&conn).unwrap().len(), 2);
 }

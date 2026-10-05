@@ -289,7 +289,7 @@ export class YarnForm {
       .then((patterns) => (this.patterns = [...patterns].sort((a, b) => a.title.localeCompare(b.title))))
       .catch(() => {});
     void api
-      .listYarns({})
+      .listYarns({ used: "all" })
       .then((yarns) => {
         this.known = yarns.filter((y) => y.id !== this.editing?.id);
         // Yarn from the wishlist that is already in the stash in another

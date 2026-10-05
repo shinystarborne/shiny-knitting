@@ -48,6 +48,8 @@ const store = {
   swatches: [],
   // Colourwork charts, their data stored whole as the backend's one table.
   charts: [],
+  // Ball band pictures. Their bytes share the `covers` blob store, under "band:<id>".
+  ballBands: [],
   // People and their measurement sets, as the backend's two tables.
   people: [],
   measurementSets: [],
@@ -896,6 +898,16 @@ function withYarnTotals(yarn) {
         .map((pr) => pr.name),
     ),
   ].sort();
+  out.usedUpAt = out.usedUpAt ?? null;
+  out.usedIn = [
+    ...new Set(
+      store.projectYarns
+        .filter((e) => e.yarnId === yarn.id)
+        .map((e) => store.projects.find((pr) => pr.id === e.projectId))
+        .filter(Boolean)
+        .map((pr) => pr.name),
+    ),
+  ];
   return out;
 }
 
@@ -916,6 +928,15 @@ function outcome(patternId) {
       .sort((a, b) => a.position - b.position)),
   };
 }
+/** As db::band_names: one line each, the name needed, filed with a spelling already there. */
+function bandNames(brand, name) {
+  const line = (v) => String(v ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
+  const [b, n] = [line(brand), line(name)];
+  if (!n) throw new Error("Say which yarn it is: its name, as Air for Drops Air.");
+  const there = (key, v) => store.ballBands.find((x) => x[key].toLowerCase() === v.toLowerCase())?.[key] ?? v;
+  return [there("brand", b), there("name", n)];
+}
+
 // The rules of `charts::clean`: what a chart must be to be stored.
 function cleanChart({ name, data }) {
   const d = clone(data);
@@ -1556,6 +1577,8 @@ const handlers = {
       }
       lot.gramsLeft = left.grams;
       lot.leftover = left.grams > 0;
+      // Nothing left of it anywhere: into the stash's history.
+      if (left.grams === 0 && yarn.lots.every((l) => !l.gramsLeft) && !yarn.usedUpAt) yarn.usedUpAt = pr.finishedAt;
     }
     return projectOut(pr);
   },
@@ -1733,6 +1756,42 @@ const handlers = {
     if (!s) throw new Error("That swatch is no longer there.");
     store.covers.delete(`swatch:${id}`);
     s.photoPath = "";
+  },
+
+  // ---------- used up, and ball bands ----------
+  set_yarn_used_up: ({ id, used }) => {
+    const y = store.yarns.find((x) => x.id === id);
+    if (!y) throw new Error("That yarn is no longer there.");
+    y.usedUpAt = used ? Date.now() : null;
+    return withYarnTotals(y);
+  },
+  list_ball_bands: () =>
+    [...store.ballBands].sort(
+      (a, b) => a.brand.localeCompare(b.brand, undefined, { sensitivity: "base" }) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.addedAt - b.addedAt,
+    ).map(clone),
+  add_ball_band: ({ brand, name, bytes }) => {
+    const [b, n] = bandNames(brand, name);
+    const id = `bb${store.nextId++}`;
+    const band = { id, brand: b, name: n, photoPath: `${id}.jpg`, addedAt: Date.now() + store.ballBands.length };
+    store.ballBands.push(band);
+    store.covers.set(`band:${id}`, Uint8Array.from(bytes));
+    return clone(band);
+  },
+  rename_ball_bands: ({ fromBrand, fromName, brand, name }) => {
+    const [b, n] = bandNames(brand, name);
+    const same = (x, y) => x.toLowerCase() === y.toLowerCase();
+    for (const band of store.ballBands) if (same(band.brand, fromBrand) && same(band.name, fromName)) Object.assign(band, { brand: b, name: n });
+    return handlers.list_ball_bands();
+  },
+  delete_ball_band: ({ id }) => {
+    if (!store.ballBands.some((b) => b.id === id)) throw new Error("That ball band is no longer there.");
+    store.ballBands = store.ballBands.filter((b) => b.id !== id);
+    store.covers.delete(`band:${id}`);
+  },
+  get_ball_band_photo: ({ id }) => {
+    const bytes = store.covers.get(`band:${id}`);
+    if (!bytes) throw new Error("This ball band has no picture.");
+    return bytes.slice().buffer;
   },
 
   // ---------- colourwork charts ----------
@@ -1971,7 +2030,8 @@ const handlers = {
   // is sent. A stored lot keeps only what the backend owns; derived figures
   // and ids are recomputed here.
   list_yarns: ({ filter }) => {
-    let out = store.yarns.slice();
+    // The stash by default; the used up (its history) when asked; or both.
+    let out = store.yarns.filter((y) => (filter?.used === "all" ? true : filter?.used === "history" ? !!y.usedUpAt : !y.usedUpAt));
     if (filter?.search) {
       const t = filter.search.toLowerCase();
       out = out.filter(
@@ -2077,7 +2137,7 @@ const handlers = {
     YARN_FAMILIES.map(([key, label]) => ({
       key,
       label,
-      count: store.yarns.filter((y) => yarnFamily(y.yarnWeight) === key).length,
+      count: store.yarns.filter((y) => !y.usedUpAt && yarnFamily(y.yarnWeight) === key).length,
     })),
   set_yarn_photo: ({ yarnId, bytes }) => {
     // Same rules as set_cover: content is checked, not trusted.

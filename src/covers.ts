@@ -351,6 +351,11 @@ export const logPhotoUrl = logPhotoCache.url;
 export const forgetLogPhoto = logPhotoCache.forget;
 export const clearLogPhotoCache = logPhotoCache.clear;
 
+const ballBandCache = makeImageCache((id) => api.getBallBandPhoto(id));
+export const ballBandUrl = ballBandCache.url;
+export const forgetBallBand = ballBandCache.forget;
+export const clearBallBandCache = ballBandCache.clear;
+
 const swatchPhotoCache = makeImageCache((id) => api.getSwatchPhoto(id));
 export const swatchPhotoUrl = swatchPhotoCache.url;
 export const forgetSwatchPhoto = swatchPhotoCache.forget;

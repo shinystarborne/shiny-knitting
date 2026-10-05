@@ -146,6 +146,12 @@ at once rare enough?
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
   highlights, notes, drawings, pins.
+- **Stash history and ball bands:** yarn used up (from its card, or by
+  finishing a project with none of it left) leaves the stash for a History,
+  with when and what it went into, and can come back. Ball bands: pictures of
+  each yarn's band, several each, filed by brand and yarn for every colour of
+  it, with what the stash knows of the yarn, and the stash's yarn without one
+  offered to add.
 - **Stash:** what a yarn is planned for: patterns from the library (searched
   by title and designer) or titles typed for ones not got yet, on its card,
   in the search and as a Planned filter. Yarn with lots, photos (pasted or dropped), weight from metres and

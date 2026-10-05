@@ -53,7 +53,7 @@ export class FinishProjectDialog {
           <span>What is left of the yarn</span>
           ${
             p.yarns.length
-              ? `<p class="hint">Weigh what is left. 0 means used up; leave it empty to keep the stash as it is.</p>
+              ? `<p class="hint">Weigh what is left. 0 means used up: a yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
                  <div class="leftover-list">
                    ${p.yarns
                      .map((y) => {

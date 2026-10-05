@@ -602,6 +602,51 @@ pub fn yarn_facets(state: State<'_, AppState>) -> CmdResult<Vec<db::YarnFamilyFa
     db::yarn_facets(&state.db())
 }
 
+/// A yarn used up, into the stash's history; or with `used` false, back in the stash.
+#[tauri::command]
+pub fn set_yarn_used_up(state: State<'_, AppState>, id: String, used: bool) -> CmdResult<crate::models::Yarn> {
+    let at = used.then(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0));
+    db::set_yarn_used_up(&state.db(), &id, at)
+}
+
+#[tauri::command]
+pub fn list_ball_bands(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::BallBand>> {
+    db::list_ball_bands(&state.db())
+}
+
+/// A ball band's picture, filed by the yarn's brand and name. The picture is
+/// stored with the row, so a band is never without one.
+#[tauri::command]
+pub fn add_ball_band(state: State<'_, AppState>, brand: String, name: String, bytes: Vec<u8>) -> CmdResult<crate::models::BallBand> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let band = db::insert_ball_band(&state.db(), &id, &brand, &name)?;
+    if let Err(err) = crate::covers::set_ball_band_photo(&state, &id, bytes) {
+        let _ = db::delete_ball_band(&state.db(), &id);
+        return Err(err);
+    }
+    db::get_ball_band(&state.db(), &band.id)
+}
+
+/// Files every picture of one yarn's band under another brand and name.
+#[tauri::command]
+pub fn rename_ball_bands(state: State<'_, AppState>, from_brand: String, from_name: String, brand: String, name: String) -> CmdResult<Vec<crate::models::BallBand>> {
+    db::rename_ball_bands(&state.db(), &from_brand, &from_name, &brand, &name)
+}
+
+#[tauri::command]
+pub fn delete_ball_band(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    let file = db::delete_ball_band(&state.db(), &id)?;
+    crate::covers::delete_ball_band_file(&state, &file);
+    Ok(())
+}
+
+/// The picture's bytes, raw, like a yarn's photo.
+#[tauri::command]
+pub fn get_ball_band_photo(state: State<'_, AppState>, id: String) -> CmdResult<tauri::ipc::Response> {
+    let (_mime, bytes) = crate::covers::read_ball_band_photo(&state, &id)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Stores image bytes as a yarn's photo.
 #[tauri::command]
 pub fn set_yarn_photo(

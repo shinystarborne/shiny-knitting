@@ -439,6 +439,10 @@ export interface Yarn {
   superwash: boolean;
   /** What it is planned for. */
   plans: YarnPlan[];
+  /** When it was used up, into the stash's history; null while in the stash. */
+  usedUpAt: number | null;
+  /** Every project it was on, finished ones too: what it went into. */
+  usedIn: string[];
   addedAt: number;
   lots: YarnLot[];
   // The last three are derived by the backend from the lots; they are sent
@@ -480,8 +484,19 @@ export interface YarnInput {
   lots: YarnLotInput[];
 }
 
+/** A picture of a ball band, filed by the yarn's brand and name. Mirrors `models.rs::BallBand`. */
+export interface BallBand {
+  id: string;
+  brand: string;
+  name: string;
+  photoPath: string;
+  addedAt: number;
+}
+
 export interface YarnFilter {
   search?: string;
+  /** "history" for the used up, "all" for everything; the stash by default. */
+  used?: "history" | "all";
   /** Yarn weight families. Several means "any of these". */
   yarnWeight?: string[];
 }
@@ -1244,6 +1259,18 @@ export const api = {
   getYarnPhoto: (yarnId: string) =>
     invoke<ArrayBuffer | ArrayBufferView>("get_yarn_photo", { yarnId }),
   removeYarnPhoto: (yarnId: string) => invoke<void>("remove_yarn_photo", { yarnId }),
+  /** Used up, into the stash's history; or, with false, back in the stash. */
+  setYarnUsedUp: (id: string, used: boolean) => invoke<Yarn>("set_yarn_used_up", { id, used }),
+
+  // Ball bands: pictures of the paper round a ball, filed by brand and name.
+  listBallBands: () => invoke<BallBand[]>("list_ball_bands"),
+  addBallBand: (brand: string, name: string, bytes: number[]) => invoke<BallBand>("add_ball_band", { brand, name, bytes }),
+  /** Every picture of one yarn's band, filed under another brand and name. */
+  renameBallBands: (fromBrand: string, fromName: string, brand: string, name: string) =>
+    invoke<BallBand[]>("rename_ball_bands", { fromBrand, fromName, brand, name }),
+  deleteBallBand: (id: string) => invoke<void>("delete_ball_band", { id }),
+  /** Raw binary, as `getCover` returns it. */
+  getBallBandPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_ball_band_photo", { id }),
 
   // AI metadata.
   getAiSettings: () => invoke<AiSettingsView>("get_ai_settings"),

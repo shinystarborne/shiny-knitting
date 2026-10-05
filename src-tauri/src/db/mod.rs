@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput,
+    Chart, ChartInput, BallBand,
 };
 
 #[cfg(test)]
@@ -414,6 +414,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_yarn_lots_yarn ON yarn_lots(yarn_id);
 
+        -- A picture of a ball band, filed by the yarn's brand and name.
+        CREATE TABLE IF NOT EXISTS ball_bands (
+            id          TEXT PRIMARY KEY,
+            brand       TEXT NOT NULL DEFAULT '',
+            name        TEXT NOT NULL,
+            photo_path  TEXT NOT NULL DEFAULT '',
+            added_at    INTEGER NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
         CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
         "#,
@@ -544,6 +553,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // What a yarn is planned for, as a JSON list of YarnPlan.
     if !column_exists(conn, "yarns", "plans")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
+    }
+    // When a yarn was used up; NULL while it is in the stash.
+    if !column_exists(conn, "yarns", "used_up_at")? {
+        conn.execute("ALTER TABLE yarns ADD COLUMN used_up_at INTEGER", [])?;
     }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
@@ -2499,6 +2512,16 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
                 )?;
             }
         }
+        // Nothing left of it anywhere: had, but used, into the stash's history.
+        if grams == 0 {
+            let left: i64 = tx.query_row("SELECT COALESCE(SUM(grams_left), 0) FROM yarn_lots WHERE yarn_id = ?1", params![entry.yarn_id], |r| r.get(0))?;
+            if left == 0 {
+                tx.execute(
+                    "UPDATE yarns SET used_up_at = ?2 WHERE id = ?1 AND used_up_at IS NULL",
+                    params![entry.yarn_id, input.finished_at.unwrap_or(now)],
+                )?;
+            }
+        }
     }
     tx.commit()?;
     get_project(conn, id)
@@ -3362,6 +3385,88 @@ pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
     Ok(conn.query_row("SELECT size_mm FROM tools WHERE id = ?1", params![id], |r| r.get(0)).optional()?)
 }
 
+// ---------- used up, and ball bands ----------
+
+/// Marks a yarn used up (now, or at `at`), into the stash's history; or, with
+/// None, back in the stash.
+pub fn set_yarn_used_up(conn: &Connection, id: &str, at: Option<i64>) -> AppResult<Yarn> {
+    let changed = conn.execute("UPDATE yarns SET used_up_at = ?2 WHERE id = ?1", params![id, at])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That yarn is no longer there.".to_string()));
+    }
+    get_yarn(conn, id)
+}
+
+fn row_to_band(row: &rusqlite::Row) -> rusqlite::Result<BallBand> {
+    Ok(BallBand {
+        id: row.get("id")?,
+        brand: row.get("brand")?,
+        name: row.get("name")?,
+        photo_path: row.get("photo_path")?,
+        added_at: row.get("added_at")?,
+    })
+}
+
+/// Every ball band, by brand and name, the oldest picture of each first.
+pub fn list_ball_bands(conn: &Connection) -> AppResult<Vec<BallBand>> {
+    let mut stmt = conn.prepare("SELECT * FROM ball_bands ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE, added_at, rowid")?;
+    let rows = stmt.query_map([], row_to_band)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_ball_band(conn: &Connection, id: &str) -> AppResult<BallBand> {
+    conn.query_row("SELECT * FROM ball_bands WHERE id = ?1", params![id], row_to_band)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That ball band is no longer there.".to_string()))
+}
+
+/// A brand and name as filed: one line each; the name is needed. A brand or
+/// name already filed in another case is filed with it.
+fn band_names(conn: &Connection, brand: &str, name: &str) -> AppResult<(String, String)> {
+    let line = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect::<String>();
+    let (brand, name) = (line(brand), line(name));
+    if name.is_empty() {
+        return Err(AppError::Message("Say which yarn it is: its name, as Air for Drops Air.".to_string()));
+    }
+    let same = |sql: &str, v: &str| -> AppResult<String> {
+        Ok(conn.query_row(sql, params![v], |r| r.get::<_, String>(0)).optional()?.unwrap_or_else(|| v.to_string()))
+    };
+    let brand = same("SELECT brand FROM ball_bands WHERE brand = ?1 COLLATE NOCASE LIMIT 1", &brand)?;
+    let name = same("SELECT name FROM ball_bands WHERE name = ?1 COLLATE NOCASE LIMIT 1", &name)?;
+    Ok((brand, name))
+}
+
+pub fn insert_ball_band(conn: &Connection, id: &str, brand: &str, name: &str) -> AppResult<BallBand> {
+    let (brand, name) = band_names(conn, brand, name)?;
+    conn.execute(
+        "INSERT INTO ball_bands (id, brand, name, photo_path, added_at) VALUES (?1, ?2, ?3, '', ?4)",
+        params![id, brand, name, now_ms()],
+    )?;
+    get_ball_band(conn, id)
+}
+
+pub fn set_ball_band_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
+    conn.execute("UPDATE ball_bands SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
+    Ok(())
+}
+
+/// Files every picture of one yarn's band under another brand and name.
+pub fn rename_ball_bands(conn: &Connection, from_brand: &str, from_name: &str, brand: &str, name: &str) -> AppResult<Vec<BallBand>> {
+    let (brand, name) = band_names(conn, brand, name)?;
+    conn.execute(
+        "UPDATE ball_bands SET brand = ?3, name = ?4 WHERE brand = ?1 COLLATE NOCASE AND name = ?2 COLLATE NOCASE",
+        params![from_brand, from_name, brand, name],
+    )?;
+    list_ball_bands(conn)
+}
+
+/// Removes a picture, returning its file.
+pub fn delete_ball_band(conn: &Connection, id: &str) -> AppResult<String> {
+    let band = get_ball_band(conn, id)?;
+    conn.execute("DELETE FROM ball_bands WHERE id = ?1", params![id])?;
+    Ok(band.photo_path)
+}
+
 // ---------- colourwork charts ----------
 
 fn row_to_chart(row: &rusqlite::Row) -> rusqlite::Result<Chart> {
@@ -3911,6 +4016,9 @@ pub struct YarnFilter {
     /// Standard yarn weight family, e.g. "dk". Several may be given to widen
     /// the filter, which is an OR within the group like the pattern filter.
     pub yarn_weight: Option<Vec<String>>,
+    /// "history" for the used up, "all" for everything; else the stash.
+    #[serde(default)]
+    pub used: Option<String>,
 }
 
 fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
@@ -3943,12 +4051,14 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         fibres: serde_json::from_str(&row.get::<_, String>("fibres")?).unwrap_or_default(),
         superwash: row.get("superwash")?,
         plans: serde_json::from_str(&row.get::<_, String>("plans")?).unwrap_or_default(),
+        used_up_at: row.get("used_up_at")?,
         added_at: row.get("added_at")?,
         lots: Vec::new(),
         grams_left: 0,
         balls_total: 0.0,
         metres_left: 0,
         projects: Vec::new(),
+        used_in: Vec::new(),
     })
 }
 
@@ -3962,6 +4072,13 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
         .prepare(
             "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
              WHERE py.yarn_id = ?1 AND pr.status IN ('active', 'paused') ORDER BY pr.name",
+        )?
+        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    yarn.used_in = conn
+        .prepare(
+            "SELECT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+             WHERE py.yarn_id = ?1 GROUP BY pr.id ORDER BY MIN(pr.started_at), pr.name",
         )?
         .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;
@@ -4018,6 +4135,12 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
          OR plans LIKE ?1 ESCAPE '\\')",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(term)];
+    // The stash by default; the used up (its history) when asked; or both.
+    match filter.used.as_deref() {
+        Some("history") => sql.push_str(" AND used_up_at IS NOT NULL"),
+        Some("all") => {}
+        _ => sql.push_str(" AND used_up_at IS NULL"),
+    }
 
     // Yarn weight is an OR within itself, the same as the pattern filter:
     // picking DK and Aran means "either", not "both".
@@ -4304,7 +4427,7 @@ pub fn yarn_facets(conn: &Connection) -> AppResult<Vec<YarnFamilyFacet>> {
     {
         let mut stmt = conn.prepare(
             "SELECT yarn_weight_family, COUNT(*) FROM yarns
-             WHERE yarn_weight_family <> '' GROUP BY yarn_weight_family",
+             WHERE yarn_weight_family <> '' AND used_up_at IS NULL GROUP BY yarn_weight_family",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))

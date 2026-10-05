@@ -1,5 +1,5 @@
 import { api, type MeasureUnit, type Swatch, type Yarn, type YarnFilter, type YarnWeightFacet } from "../api";
-import { askYesNo } from "../dialogs";
+import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
 import { paintLazily } from "./lazy";
@@ -161,6 +161,24 @@ export class StashView {
       e.stopPropagation();
       const yarn = this.yarns.find((y) => y.id === colour.dataset.colour);
       if (yarn) this.root.dispatchEvent(new CustomEvent("add-yarn", { bubbles: true, detail: yarn }));
+      return;
+    }
+
+    const usedUp = closestEl(e.target, "[data-used-up]");
+    if (usedUp) {
+      e.stopPropagation();
+      const yarn = this.yarns.find((y) => y.id === usedUp.dataset.usedUp);
+      if (!yarn) return;
+      const name = [yarn.brand, yarn.name, yarn.colourway].filter(Boolean).join(" ");
+      if (!(await askYesNo(`Used up ${name}? It moves to the stash's History, where Back in the stash brings it back.`, { title: "Used up", okLabel: "Used up" }))) return;
+      try {
+        await api.setYarnUsedUp(yarn.id, true);
+      } catch (err) {
+        await say(err instanceof Error ? err.message : String(err), "Used up");
+      }
+      this.facets = await api.yarnFacets();
+      this.renderFacets();
+      await this.reload();
       return;
     }
 
@@ -335,6 +353,8 @@ export class StashView {
           <div class="card-tools-row">
             <button class="card-remove card-colour" data-colour="${y.id}"
               title="Add another colour of this yarn: brand, weight and ball band filled in">+ Colour</button>
+            <button class="card-remove" data-used-up="${y.id}"
+              title="Had, but used: it moves to the stash's History, with what it went into">Used up</button>
             <button class="card-remove" data-delete="${y.id}"
               title="Remove this yarn from your stash">Remove</button>
           </div>

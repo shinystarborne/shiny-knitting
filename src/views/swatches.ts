@@ -7,12 +7,21 @@ import { blockingText, gaugeOf, gaugeSpan, needleText, showGauge } from "./measu
 import { longDate } from "./project-form";
 import { matches } from "./shopping";
 
-/** The Stash tab's switch between its yarn and its swatches. */
-export function stashModeSwitch(mode: "yarn" | "swatches"): string {
+/** What the Stash tab shows: the yarn, the swatches, the ball bands, or the yarn used up. */
+export type StashMode = "yarn" | "swatches" | "bands" | "history";
+
+const STASH_MODES: { mode: StashMode; label: string; title: string }[] = [
+  { mode: "yarn", label: "Yarn", title: "The yarn you have" },
+  { mode: "swatches", label: "Swatches", title: "Your gauge swatches" },
+  { mode: "bands", label: "Ball bands", title: "Pictures of the ball bands, by brand and yarn" },
+  { mode: "history", label: "History", title: "Yarn you had, and used up" },
+];
+
+/** The Stash tab's switch between its yarn, its swatches, its ball bands and its history. */
+export function stashModeSwitch(mode: StashMode): string {
   return `
     <div class="seg" role="tablist" aria-label="Show">
-      <button class="${mode === "yarn" ? "on" : ""}" data-act="stash-mode" data-mode="yarn" role="tab" aria-selected="${mode === "yarn"}">Yarn</button>
-      <button class="${mode === "swatches" ? "on" : ""}" data-act="stash-mode" data-mode="swatches" role="tab" aria-selected="${mode === "swatches"}">Swatches</button>
+      ${STASH_MODES.map((m) => `<button class="${m.mode === mode ? "on" : ""}" data-act="stash-mode" data-mode="${m.mode}" role="tab" title="${m.title}" aria-selected="${m.mode === mode}">${m.label}</button>`).join("")}
     </div>`;
 }
 

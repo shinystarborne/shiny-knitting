@@ -340,6 +340,30 @@ pub fn delete_swatch_photo_file(state: &AppState, file_name: &str) {
     }
 }
 
+// ---------- ball bands ----------
+
+pub fn ball_band_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("ball-bands")
+}
+
+pub fn set_ball_band_photo(state: &AppState, id: &str, bytes: Vec<u8>) -> AppResult<()> {
+    let (ext, _mime) = validate(&bytes)?;
+    let file_name = write_file(&ball_band_dir(state), id, ext, &bytes)?;
+    db::set_ball_band_photo(&state.db(), id, &file_name)
+}
+
+pub fn read_ball_band_photo(state: &AppState, id: &str) -> AppResult<(String, Vec<u8>)> {
+    let name = db::get_ball_band(&state.db(), id)?.photo_path;
+    let path = existing_file(&ball_band_dir(state), &name).ok_or_else(|| AppError::Message("This ball band has no picture.".into()))?;
+    read_file(path)
+}
+
+pub fn delete_ball_band_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&ball_band_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 // ---------- wishlist pictures ----------
 
 pub fn wish_photos_dir(state: &AppState) -> PathBuf {
