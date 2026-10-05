@@ -29,12 +29,12 @@ starting; the details are in the sections under the list.
 
 3. [ ] Plans: projects not started yet, with a pattern or an idea, yarn, a
    rough date and an order to drag; from a stash yarn's Planned for, or a
-   Want to knit pattern. **Decide first:** exact dates, rough ones, or both?
+   Want to knit pattern. *Decided:* both, a rough time or an exact date.
 4. [ ] Finished gallery: photos of finished projects with their pattern,
-   yarn, needles, dates and log. **Decide first:** made by itself when a
-   project is finished, or added by hand?
+   yarn, needles, dates and log. *Decided:* by itself, every finished
+   project, with a way to hide one.
 5. [ ] Two projects from one pattern, each with its own row counter.
-   **Decide first:** worth it, or rare enough to leave?
+   *Decided:* yes, a counter per project, started from the pattern's.
 
 **Patterns and the reader**
 
@@ -83,7 +83,9 @@ natural place to start one from.
 A yarn in the stash can already say what it is planned for (a pattern, or
 a title); a plan could start from there, with that yarn on it.
 
-Open question: exact dates, rough ones, or both?
+Decided (6 Oct 2026): both. A plan has a rough time ("autumn") or an exact
+date, whichever is known; plans sort by it, and can still be dragged into an
+order of their own.
 
 ### Finished gallery
 
@@ -91,8 +93,8 @@ Photos of finished things: several per project, with the pattern, yarn,
 needles, dates, notes and the project log. Probably a view of finished
 projects rather than something separate.
 
-Open question: made automatically when a project is finished, or added by
-hand?
+Decided (6 Oct 2026): by itself. Every finished project is in the gallery,
+with its cover and log photos; one can be hidden, and its photos chosen.
 
 ### Knitting calculators
 
@@ -126,8 +128,7 @@ The designer is built (see Already built). Left over:
 
 The row counter belongs to the pattern, so two projects knitted from the same
 pattern share their counts. A counter per project, started from the pattern's,
-would keep them apart. Open question: worth it, or is knitting one pattern twice
-at once rare enough?
+would keep them apart. Decided (6 Oct 2026): yes, a counter per project.
 
 ### Small fixes
 
