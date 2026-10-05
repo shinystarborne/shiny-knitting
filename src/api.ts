@@ -443,6 +443,8 @@ export interface Yarn {
   usedUpAt: number | null;
   /** Every project it was on, finished ones too: what it went into. */
   usedIn: string[];
+  /** The plans (projects not started) it is meant for, by name. */
+  plannedIn: string[];
   addedAt: number;
   lots: YarnLot[];
   // The last three are derived by the backend from the lots; they are sent
@@ -642,9 +644,10 @@ export interface ProjectYarn {
 }
 
 /** Where a project is. Mirrors `models.rs::PROJECT_STATUSES`. */
-export type ProjectStatus = "active" | "paused" | "finished" | "frogged";
+export type ProjectStatus = "planned" | "active" | "paused" | "finished" | "frogged";
 
 export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: "planned", label: "Planned" },
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
   { value: "finished", label: "Finished" },
@@ -654,6 +657,11 @@ export const PROJECT_STATUSES: { value: ProjectStatus; label: string }[] = [
 /** Active or paused: its needles and yarn are in use. */
 export function isLive(status: string): boolean {
   return status === "active" || status === "paused";
+}
+
+/** Finished or frogged: a record of what it used, nothing in use any more. */
+export function isRecord(status: string): boolean {
+  return status === "finished" || status === "frogged";
 }
 
 export function projectStatusLabel(status: string): string {
@@ -679,6 +687,12 @@ export interface Project {
   /** While active, the tools in use on it; once finished, those it used. */
   toolIds: string[];
   yarns: ProjectYarn[];
+  /** A plan's time as said ("autumn"); empty when none. */
+  planWhen: string;
+  /** A plan's exact date, when there is one. */
+  planDate: number | null;
+  /** Where a plan is in the plans' order. */
+  planOrder: number;
 }
 
 export interface ProjectYarnInput {
@@ -700,6 +714,10 @@ export interface ProjectInput {
   finishedAt?: number | null;
   toolIds: string[];
   yarns: ProjectYarnInput[];
+  /** Made as a plan: not started; its yarn only meant for it. */
+  planned?: boolean;
+  planWhen?: string;
+  planDate?: number | null;
 }
 
 /** What can go on a board, a project's or an inspiration board. */
@@ -1160,6 +1178,8 @@ export const api = {
   deleteTool: (id: string) => invoke<void>("delete_tool", { id }),
 
   // Projects: what puts needles and yarn in use.
+  /** The plans in the order given, as dragged. */
+  setPlanOrder: (ids: string[]) => invoke<void>("set_plan_order", { ids }),
   listProjects: () => invoke<Project[]>("list_projects"),
   addProject: (input: ProjectInput) => invoke<Project>("add_project", { input }),
   updateProject: (id: string, input: ProjectInput) => invoke<Project>("update_project", { id, input }),

@@ -570,6 +570,14 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "plans")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
     }
+    // A plan's time as said, its exact date, and its place in the plans' order.
+    if !column_exists(conn, "projects", "plan_when")? {
+        conn.execute_batch(
+            "ALTER TABLE projects ADD COLUMN plan_when TEXT NOT NULL DEFAULT '';
+             ALTER TABLE projects ADD COLUMN plan_date INTEGER;
+             ALTER TABLE projects ADD COLUMN plan_order REAL NOT NULL DEFAULT 0;",
+        )?;
+    }
     // How much of a yarn a project is expected to take; NULL when not said.
     if !column_exists(conn, "project_yarns", "planned_grams")? {
         conn.execute("ALTER TABLE project_yarns ADD COLUMN planned_grams INTEGER", [])?;
@@ -2252,6 +2260,9 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         person_name: row.get("person_name")?,
         tool_ids: Vec::new(),
         yarns: Vec::new(),
+        plan_when: row.get("plan_when")?,
+        plan_date: row.get("plan_date")?,
+        plan_order: row.get("plan_order")?,
     })
 }
 
@@ -2337,6 +2348,9 @@ fn check_pattern(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
 }
 
 pub fn insert_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<Project> {
+    if input.planned {
+        return insert_plan(conn, id, input);
+    }
     check_pattern(conn, input.pattern_id.as_deref())?;
     let name = project_name(conn, input)?;
     let now = now_ms();
@@ -2355,6 +2369,44 @@ pub fn insert_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
 
 /// A pattern being knitted is in progress: starting a project from it, or
 /// picking it for one that is active, says so.
+/// A plan's time as said: one line, cut short.
+fn plan_when(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect()
+}
+
+/// A plan: a project not started. Its yarn is meant for it, not in use; it
+/// takes no needles until it starts. It goes last in the plans' order. A
+/// pattern planned with no status of its own is one you want to knit.
+fn insert_plan(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<Project> {
+    check_pattern(conn, input.pattern_id.as_deref())?;
+    let name = project_name(conn, input)?;
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    let last: f64 = tx.query_row("SELECT COALESCE(MAX(plan_order), 0) FROM projects WHERE status = 'planned'", [], |r| r.get(0))?;
+    tx.execute(
+        "INSERT INTO projects (id, name, pattern_id, status, started_at, finished_at, notes, created_at, plan_when, plan_date, plan_order)
+         VALUES (?1, ?2, ?3, 'planned', ?4, NULL, ?5, ?4, ?6, ?7, ?8)",
+        params![id, name, input.pattern_id, now, input.notes, plan_when(&input.plan_when), input.plan_date, last + 1.0],
+    )?;
+    sync_links(&tx, id, &ProjectInput { tool_ids: vec![], ..input.clone() })?;
+    if let Some(p) = input.pattern_id.as_deref() {
+        tx.execute("UPDATE patterns SET status = 'want-to-knit' WHERE id = ?1 AND status = ''", params![p])?;
+    }
+    log_milestone(&tx, id, "Planned", Some(now))?;
+    tx.commit()?;
+    get_project(conn, id)
+}
+
+/// The plans in the order given, as dragged.
+pub fn set_plan_order(conn: &Connection, ids: &[String]) -> AppResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    for (i, id) in ids.iter().enumerate() {
+        tx.execute("UPDATE projects SET plan_order = ?2 WHERE id = ?1 AND status = 'planned'", params![id, i as f64 + 1.0])?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 fn pattern_in_progress(conn: &Connection, pattern_id: Option<&str>) -> AppResult<()> {
     if let Some(p) = pattern_id {
         conn.execute("UPDATE patterns SET status = 'in-progress' WHERE id = ?1", params![p])?;
@@ -2382,6 +2434,14 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
     )?;
     if is_live(&current.status) {
         sync_links(&tx, id, input)?;
+    }
+    // A plan: its time, and its yarn (it takes no needles until it starts).
+    if current.status == "planned" {
+        tx.execute(
+            "UPDATE projects SET plan_when = ?2, plan_date = ?3 WHERE id = ?1",
+            params![id, plan_when(&input.plan_when), input.plan_date],
+        )?;
+        sync_links(&tx, id, &ProjectInput { tool_ids: vec![], ..input.clone() })?;
     }
     if current.status == "active" && input.pattern_id != current.pattern_id {
         pattern_in_progress(&tx, input.pattern_id.as_deref())?;
@@ -2584,6 +2644,18 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
     match (project.status.as_str(), status) {
+        // A plan started: knitted from today, its pattern in progress.
+        ("planned", "active") => {
+            tx.execute("UPDATE projects SET status = 'active', started_at = ?2 WHERE id = ?1", params![id, now])?;
+            log_milestone(&tx, id, "Started", Some(now))?;
+            pattern_in_progress(&tx, project.pattern_id.as_deref())?;
+        }
+        ("planned", _) => {
+            return Err(AppError::Message("A plan is started, or removed.".to_string()));
+        }
+        (_, "planned") => {
+            return Err(AppError::Message("A project already started is not a plan again.".to_string()));
+        }
         (from, "active" | "paused") if is_live(from) => {
             tx.execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
             log_milestone(&tx, id, if status == "paused" { "Paused" } else { "Back on the needles" }, Some(now))?;
@@ -4145,6 +4217,7 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         metres_left: 0,
         projects: Vec::new(),
         used_in: Vec::new(),
+        planned_in: Vec::new(),
     })
 }
 
@@ -4161,10 +4234,17 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
         )?
         .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;
+    yarn.planned_in = conn
+        .prepare(
+            "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+             WHERE py.yarn_id = ?1 AND pr.status = 'planned' ORDER BY pr.plan_order, pr.name",
+        )?
+        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
     yarn.used_in = conn
         .prepare(
             "SELECT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
-             WHERE py.yarn_id = ?1 GROUP BY pr.id ORDER BY MIN(pr.started_at), pr.name",
+             WHERE py.yarn_id = ?1 AND pr.status <> 'planned' GROUP BY pr.id ORDER BY MIN(pr.started_at), pr.name",
         )?
         .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;

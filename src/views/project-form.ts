@@ -1,4 +1,4 @@
-import { api, isLive, projectStatusLabel, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
+import { api, isLive, isRecord, projectStatusLabel, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
 import { askYesNo } from "../dialogs";
 import { closestEl } from "../dom";
 import { mountPatternPicker } from "./pattern-picker";
@@ -13,6 +13,14 @@ export interface ProjectFormHooks {
   onFinish: (project: Project) => void;
 }
 
+/** What a new project (or plan) starts with: its pattern, made as a plan, a stash yarn on it, a name. */
+export interface ProjectPreset {
+  patternId?: string | null;
+  planned?: boolean;
+  yarnId?: string;
+  name?: string;
+}
+
 /**
  * The add/edit dialog for a project.
  *
@@ -24,7 +32,9 @@ export interface ProjectFormHooks {
 export class ProjectForm {
   private root: HTMLElement;
   private editing: Project | null;
-  private preset: { patternId?: string | null };
+  private preset: ProjectPreset;
+  /** Made or edited as a plan. */
+  private plan = false;
   private hooks: ProjectFormHooks;
   private patterns: Pattern[] = [];
   private tools: Tool[] = [];
@@ -34,7 +44,7 @@ export class ProjectForm {
   private toolPicker: ToolPicker | null = null;
   private yarnPicker: YarnPicker | null = null;
 
-  constructor(root: HTMLElement, editing: Project | null, preset: { patternId?: string | null }, hooks: ProjectFormHooks) {
+  constructor(root: HTMLElement, editing: Project | null, preset: ProjectPreset, hooks: ProjectFormHooks) {
     this.root = root;
     this.editing = editing;
     this.preset = preset;
@@ -53,15 +63,23 @@ export class ProjectForm {
     const e = this.editing;
     this.chosenTools = new Set(e?.toolIds ?? []);
     this.chosenYarns = (e?.yarns ?? []).map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId, plannedGrams: y.plannedGrams }));
+    // A plan made from a stash yarn starts with that yarn on it.
+    const presetYarn = !e && this.preset.yarnId ? yarns.find((y) => y.id === this.preset.yarnId) : undefined;
+    if (presetYarn) this.chosenYarns.push({ yarnId: presetYarn.id, lotId: presetYarn.lots.length === 1 ? presetYarn.lots[0].id : null });
     // A finished or frogged project shows what it used, as a record.
-    const finished = !!e && !isLive(e.status);
+    const finished = !!e && isRecord(e.status);
+    // A plan: when, instead of started; its yarn, but no needles yet.
+    const plan = e ? e.status === "planned" : !!this.preset.planned;
+    this.plan = plan;
+    const planDate = e?.planDate ? toDateInput(e.planDate) : "";
     const patternId = e ? e.patternId : (this.preset.patternId ?? null);
     const started = toDateInput(e?.startedAt ?? Date.now());
 
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal project-form" role="dialog" aria-modal="true">
-        <h2>${e ? (finished ? `${projectStatusLabel(e.status)} project` : "Edit project") : "Start a project"}</h2>
+        <h2>${plan ? (e ? "Edit plan" : "Plan a project") : e ? (finished ? `${projectStatusLabel(e.status)} project` : "Edit project") : "Start a project"}</h2>
+        ${plan && !e ? `<p class="hint">Not started yet: its yarn is meant for it, not in use. Choose the needles when you start it.</p>` : ""}
         ${finished ? `<p class="hint">${projectStatusLabel(e!.status)} ${escapeHtml(longDate(e!.finishedAt ?? Date.now()))}. What it used stays listed here.</p>` : ""}
 
         <div class="field-row">
@@ -71,18 +89,30 @@ export class ProjectForm {
           </div>
           <label class="field">
             <span>Name</span>
-            <input data-f="name" value="${escapeAttr(e?.name ?? "")}" placeholder="${escapeAttr(this.namePlaceholder(patternId))}" />
+            <input data-f="name" value="${escapeAttr(e?.name ?? this.preset.name ?? "")}" placeholder="${escapeAttr(this.namePlaceholder(patternId))}" />
           </label>
-          <label class="field">
+          ${
+            plan
+              ? ""
+              : `<label class="field">
             <span>Started</span>
             <input data-f="started" type="date" value="${started}" />
-          </label>
+          </label>`
+          }
         </div>
-
-        <div class="field">
+        ${
+          plan
+            ? `<div class="field-row plan-when-row">
+          <label class="field"><span>When <em class="hint">roughly</em></span>
+            <input data-f="plan-when" value="${escapeAttr(e?.planWhen ?? "")}" placeholder="e.g. autumn, before the baby comes" maxlength="80" /></label>
+          <label class="field"><span>Or on <em class="hint">a date</em></span>
+            <input data-f="plan-date" type="date" value="${planDate}" /></label>
+        </div>`
+            : `<div class="field">
           <span>Needles, hooks &amp; cables</span>
           <div class="form-tools" data-el="tools"></div>
-        </div>
+        </div>`
+        }
         <div class="field">
           <span>Yarn</span>
           <div class="form-tools" data-el="yarns"></div>
@@ -97,8 +127,8 @@ export class ProjectForm {
           ${e ? `<button class="ghost danger-text" data-act="remove" title="Remove this project">Remove</button>` : ""}
           <span class="spacer"></span>
           <button class="ghost" data-act="cancel">Cancel</button>
-          ${e && !finished ? `<button class="ghost" data-act="finish" title="Release the needles and record the leftover yarn">Finish project…</button>` : ""}
-          <button class="primary" data-act="save">${e ? "Save" : "Start project"}</button>
+          ${e && !finished && !plan ? `<button class="ghost" data-act="finish" title="Release the needles and record the leftover yarn">Finish project…</button>` : ""}
+          <button class="primary" data-act="save">${e ? "Save" : plan ? "Save plan" : "Start project"}</button>
         </div>
         <p class="form-error" data-el="error" hidden></p>
       </div>
@@ -110,8 +140,9 @@ export class ProjectForm {
     if (finished) {
       this.renderRecord();
     } else {
-      this.toolPicker = new ToolPicker(
-        this.root.querySelector<HTMLElement>('[data-el="tools"]')!,
+      const toolHost = this.root.querySelector<HTMLElement>('[data-el="tools"]');
+      if (toolHost) this.toolPicker = new ToolPicker(
+        toolHost,
         (id) => {
           this.chosenTools.add(id);
           this.renderTools();
@@ -203,7 +234,11 @@ export class ProjectForm {
 
   private input(): ProjectInput {
     const started = this.value("started");
+    const planDate = this.value("plan-date");
     return {
+      planned: this.plan,
+      planWhen: this.value("plan-when").trim(),
+      planDate: planDate ? fromDateInput(planDate) : null,
       name: this.value("name").trim(),
       patternId: this.value("pattern") || null,
       notes: this.value("notes"),

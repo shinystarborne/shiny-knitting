@@ -193,6 +193,18 @@ export class StashView {
       return;
     }
 
+    // A plan made from what the yarn is planned for, with the yarn on it.
+    const makePlan = closestEl(e.target, "[data-make-plan]");
+    if (makePlan) {
+      e.stopPropagation();
+      const yarn = this.yarns.find((y) => y.id === makePlan.dataset.makePlan);
+      const plan = yarn?.plans.find((p) => !yarn.plannedIn.some((n) => n.toLowerCase() === p.title.toLowerCase()));
+      if (yarn && plan) {
+        this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { planned: true, patternId: plan.patternId, name: plan.patternId ? "" : plan.title, yarnId: yarn.id } }));
+      }
+      return;
+    }
+
     // A card's ball band opens big, over the stash; changed there, the cards show it.
     const band = closestEl(e.target, "[data-band]");
     if (band) {
@@ -377,11 +389,7 @@ export class StashView {
               ? `<p class="card-use" title="${escapeHtml(y.projects.join(", "))}">In use: ${escapeHtml(y.projects.join(", "))}</p>`
               : ""
           }
-          ${
-            y.plans.length
-              ? `<p class="card-plan" title="${escapeHtml(y.plans.map((p) => p.title).join(", "))}">Planned for: ${escapeHtml(y.plans.map((p) => p.title).join(", "))}</p>`
-              : ""
-          }
+          ${this.planLine(y)}
           ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Its newest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
@@ -395,6 +403,18 @@ export class StashView {
           </div>
         </div>
       </article>`;
+  }
+
+  /**
+   * What the yarn is planned for: patterns or titles said in its form, and
+   * plans made with it. One said but not yet a plan can be made one.
+   */
+  private planLine(y: Yarn): string {
+    const names = [...new Set([...y.plannedIn, ...y.plans.map((p) => p.title)])];
+    if (!names.length) return "";
+    const open = y.plans.find((p) => !y.plannedIn.some((n) => n.toLowerCase() === p.title.toLowerCase()));
+    const make = open ? ` <button class="link card-make-plan" data-make-plan="${y.id}" title="Make a plan of it, with this yarn on it">Make a plan</button>` : "";
+    return `<p class="card-plan" title="${escapeHtml(names.join(", "))}">Planned for: ${escapeHtml(names.join(", "))}${make}</p>`;
   }
 
   /** A small picture of the yarn's ball band, when it has one, to open it big. */
@@ -473,7 +493,7 @@ function madeOf(y: Yarn, m: Made): boolean {
 
 function useOf(y: Yarn): Use[] {
   const out: Use[] = [y.projects.length ? "in-use" : "free"];
-  if (y.plans.length) out.push("planned");
+  if (y.plans.length || y.plannedIn.length) out.push("planned");
   if (y.lots.some((l) => l.leftover)) out.push("leftover");
   return out;
 }

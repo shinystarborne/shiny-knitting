@@ -3033,3 +3033,42 @@ fn a_project_says_how_much_of_each_yarn_it_expects_to_take() {
     assert!(update_project(&conn, "j", &input(Some(-5), Some(entry.clone()))).is_err());
     assert!(update_project(&conn, "j", &input(Some(1_000_000), Some(entry))).is_err());
 }
+
+#[test]
+fn a_plan_is_a_project_not_started_until_it_starts() {
+    let conn = test_db();
+    insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
+    let pattern = sample(&conn, "Rjupa", "Hulda", "", &[]);
+    let y = yarn_with_lots(&conn, "Lettlopi", vec![lot("A", 6.0, 300)]);
+    let input = crate::models::ProjectInput {
+        name: "Yoke for Mum".into(),
+        pattern_id: Some(pattern.id.clone()),
+        tool_ids: vec!["t1".into()],
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: None, planned_grams: Some(300) }],
+        planned: true,
+        plan_when: "  before   winter ".into(),
+        plan_date: Some(1_800_000_000_000),
+        ..Default::default()
+    };
+    let plan = insert_project(&conn, "p1", &input).unwrap();
+    assert_eq!((plan.status.as_str(), plan.plan_when.as_str(), plan.plan_date), ("planned", "before winter", Some(1_800_000_000_000)));
+    assert!(plan.tool_ids.is_empty(), "a plan takes no needles");
+    assert_eq!(get_tool(&conn, "t1").unwrap().project_id, None);
+    assert_eq!(plan.yarns[0].planned_grams, Some(300));
+    let yarn = get_yarn(&conn, &y.id).unwrap();
+    assert!(yarn.projects.is_empty() && yarn.planned_in == vec!["Yoke for Mum"], "its yarn is meant for it, not in use");
+    assert_eq!(get_pattern(&conn, &pattern.id).unwrap().status, "want-to-knit", "a pattern planned is one to knit");
+
+    let second = insert_project(&conn, "p2", &crate::models::ProjectInput { name: "Hat".into(), planned: true, ..Default::default() }).unwrap();
+    assert!(second.plan_order > plan.plan_order, "a new plan goes last");
+    set_plan_order(&conn, &["p2".into(), "p1".into()]).unwrap();
+    assert!(get_project(&conn, "p2").unwrap().plan_order < get_project(&conn, "p1").unwrap().plan_order, "dragged into order");
+
+    assert!(set_project_status(&conn, "p1", "paused").is_err(), "a plan is started, or removed");
+    let started = set_project_status(&conn, "p1", "active").unwrap();
+    assert_eq!(started.status, "active");
+    assert!(started.started_at >= plan.created_at);
+    assert_eq!(get_pattern(&conn, &pattern.id).unwrap().status, "in-progress");
+    assert_eq!(get_yarn(&conn, &y.id).unwrap().projects, vec!["Yoke for Mum"], "started, its yarn is in use");
+    assert!(set_project_status(&conn, "p1", "planned").is_err());
+}

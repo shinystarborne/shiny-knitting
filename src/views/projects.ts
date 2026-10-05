@@ -1,10 +1,14 @@
-import { api, isLive, PROJECT_STATUSES, projectStatusLabel, type Project, type ProjectStatus } from "../api";
+import { api, isRecord, PROJECT_STATUSES, projectStatusLabel, type Project, type ProjectStatus } from "../api";
+import { say } from "../dialogs";
 import { coverUrl, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { longDate } from "./project-form";
 import { paintLazily } from "./lazy";
 
 type Status = ProjectStatus;
+
+/** What the tab shows, kept while the app is open: the projects, or the plans. */
+const kept: { mode: "projects" | "plans" } = { mode: "projects" };
 
 /**
  * The projects screen: everything being knitted, and everything finished.
@@ -30,9 +34,15 @@ export class ProjectsView {
     this.root.className = "library projects";
     this.root.innerHTML = `
       <header class="lib-bar">
-        <h1>Projects</h1>
+        <div class="lib-title"><h1>Projects</h1>
+          <div class="seg" role="tablist" aria-label="Show">
+            <button data-act="mode" data-mode="projects" role="tab">Projects</button>
+            <button data-act="mode" data-mode="plans" role="tab" title="What to knit next: projects not started yet">Plans</button>
+          </div>
+        </div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search name, pattern, notes..." />
+          <button data-act="sort-plans" class="ghost" title="Plans with a date first, the soonest first; the rest as they are">Sort by date</button>
           <button data-act="add" class="primary">+ New project</button>
         </div>
       </header>
@@ -62,18 +72,29 @@ export class ProjectsView {
       else this.status.delete(input.value as Status);
       this.paint();
     });
-    this.root.addEventListener("click", (e) => this.onClick(e));
+    this.root.addEventListener("click", (e) => void this.onClick(e));
+    this.wireDrag();
 
     this.projects = await api.listProjects();
     this.renderFacets();
     this.paint();
   }
 
-  private onClick(e: MouseEvent): void {
+  private plans(): Project[] {
+    return this.projects.filter((p) => p.status === "planned").sort((a, b) => a.planOrder - b.planOrder || a.createdAt - b.createdAt);
+  }
+
+  private async onClick(e: MouseEvent): Promise<void> {
     const btn = closestEl(e.target, "button[data-act]");
     if (btn) {
       const act = btn.dataset.act;
-      if (act === "add") this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: {} }));
+      if (act === "mode") {
+        kept.mode = btn.dataset.mode === "plans" ? "plans" : "projects";
+        return this.paint();
+      }
+      if (act === "add") this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: kept.mode === "plans" ? { planned: true } : {} }));
+      if (act === "start-plan") return void (await this.startPlan(btn.dataset.id!));
+      if (act === "sort-plans") return void (await this.sortPlans());
       if (act === "clear") {
         this.status.clear();
         this.search = "";
@@ -92,7 +113,9 @@ export class ProjectsView {
 
   private renderFacets(): void {
     const count = (s: Status) => this.projects.filter((p) => p.status === s).length;
+    // Plans have their own list.
     this.root.querySelector('[data-el="status"]')!.innerHTML = PROJECT_STATUSES.map((x) => x.value)
+      .filter((s) => s !== "planned")
       .map(
         (s) => `
           <label class="check${count(s) ? "" : " unused"}">
@@ -105,7 +128,14 @@ export class ProjectsView {
   }
 
   private paint(): void {
+    const plans = kept.mode === "plans";
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-act="mode"]')) b.classList.toggle("on", b.dataset.mode === kept.mode);
+    this.root.classList.toggle("plans-mode", plans);
+    this.root.querySelector('[data-act="add"]')!.textContent = plans ? "+ New plan" : "+ New project";
+    (this.root.querySelector('[data-act="sort-plans"]') as HTMLElement).hidden = !plans;
+    if (plans) return this.paintPlans();
     const shown = this.projects.filter((p) => {
+      if (p.status === "planned") return false;
       if (this.status.size && !this.status.has(p.status)) return false;
       if (!this.search) return true;
       const words = [p.name, p.patternTitle, p.notes, ...p.yarns.map((y) => y.yarnName)].join(" ").toLowerCase();
@@ -126,6 +156,106 @@ export class ProjectsView {
     });
   }
 
+  /** The plans, in their order, to drag into another; each started with a click. */
+  private paintPlans(): void {
+    const words = this.search.split(/\s+/).filter(Boolean);
+    const plans = this.plans().filter((p) => {
+      const text = [p.name, p.patternTitle, p.notes, p.planWhen, ...p.yarns.map((y) => y.yarnName)].join(" ").toLowerCase();
+      return words.every((w) => text.includes(w));
+    });
+    if (!plans.length) {
+      this.results.innerHTML = `
+        <div class="empty">
+          <h2>${this.plans().length ? "No plan by that name" : "No plans yet"}</h2>
+          <p>${this.plans().length ? "Try another word." : "What to knit next: a pattern (or just an idea), yarn from the stash, and when. Make one here, from a pattern's ⋯ menu (Plan it), or from a yarn planned for something."}</p>
+        </div>`;
+      return;
+    }
+    this.results.innerHTML = `
+      <p class="hint plan-hint">Drag a plan by its handle into the order you mean to knit them. Its yarn is meant for it, not in use, until you start it.</p>
+      <ol class="plan-list">${plans
+        .map((p) => {
+          const yarn = p.yarns.map((y) => `${y.yarnName}${y.plannedGrams ? ` (${y.plannedGrams} g)` : ""}`).join(", ");
+          const when = planTime(p);
+          return `
+          <li class="plan-row" draggable="${words.length ? "false" : "true"}" data-plan="${p.id}" data-open="${p.id}">
+            <span class="plan-grip" title="Drag to move it" aria-hidden="true">⋮⋮</span>
+            <div class="plan-main">
+              <h3>${escapeHtml(p.name)}</h3>
+              <p>${p.patternId ? escapeHtml(p.patternTitle) : `<em>No pattern yet</em>`}${yarn ? ` · ${escapeHtml(yarn)}` : ""}</p>
+            </div>
+            <span class="plan-when${when ? "" : " none"}">${when ? escapeHtml(when) : "Some time"}</span>
+            <button class="ghost" data-act="start-plan" data-id="${p.id}" title="Start knitting it: from today, its pattern in progress, its yarn in use">Start knitting</button>
+          </li>`;
+        })
+        .join("")}</ol>`;
+  }
+
+  /** Dragging a plan by its handle moves it; dropped, the order is kept. */
+  private wireDrag(): void {
+    let dragged: HTMLElement | null = null;
+    this.root.addEventListener("dragstart", (e) => {
+      dragged = closestEl(e.target, ".plan-row");
+      if (!dragged) return;
+      dragged.classList.add("dragging");
+      e.dataTransfer?.setData("text/plain", dragged.dataset.plan ?? "");
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    });
+    this.root.addEventListener("dragover", (e) => {
+      const over = closestEl(e.target, ".plan-row");
+      if (!dragged || !over || over === dragged) return;
+      e.preventDefault();
+      const r = over.getBoundingClientRect();
+      over.parentElement!.insertBefore(dragged, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
+    });
+    this.root.addEventListener("dragend", () => void this.dropped());
+    this.root.addEventListener("drop", (e) => {
+      if (dragged) e.preventDefault();
+    });
+    const done = () => {
+      dragged?.classList.remove("dragging");
+      dragged = null;
+    };
+    this.dropped = async () => {
+      if (!dragged) return;
+      done();
+      await this.saveOrder([...this.root.querySelectorAll<HTMLElement>(".plan-row")].map((r) => r.dataset.plan!));
+    };
+  }
+
+  private dropped: () => Promise<void> = async () => {};
+
+  /** Keeps the plans in this order. */
+  private async saveOrder(ids: string[]): Promise<void> {
+    try {
+      await api.setPlanOrder(ids);
+      ids.forEach((id, i) => {
+        const p = this.projects.find((x) => x.id === id);
+        if (p) p.planOrder = i + 1;
+      });
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Plans");
+    }
+    this.paint();
+  }
+
+  /** Plans with an exact date first, the soonest first; the rest keep their order after them. */
+  private async sortPlans(): Promise<void> {
+    const plans = this.plans();
+    const dated = plans.filter((p) => p.planDate).sort((a, b) => a.planDate! - b.planDate!);
+    await this.saveOrder([...dated, ...plans.filter((p) => !p.planDate)].map((p) => p.id));
+  }
+
+  /** A plan started: knitted from today; its page opens, to choose its needles. */
+  private async startPlan(id: string): Promise<void> {
+    try {
+      await api.setProjectStatus(id, "active");
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Start knitting"));
+    }
+    this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: id }));
+  }
+
   /** A card's picture: the project's own cover, else its pattern's. */
   private async paintCover(card: HTMLElement): Promise<void> {
     const p = this.projects.find((x) => x.id === card.dataset.open);
@@ -139,7 +269,7 @@ export class ProjectsView {
   }
 
   private cardHtml(p: Project): string {
-    const finished = !isLive(p.status);
+    const finished = isRecord(p.status);
     const tools = p.toolIds.length;
     const on = [
       tools ? `${tools} ${tools === 1 ? "needle or hook" : "needles & hooks"}` : "",
@@ -166,6 +296,11 @@ export class ProjectsView {
         <p class="project-on">${on ? escapeHtml(on) : finished ? "Nothing recorded" : "Nothing on it yet"}</p>
       </article>`;
   }
+}
+
+/** "autumn · 12 November 2026": a plan's time as said, and its date. */
+function planTime(p: Project): string {
+  return [p.planWhen, p.planDate ? longDate(p.planDate) : ""].filter(Boolean).join(" · ");
 }
 
 function escapeHtml(v: string): string {

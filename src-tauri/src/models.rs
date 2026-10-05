@@ -52,7 +52,7 @@ pub const STATUSES: &[&str] = &["want-to-knit", "in-progress", "finished", "aban
 
 /// A status as stored: a known one, or none.
 /// Where a project is: being knitted, put aside for now, done, or unravelled.
-pub const PROJECT_STATUSES: &[&str] = &["active", "paused", "finished", "frogged"];
+pub const PROJECT_STATUSES: &[&str] = &["planned", "active", "paused", "finished", "frogged"];
 
 /// A project that still has its needles and yarn: being knitted, or paused.
 pub fn is_live(status: &str) -> bool {
@@ -373,6 +373,9 @@ pub struct Yarn {
     /// Every project it was on, finished ones too, by name: what it went into.
     #[serde(default)]
     pub used_in: Vec<String>,
+    /// The plans (projects not started) it is meant for, by name.
+    #[serde(default)]
+    pub planned_in: Vec<String>,
 }
 
 /// Yarn used, when it was used: what a finished project took (weighed before
@@ -831,6 +834,15 @@ pub struct Project {
     /// The tools on it: while active, those in use; once finished, those it used.
     pub tool_ids: Vec<String>,
     pub yarns: Vec<ProjectYarn>,
+    /// A plan's time as said ("autumn", "before the baby comes"); empty when none.
+    #[serde(default)]
+    pub plan_when: String,
+    /// A plan's exact date, when there is one.
+    #[serde(default)]
+    pub plan_date: Option<i64>,
+    /// Where a plan is in the list of plans, dragged into order.
+    #[serde(default)]
+    pub plan_order: f64,
 }
 
 /// One yarn on a project, and, once finished, how much of it was left.
@@ -886,6 +898,13 @@ pub struct ProjectInput {
     pub tool_ids: Vec<String>,
     #[serde(default)]
     pub yarns: Vec<ProjectYarnInput>,
+    /// Made as a plan: not started, its yarn only meant for it.
+    #[serde(default)]
+    pub planned: bool,
+    #[serde(default)]
+    pub plan_when: String,
+    #[serde(default)]
+    pub plan_date: Option<i64>,
 }
 
 /// How much of one of a project's yarns is left, given when finishing it.

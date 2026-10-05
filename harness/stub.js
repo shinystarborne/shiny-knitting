@@ -749,9 +749,17 @@ function placeTool(toolId, projectId) {
 }
 
 /** A project as the backend returns it: pattern title, tools and yarns joined in. */
+/** As db::plan_when: one line, cut short. */
+function planWhen(text) {
+  return String(text ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 80);
+}
+
 function projectOut(pr) {
   const pattern = pr.patternId ? store.patterns.find((x) => x.id === pr.patternId) : null;
   return clone({
+    planWhen: "",
+    planDate: null,
+    planOrder: 0,
     ...pr,
     patternId: pattern ? pr.patternId : null,
     patternTitle: pattern ? pattern.title : "",
@@ -910,15 +918,9 @@ function withYarnTotals(yarn) {
     ),
   ].sort();
   out.usedUpAt = out.usedUpAt ?? null;
-  out.usedIn = [
-    ...new Set(
-      store.projectYarns
-        .filter((e) => e.yarnId === yarn.id)
-        .map((e) => store.projects.find((pr) => pr.id === e.projectId))
-        .filter(Boolean)
-        .map((pr) => pr.name),
-    ),
-  ];
+  const on = store.projectYarns.filter((e) => e.yarnId === yarn.id).map((e) => store.projects.find((pr) => pr.id === e.projectId)).filter(Boolean);
+  out.usedIn = [...new Set(on.filter((pr) => pr.status !== "planned").map((pr) => pr.name))];
+  out.plannedIn = [...new Set(on.filter((pr) => pr.status === "planned").sort((a, b) => a.planOrder - b.planOrder).map((pr) => pr.name))];
   return out;
 }
 
@@ -1504,6 +1506,18 @@ const handlers = {
   add_project: ({ input }) => {
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
     const now = Date.now();
+    // As db::insert_plan: not started, no needles, last in the plans' order.
+    if (input.planned) {
+      const last = Math.max(0, ...store.projects.filter((x) => x.status === "planned").map((x) => x.planOrder || 0));
+      const plan = { id: `pr${store.nextId++}`, name: projectName(input), patternId: input.patternId || null, status: "planned", startedAt: now, finishedAt: null, notes: input.notes || "", createdAt: now,
+        planWhen: planWhen(input.planWhen), planDate: input.planDate ?? null, planOrder: last + 1 };
+      store.projects.push(plan);
+      syncLinks(plan.id, { ...input, toolIds: [] });
+      const pattern = store.patterns.find((x) => x.id === plan.patternId);
+      if (pattern && !pattern.status) pattern.status = "want-to-knit";
+      logMilestone(plan.id, "Planned", now);
+      return projectOut(plan);
+    }
     const pr = { id: `pr${store.nextId++}`, name: projectName(input), patternId: input.patternId || null, status: "active", startedAt: input.startedAt ?? now, finishedAt: null, notes: input.notes || "", createdAt: now };
     store.projects.push(pr);
     try {
@@ -1533,17 +1547,37 @@ const handlers = {
     pr.startedAt = input.startedAt ?? pr.startedAt;
     pr.notes = input.notes || "";
     // A finished project's end can be corrected; an active one has none.
-    if (!isLive(pr.status) && input.finishedAt != null) pr.finishedAt = input.finishedAt;
+    if (!isLive(pr.status) && pr.status !== "planned" && input.finishedAt != null) pr.finishedAt = input.finishedAt;
     if (isLive(pr.status)) syncLinks(id, input);
+    if (pr.status === "planned") {
+      pr.planWhen = planWhen(input.planWhen);
+      pr.planDate = input.planDate ?? null;
+      syncLinks(id, { ...input, toolIds: [] });
+    }
     return projectOut(pr);
+  },
+  set_plan_order: ({ ids }) => {
+    ids.forEach((id, i) => {
+      const pr = store.projects.find((x) => x.id === id && x.status === "planned");
+      if (pr) pr.planOrder = i + 1;
+    });
   },
   // As db::set_project_status.
   set_project_status: ({ id, status }) => {
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("That project is no longer there.");
-    if (!["active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
+    if (!["planned", "active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
     if (pr.status === status) return projectOut(pr);
     const now = Date.now();
+    if (pr.status === "planned") {
+      if (status !== "active") throw new Error("A plan is started, or removed.");
+      pr.status = "active";
+      pr.startedAt = now;
+      logMilestone(id, "Started", now);
+      inProgress(pr.patternId);
+      return projectOut(pr);
+    }
+    if (status === "planned") throw new Error("A project already started is not a plan again.");
     if (pr.status === "finished") throw new Error("A finished project stays finished.");
     if (status === "finished") throw new Error("Finishing a project asks about its leftovers: use Finish.");
     if (isLive(pr.status) && isLive(status)) {

@@ -1,4 +1,4 @@
-import { api, isLive, MEASUREMENTS, projectStatusLabel, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ReaderView } from "../reader/reader";
@@ -220,7 +220,8 @@ export class ProjectPage {
     const p = this.project;
     const side = this.root.querySelector<HTMLElement>(".project-side")!;
     // Finished or frogged: what it used is a record now.
-    const finished = !isLive(p.status);
+    const finished = isRecord(p.status);
+    const plan = p.status === "planned";
     const tools = p.toolIds.map((id) => this.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t);
     side.innerHTML = `
       <button class="ghost back" data-act="back">← Projects</button>
@@ -235,7 +236,10 @@ export class ProjectPage {
 
       <input class="project-title" data-f="name" value="${esc(p.name)}" aria-label="Project name" />
       ${
-        p.status === "finished"
+        plan
+          ? `<div class="project-plan-head"><span class="pill project-planned">Planned${p.planWhen || p.planDate ? `: ${esc([p.planWhen, p.planDate ? longDate(p.planDate) : ""].filter(Boolean).join(", "))}` : ""}</span>
+               <button class="primary" data-act="start-plan" title="Start knitting it: from today, its pattern in progress, its yarn in use">Start knitting</button></div>`
+          : p.status === "finished"
           ? `<span class="pill project-finished">Finished</span>`
           : `<label class="field project-status"><span>Status</span>
               <select data-f="status" title="Paused keeps its needles and yarn; frogged frees them">
@@ -269,14 +273,14 @@ export class ProjectPage {
       </label>
       ${this.personMeasures()}
 
-      <div class="project-side-dates">
+${plan ? "" : `      <div class="project-side-dates">
         <label class="field"><span>Started</span><input type="date" data-f="started" value="${toDateInput(p.startedAt)}" /></label>
         <label class="field"><span>${p.status === "frogged" ? "Frogged" : "Finished"}</span>${
           finished
             ? `<input type="date" data-f="finished" value="${toDateInput(p.finishedAt ?? Date.now())}" />`
             : `<button class="ghost" data-act="finish" title="Release the needles and record the leftover yarn">Finish…</button>`
         }</label>
-      </div>
+      </div>`}
 
       <div class="side-section">
         <h3>Needles, hooks &amp; cables</h3>
@@ -293,7 +297,7 @@ export class ProjectPage {
                 .join("")}</ul>`
             : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`
         }
-        ${finished ? "" : `<button class="ghost" data-act="edit-links">Choose needles &amp; yarn…</button>`}
+        ${finished ? "" : `<button class="ghost" data-act="edit-links">${plan ? "Choose yarn…" : "Choose needles &amp; yarn…"}</button>`}
       </div>
 
       <label class="field">
@@ -393,6 +397,15 @@ export class ProjectPage {
       this.root.dispatchEvent(new CustomEvent("open-person", { bubbles: true, detail: this.project.personId }));
     }
     if (act === "finish") this.hooks.finish(this.project);
+    if (act === "start-plan") {
+      try {
+        this.project = await api.setProjectStatus(this.projectId, "active");
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Start knitting"));
+      }
+      this.renderSide();
+      void this.log?.reload();
+    }
     if (act === "cover-file") {
       const input = document.createElement("input");
       input.type = "file";

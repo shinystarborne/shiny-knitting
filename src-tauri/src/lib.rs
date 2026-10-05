@@ -127,6 +127,7 @@ pub fn run() {
             projects::update_project,
             projects::finish_project,
             projects::set_project_status,
+            projects::set_plan_order,
             projects::delete_project,
             projects::set_project_cover,
             projects::get_project_cover,

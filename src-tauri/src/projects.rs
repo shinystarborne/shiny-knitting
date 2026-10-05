@@ -41,7 +41,13 @@ pub fn update_project(state: State<'_, AppState>, id: String, input: ProjectInpu
     db::update_project(&state.db(), &id, &tidy(input))
 }
 
-/// Active, paused or frogged; finishing is `finish_project`.
+/// The plans in the order given, as dragged.
+#[tauri::command]
+pub fn set_plan_order(state: State<'_, AppState>, ids: Vec<String>) -> CmdResult<()> {
+    db::set_plan_order(&state.db(), &ids)
+}
+
+/// Active, paused or frogged, or a plan started; finishing is `finish_project`.
 #[tauri::command]
 pub fn set_project_status(state: State<'_, AppState>, id: String, status: String) -> CmdResult<Project> {
     db::set_project_status(&state.db(), &id, &status)

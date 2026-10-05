@@ -11,7 +11,7 @@ import { ShopsView } from "./views/shops";
 import { ShopForm } from "./views/shop-form";
 import { shopTagFacets, toolStart, yarnStart, type WishFilter } from "./views/shopping";
 import { ProjectsView } from "./views/projects";
-import { ProjectForm } from "./views/project-form";
+import { ProjectForm, type ProjectPreset } from "./views/project-form";
 import { FinishProjectDialog } from "./views/finish-project";
 import { ProjectPage } from "./views/project-page";
 import { InspirationPage, InspirationView } from "./views/inspiration";
@@ -173,8 +173,8 @@ class App {
       this.openYarnForm((e as CustomEvent<Yarn>).detail);
     });
     this.screen.addEventListener("add-project", (e) => {
-      const detail = (e as CustomEvent<{ patternId?: string }>).detail ?? {};
-      void this.openProjectForm(null, detail.patternId ?? null);
+      const detail = (e as CustomEvent<ProjectPreset>).detail ?? {};
+      void this.openProjectForm(null, detail.patternId ?? null, detail);
     });
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
@@ -636,9 +636,16 @@ class App {
     await this.openProjectForm(project, null);
   }
 
-  private async openProjectForm(project: Project | null, patternId: string | null): Promise<void> {
-    const form = new ProjectForm(this.freshModal(), project, { patternId }, {
+  private async openProjectForm(project: Project | null, patternId: string | null, preset: ProjectPreset = {}): Promise<void> {
+    const form = new ProjectForm(this.freshModal(), project, { ...preset, patternId }, {
       onDone: (saved) => {
+        // A new plan joins the plans, wherever it was made.
+        if (!project && saved?.status === "planned") {
+          if (this.currentTab === "projects") void this.showProjects();
+          else this.afterProjectChange();
+          if (saved.patternId) void this.activeLibrary?.refreshPattern(saved.patternId);
+          return;
+        }
         // A project started from the Projects tab opens on its own page,
         // ready for its board; one started from a pattern stays with it.
         if (!project && saved && this.currentTab === "projects" && !this.activeProjectPage) void this.showProjectPage(saved.id);

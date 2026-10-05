@@ -353,7 +353,8 @@ export class LibraryView {
       <button role="menuitem" data-menu="tags"><span class="tick"></span>Tags…</button>
       <button role="menuitem" data-menu="details"><span class="tick"></span>Details…</button>
       <button role="menuitem" data-menu="cover"><span class="tick"></span>Cover…</button>
-      <button role="menuitem" data-menu="project"><span class="tick"></span>Start a project…</button>`;
+      <button role="menuitem" data-menu="project"><span class="tick"></span>Start a project…</button>
+      <button role="menuitem" data-menu="plan"><span class="tick"></span>Plan it…</button>`;
     document.body.appendChild(menu);
     // Under the button, kept on screen.
     const at = button.getBoundingClientRect();
@@ -438,6 +439,8 @@ export class LibraryView {
       if (await changeCover(pattern)) await this.afterCoverChange(patternId);
     } else if (action === "project") {
       this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId } }));
+    } else if (action === "plan") {
+      this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId, planned: true } }));
     }
   }
 

@@ -27,9 +27,9 @@ starting; the details are in the sections under the list.
 
 **Projects**
 
-3. [ ] Plans: projects not started yet, with a pattern or an idea, yarn, a
+3. [x] Plans: projects not started yet, with a pattern or an idea, yarn, a
    rough date and an order to drag; from a stash yarn's Planned for, or a
-   Want to knit pattern. *Decided:* both, a rough time or an exact date.
+   Want to knit pattern. *Decided:* both, a rough time or an exact date. *0.3.27*
 4. [ ] Finished gallery: photos of finished projects with their pattern,
    yarn, needles, dates and log. *Decided:* by itself, every finished
    project, with a way to hide one.
@@ -71,21 +71,6 @@ starting; the details are in the sections under the list.
 26. [ ] The round yoke calculator and a yoke chart together.
     **Decide first:** fit the chart to the calculator's counts, or the
     calculator to the chart?
-
-### Plans: what to knit next
-
-A queue of projects not started yet: a pattern (or just an idea), yarn from the
-stash, a rough date ("autumn", "before the baby comes"), and an order you can
-drag. Since Projects exist, a plan is probably a project with a **planned**
-status rather than a new kind of thing. Patterns marked **Want to knit** are a
-natural place to start one from.
-
-A yarn in the stash can already say what it is planned for (a pattern, or
-a title); a plan could start from there, with that yarn on it.
-
-Decided (6 Oct 2026): both. A plan has a rough time ("autumn") or an exact
-date, whichever is known; plans sort by it, and can still be dragged into an
-order of their own.
 
 ### Finished gallery
 
@@ -234,6 +219,12 @@ would keep them apart. Decided (6 Oct 2026): yes, a counter per project.
   and milestones the project writes (started, paused, frogged, finished, a new
   pattern). A live Log card on the project's board shows it and takes new
   entries.
+- **Plans:** what to knit next, in the Projects tab's Plans list: projects
+  not started, with a pattern (or only a name), yarn from the stash and how
+  much, a rough time and or an exact date. Dragged into order, or sorted by
+  date; made from the tab, a pattern's ⋯ menu (Plan it) or a stash yarn's
+  Make a plan. A plan's yarn is meant for it, not in use, and it takes no
+  needles; Start knitting makes it an active project from today.
 - **Projects:** how much of each yarn a project will take (grams, balls by
   the ball band, or all of it), and a lot never weighed shown by its balls,
   not as 0 g. The pattern searched for by title, designer or tag (in
