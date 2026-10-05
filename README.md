@@ -20,10 +20,13 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.19](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.19)** —
+  a yarn's fibre content and superwash filled in from, and given to, its
+  other colours. The one to test.
 - **[v0.3.0-beta.18](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.18)** —
   colourwork charts in the Calculators tab: a standard chart or a round
   yoke's (lopapeysa), drawn, written out row by row, and printed at the real
-  size. The one to test.
+  size. Superseded by `beta.19`.
 - **[v0.3.0-beta.17](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.17)** —
   a live Log card on a project's board, to read and write the log beside the
   rest. Superseded by `beta.18`.
