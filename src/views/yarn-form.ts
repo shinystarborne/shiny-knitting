@@ -208,6 +208,10 @@ export class YarnForm {
             <input type="checkbox" data-f="superwash" ${base?.superwash ? "checked" : ""} />
             <span>Superwash <em class="hint">treated, so it can go in the washing machine</em></span>
           </label>
+          <label class="check share-fibres" data-el="share-fibres" hidden>
+            <input type="checkbox" data-f="shareFibres" checked />
+            <span data-el="share-fibres-text"></span>
+          </label>
         </div>
         <label class="field">
           <span>Notes</span>
@@ -255,6 +259,9 @@ export class YarnForm {
         // Yarn from the wishlist that is already in the stash in another
         // colour takes its weight, ball band and fibres from there.
         if (this.start) this.fillFromKnown();
+        // A colour with no fibres yet takes them from another colour of it.
+        if (this.editing) this.fillFibresFromKnown();
+        this.shareHint();
       })
       .catch(() => {});
     if (this.start) {
@@ -273,6 +280,52 @@ export class YarnForm {
     return mostUsedSpellings((ofBrand.length ? ofBrand : this.known).map((y) => y.name));
   }
 
+  /** The other colours of the yarn named in the form: the same brand and name, newest first. */
+  private otherColours(): Yarn[] {
+    const name = this.value("name").trim().toLowerCase();
+    if (!name) return [];
+    const brand = this.value("brand").trim().toLowerCase();
+    return this.known
+      .filter((y) => y.name.trim().toLowerCase() === name && y.brand.trim().toLowerCase() === brand)
+      .sort((a, b) => b.addedAt - a.addedAt);
+  }
+
+  /** Puts in the fibres and superwash of the newest of these colours that has fibres, if none are typed yet. */
+  private takeFibresFrom(colours: Yarn[]): Yarn | null {
+    const from = colours.find((y) => y.fibres.length);
+    this.readFibres();
+    if (!from || this.fibres.some((f) => f.name.trim())) return null;
+    this.fibres = from.fibres.map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
+    this.renderFibres();
+    const superwash = this.root.querySelector<HTMLInputElement>('[data-f="superwash"]');
+    if (superwash && from.superwash) superwash.checked = true;
+    return from;
+  }
+
+  /** Editing a colour that has no fibres: they come from another colour of the same yarn, to save or change. */
+  private fillFibresFromKnown(): void {
+    const from = this.takeFibresFrom(this.otherColours());
+    if (from) this.showKnownHint(`Filled in the fibres from your ${from.name}${from.colourway ? ` (${from.colourway})` : ""}. Save to keep them.`);
+  }
+
+  /**
+   * Offers to give the yarn's other colours the fibre content being saved,
+   * when some of them have other fibres or none: the fibres are the yarn's,
+   * whatever its colour.
+   */
+  private shareHint(): void {
+    const label = this.root.querySelector<HTMLElement>('[data-el="share-fibres"]');
+    if (!label) return;
+    const fibres = this.fibreValues();
+    const superwash = (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement | null)?.checked ?? false;
+    const differ = fibres.length ? this.otherColours().filter((y) => !sameFibres(y.fibres, fibres) || y.superwash !== superwash) : [];
+    label.hidden = !differ.length;
+    if (!differ.length) return;
+    const yarn = `${this.value("brand").trim()} ${this.value("name").trim()}`.trim();
+    const count = differ.length === 1 ? "other colour" : `${differ.length} other colours`;
+    this.root.querySelector('[data-el="share-fibres-text"]')!.textContent = `Give the ${count} of ${yarn} the same fibre content and superwash`;
+  }
+
   /**
    * A name that is already in the stash fills in the rest of that yarn --
    * brand, weight, metres and grams per ball -- so a new colour of it is only
@@ -289,25 +342,21 @@ export class YarnForm {
     const from = same[0];
     if (!from) return;
     const filled: string[] = [];
-    const fill = (field: string, value: string | number, what: string) => {
+    // Each from the newest colour that has it: an older colour may have what
+    // the newest was saved without.
+    const fill = (field: string, value: (y: Yarn) => string | number, what: string) => {
       const input = this.root.querySelector<HTMLInputElement>(`[data-f="${field}"]`);
-      if (!input || input.value.trim() || !value) return;
-      input.value = String(value);
+      const has = same.find((y) => value(y));
+      if (!input || input.value.trim() || !has) return;
+      input.value = String(value(has));
       filled.push(what);
     };
-    fill("brand", from.brand, "brand");
-    fill("yarnWeight", from.yarnWeight, "weight");
-    fill("metresPerBall", from.metresPerBall, "metres");
-    fill("gramsPerBall", from.gramsPerBall, "grams per ball");
-    // Its fibres too, when none are typed yet.
-    this.readFibres();
-    if (from.fibres.length && !this.fibres.some((f) => f.name.trim())) {
-      this.fibres = from.fibres.map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
-      this.renderFibres();
-      filled.push("fibres");
-      const superwash = this.root.querySelector<HTMLInputElement>('[data-f="superwash"]');
-      if (superwash && from.superwash) superwash.checked = true;
-    }
+    fill("brand", (y) => y.brand, "brand");
+    fill("yarnWeight", (y) => y.yarnWeight, "weight");
+    fill("metresPerBall", (y) => y.metresPerBall, "metres");
+    fill("gramsPerBall", (y) => y.gramsPerBall, "grams per ball");
+    // Its fibres and superwash too, when none are typed yet.
+    if (this.takeFibresFrom(same)) filled.push("fibres");
     if (filled.length) {
       this.weightAuto = false;
       this.weightHint();
@@ -384,6 +433,7 @@ export class YarnForm {
     if (f === "yarnWeight") this.weightAuto = false;
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
     if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
+    if (f === "superwash" || f === "name" || f === "brand" || (e.target as HTMLElement).closest(".fibre-row")) this.shareHint();
   };
 
   /**
@@ -569,6 +619,7 @@ export class YarnForm {
       makeCombo(input, () => this.fibreChoices());
     }
     this.fibreHint();
+    this.shareHint();
   }
 
   private fibreChoices(): string[] {
@@ -718,6 +769,16 @@ export class YarnForm {
         saved = await api.addYarn(input);
       }
 
+      // The other colours of the yarn get its fibres, when that was offered and left ticked.
+      const share = this.root.querySelector<HTMLElement>('[data-el="share-fibres"]');
+      const shareBox = this.root.querySelector<HTMLInputElement>('[data-f="shareFibres"]');
+      if (share && !share.hidden && shareBox?.checked && shared.fibres.length) {
+        for (const other of this.otherColours()) {
+          if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
+          await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash });
+        }
+      }
+
       // The photo goes up after the save, because it is attached by yarn id
       // and a new yarn only has one now.
       if (this.pendingPhoto) {
@@ -761,6 +822,12 @@ function emptyLot(): LotRow {
 
 function field(row: HTMLElement, name: string): string {
   return (row.querySelector(`[data-lf="${name}"]`) as HTMLInputElement).value;
+}
+
+/** Whether two fibre contents are the same, whatever the case and order. */
+function sameFibres(a: Fibre[], b: Fibre[]): boolean {
+  const key = (list: Fibre[]) => list.map((f) => `${f.name.trim().toLowerCase()}:${f.percent || 0}`).sort().join("|");
+  return key(a) === key(b);
 }
 
 /** Parses-or-0 for the number fields. */

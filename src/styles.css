@@ -2890,6 +2890,8 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .hint.bad { color: #ffb3b5; }
 .check.superwash { margin-top: 6px; }
 .check.superwash em { font-style: normal; margin-left: 4px; }
+.check.share-fibres { margin-top: 2px; }
+.check.share-fibres[hidden] { display: none; }
 .card-fibres { margin: 0; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- searching a long designer or tag list ---------- */

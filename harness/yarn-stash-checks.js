@@ -276,6 +276,79 @@ export async function verifyYarnStash() {
       !cardFor(removedId) && !store.yarns.some((y) => y.id === removedId),
       `card ${!!cardFor(removedId)}`,
     );
+
+    // --- the fibres are the yarn's, whatever its colour ---
+    const invoke = (cmd, args) => window.__TAURI_INTERNALS__.invoke(cmd, args);
+    const colour = (colourway, fibres, superwash) =>
+      invoke("add_yarn", { input: { name: "Merino Extra Fine", brand: "Drops", colourway, yarnWeight: "Worsted", metresPerBall: 105, gramsPerBall: 50, notes: "", fibres, superwash, lots: [] } });
+    const wool = [{ name: "wool", percent: 100 }];
+    const nebel = await colour("37 Nebelwald", wool, true);
+    const red = await colour("11 Red", [], false);
+    const blue = await colour("21 Blue", [], false);
+    tab("patterns");
+    await waitFor(() => !!document.querySelector(".library:not(.stash)"), "the library");
+    tab("stash");
+    await waitFor(() => !!cardFor(blue.id), "the new colours");
+    const fibreNames = () => [...modal().querySelectorAll("[data-fibre-name]")].map((i) => i.value).filter(Boolean);
+    const shareLabel = () => modal().querySelector('[data-el="share-fibres"]');
+
+    cardFor(red.id).click();
+    await waitFor(() => !!modal() && fibreNames().length > 0, "the fibres filled in from another colour");
+    check(
+      results,
+      "editing a colour with no fibres fills them in from another colour of the yarn",
+      fibreNames().join() === "wool" && modal().querySelector('[data-f="superwash"]').checked &&
+        /Filled in the fibres from your Merino Extra Fine \(37 Nebelwald\)/.test(modal().querySelector('[data-el="known-hint"]').textContent),
+      `${fibreNames()} / ${modal().querySelector('[data-el="known-hint"]').textContent}`,
+    );
+    check(
+      results,
+      "…and offers to give the colours still without them the same",
+      !shareLabel().hidden && shareLabel().textContent.includes("Give the other colour of Drops Merino Extra Fine the same fibre content"),
+      shareLabel().hidden ? "hidden" : shareLabel().textContent,
+    );
+    modal().querySelector('[data-act="save"]').click();
+    await waitFor(() => !modal(), "the save");
+    const stored = (id) => store.yarns.find((y) => y.id === id);
+    check(
+      results,
+      "saved, every colour has the fibres and superwash",
+      [red.id, blue.id].every((id) => stored(id).fibres.map((f) => `${f.name} ${f.percent}`).join() === "wool 100" && stored(id).superwash),
+      JSON.stringify([stored(red.id), stored(blue.id)].map((y) => [y.fibres, y.superwash])),
+    );
+
+    cardFor(nebel.id).click();
+    await waitFor(() => !!modal() && fibreNames().length > 0, "the form");
+    // The other colours load after the form opens.
+    await wait(300);
+    check(results, "with every colour alike, nothing is offered", shareLabel().hidden);
+    modal().querySelector('[data-f="superwash"]').click();
+    check(results, "a change to one offers it to the others", !shareLabel().hidden && shareLabel().textContent.includes("the 2 other colours"), shareLabel().textContent);
+    modal().querySelector('[data-f="shareFibres"]').click();
+    modal().querySelector('[data-act="save"]').click();
+    await waitFor(() => !modal(), "the save");
+    check(results, "…and unticked, only that colour changes", !stored(nebel.id).superwash && stored(red.id).superwash && stored(blue.id).superwash);
+
+    // A new colour takes the fibres from whichever colour has them, not only the newest.
+    store.yarns.find((y) => y.id === blue.id).fibres = [];
+    store.yarns.find((y) => y.id === blue.id).addedAt = Date.now() + 1000;
+    document.querySelector('.stash [data-act="add"]').click();
+    await waitFor(() => !!modal(), "the add form");
+    const name = modal().querySelector('[data-f="name"]');
+    modal().querySelector('[data-f="brand"]').value = "Drops";
+    await wait(300);
+    name.value = "Merino Extra Fine";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    name.dispatchEvent(new Event("change", { bubbles: true }));
+    check(
+      results,
+      "a new colour takes the fibres from a colour that has them, though the newest has none",
+      fibreNames().join() === "wool" && modal().querySelector('[data-f="metresPerBall"]').value === "105",
+      `${fibreNames()} / ${modal().querySelector('[data-f="metresPerBall"]').value}`,
+    );
+    modal().querySelector('[data-act="cancel"]')?.click();
+    if (modal()) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    store.yarns = store.yarns.filter((y) => ![nebel.id, red.id, blue.id].includes(y.id));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err && err.message) || err));
   } finally {
