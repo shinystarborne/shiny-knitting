@@ -20,8 +20,8 @@ starting; the details are in the sections under the list.
 
 **Yarn and the stash**
 
-1. [ ] A project's yarn: how much it is expected to take (grams, balls, or
-   all of it), instead of showing 0 g. See [below](#how-much-yarn-a-project-expects-to-use).
+1. [x] A project's yarn: how much it is expected to take (grams, balls, or
+   all of it), instead of showing 0 g. *0.3.24*
 2. [ ] Ball band thumbnails on a yarn's card and in its form, opening the
    band big.
 
@@ -71,15 +71,6 @@ starting; the details are in the sections under the list.
 26. [ ] The round yoke calculator and a yoke chart together.
     **Decide first:** fit the chart to the calculator's counts, or the
     calculator to the chart?
-
-### How much yarn a project expects to use
-
-Choosing a yarn from the stash for a project says nothing about how much of
-it: the project shows it as 0 g, which is confusing. When a yarn is chosen,
-ask how much it is expected to take (grams, or balls, or "all of it"), show
-that on the project, and keep it apart from the leftovers recorded when the
-project is finished. Later it could warn when a yarn is promised to more
-projects than there is of it.
 
 ### Plans: what to knit next
 
@@ -246,7 +237,9 @@ at once rare enough?
   and milestones the project writes (started, paused, frogged, finished, a new
   pattern). A live Log card on the project's board shows it and takes new
   entries.
-- **Projects:** the pattern searched for by title, designer or tag (in
+- **Projects:** how much of each yarn a project will take (grams, balls by
+  the ball band, or all of it), and a lot never weighed shown by its balls,
+  not as 0 g. The pattern searched for by title, designer or tag (in
   progress and wanted first), when starting one and on its page; needles,
   hooks, cables and yarn in use; Active, Paused, Finished
   and Frogged; finishing frees them and records leftovers; a page per project

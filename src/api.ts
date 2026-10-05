@@ -637,6 +637,8 @@ export interface ProjectYarn {
   dyeLot: string;
   /** Grams left when the project finished; null while active or not recorded. */
   leftoverGrams: number | null;
+  /** Grams the project is expected to take; null when not said. */
+  plannedGrams: number | null;
 }
 
 /** Where a project is. Mirrors `models.rs::PROJECT_STATUSES`. */
@@ -684,6 +686,8 @@ export interface ProjectYarnInput {
   id?: string | null;
   yarnId: string;
   lotId: string | null;
+  /** Grams it is expected to take; null (or 0) for not said. */
+  plannedGrams?: number | null;
 }
 
 /** What the project dialog sends: the whole set of tools and yarns wanted. */

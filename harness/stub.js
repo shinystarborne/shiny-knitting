@@ -764,9 +764,17 @@ function projectOut(pr) {
       .map((e) => {
         const yarn = store.yarns.find((y) => y.id === e.yarnId);
         const lot = yarn?.lots.find((l) => l.id === e.lotId);
-        return { id: e.id, yarnId: e.yarnId, yarnName: yarn ? yarn.name : "", lotId: e.lotId, dyeLot: lot ? lot.dyeLot : "", leftoverGrams: e.leftoverGrams };
+        return { id: e.id, yarnId: e.yarnId, yarnName: yarn ? yarn.name : "", lotId: e.lotId, dyeLot: lot ? lot.dyeLot : "", leftoverGrams: e.leftoverGrams, plannedGrams: e.plannedGrams ?? null };
       }),
   });
+}
+
+/** As db::planned_grams: grams, or null when not said; nothing a project could not take. */
+function plannedGrams(g) {
+  if (g == null || g === 0) return null;
+  if (g < 0) throw new Error("How much a project takes is a number of grams.");
+  if (g > 100000) throw new Error(`${g} g is more than a project takes: is it in grams?`);
+  return g;
 }
 
 /** `sync_links`: an active project's tools and yarns brought to what was sent. */
@@ -787,8 +795,9 @@ function syncLinks(id, input) {
     if (existing) {
       existing.yarnId = y.yarnId;
       existing.lotId = y.lotId ?? null;
+      existing.plannedGrams = plannedGrams(y.plannedGrams);
     } else {
-      store.projectYarns.push({ id: `py${store.nextId++}`, projectId: id, yarnId: y.yarnId, lotId: y.lotId ?? null, addedAt: Date.now(), releasedAt: null, leftoverGrams: null });
+      store.projectYarns.push({ id: `py${store.nextId++}`, projectId: id, yarnId: y.yarnId, lotId: y.lotId ?? null, addedAt: Date.now(), releasedAt: null, leftoverGrams: null, plannedGrams: plannedGrams(y.plannedGrams) });
     }
   }
 }

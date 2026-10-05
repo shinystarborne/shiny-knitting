@@ -287,7 +287,8 @@ export class ProjectPage {
             ? `<ul class="tool-list record">${p.yarns
                 .map((y) => {
                   const left = y.leftoverGrams === null ? "" : y.leftoverGrams === 0 ? " · used up" : ` · ${y.leftoverGrams} g left`;
-                  return `<li><span>${esc(`${y.yarnName}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${left}`)}</span></li>`;
+                  const takes = y.plannedGrams && !finished ? ` · will take ${y.plannedGrams} g` : "";
+                  return `<li><span>${esc(`${y.yarnName}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${takes}${left}`)}</span></li>`;
                 })
                 .join("")}</ul>`
             : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`

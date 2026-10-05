@@ -847,6 +847,9 @@ pub struct ProjectYarn {
     /// Grams left when the project finished; None while active, or when the
     /// leftover was not recorded.
     pub leftover_grams: Option<i64>,
+    /// Grams the project is expected to take; None when not said.
+    #[serde(default)]
+    pub planned_grams: Option<i64>,
 }
 
 /// A yarn as the project dialog sends it: an `id` keeps an existing entry.
@@ -858,6 +861,9 @@ pub struct ProjectYarnInput {
     pub yarn_id: String,
     #[serde(default)]
     pub lot_id: Option<String>,
+    /// Grams the project is expected to take; None (or 0) for not said.
+    #[serde(default)]
+    pub planned_grams: Option<i64>,
 }
 
 /// A project as the dialog sends it. The tools and yarns are the whole set

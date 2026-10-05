@@ -1980,6 +1980,13 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   border-radius: 6px;
 }
 .tool-list li button { padding: 0 6px; font-size: 11px; }
+/* A project's chosen yarn: how much it will take, on a line of its own. */
+.tool-list li.yarn-chosen { flex-wrap: wrap; }
+.yarn-plan { flex-basis: 100%; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.yarn-plan input { width: 80px; padding: 3px 6px; font-size: 12px; text-align: right; }
+.tool-list li .yarn-plan select { flex: 0 0 auto; width: auto; min-width: 0; padding: 3px 6px; font-size: 12px; }
+.tool-list li .yarn-plan button { padding: 2px 8px; }
+.yarn-plan .hint { font-style: normal; font-size: 11px; }
 [data-tool-panel] select { font-size: 12px; min-width: 0; flex: 1; }
 .tool-add { display: flex; gap: 6px; }
 .tool-add button { font-size: 12px; padding: 4px 10px; }

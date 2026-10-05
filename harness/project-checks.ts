@@ -118,7 +118,18 @@ export async function verifyProjects() {
     check(results, "a yarn with one lot does not ask", lotSel().hidden && !yarnUse().disabled);
     yarnUse().click();
     const chosenYarn = form()!.querySelector('[data-el="yarns"] .tool-list')?.textContent ?? "";
-    check(results, "the chosen yarn shows its lot", /Shetland Sock · Peat — lot L57 \(200 g\)/.test(chosenYarn) && /Handspun/.test(chosenYarn), chosenYarn);
+    check(results, "the chosen yarn shows its lot", /Shetland Sock · Peat — lot L57 \(200 g left\)/.test(chosenYarn) && /Handspun/.test(chosenYarn), chosenYarn);
+    // How much each will take: in balls by the ball band, or all of it.
+    const planned = (i: number) => form()!.querySelector<HTMLInputElement>(`[data-el="planned"][data-index="${i}"]`)!;
+    const plannedUnit = (i: number) => form()!.querySelector<HTMLSelectElement>(`[data-el="planned-unit"][data-index="${i}"]`)!;
+    const plannedNote = (i: number) => form()!.querySelector<HTMLElement>(`[data-el="planned-note"][data-index="${i}"]`)!.textContent ?? "";
+    plannedUnit(0).value = "balls";
+    planned(0).value = "1.5";
+    planned(0).dispatchEvent(new Event("change", { bubbles: true }));
+    check(results, "how much a yarn will take is typed in balls, and kept in grams", planned(0).value === "150" && plannedNote(0) === "150 g, 1.5 balls ≈ 600 m", `${planned(0).value} / ${plannedNote(0)}`);
+    (form()!.querySelector('[data-act="yarn-all"][data-index="1"]') as HTMLElement).click();
+    const handspun = store.yarns.find((y) => y.id === "y3") as unknown as { lots: { gramsLeft: number }[] };
+    check(results, "…or All of it, what there is of it", planned(1).value === String(handspun.lots[0].gramsLeft), `${planned(1).value} vs ${handspun.lots[0].gramsLeft}`);
     f("name")!.value = "Long socks for Mum";
     const n = store.projects.length;
     (form()!.querySelector('[data-act="save"]') as HTMLElement).click();
@@ -128,6 +139,7 @@ export async function verifyProjects() {
     check(results, "its needles are in use on it", activeOn("t3") === made.id && activeOn("t2") === made.id);
     check(results, "the one taken from another project left it", !store.projectTools.some((l) => l.projectId === "pr2" && l.toolId === "t2"));
     check(results, "its yarn is on it, from the lot chosen", store.projectYarns.filter((e) => e.projectId === made.id).map((e) => `${e.yarnId}:${e.lotId}`).join(" ") === "y1:l2 y3:l4");
+    check(results, "…with how much each will take", store.projectYarns.filter((e) => e.projectId === made.id).map((e) => (e as unknown as { plannedGrams: number }).plannedGrams).join(" ") === `150 ${handspun.lots[0].gramsLeft}`);
     // Started from the tab, it opens on its own page.
     const page = () => document.querySelector<HTMLElement>(".project-page");
     const side = () => page()!.querySelector<HTMLElement>(".project-side")!;

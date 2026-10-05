@@ -52,7 +52,7 @@ export class ProjectForm {
     this.yarns = yarns;
     const e = this.editing;
     this.chosenTools = new Set(e?.toolIds ?? []);
-    this.chosenYarns = (e?.yarns ?? []).map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId }));
+    this.chosenYarns = (e?.yarns ?? []).map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId, plannedGrams: y.plannedGrams }));
     // A finished or frogged project shows what it used, as a record.
     const finished = !!e && !isLive(e.status);
     const patternId = e ? e.patternId : (this.preset.patternId ?? null);
@@ -209,7 +209,7 @@ export class ProjectForm {
       notes: this.value("notes"),
       startedAt: started ? fromDateInput(started) : null,
       toolIds: [...this.chosenTools],
-      yarns: this.chosenYarns.map((y) => ({ id: y.id ?? null, yarnId: y.yarnId, lotId: y.lotId })),
+      yarns: this.chosenYarns.map((y) => ({ id: y.id ?? null, yarnId: y.yarnId, lotId: y.lotId, plannedGrams: y.plannedGrams ?? null })),
     };
   }
 

@@ -2172,7 +2172,7 @@ fn saving_a_project_brings_its_tools_and_yarns_to_what_was_sent() {
     let input = crate::models::ProjectInput {
         name: "Jumper".into(),
         tool_ids: vec!["t1".into(), "t2".into()],
-        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()) }],
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()), planned_grams: None }],
         ..Default::default()
     };
     let jumper = insert_project(&conn, "j", &input).unwrap();
@@ -2187,7 +2187,7 @@ fn saving_a_project_brings_its_tools_and_yarns_to_what_was_sent() {
     let fewer = crate::models::ProjectInput {
         name: "Jumper".into(),
         tool_ids: vec!["t2".into()],
-        yarns: vec![crate::models::ProjectYarnInput { id: Some(entry.clone()), yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()) }],
+        yarns: vec![crate::models::ProjectYarnInput { id: Some(entry.clone()), yarn_id: y.id.clone(), lot_id: Some(y.lots[1].id.clone()), planned_grams: None }],
         ..Default::default()
     };
     let saved = update_project(&conn, "j", &fewer).unwrap();
@@ -2196,7 +2196,7 @@ fn saving_a_project_brings_its_tools_and_yarns_to_what_was_sent() {
     assert_eq!(saved.yarns[0].id, entry, "a kept yarn keeps its entry");
 
     let wrong_lot = crate::models::ProjectInput {
-        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some("someone-elses".into()) }],
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: Some("someone-elses".into()), planned_grams: None }],
         ..Default::default()
     };
     assert!(update_project(&conn, "j", &wrong_lot).is_err());
@@ -2214,7 +2214,7 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
         tool_ids: vec!["t1".into()],
         yarns: [&y, &gone, &none]
             .iter()
-            .map(|yy| crate::models::ProjectYarnInput { id: None, yarn_id: yy.id.clone(), lot_id: None })
+            .map(|yy| crate::models::ProjectYarnInput { id: None, yarn_id: yy.id.clone(), lot_id: None, planned_grams: None })
             .collect(),
         ..Default::default()
     };
@@ -3013,4 +3013,23 @@ fn marking_a_yarn_used_up_counts_what_was_left_as_used() {
     set_yarn_used_up(&conn, "y1", None).unwrap();
     assert!(list_yarn_usage(&conn).unwrap().is_empty(), "back in the stash, it was not used after all");
     delete_yarn(&conn, "y1").unwrap();
+}
+
+#[test]
+fn a_project_says_how_much_of_each_yarn_it_expects_to_take() {
+    let conn = test_db();
+    let y = yarn_with_lots(&conn, "Felted Tweed", vec![lot("A", 4.0, 0)]);
+    let input = |planned: Option<i64>, id: Option<String>| crate::models::ProjectInput {
+        name: "Jumper".into(),
+        yarns: vec![crate::models::ProjectYarnInput { id, yarn_id: y.id.clone(), lot_id: None, planned_grams: planned }],
+        ..Default::default()
+    };
+    let p = insert_project(&conn, "j", &input(Some(150), None)).unwrap();
+    assert_eq!(p.yarns[0].planned_grams, Some(150));
+    let entry = p.yarns[0].id.clone();
+    let changed = update_project(&conn, "j", &input(Some(200), Some(entry.clone()))).unwrap();
+    assert_eq!((changed.yarns[0].id.as_str(), changed.yarns[0].planned_grams), (entry.as_str(), Some(200)), "the same entry, its amount changed");
+    assert_eq!(update_project(&conn, "j", &input(Some(0), Some(entry.clone()))).unwrap().yarns[0].planned_grams, None, "0 is not said");
+    assert!(update_project(&conn, "j", &input(Some(-5), Some(entry.clone()))).is_err());
+    assert!(update_project(&conn, "j", &input(Some(1_000_000), Some(entry))).is_err());
 }

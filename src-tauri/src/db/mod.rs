@@ -570,6 +570,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "plans")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
     }
+    // How much of a yarn a project is expected to take; NULL when not said.
+    if !column_exists(conn, "project_yarns", "planned_grams")? {
+        conn.execute("ALTER TABLE project_yarns ADD COLUMN planned_grams INTEGER", [])?;
+    }
     // When a yarn was used up; NULL while it is in the stash.
     if !column_exists(conn, "yarns", "used_up_at")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN used_up_at INTEGER", [])?;
@@ -2264,7 +2268,7 @@ fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
         .query_map(params![project.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;
     let mut stmt = conn.prepare(
-        "SELECT py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams
+        "SELECT py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams, py.planned_grams
          FROM project_yarns py
          JOIN yarns y ON y.id = py.yarn_id
          LEFT JOIN yarn_lots l ON l.id = py.lot_id
@@ -2279,6 +2283,7 @@ fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
                 lot_id: r.get(3)?,
                 dye_lot: r.get(4)?,
                 leftover_grams: r.get(5)?,
+                planned_grams: r.get(6)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -2397,6 +2402,16 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
 }
 
 /// Brings an active project's tools and yarns to the set the dialog sent.
+/// How much a project expects to take of a yarn: grams, or None when not said.
+fn planned_grams(grams: Option<i64>) -> AppResult<Option<i64>> {
+    match grams {
+        Some(g) if g < 0 => Err(AppError::Message("How much a project takes is a number of grams.".to_string())),
+        Some(g) if g > 100_000 => Err(AppError::Message(format!("{g} g is more than a project takes: is it in grams?"))),
+        Some(0) | None => Ok(None),
+        Some(g) => Ok(Some(g)),
+    }
+}
+
 fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()> {
     let current: Vec<String> = conn
         .prepare("SELECT tool_id FROM project_tools WHERE project_id = ?1")?
@@ -2427,6 +2442,7 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
         conn.execute("DELETE FROM project_yarns WHERE id = ?1", params![entry])?;
     }
     for yarn in &input.yarns {
+        let planned = planned_grams(yarn.planned_grams)?;
         // Scoped to the yarn, so a lot from another yarn cannot be named.
         if let Some(lot) = &yarn.lot_id {
             let ok: Option<i64> = conn
@@ -2443,8 +2459,8 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
         match yarn.id.as_deref().filter(|e| existing.iter().any(|x| x == e)) {
             Some(entry) => {
                 conn.execute(
-                    "UPDATE project_yarns SET yarn_id = ?2, lot_id = ?3 WHERE id = ?1",
-                    params![entry, yarn.yarn_id, yarn.lot_id],
+                    "UPDATE project_yarns SET yarn_id = ?2, lot_id = ?3, planned_grams = ?4 WHERE id = ?1",
+                    params![entry, yarn.yarn_id, yarn.lot_id, planned],
                 )?;
             }
             None => {
@@ -2455,9 +2471,9 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
                     return Err(AppError::Message("One of those yarns is no longer in the stash.".to_string()));
                 }
                 conn.execute(
-                    "INSERT INTO project_yarns (id, project_id, yarn_id, lot_id, added_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![uuid::Uuid::new_v4().to_string(), id, yarn.yarn_id, yarn.lot_id, now_ms()],
+                    "INSERT INTO project_yarns (id, project_id, yarn_id, lot_id, added_at, planned_grams)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![uuid::Uuid::new_v4().to_string(), id, yarn.yarn_id, yarn.lot_id, now_ms(), planned],
                 )?;
             }
         }
