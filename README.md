@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.23](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.23)** —
+  the stash's metres in all, and Statistics: yarn added and used each month,
+  in metres or grams. The one to test.
 - **[v0.3.0-beta.22](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.22)** —
   the stash's History of yarn used up, with what it went into, and ball band
-  pictures filed by brand and yarn. The one to test.
+  pictures filed by brand and yarn. Superseded by `beta.23`.
 - **[v0.3.0-beta.21](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.21)** —
   a project's pattern searched for by title, designer or tag, instead of
   picked from a long list. Superseded by `beta.22`.
