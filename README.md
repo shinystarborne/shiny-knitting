@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.27](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.27)** —
+  Plans: what to knit next, with yarn and when, dragged into order and
+  started when you are ready. The one to test.
 - **[v0.3.0-beta.26](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.26)** —
   Save pages…: chosen pages of a PDF, or chapters of an EPUB, saved as a
-  PDF. The one to test.
+  PDF. Superseded by `beta.27`.
 - **[v0.3.0-beta.25](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.25)** —
   a yarn's ball band shown small on its card and in its form, to open big
   or add. Superseded by `beta.26`.
