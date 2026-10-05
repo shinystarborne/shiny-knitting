@@ -18,6 +18,14 @@ One at a time, from the top. Each is ticked when it is built, checked and
 released as a beta. **Decide first** means an open question to settle before
 starting; the details are in the sections under the list.
 
+**Bugs: before the next task**
+
+- [ ] **Finishing a project does not update the stash** (reported 6 Oct
+  2026, in 0.3.27). To find out first: whether the grams left, typed in the
+  Finish dialog, reach the yarn's lots; whether the stash shows them without
+  going away and back; and whether a yarn with nothing typed (left as it was)
+  should come off by what the project was to take instead.
+
 **Yarn and the stash**
 
 1. [x] A project's yarn: how much it is expected to take (grams, balls, or
