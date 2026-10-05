@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.22](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.22)** —
+  the stash's History of yarn used up, with what it went into, and ball band
+  pictures filed by brand and yarn. The one to test.
 - **[v0.3.0-beta.21](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.21)** —
   a project's pattern searched for by title, designer or tag, instead of
-  picked from a long list. The one to test.
+  picked from a long list. Superseded by `beta.22`.
 - **[v0.3.0-beta.20](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.20)** —
   what a yarn in the stash is planned for: a pattern from the library, or a
   title not got yet, with a Planned filter. Superseded by `beta.21`.
