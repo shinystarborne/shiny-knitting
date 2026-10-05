@@ -11,14 +11,20 @@ import { mostUsedSpellings } from "./tool-filter";
 const BAND_SIZE = 1800;
 
 /** One yarn's ball band: every picture filed under its brand and name. */
-interface Band {
+export interface Band {
   brand: string;
   name: string;
   pictures: BallBand[];
 }
 
+/** The brands and names a dialog's boxes offer. */
+export interface Known {
+  brands: string[];
+  names: (brand: string) => string[];
+}
+
 /** A yarn's brand and name as one key, whatever the case; it survives being an HTML attribute. */
-const key = (brand: string, name: string) => JSON.stringify([brand.trim().toLowerCase(), name.trim().toLowerCase()]);
+export const bandKey = (brand: string, name: string) => JSON.stringify([brand.trim().toLowerCase(), name.trim().toLowerCase()]);
 
 /**
  * The Stash tab's ball bands: pictures of the paper round each yarn's ball,
@@ -67,7 +73,7 @@ export class BallBandsView {
     this.yarns = yarns;
     const byKey = new Map<string, Band>();
     for (const b of bands) {
-      const k = key(b.brand, b.name);
+      const k = bandKey(b.brand, b.name);
       if (!byKey.has(k)) byKey.set(k, { brand: b.brand, name: b.name, pictures: [] });
       byKey.get(k)!.pictures.push(b);
     }
@@ -77,7 +83,7 @@ export class BallBandsView {
 
   /** The stash's colours of a yarn, used up ones too. */
   private coloursOf(brand: string, name: string): Yarn[] {
-    return this.yarns.filter((y) => key(y.brand, y.name) === key(brand, name));
+    return this.yarns.filter((y) => bandKey(y.brand, y.name) === bandKey(brand, name));
   }
 
   private paint(): void {
@@ -85,10 +91,10 @@ export class BallBandsView {
     const found = (brand: string, name: string) => words.every((w) => `${brand} ${name}`.toLowerCase().includes(w));
     const shown = this.bands.filter((b) => found(b.brand, b.name));
     // Yarn in the stash with no band yet, to add one for at a click.
-    const banded = new Set(this.bands.map((b) => key(b.brand, b.name)));
+    const banded = new Set(this.bands.map((b) => bandKey(b.brand, b.name)));
     const missing = new Map<string, Yarn>();
     for (const y of this.yarns) {
-      const k = key(y.brand, y.name);
+      const k = bandKey(y.brand, y.name);
       if (!y.usedUpAt && !banded.has(k) && !missing.has(k) && found(y.brand, y.name)) missing.set(k, y);
     }
     const brands = [...new Set(shown.map((b) => b.brand))].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1));
@@ -137,7 +143,7 @@ export class BallBandsView {
       fibres.length ? describeFibres(fibres) : "",
     ].filter(Boolean);
     return `
-      <article class="band-card" data-open-band="${esc(key(b.brand, b.name))}">
+      <article class="band-card" data-open-band="${esc(bandKey(b.brand, b.name))}">
         <div class="band-pic" data-pic="${esc(b.pictures[0].id)}">
           ${b.pictures.length > 1 ? `<span class="band-count">${b.pictures.length} pictures</span>` : ""}
         </div>
@@ -159,200 +165,228 @@ export class BallBandsView {
   private async onClick(e: MouseEvent): Promise<void> {
     const btn = closestEl(e.target, "button[data-act]");
     if (btn?.dataset.act === "stash-mode") return void this.root.dispatchEvent(new CustomEvent("stash-mode", { bubbles: true, detail: btn.dataset.mode }));
-    if (btn?.dataset.act === "add") return void (await this.addDialog("", ""));
-    if (btn?.dataset.act === "add-for") return void (await this.addDialog(btn.dataset.brand ?? "", btn.dataset.name ?? ""));
+    if (btn?.dataset.act === "add" || btn?.dataset.act === "add-for") {
+      if (await addBallBandDialog(btn.dataset.brand ?? "", btn.dataset.name ?? "", this.known())) await this.reload();
+      return;
+    }
     const card = closestEl(e.target, "[data-open-band]");
-    const band = card && this.bands.find((b) => key(b.brand, b.name) === card.dataset.openBand);
-    if (band) await this.showBand(band);
+    const band = card && this.bands.find((b) => bandKey(b.brand, b.name) === card.dataset.openBand);
+    if (band && (await showBandDialog(band))) await this.reload();
   }
 
   /** Every brand and name the stash and the bands know, for the boxes to offer. */
-  private known(): { brands: string[]; names: (brand: string) => string[] } {
-    const all = [...this.yarns.map((y) => ({ brand: y.brand, name: y.name })), ...this.bands.map((b) => ({ brand: b.brand, name: b.name }))];
-    return {
-      brands: mostUsedSpellings(all.map((a) => a.brand).filter(Boolean)),
-      names: (brand) => {
-        const b = brand.trim().toLowerCase();
-        const of = b ? all.filter((a) => a.brand.trim().toLowerCase() === b) : all;
-        return mostUsedSpellings((of.length ? of : all).map((a) => a.name));
-      },
+  private known(): Known {
+    return knownNames(this.yarns, this.bands);
+  }
+
+}
+
+/**
+ * A new ball band: its brand and name (offered from `known`), and a picture
+ * pasted, dropped or chosen. Resolves whether one was added.
+ */
+export function addBallBandDialog(brand: string, name: string, known: Known): Promise<boolean> {
+  return new Promise((resolve) => {
+    let picture: Blob | null = null;
+    const finish = async (saved: boolean) => {
+      document.removeEventListener("paste", onPaste);
+      dialog.close();
+      resolve(saved);
     };
-  }
-
-  /** A new ball band: its brand and name, and a picture pasted, dropped or chosen. */
-  private addDialog(brand: string, name: string): Promise<void> {
-    return new Promise((resolve) => {
-      let picture: Blob | null = null;
-      const finish = async (saved: boolean) => {
-        document.removeEventListener("paste", onPaste);
-        dialog.close();
-        if (saved) await this.reload();
-        resolve();
-      };
-      const dialog = customDialog("Add a ball band", () => void finish(false), "band-dialog");
-      dialog.card.insertAdjacentHTML(
-        "beforeend",
-        `
-        <div class="band-names">
-          <label class="dialog-field"><span class="dialog-label">Brand</span><input class="dialog-input" data-f="brand" value="${esc(brand)}" placeholder="e.g. Drops" /></label>
-          <label class="dialog-field"><span class="dialog-label">Yarn</span><input class="dialog-input" data-f="name" value="${esc(name)}" placeholder="e.g. Air" /></label>
-        </div>
-        <p class="dialog-hint">Filed by brand and yarn, not colour: one ball band does for every colour of it.</p>
-        ${dropBox()}
-        <p class="form-error" data-el="error" hidden></p>
-        <div class="dialog-actions">
-          <button class="ghost" data-act="file">Choose a picture…</button>
-          <span class="spacer"></span>
-          <button class="ghost" data-act="cancel">Cancel</button>
-          <button class="primary" data-act="save">Add</button>
-        </div>`,
-      );
-      const card = dialog.card;
-      const known = this.known();
-      const brandBox = card.querySelector<HTMLInputElement>('[data-f="brand"]')!;
-      const nameBox = card.querySelector<HTMLInputElement>('[data-f="name"]')!;
-      makeCombo(brandBox, () => known.brands);
-      makeCombo(nameBox, () => known.names(brandBox.value));
-      const box = card.querySelector<HTMLElement>('[data-el="drop"]')!;
-      const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
-      const fail = (text: string) => {
-        error.textContent = text;
-        error.hidden = !text;
-      };
-      const use = async (file: Blob | null) => {
-        if (!file) return;
-        fail("");
-        const prepared = await prepareBoardImage(file, BAND_SIZE);
-        if (!prepared) return fail("That could not be read as a picture.");
-        picture = prepared.blob;
-        box.style.backgroundImage = `url("${URL.createObjectURL(picture)}")`;
-        box.classList.add("filled");
-      };
-      const onPaste = pasteHandler(use, fail);
-      document.addEventListener("paste", onPaste);
-      wireDrop(box, use, fail);
-      card.addEventListener("click", async (e) => {
-        const act = closestEl(e.target, "button[data-act]");
-        if (act?.dataset.act === "cancel") return void finish(false);
-        if (act?.dataset.act === "file") return chooseFile(use);
-        if (act?.dataset.act !== "save") return;
-        if (!nameBox.value.trim()) return fail("Say which yarn it is: Air, for Drops Air.");
-        if (!picture) return fail("Paste, drop or choose a picture of the ball band.");
-        (act as HTMLButtonElement).disabled = true;
-        try {
-          await api.addBallBand(brandBox.value, nameBox.value, await blobBytes(picture));
-          await finish(true);
-        } catch (err) {
-          fail(err instanceof Error ? err.message : String(err));
-          (act as HTMLButtonElement).disabled = false;
-        }
-      });
-      dialog.show(brand ? box : brandBox);
+    const dialog = customDialog("Add a ball band", () => void finish(false), "band-dialog");
+    dialog.card.insertAdjacentHTML(
+      "beforeend",
+      `
+      <div class="band-names">
+        <label class="dialog-field"><span class="dialog-label">Brand</span><input class="dialog-input" data-f="brand" value="${esc(brand)}" placeholder="e.g. Drops" /></label>
+        <label class="dialog-field"><span class="dialog-label">Yarn</span><input class="dialog-input" data-f="name" value="${esc(name)}" placeholder="e.g. Air" /></label>
+      </div>
+      <p class="dialog-hint">Filed by brand and yarn, not colour: one ball band does for every colour of it.</p>
+      ${dropBox()}
+      <p class="form-error" data-el="error" hidden></p>
+      <div class="dialog-actions">
+        <button class="ghost" data-act="file">Choose a picture…</button>
+        <span class="spacer"></span>
+        <button class="ghost" data-act="cancel">Cancel</button>
+        <button class="primary" data-act="save">Add</button>
+      </div>`,
+    );
+    const card = dialog.card;
+    const brandBox = card.querySelector<HTMLInputElement>('[data-f="brand"]')!;
+    const nameBox = card.querySelector<HTMLInputElement>('[data-f="name"]')!;
+    makeCombo(brandBox, () => known.brands);
+    makeCombo(nameBox, () => known.names(brandBox.value));
+    const box = card.querySelector<HTMLElement>('[data-el="drop"]')!;
+    const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
+    const fail = (text: string) => {
+      error.textContent = text;
+      error.hidden = !text;
+    };
+    const use = async (file: Blob | null) => {
+      if (!file) return;
+      fail("");
+      const prepared = await prepareBoardImage(file, BAND_SIZE);
+      if (!prepared) return fail("That could not be read as a picture.");
+      picture = prepared.blob;
+      box.style.backgroundImage = `url("${URL.createObjectURL(picture)}")`;
+      box.classList.add("filled");
+    };
+    const onPaste = pasteHandler(use, fail);
+    document.addEventListener("paste", onPaste);
+    wireDrop(box, use, fail);
+    card.addEventListener("click", async (e) => {
+      const act = closestEl(e.target, "button[data-act]");
+      if (act?.dataset.act === "cancel") return void finish(false);
+      if (act?.dataset.act === "file") return chooseFile(use);
+      if (act?.dataset.act !== "save") return;
+      if (!nameBox.value.trim()) return fail("Say which yarn it is: Air, for Drops Air.");
+      if (!picture) return fail("Paste, drop or choose a picture of the ball band.");
+      (act as HTMLButtonElement).disabled = true;
+      try {
+        await api.addBallBand(brandBox.value, nameBox.value, await blobBytes(picture));
+        await finish(true);
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+        (act as HTMLButtonElement).disabled = false;
+      }
     });
-  }
+    dialog.show(brand ? box : brandBox);
+  });
+}
 
-  /** One yarn's ball band, big: its pictures, another added, one removed, or the yarn named again. */
-  private showBand(band: Band): Promise<void> {
-    return new Promise((resolve) => {
-      let changed = false;
-      let { brand, name } = band;
-      let pictures = [...band.pictures];
-      const finish = async () => {
-        document.removeEventListener("paste", onPaste);
-        dialog.close();
-        if (changed) await this.reload();
-        resolve();
-      };
-      const dialog = customDialog(`${[band.brand, band.name].filter(Boolean).join(" ")}: ball band`, () => void finish(), "band-dialog band-view");
-      dialog.card.insertAdjacentHTML(
-        "beforeend",
-        `
-        <div class="band-pictures" data-el="pictures"></div>
-        ${dropBox("Paste, drop or choose another picture: the band's back, say")}
-        <div class="band-names">
-          <label class="dialog-field"><span class="dialog-label">Brand</span><input class="dialog-input" data-f="brand" value="${esc(brand)}" /></label>
-          <label class="dialog-field"><span class="dialog-label">Yarn</span><input class="dialog-input" data-f="name" value="${esc(name)}" /></label>
-        </div>
-        <p class="form-error" data-el="error" hidden></p>
-        <div class="dialog-actions">
-          <button class="ghost" data-act="file">Choose a picture…</button>
-          <span class="spacer"></span>
-          <button class="primary" data-act="done">Done</button>
-        </div>`,
-      );
-      const card = dialog.card;
-      const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
-      const fail = (text: string) => {
-        error.textContent = text;
-        error.hidden = !text;
-      };
-      const paintPictures = () => {
-        const host = card.querySelector<HTMLElement>('[data-el="pictures"]')!;
-        host.innerHTML = pictures
-          .map((p) => `<figure class="band-picture"><img data-pic="${esc(p.id)}" alt="" /><button class="ghost danger-text" data-act="remove-picture" data-id="${esc(p.id)}" title="Remove this picture">Remove</button></figure>`)
-          .join("");
-        for (const img of host.querySelectorAll<HTMLImageElement>("img[data-pic]")) {
-          void ballBandUrl(img.dataset.pic!).then((url) => url && (img.src = url));
-        }
-      };
-      const use = async (file: Blob | null) => {
-        if (!file) return;
+/** One yarn's ball band, big: its pictures, another added, one removed, or the yarn named again. Resolves whether anything changed. */
+function showBandDialog(band: Band): Promise<boolean> {
+  return new Promise((resolve) => {
+    let changed = false;
+    let { brand, name } = band;
+    let pictures = [...band.pictures];
+    const finish = async () => {
+      document.removeEventListener("paste", onPaste);
+      dialog.close();
+      resolve(changed);
+    };
+    const dialog = customDialog(`${[band.brand, band.name].filter(Boolean).join(" ")}: ball band`, () => void finish(), "band-dialog band-view");
+    dialog.card.insertAdjacentHTML(
+      "beforeend",
+      `
+      <div class="band-pictures" data-el="pictures"></div>
+      ${dropBox("Paste, drop or choose another picture: the band's back, say")}
+      <div class="band-names">
+        <label class="dialog-field"><span class="dialog-label">Brand</span><input class="dialog-input" data-f="brand" value="${esc(brand)}" /></label>
+        <label class="dialog-field"><span class="dialog-label">Yarn</span><input class="dialog-input" data-f="name" value="${esc(name)}" /></label>
+      </div>
+      <p class="form-error" data-el="error" hidden></p>
+      <div class="dialog-actions">
+        <button class="ghost" data-act="file">Choose a picture…</button>
+        <span class="spacer"></span>
+        <button class="primary" data-act="done">Done</button>
+      </div>`,
+    );
+    const card = dialog.card;
+    const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
+    const fail = (text: string) => {
+      error.textContent = text;
+      error.hidden = !text;
+    };
+    const paintPictures = () => {
+      const host = card.querySelector<HTMLElement>('[data-el="pictures"]')!;
+      host.innerHTML = pictures
+        .map((p) => `<figure class="band-picture"><img data-pic="${esc(p.id)}" alt="" /><button class="ghost danger-text" data-act="remove-picture" data-id="${esc(p.id)}" title="Remove this picture">Remove</button></figure>`)
+        .join("");
+      for (const img of host.querySelectorAll<HTMLImageElement>("img[data-pic]")) {
+        void ballBandUrl(img.dataset.pic!).then((url) => url && (img.src = url));
+      }
+    };
+    const use = async (file: Blob | null) => {
+      if (!file) return;
+      fail("");
+      const prepared = await prepareBoardImage(file, BAND_SIZE);
+      if (!prepared) return fail("That could not be read as a picture.");
+      try {
+        pictures.push(await api.addBallBand(brand, name, await blobBytes(prepared.blob)));
+        changed = true;
+        paintPictures();
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    };
+    const onPaste = pasteHandler(use, fail);
+    document.addEventListener("paste", onPaste);
+    wireDrop(card.querySelector<HTMLElement>('[data-el="drop"]')!, use, fail);
+    // Named again: every picture of it moves, when the name is left.
+    const rename = async () => {
+      const b = card.querySelector<HTMLInputElement>('[data-f="brand"]')!.value;
+      const n = card.querySelector<HTMLInputElement>('[data-f="name"]')!.value;
+      if (b.trim() === brand && n.trim() === name) return;
+      try {
+        const all = await api.renameBallBands(brand, name, b, n);
+        const moved = all.find((x) => pictures.some((p) => p.id === x.id));
+        if (moved) ({ brand, name } = moved);
+        changed = true;
         fail("");
-        const prepared = await prepareBoardImage(file, BAND_SIZE);
-        if (!prepared) return fail("That could not be read as a picture.");
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    };
+    for (const f of card.querySelectorAll<HTMLInputElement>('[data-f="brand"], [data-f="name"]')) f.addEventListener("change", () => void rename());
+    card.addEventListener("click", async (e) => {
+      const act = closestEl(e.target, "button[data-act]");
+      if (act?.dataset.act === "done") {
+        await rename();
+        return void finish();
+      }
+      if (act?.dataset.act === "file") return chooseFile(use);
+      if (act?.dataset.act === "remove-picture") {
+        const last = pictures.length === 1;
+        if (!(await askYesNo(last ? "Remove the ball band's only picture? The ball band goes with it." : "Remove this picture of the ball band?", { title: "Remove picture", okLabel: "Remove", danger: true }))) return;
         try {
-          pictures.push(await api.addBallBand(brand, name, await blobBytes(prepared.blob)));
-          changed = true;
-          paintPictures();
+          await api.deleteBallBand(act.dataset.id!);
+          forgetBallBand(act.dataset.id!);
         } catch (err) {
-          fail(err instanceof Error ? err.message : String(err));
+          return void (await say(err instanceof Error ? err.message : String(err), "Ball band"));
         }
-      };
-      const onPaste = pasteHandler(use, fail);
-      document.addEventListener("paste", onPaste);
-      wireDrop(card.querySelector<HTMLElement>('[data-el="drop"]')!, use, fail);
-      // Named again: every picture of it moves, when the name is left.
-      const rename = async () => {
-        const b = card.querySelector<HTMLInputElement>('[data-f="brand"]')!.value;
-        const n = card.querySelector<HTMLInputElement>('[data-f="name"]')!.value;
-        if (b.trim() === brand && n.trim() === name) return;
-        try {
-          const all = await api.renameBallBands(brand, name, b, n);
-          const moved = all.find((x) => pictures.some((p) => p.id === x.id));
-          if (moved) ({ brand, name } = moved);
-          changed = true;
-          fail("");
-        } catch (err) {
-          fail(err instanceof Error ? err.message : String(err));
-        }
-      };
-      for (const f of card.querySelectorAll<HTMLInputElement>('[data-f="brand"], [data-f="name"]')) f.addEventListener("change", () => void rename());
-      card.addEventListener("click", async (e) => {
-        const act = closestEl(e.target, "button[data-act]");
-        if (act?.dataset.act === "done") {
-          await rename();
-          return void finish();
-        }
-        if (act?.dataset.act === "file") return chooseFile(use);
-        if (act?.dataset.act === "remove-picture") {
-          const last = pictures.length === 1;
-          if (!(await askYesNo(last ? "Remove the ball band's only picture? The ball band goes with it." : "Remove this picture of the ball band?", { title: "Remove picture", okLabel: "Remove", danger: true }))) return;
-          try {
-            await api.deleteBallBand(act.dataset.id!);
-            forgetBallBand(act.dataset.id!);
-          } catch (err) {
-            return void (await say(err instanceof Error ? err.message : String(err), "Ball band"));
-          }
-          changed = true;
-          pictures = pictures.filter((p) => p.id !== act.dataset.id);
-          if (!pictures.length) return void finish();
-          paintPictures();
-        }
-      });
-      paintPictures();
-      dialog.show(card.querySelector<HTMLElement>('[data-act="done"]')!);
+        changed = true;
+        pictures = pictures.filter((p) => p.id !== act.dataset.id);
+        if (!pictures.length) return void finish();
+        paintPictures();
+      }
     });
+    paintPictures();
+    dialog.show(card.querySelector<HTMLElement>('[data-act="done"]')!);
+  });
+}
+
+/**
+ * Opens a yarn's ball band by its brand and name, from anywhere: a yarn's
+ * card or form. Resolves whether anything changed; false when it has none.
+ */
+export async function openBallBand(brand: string, name: string): Promise<boolean> {
+  const band = (await bandsByYarn()).get(bandKey(brand, name));
+  return band ? showBandDialog(band) : false;
+}
+
+/** Every yarn's ball band, by its brand and name (see `bandKey`). */
+export async function bandsByYarn(): Promise<Map<string, Band>> {
+  const byKey = new Map<string, Band>();
+  for (const b of await api.listBallBands()) {
+    const k = bandKey(b.brand, b.name);
+    if (!byKey.has(k)) byKey.set(k, { brand: b.brand, name: b.name, pictures: [] });
+    byKey.get(k)!.pictures.push(b);
   }
+  return byKey;
+}
+
+/** Every brand and name the stash and the bands know, for the boxes to offer. */
+export function knownNames(yarns: Pick<Yarn, "brand" | "name">[], bands: Pick<Band, "brand" | "name">[] = []): Known {
+  const all = [...yarns.map((y) => ({ brand: y.brand, name: y.name })), ...bands.map((b) => ({ brand: b.brand, name: b.name }))];
+  return {
+    brands: mostUsedSpellings(all.map((a) => a.brand).filter(Boolean)),
+    names: (brand) => {
+      const b = brand.trim().toLowerCase();
+      const of = b ? all.filter((a) => a.brand.trim().toLowerCase() === b) : all;
+      return mostUsedSpellings((of.length ? of : all).map((a) => a.name));
+    },
+  };
 }
 
 function dropBox(hint = "Paste a picture with Ctrl+V, or drop one here"): string {

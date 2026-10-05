@@ -18,6 +18,9 @@ import {
   yarnPhotoUrl,
 } from "../covers";
 import { makeCombo } from "./combo";
+import { dialogOpen } from "../dialogs";
+import { addBallBandDialog, bandKey, bandsByYarn, knownNames, openBallBand, type Band } from "./ball-bands";
+import { ballBandUrl } from "../covers";
 import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
@@ -88,6 +91,8 @@ export class YarnForm {
   private plans: YarnPlan[] = [];
   /** The library, to plan a yarn for one of its patterns. */
   private patterns: Pattern[] = [];
+  /** The ball bands, by brand and name, to show this yarn's. */
+  private bands = new Map<string, Band>();
 
   constructor(
     root: HTMLElement,
@@ -157,6 +162,7 @@ export class YarnForm {
           </div>
         </div>
         <p class="hint" data-el="known-hint" hidden></p>
+        <div class="yarn-band" data-el="band"></div>
         <div class="field-row">
           <label class="field">
             <span>Colourway</span>
@@ -297,6 +303,7 @@ export class YarnForm {
         if (this.start) this.fillFromKnown();
         // A colour with no fibres yet takes them from another colour of it.
         if (this.editing) this.fillFibresFromKnown();
+        void this.loadBands();
         this.shareHint();
       })
       .catch(() => {});
@@ -444,6 +451,8 @@ export class YarnForm {
    * meant for, as usual.
    */
   private onPaste = (e: ClipboardEvent): void => {
+    // A dialog over the form (a ball band being added) takes its own paste.
+    if (dialogOpen()) return;
     const item = [...(e.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
     const file = item?.getAsFile();
     if (!file) return;
@@ -470,6 +479,7 @@ export class YarnForm {
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
     if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
     if (f === "superwash" || f === "name" || f === "brand" || (e.target as HTMLElement).closest(".fibre-row")) this.shareHint();
+    if (f === "name" || f === "brand") this.renderBand();
   };
 
   /**
@@ -566,6 +576,7 @@ export class YarnForm {
       else if (hooks && yarn) hooks.add(yarn);
     }
     if (btn.dataset.act === "add-plan") this.addPlan();
+    if (btn.dataset.act === "open-band" || btn.dataset.act === "add-band") void this.bandAction(btn.dataset.act);
     if (btn.dataset.act === "remove-plan") {
       this.plans.splice(Number(btn.dataset.plan), 1);
       this.renderPlans();
@@ -638,6 +649,44 @@ export class YarnForm {
       boughtAt: field(row, "boughtAt"),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
     }));
+  }
+
+  // ---------- its ball band ----------
+
+  private async loadBands(): Promise<void> {
+    this.bands = await bandsByYarn().catch(() => new Map<string, Band>());
+    this.renderBand();
+  }
+
+  /** The yarn's ball band, small, to open big; or, for a yarn named, a button to add one. */
+  private renderBand(): void {
+    const host = this.root.querySelector<HTMLElement>('[data-el="band"]');
+    if (!host) return;
+    const brand = this.value("brand").trim();
+    const name = this.value("name").trim();
+    const band = name ? this.bands.get(bandKey(brand, name)) : undefined;
+    if (band) {
+      host.innerHTML = `
+        <span class="yarn-band-label">Ball band</span>
+        ${band.pictures
+          .slice(0, 3)
+          .map((p) => `<button type="button" class="yarn-band-pic" data-act="open-band" title="See it big"><img data-band-pic="${escapeAttr(p.id)}" alt="Ball band" /></button>`)
+          .join("")}
+        ${band.pictures.length > 3 ? `<span class="hint">+${band.pictures.length - 3}</span>` : ""}`;
+      for (const img of host.querySelectorAll<HTMLImageElement>("img[data-band-pic]")) void ballBandUrl(img.dataset.bandPic!).then((url) => url && (img.src = url));
+      return;
+    }
+    host.innerHTML = name
+      ? `<span class="hint">No ball band for ${escapeHtml([brand, name].filter(Boolean).join(" "))} yet.</span>
+         <button type="button" class="ghost" data-act="add-band">Add its ball band…</button>`
+      : "";
+  }
+
+  private async bandAction(act: string): Promise<void> {
+    const brand = this.value("brand").trim();
+    const name = this.value("name").trim();
+    const changed = act === "open-band" ? await openBallBand(brand, name) : await addBallBandDialog(brand, name, knownNames(this.known, [...this.bands.values()]));
+    if (changed) await this.loadBands();
   }
 
   // ---------- planned for ----------

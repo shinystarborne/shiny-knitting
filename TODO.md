@@ -22,8 +22,8 @@ starting; the details are in the sections under the list.
 
 1. [x] A project's yarn: how much it is expected to take (grams, balls, or
    all of it), instead of showing 0 g. *0.3.24*
-2. [ ] Ball band thumbnails on a yarn's card and in its form, opening the
-   band big.
+2. [x] Ball band thumbnails on a yarn's card and in its form, opening the
+   band big. *0.3.25*
 
 **Projects**
 
@@ -137,9 +137,6 @@ at once rare enough?
 
 ### Small fixes
 
-- **Ball band thumbnails.** A yarn's card and its form could show a small
-  picture of its ball band (from Stash → Ball bands, by brand and name), to
-  open it big, without going to the Ball bands view.
 - **Restore a removed pattern.** Removing is immediate and also deletes the
   file. A bin, or an Undo for a few seconds, would be kinder.
 - **Faster drag and drop.** Dropping a large PDF onto the app is slower than
@@ -204,7 +201,8 @@ at once rare enough?
   with when and what it went into, and can come back. Ball bands: pictures of
   each yarn's band, several each, filed by brand and yarn for every colour of
   it, with what the stash knows of the yarn, and the stash's yarn without one
-  offered to add.
+  offered to add. A yarn's card and form show its band small, to open big;
+  the form offers to add one for a yarn without.
 - **Stash:** what a yarn is planned for: patterns from the library (searched
   by title and designer) or titles typed for ones not got yet, on its card,
   in the search and as a Planned filter. Yarn with lots, photos (pasted or dropped), weight from metres and

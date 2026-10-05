@@ -201,6 +201,38 @@ export async function verifyStashHistory() {
     await waitFor(() => !document.querySelector(".band-dialog"), "the dialog to close");
     await waitFor(() => document.querySelector(".band-brand h2")?.textContent === "Garnstudio", "the list again");
     check(results, "the list shows it under its new brand", /None in the stash/.test(bandCard().textContent ?? ""), bandCard().textContent ?? "");
+
+    // ---------- a yarn's ball band, small, on its card and in its form ----------
+    await invoke("add_ball_band", { brand: "Drops", name: "Air", bytes: Array.from(new Uint8Array(await (await picture("#36c")).arrayBuffer())) });
+    mode("yarn");
+    await waitFor(() => !!cardFor(air.id)?.querySelector(".card-band img"), "the card's thumbnail");
+    await waitFor(() => !!cardFor(air.id)!.querySelector<HTMLImageElement>(".card-band img")!.src, "the thumbnail's picture");
+    check(results, "a yarn's card shows its ball band, small", !cardFor(kid.id) && !!cardFor(air.id)!.querySelector(".card-band"));
+    (cardFor(air.id)!.querySelector(".card-band") as HTMLElement).click();
+    await waitFor(() => !!document.querySelector(".band-view"), "the band, big");
+    check(results, "…clicked, it opens big, not the yarn's form", !document.querySelector(".modal-backdrop:not(.hidden) .yarn-form") && document.querySelectorAll(".band-view .band-picture").length === 1);
+    (dialog()!.querySelector('[data-act="done"]') as HTMLElement).click();
+    await waitFor(() => !document.querySelector(".band-view"), "the band to close");
+
+    const yarnForm = () => document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) .yarn-form");
+    cardFor(air.id)!.click();
+    await waitFor(() => !!yarnForm()?.querySelector(".yarn-band img"), "the form's ball band");
+    check(results, "the yarn's form shows its ball band too", /Ball band/.test(yarnForm()!.querySelector(".yarn-band")!.textContent ?? ""));
+    // Named as a yarn with no band, it offers to add one.
+    const nameBox = yarnForm()!.querySelector<HTMLInputElement>('[data-f="name"]')!;
+    nameBox.value = "Sky";
+    nameBox.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "…and for a yarn without one, offers to add it", /No ball band for Drops Sky yet/.test(yarnForm()!.querySelector(".yarn-band")!.textContent ?? ""));
+    (yarnForm()!.querySelector('[data-act="add-band"]') as HTMLElement).click();
+    await waitFor(() => !!document.querySelector(".band-dialog"), "the add dialog");
+    check(results, "…its brand and name filled in", box("brand").value === "Drops" && box("name").value === "Sky");
+    await paste("#963");
+    await waitFor(() => !!dialog()!.querySelector(".band-drop.filled"), "the picture");
+    check(results, "a picture pasted into the ball band is not taken as the yarn's photo", !yarnForm()!.querySelector<HTMLElement>('[data-el="photobox"]')!.style.backgroundImage);
+    (dialog()!.querySelector('[data-act="save"]') as HTMLElement).click();
+    await waitFor(() => !document.querySelector(".band-dialog") && !!yarnForm()?.querySelector(".yarn-band img"), "the new band in the form");
+    check(results, "added from the form, the form shows it", store.ballBands.some((b) => b.brand === "Drops" && b.name === "Sky"));
+    (yarnForm()!.querySelector('[data-act="cancel"]') as HTMLElement).click();
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

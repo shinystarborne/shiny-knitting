@@ -1,7 +1,8 @@
 import { api, type MeasureUnit, type Swatch, type Yarn, type YarnFilter, type YarnWeightFacet } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
+import { ballBandUrl, forgetYarnPhoto, yarnPhotoUrl } from "../covers";
+import { bandKey, bandsByYarn, openBallBand, type Band } from "./ball-bands";
 import { paintLazily } from "./lazy";
 import { describeFibres, fibreKind } from "./fibres";
 import { mostUsedSpellings } from "./tool-filter";
@@ -42,6 +43,8 @@ export class StashView {
   private searchBox!: HTMLInputElement;
   /** Each yarn's newest swatch, for its card. */
   private swatched = new Map<string, Swatch>();
+  /** Each yarn's ball band, by brand and name, for its card's thumbnail. */
+  private bands = new Map<string, Band>();
   private unit: MeasureUnit = "cm";
 
   constructor(screen: HTMLElement) {
@@ -128,6 +131,7 @@ export class StashView {
     this.unit = unit;
     // Newest first from the backend, so the first seen per yarn is its newest.
     for (const s of swatches) if (s.yarnId && !this.swatched.has(s.yarnId)) this.swatched.set(s.yarnId, s);
+    this.bands = await bandsByYarn().catch(() => new Map<string, Band>());
     await this.reload();
   }
 
@@ -186,6 +190,18 @@ export class StashView {
     if (del) {
       e.stopPropagation();
       await this.confirmRemove(del.dataset.delete!);
+      return;
+    }
+
+    // A card's ball band opens big, over the stash; changed there, the cards show it.
+    const band = closestEl(e.target, "[data-band]");
+    if (band) {
+      e.stopPropagation();
+      const yarn = this.yarns.find((y) => y.id === band.dataset.band);
+      if (yarn && (await openBallBand(yarn.brand, yarn.name))) {
+        this.bands = await bandsByYarn().catch(() => this.bands);
+        this.paint();
+      }
       return;
     }
 
@@ -341,6 +357,7 @@ export class StashView {
     return `
       <article class="card" data-open="${y.id}">
         <div class="cover" data-id="${y.id}">
+          ${this.bandThumb(y)}
           <div class="cover-photo" data-el="photo"></div>
           <div class="cover-fallback format-yarn">
             <span>${escapeHtml(familyLabel(y))}</span>
@@ -380,8 +397,17 @@ export class StashView {
       </article>`;
   }
 
-  /** One card's photo, read as the card comes near the screen. */
+  /** A small picture of the yarn's ball band, when it has one, to open it big. */
+  private bandThumb(y: Yarn): string {
+    const band = this.bands.get(bandKey(y.brand, y.name));
+    if (!band) return "";
+    return `<button class="card-band" data-band="${y.id}" title="Its ball band: click to see it big"><img data-band-pic="${band.pictures[0].id}" alt="Ball band" /></button>`;
+  }
+
+  /** One card's photo, read as the card comes near the screen; its ball band's thumbnail too. */
   private async loadPhoto(cover: HTMLElement): Promise<void> {
+    const thumb = cover.closest(".card")?.querySelector<HTMLImageElement>("img[data-band-pic]");
+    if (thumb) void ballBandUrl(thumb.dataset.bandPic!).then((url) => url && (thumb.src = url));
     const yarn = this.yarns.find((y) => y.id === cover.dataset.id);
     if (!yarn?.photoPath) return;
     const url = await yarnPhotoUrl(yarn.id);
