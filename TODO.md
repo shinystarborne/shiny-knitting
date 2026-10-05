@@ -3,10 +3,8 @@
 What is planned for the app, what is still only an idea, and things worth
 knowing before working on it.
 
-- [Next up](#next-up): agreed and ready to build
-- [Later](#later): agreed, but bigger or waiting on something else
+- [Next up](#next-up): agreed, to build: the bigger pieces, then the small fixes
 - [Ideas](#ideas-not-agreed-yet): not agreed yet
-- [Small fixes](#small-fixes)
 - [Already built](#already-built)
 - [Worth knowing](#worth-knowing-before-you-change-things): traps that cost time before
 
@@ -22,10 +20,6 @@ ask how much it is expected to take (grams, or balls, or "all of it"), show
 that on the project, and keep it apart from the leftovers recorded when the
 project is finished. Later it could warn when a yarn is promised to more
 projects than there is of it.
-
----
-
-## Later
 
 ### Plans: what to knit next
 
@@ -90,6 +84,23 @@ pattern share their counts. A counter per project, started from the pattern's,
 would keep them apart. Open question: worth it, or is knitting one pattern twice
 at once rare enough?
 
+### Small fixes
+
+- **Ball band thumbnails.** A yarn's card and its form could show a small
+  picture of its ball band (from Stash → Ball bands, by brand and name), to
+  open it big, without going to the Ball bands view.
+- **Restore a removed pattern.** Removing is immediate and also deletes the
+  file. A bin, or an Undo for a few seconds, would be kinder.
+- **Faster drag and drop.** Dropping a large PDF onto the app is slower than
+  Browse, because a dropped file arrives as its contents rather than a path.
+- **Pins: bring one to the front.** Pins stack in the order they were made;
+  there is no way to raise one yet.
+- **More from Shelfmind's reader:** zoom remembered per pattern, page-by-page
+  (swipe) mode, a light reader theme, two PDFs side by side, moving and
+  resizing marks, an eraser, typed text on the page, "Open in the default PDF
+  app" (the backend exists, no button yet), and a card for a pattern whose file
+  has gone missing.
+
 ---
 
 ## Ideas (not agreed yet)
@@ -113,25 +124,6 @@ at once rare enough?
 - **Backup.** One click to save the whole library to a zip file.
 - **Needles a plan needs.** Once plans exist, warn that a plan needs a 4 mm
   circular you do not own, or that is busy on another project.
-
----
-
-## Small fixes
-
-- **Ball band thumbnails.** A yarn's card and its form could show a small
-  picture of its ball band (from Stash → Ball bands, by brand and name), to
-  open it big, without going to the Ball bands view.
-- **Restore a removed pattern.** Removing is immediate and also deletes the
-  file. A bin, or an Undo for a few seconds, would be kinder.
-- **Faster drag and drop.** Dropping a large PDF onto the app is slower than
-  Browse, because a dropped file arrives as its contents rather than a path.
-- **Pins: bring one to the front.** Pins stack in the order they were made;
-  there is no way to raise one yet.
-- **More from Shelfmind's reader:** zoom remembered per pattern, page-by-page
-  (swipe) mode, a light reader theme, two PDFs side by side, moving and
-  resizing marks, an eraser, typed text on the page, "Open in the default PDF
-  app" (the backend exists, no button yet), and a card for a pattern whose file
-  has gone missing.
 
 ---
 
