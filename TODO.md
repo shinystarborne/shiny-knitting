@@ -12,6 +12,66 @@ knowing before working on it.
 
 ## Next up
 
+### The list
+
+One at a time, from the top. Each is ticked when it is built, checked and
+released as a beta. **Decide first** means an open question to settle before
+starting; the details are in the sections under the list.
+
+**Yarn and the stash**
+
+1. [ ] A project's yarn: how much it is expected to take (grams, balls, or
+   all of it), instead of showing 0 g. See [below](#how-much-yarn-a-project-expects-to-use).
+2. [ ] Ball band thumbnails on a yarn's card and in its form, opening the
+   band big.
+
+**Projects**
+
+3. [ ] Plans: projects not started yet, with a pattern or an idea, yarn, a
+   rough date and an order to drag; from a stash yarn's Planned for, or a
+   Want to knit pattern. **Decide first:** exact dates, rough ones, or both?
+4. [ ] Finished gallery: photos of finished projects with their pattern,
+   yarn, needles, dates and log. **Decide first:** made by itself when a
+   project is finished, or added by hand?
+5. [ ] Two projects from one pattern, each with its own row counter.
+   **Decide first:** worth it, or rare enough to leave?
+
+**Patterns and the reader**
+
+6. [ ] PDF export: a screen to choose pages from a pattern and save them as a
+   PDF (the writer is built).
+7. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
+8. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
+   path).
+9. [ ] Pins: bring one to the front.
+10. [ ] Zoom remembered per pattern.
+11. [ ] Page by page (swipe) reading.
+12. [ ] A light reader theme.
+13. [ ] Two PDFs side by side.
+14. [ ] Marks moved and resized.
+15. [ ] An eraser for drawings.
+16. [ ] Typed text on the page.
+17. [ ] "Open in the default PDF app" (the backend is there; it needs a
+    button).
+18. [ ] A card for a pattern whose file has gone missing.
+
+**Calculators**
+
+19. [ ] The raglan, bottom-up.
+20. [ ] The raglan worked flat, as a cardigan with front edges.
+21. [ ] A raised back neck with short rows.
+22. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
+
+**Colourwork charts**
+
+23. [ ] Select, copy and paste a block of squares.
+24. [ ] A chart's colours linked to stash yarns, named in the legend.
+25. [ ] Knitting from a chart: on a project's page, the current row marked
+    and counted.
+26. [ ] The round yoke calculator and a yoke chart together.
+    **Decide first:** fit the chart to the calculator's counts, or the
+    calculator to the chart?
+
 ### How much yarn a project expects to use
 
 Choosing a yarn from the stash for a project says nothing about how much of
