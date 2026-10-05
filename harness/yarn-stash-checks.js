@@ -348,6 +348,41 @@ export async function verifyYarnStash() {
     );
     modal().querySelector('[data-act="cancel"]')?.click();
     if (modal()) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    // --- planned for: a pattern from the library, or a title typed ---
+    cardFor(red.id).click();
+    await waitFor(() => !!modal() && fibreNames().length > 0, "the form");
+    await wait(300);
+    const planInput = modal().querySelector('[data-el="plan-input"]');
+    planInput.focus();
+    planInput.value = "featherweight";
+    planInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const choice = [...modal().querySelectorAll(".plan-add .combo-list li")].find((li) => li.textContent.startsWith("Featherweight Lace Sock"));
+    check(results, "Planned for searches the library's patterns", !!choice, [...modal().querySelectorAll(".plan-add .combo-list li")].map((li) => li.textContent).join(" | "));
+    choice?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    planInput.value = "Strange Brew";
+    planInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    const planRows = () => [...modal().querySelectorAll(".plan-item")].map((li) => li.querySelector(".plan-title").textContent + " / " + li.querySelector(".hint").textContent);
+    check(
+      results,
+      "…a pattern picked goes in linked, a title typed goes in as it is",
+      planRows().join() === "Featherweight Lace Sock / in your library,Strange Brew / not in your library" && planInput.value === "",
+      planRows().join(),
+    );
+    modal().querySelector('[data-act="save"]').click();
+    await waitFor(() => !modal(), "the save");
+    check(
+      results,
+      "saved, the yarn is planned for both",
+      JSON.stringify(stored(red.id).plans) === JSON.stringify([{ patternId: "p1", title: "Featherweight Lace Sock" }, { patternId: null, title: "Strange Brew" }]),
+      JSON.stringify(stored(red.id).plans),
+    );
+    await waitFor(() => /Planned for/.test(cardFor(red.id)?.textContent || ""), "the card");
+    check(results, "…and its card says so", /Planned for: Featherweight Lace Sock, Strange Brew/.test(cardFor(red.id).textContent));
+    const planned = [...document.querySelectorAll('.stash [data-slot="use"] label, .stash [data-slot="use"] button')].find((el) => /Planned/.test(el.textContent));
+    check(results, "the Availability filter has Planned", !!planned);
+    check(results, "the stash search finds a yarn by what it is planned for", (await invoke("list_yarns", { filter: { search: "strange brew" } })).map((y) => y.id).join() === red.id);
+
     store.yarns = store.yarns.filter((y) => ![nebel.id, red.id, blue.id].includes(y.id));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err && err.message) || err));

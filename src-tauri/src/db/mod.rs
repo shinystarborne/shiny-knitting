@@ -541,6 +541,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "superwash")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN superwash INTEGER NOT NULL DEFAULT 0", [])?;
     }
+    // What a yarn is planned for, as a JSON list of YarnPlan.
+    if !column_exists(conn, "yarns", "plans")? {
+        conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
+    }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
@@ -3938,6 +3942,7 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         notes: row.get("notes")?,
         fibres: serde_json::from_str(&row.get::<_, String>("fibres")?).unwrap_or_default(),
         superwash: row.get("superwash")?,
+        plans: serde_json::from_str(&row.get::<_, String>("plans")?).unwrap_or_default(),
         added_at: row.get("added_at")?,
         lots: Vec::new(),
         grams_left: 0,
@@ -3960,6 +3965,15 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
         )?
         .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
         .collect::<Result<_, _>>()?;
+    // A linked pattern's title as it is now; a pattern removed since leaves
+    // the plan with the title it had.
+    for plan in &mut yarn.plans {
+        let Some(id) = plan.pattern_id.clone() else { continue };
+        match conn.query_row("SELECT title FROM patterns WHERE id = ?1", params![id], |r| r.get::<_, String>(0)).optional()? {
+            Some(title) => plan.title = title,
+            None => plan.pattern_id = None,
+        }
+    }
     yarn.grams_left = yarn.lots.iter().map(|l| l.grams_left).sum();
     yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
     yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
@@ -4000,7 +4014,8 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
     let mut sql = String::from(
         "SELECT * FROM yarns WHERE 1=1 \
          AND (name LIKE ?1 ESCAPE '\\' OR brand LIKE ?1 ESCAPE '\\' \
-         OR colourway LIKE ?1 ESCAPE '\\' OR notes LIKE ?1 ESCAPE '\\')",
+         OR colourway LIKE ?1 ESCAPE '\\' OR notes LIKE ?1 ESCAPE '\\' \
+         OR plans LIKE ?1 ESCAPE '\\')",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(term)];
 
@@ -4036,6 +4051,36 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
 /// share kept between 0 and 100. Whether they add up to 100 is for the form to
 /// point out; a ball band that says "wool, nylon" with no shares is still
 /// worth keeping.
+/// A yarn's plans as stored: each a pattern still in the library (with its
+/// title now) or a title typed, blank ones and repeats left out.
+pub fn tidy_plans(conn: &Connection, plans: &[crate::models::YarnPlan]) -> AppResult<String> {
+    let mut out: Vec<crate::models::YarnPlan> = Vec::new();
+    for plan in plans {
+        let typed: String = plan.title.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect();
+        let linked = match plan.pattern_id.as_deref().filter(|id| !id.trim().is_empty()) {
+            Some(id) => conn
+                .query_row("SELECT title FROM patterns WHERE id = ?1", params![id], |r| r.get::<_, String>(0))
+                .optional()?
+                .map(|title| (id.to_string(), title)),
+            None => None,
+        };
+        let plan = match linked {
+            Some((id, title)) => crate::models::YarnPlan { pattern_id: Some(id), title },
+            None if !typed.is_empty() => crate::models::YarnPlan { pattern_id: None, title: typed },
+            None => continue,
+        };
+        let same = |p: &crate::models::YarnPlan| match (&p.pattern_id, &plan.pattern_id) {
+            (Some(a), Some(b)) => a == b,
+            (None, None) => p.title.to_lowercase() == plan.title.to_lowercase(),
+            _ => false,
+        };
+        if !out.iter().any(same) && out.len() < 20 {
+            out.push(plan);
+        }
+    }
+    Ok(serde_json::to_string(&out)?)
+}
+
 pub fn tidy_fibres(fibres: &[crate::models::Fibre]) -> String {
     let mut out: Vec<crate::models::Fibre> = Vec::new();
     for f in fibres {
@@ -4059,8 +4104,8 @@ pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<
     tx.execute(
         "INSERT INTO yarns
          (id, name, brand, colourway, yarn_weight, yarn_weight_family,
-          metres_per_ball, grams_per_ball, photo_path, notes, added_at, fibres, superwash)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10,?11,?12)",
+          metres_per_ball, grams_per_ball, photo_path, notes, added_at, fibres, superwash, plans)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'',?9,?10,?11,?12,?13)",
         params![
             id,
             input.name,
@@ -4073,7 +4118,8 @@ pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<
             input.notes,
             now_ms(),
             tidy_fibres(&input.fibres),
-            input.superwash
+            input.superwash,
+            tidy_plans(&tx, &input.plans)?
         ],
     )?;
     for lot in &input.lots {
@@ -4121,7 +4167,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
     let changed = tx.execute(
         "UPDATE yarns SET name=?2, brand=?3, colourway=?4, yarn_weight=?5,
          yarn_weight_family=?6, metres_per_ball=?7, grams_per_ball=?8, notes=?9,
-         fibres=?10, superwash=?11
+         fibres=?10, superwash=?11, plans=?12
          WHERE id=?1",
         params![
             yarn.id,
@@ -4136,7 +4182,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             yarn.grams_per_ball,
             yarn.notes,
             tidy_fibres(&yarn.fibres),
-            yarn.superwash
+            yarn.superwash,
+            tidy_plans(&tx, &yarn.plans)?
         ],
     )?;
     if changed == 0 {

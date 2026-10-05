@@ -314,6 +314,18 @@ pub struct Fibre {
     pub percent: f64,
 }
 
+/// What a yarn is meant for: a pattern from the library, or only a title,
+/// for a pattern not got yet. A linked pattern's title is its own, read
+/// afresh; it is kept as text too, so a pattern removed later still says.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnPlan {
+    #[serde(default)]
+    pub pattern_id: Option<String>,
+    #[serde(default)]
+    pub title: String,
+}
+
 /// A yarn in the stash, with its lots and the quantities derived from them.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -339,6 +351,9 @@ pub struct Yarn {
     /// Treated so it can go in the washing machine.
     #[serde(default)]
     pub superwash: bool,
+    /// What it is planned for.
+    #[serde(default)]
+    pub plans: Vec<YarnPlan>,
     pub added_at: i64,
     pub lots: Vec<YarnLot>,
     /// Grams left, summed over the lots.
@@ -374,6 +389,8 @@ pub struct YarnInput {
     pub fibres: Vec<Fibre>,
     #[serde(default)]
     pub superwash: bool,
+    #[serde(default)]
+    pub plans: Vec<YarnPlan>,
     #[serde(default)]
     pub lots: Vec<YarnLotInput>,
 }

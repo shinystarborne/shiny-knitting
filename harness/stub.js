@@ -692,6 +692,20 @@ function countedByUse(lists) {
     .sort((a, b) => b.count - a.count || a.value.toLowerCase().localeCompare(b.value.toLowerCase()));
 }
 
+/** As db::tidy_plans: a pattern still there, by its title, or a title typed; no blanks, no repeats. */
+function tidyPlans(plans) {
+  const out = [];
+  for (const plan of plans || []) {
+    const pattern = plan.patternId && store.patterns.find((p) => p.id === plan.patternId);
+    const typed = String(plan.title || "").split(/\s+/).filter(Boolean).join(" ").slice(0, 200);
+    const next = pattern ? { patternId: pattern.id, title: pattern.title } : typed ? { patternId: null, title: typed } : null;
+    if (!next) continue;
+    const same = (p) => (p.patternId || next.patternId ? p.patternId === next.patternId : p.title.toLowerCase() === next.title.toLowerCase());
+    if (!out.some(same) && out.length < 20) out.push(next);
+  }
+  return out;
+}
+
 /** As db::tidy_fibres. */
 function tidyFibres(fibres) {
   const out = [];
@@ -868,6 +882,11 @@ function withYarnTotals(yarn) {
   out.lots = out.lots.map((l) => ({ leftover: false, ...l }));
   out.fibres = tidyFibres(out.fibres);
   out.superwash = !!out.superwash;
+  // A linked pattern's title as it is now; a removed one keeps the title it had.
+  out.plans = (out.plans || []).map((plan) => {
+    const pattern = plan.patternId && store.patterns.find((p) => p.id === plan.patternId);
+    return pattern ? { patternId: pattern.id, title: pattern.title } : { patternId: null, title: plan.title };
+  });
   out.projects = [
     ...new Set(
       store.projectYarns
@@ -1960,7 +1979,8 @@ const handlers = {
           y.name.toLowerCase().includes(t) ||
           y.brand.toLowerCase().includes(t) ||
           y.colourway.toLowerCase().includes(t) ||
-          y.notes.toLowerCase().includes(t),
+          y.notes.toLowerCase().includes(t) ||
+          (y.plans || []).some((p) => p.title.toLowerCase().includes(t)),
       );
     }
     // Several families mean "any of these", as in list_patterns.
@@ -1990,6 +2010,7 @@ const handlers = {
       notes: input.notes || "",
       fibres: tidyFibres(input.fibres),
       superwash: !!input.superwash,
+      plans: tidyPlans(input.plans),
       addedAt: Date.now(),
       lots: (input.lots || []).map((lot) => ({
         id: `l${store.nextId++}`,
@@ -2023,6 +2044,7 @@ const handlers = {
     }));
     const next = {
       ...clone(yarn),
+      plans: tidyPlans(yarn.plans),
       lots,
       // addedAt and photoPath are the backend's, not the client's to rewrite.
       addedAt: existing.addedAt,

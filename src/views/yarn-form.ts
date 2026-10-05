@@ -2,10 +2,12 @@ import {
   api,
   YARN_WEIGHT_OPTIONS,
   type Fibre,
+  type Pattern,
   type Swatch,
   type Yarn,
   type YarnInput,
   type YarnLotInput,
+  type YarnPlan,
 } from "../api";
 import { closestEl } from "../dom";
 import {
@@ -82,6 +84,10 @@ export class YarnForm {
   private known: Yarn[] = [];
   /** The fibre rows, as typed: a name and its share. */
   private fibres: { name: string; percent: string }[] = [];
+  /** What it is planned for: patterns from the library, or titles typed. */
+  private plans: YarnPlan[] = [];
+  /** The library, to plan a yarn for one of its patterns. */
+  private patterns: Pattern[] = [];
 
   constructor(
     root: HTMLElement,
@@ -114,6 +120,8 @@ export class YarnForm {
     const from = editing ?? this.template;
     this.fibres = (from?.fibres ?? []).map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
     if (!this.fibres.length) this.fibres.push({ name: "", percent: "" });
+    // Plans are this colour's own: another colour of the yarn starts with none.
+    this.plans = (editing?.plans ?? []).map((p) => ({ ...p }));
   }
 
   open(): void {
@@ -220,6 +228,16 @@ export class YarnForm {
           )}</textarea>
         </label>
 
+        <div class="field yarn-plans">
+          <span>Planned for</span>
+          <ul class="plan-list" data-el="plans"></ul>
+          <div class="plan-add">
+            <input data-el="plan-input" placeholder="Search your patterns, or type a title" aria-label="Planned for" />
+            <button class="ghost" data-act="add-plan" type="button">Add</button>
+          </div>
+          <p class="hint">A pattern from your library, or the title of one you do not have yet.</p>
+        </div>
+
         <div class="field">
           <span>Lots</span>
           <div class="lot-list" data-el="lots"></div>
@@ -242,6 +260,7 @@ export class YarnForm {
     this.bind();
     this.renderLots();
     this.renderFibres();
+    this.renderPlans();
     void this.paintPhoto();
     this.weightHint();
     void this.renderSwatches();
@@ -252,6 +271,23 @@ export class YarnForm {
       mostUsedSpellings(this.known.map((y) => y.brand)),
     );
     makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="name"]')!, () => this.knownNames());
+    // Planned for: a pattern picked from the library goes in as it is picked;
+    // a title typed goes in with Enter or Add.
+    const planInput = this.root.querySelector<HTMLInputElement>('[data-el="plan-input"]')!;
+    makeCombo(planInput, () => this.patterns.map(patternLabel));
+    planInput.addEventListener("change", () => {
+      if (this.patternFor(planInput.value)) this.addPlan();
+    });
+    planInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.defaultPrevented) {
+        e.preventDefault();
+        this.addPlan();
+      }
+    });
+    void api
+      .listPatterns({})
+      .then((patterns) => (this.patterns = [...patterns].sort((a, b) => a.title.localeCompare(b.title))))
+      .catch(() => {});
     void api
       .listYarns({})
       .then((yarns) => {
@@ -529,6 +565,11 @@ export class YarnForm {
       if (hooks && swatch) hooks.open(swatch);
       else if (hooks && yarn) hooks.add(yarn);
     }
+    if (btn.dataset.act === "add-plan") this.addPlan();
+    if (btn.dataset.act === "remove-plan") {
+      this.plans.splice(Number(btn.dataset.plan), 1);
+      this.renderPlans();
+    }
     if (btn.dataset.act === "add-lot") {
       this.readLots();
       this.lots.push(emptyLot());
@@ -597,6 +638,47 @@ export class YarnForm {
       boughtAt: field(row, "boughtAt"),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
     }));
+  }
+
+  // ---------- planned for ----------
+
+  /** The library pattern a choice or a typed title names: "Title — Designer", or the title alone if only one has it. */
+  private patternFor(text: string): Pattern | null {
+    const t = text.trim().toLowerCase();
+    if (!t) return null;
+    const byLabel = this.patterns.find((p) => patternLabel(p).toLowerCase() === t);
+    if (byLabel) return byLabel;
+    const byTitle = this.patterns.filter((p) => p.title.trim().toLowerCase() === t);
+    return byTitle.length === 1 ? byTitle[0] : null;
+  }
+
+  private addPlan(): void {
+    const input = this.root.querySelector<HTMLInputElement>('[data-el="plan-input"]');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    const pattern = this.patternFor(text);
+    const plan: YarnPlan = pattern ? { patternId: pattern.id, title: pattern.title } : { patternId: null, title: text };
+    const there = this.plans.some((p) => (p.patternId || plan.patternId ? p.patternId === plan.patternId : p.title.toLowerCase() === plan.title.toLowerCase()));
+    if (!there) this.plans.push(plan);
+    input.value = "";
+    this.renderPlans();
+  }
+
+  private renderPlans(): void {
+    const list = this.root.querySelector<HTMLElement>('[data-el="plans"]');
+    if (!list) return;
+    list.hidden = !this.plans.length;
+    list.innerHTML = this.plans
+      .map(
+        (p, i) => `
+          <li class="plan-item">
+            <span class="plan-title">${escapeHtml(p.title)}</span>
+            <span class="hint">${p.patternId ? "in your library" : "not in your library"}</span>
+            <button class="ghost" data-act="remove-plan" data-plan="${i}" type="button" title="Not planned for this">×</button>
+          </li>`,
+      )
+      .join("");
   }
 
   // ---------- fibres ----------
@@ -753,6 +835,7 @@ export class YarnForm {
         notes: this.value("notes"),
         fibres: this.fibreValues(),
         superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,
+        plans: this.plans,
       };
 
       let saved: Yarn;
@@ -822,6 +905,11 @@ function emptyLot(): LotRow {
 
 function field(row: HTMLElement, name: string): string {
   return (row.querySelector(`[data-lf="${name}"]`) as HTMLInputElement).value;
+}
+
+/** A pattern as the Planned for list offers it: its title, and its designer when there is one. */
+function patternLabel(p: Pattern): string {
+  return p.designer.trim() ? `${p.title} — ${p.designer.trim()}` : p.title;
 }
 
 /** Whether two fibre contents are the same, whatever the case and order. */

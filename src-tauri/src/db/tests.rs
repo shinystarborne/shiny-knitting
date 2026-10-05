@@ -2006,6 +2006,7 @@ fn a_yarn_round_trips_every_field() {
         notes: "For the shop sample.".to_string(),
         fibres: vec![],
         superwash: false,
+        plans: vec![],
         lots: vec![YarnLotInput {
             dye_lot: "L22".to_string(),
             balls: 4.0,
@@ -2916,4 +2917,42 @@ fn a_chart_is_stored_whole_and_listed_newest_first() {
     assert!(get_chart(&conn, "c1").is_err());
     assert!(update_chart(&conn, "c1", &input("Gone", "0000")).is_err());
     assert!(delete_chart(&conn, "c1").is_err());
+}
+
+#[test]
+fn a_yarn_is_planned_for_a_pattern_or_a_title() {
+    use crate::models::YarnPlan;
+    let conn = test_db();
+    let pattern = sample(&conn, "Rjupa", "Hulda", "", &[]);
+    let plan = |id: Option<&str>, title: &str| YarnPlan { pattern_id: id.map(str::to_string), title: title.into() };
+    let input = YarnInput {
+        name: "Lettlopi".into(),
+        plans: vec![
+            plan(Some(&pattern.id), "whatever was typed"),
+            plan(None, "  Strange   Brew "),
+            plan(None, "strange brew"),
+            plan(None, "  "),
+            plan(Some("gone"), "Riddari"),
+        ],
+        ..YarnInput::default()
+    };
+    let yarn = insert_yarn(&conn, "y1", &input).unwrap();
+    let got: Vec<_> = yarn.plans.iter().map(|p| (p.pattern_id.clone(), p.title.as_str())).collect();
+    assert_eq!(
+        got,
+        vec![(Some(pattern.id.clone()), "Rjupa"), (None, "Strange Brew"), (None, "Riddari")],
+        "a pattern by its own title, a title typed once, a pattern not there by its title"
+    );
+    assert_eq!(list_yarns(&conn, &YarnFilter { search: Some("strange".into()), ..Default::default() }).unwrap().len(), 1, "found by what it is planned for");
+
+    // A renamed pattern is shown by its new name; a removed one keeps its old.
+    conn.execute("UPDATE patterns SET title = 'Rjupa yoke' WHERE id = ?1", params![pattern.id]).unwrap();
+    assert_eq!(get_yarn(&conn, "y1").unwrap().plans[0].title, "Rjupa yoke");
+    delete_pattern(&conn, &pattern.id).unwrap();
+    let after = get_yarn(&conn, "y1").unwrap();
+    assert_eq!((after.plans[0].pattern_id.clone(), after.plans[0].title.as_str()), (None, "Rjupa"));
+
+    let mut edited = after.clone();
+    edited.plans = vec![];
+    assert!(update_yarn(&conn, &edited).unwrap().plans.is_empty());
 }

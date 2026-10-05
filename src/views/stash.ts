@@ -231,8 +231,8 @@ export class StashView {
    */
   private renderUse(): void {
     const count = (u: Use) => this.yarns.filter((y) => useOf(y).includes(u)).length;
-    const labels: Record<Use, string> = { free: "Free", "in-use": "In use", leftover: "Leftover" };
-    this.root.querySelector('[data-slot="use"] .facet-list')!.innerHTML = (["free", "in-use", "leftover"] as Use[])
+    const labels: Record<Use, string> = { free: "Free", "in-use": "In use", planned: "Planned", leftover: "Leftover" };
+    this.root.querySelector('[data-slot="use"] .facet-list')!.innerHTML = (["free", "in-use", "planned", "leftover"] as Use[])
       .map(
         (u) => `
           <label class="check${count(u) ? "" : " unused"}">
@@ -324,6 +324,11 @@ export class StashView {
               ? `<p class="card-use" title="${escapeHtml(y.projects.join(", "))}">In use: ${escapeHtml(y.projects.join(", "))}</p>`
               : ""
           }
+          ${
+            y.plans.length
+              ? `<p class="card-plan" title="${escapeHtml(y.plans.map((p) => p.title).join(", "))}">Planned for: ${escapeHtml(y.plans.map((p) => p.title).join(", "))}</p>`
+              : ""
+          }
           ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Its newest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
@@ -367,8 +372,8 @@ export class StashView {
   }
 }
 
-/** Whether a yarn is free, on an active project, and holds a leftover. */
-type Use = "free" | "in-use" | "leftover";
+/** Whether a yarn is free, on an active project, planned for something, and holds a leftover. */
+type Use = "free" | "in-use" | "planned" | "leftover";
 
 /** The "made of" boxes. Each narrows the list; ticking two means both. */
 type Made = "animal" | "no-animal" | "no-synthetic" | "superwash" | "not-superwash";
@@ -404,6 +409,7 @@ function madeOf(y: Yarn, m: Made): boolean {
 
 function useOf(y: Yarn): Use[] {
   const out: Use[] = [y.projects.length ? "in-use" : "free"];
+  if (y.plans.length) out.push("planned");
   if (y.lots.some((l) => l.leftover)) out.push("leftover");
   return out;
 }

@@ -35,6 +35,9 @@ drag. Since Projects exist, a plan is probably a project with a **planned**
 status rather than a new kind of thing. Patterns marked **Want to knit** are a
 natural place to start one from.
 
+A yarn in the stash can already say what it is planned for (a pattern, or
+a title); a plan could start from there, with that yarn on it.
+
 Open question: exact dates, rough ones, or both?
 
 ### Finished gallery
@@ -143,7 +146,9 @@ at once rare enough?
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
   highlights, notes, drawings, pins.
-- **Stash:** yarn with lots, photos (pasted or dropped), weight from metres and
+- **Stash:** what a yarn is planned for: patterns from the library (searched
+  by title and designer) or titles typed for ones not got yet, on its card,
+  in the search and as a Planned filter. Yarn with lots, photos (pasted or dropped), weight from metres and
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
   the same yarn; fibre content and superwash, with Fibre and Made of filters.
 - **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase

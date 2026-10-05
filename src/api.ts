@@ -405,6 +405,16 @@ export interface Fibre {
   percent: number;
 }
 
+/**
+ * What a yarn is planned for: a pattern from the library, or a title typed
+ * for one not got yet. Mirrors `models.rs::YarnPlan`; a linked pattern's
+ * title comes back as it is now.
+ */
+export interface YarnPlan {
+  patternId: string | null;
+  title: string;
+}
+
 export interface Yarn {
   id: string;
   name: string;
@@ -427,6 +437,8 @@ export interface Yarn {
   fibres: Fibre[];
   /** Treated so it can go in the washing machine. */
   superwash: boolean;
+  /** What it is planned for. */
+  plans: YarnPlan[];
   addedAt: number;
   lots: YarnLot[];
   // The last three are derived by the backend from the lots; they are sent
@@ -464,6 +476,7 @@ export interface YarnInput {
   notes: string;
   fibres?: Fibre[];
   superwash?: boolean;
+  plans: YarnPlan[];
   lots: YarnLotInput[];
 }
 
