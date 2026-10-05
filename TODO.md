@@ -149,12 +149,13 @@ at once rare enough?
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
   highlights, notes, drawings, pins.
-- **Stash totals and yarn used:** the stash's metres and weight, of all of
-  it or what the filters leave. Yarn used is recorded as it goes (a finished
-  project's, weighed before and after; what was left of yarn marked used up),
-  and the History shows the metres used each calendar month for the last
-  twelve, each month's yarn listed. Counted from 0.3.23: what was used before
-  was never recorded.
+- **Stash statistics:** the stash's metres and weight (in the Yarn view, of
+  what the filters leave). A Statistics view: in the stash now, and yarn
+  added and used each calendar month for the last twelve, in metres or grams,
+  each month's yarn listed. Added comes from the lots as bought (dated when
+  bought, or when the yarn was added), so it goes back as far as the stash
+  does. Used is recorded as it goes (a finished project's, weighed before and
+  after; what was left of yarn marked used up), from 0.3.23 on.
 - **Stash history and ball bands:** yarn used up (from its card, or by
   finishing a project with none of it left) leaves the stash for a History,
   with when and what it went into, and can come back. Ball bands: pictures of

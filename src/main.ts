@@ -18,6 +18,7 @@ import { InspirationPage, InspirationView } from "./views/inspiration";
 import { PeopleView, PersonPage } from "./views/people";
 import { SwatchesView, type StashMode } from "./views/swatches";
 import { StashHistoryView } from "./views/stash-history";
+import { StashStatsView } from "./views/stash-stats";
 import { BallBandsView } from "./views/ball-bands";
 import { CalculatorsView, openCalculatorsOn } from "./views/calculators";
 import { ChartPage } from "./views/charts";
@@ -180,7 +181,7 @@ class App {
     });
     this.screen.addEventListener("stash-mode", (e) => {
       const mode = (e as CustomEvent<string>).detail;
-      this.stashMode = mode === "swatches" || mode === "bands" || mode === "history" ? mode : "yarn";
+      this.stashMode = mode === "swatches" || mode === "bands" || mode === "history" || mode === "stats" ? mode : "yarn";
       void this.showStash();
     });
     this.screen.addEventListener("add-swatch", (e) => {
@@ -423,6 +424,7 @@ class App {
     if (this.stashMode === "swatches") await new SwatchesView(this.screen).mount();
     else if (this.stashMode === "bands") await new BallBandsView(this.screen).mount();
     else if (this.stashMode === "history") await new StashHistoryView(this.screen).mount();
+    else if (this.stashMode === "stats") await new StashStatsView(this.screen).mount();
     else await new StashView(this.screen).mount();
   }
 
