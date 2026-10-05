@@ -8,7 +8,7 @@
 //! yoke whose shaping does not add up) is refused rather than saved.
 //!
 //! Exports are drawn by the page too, and handed over as finished PNG or PDF
-//! bytes for `save_chart_file` to write where the user chooses.
+//! bytes for `save_file` to write where the user chooses.
 
 use std::collections::BTreeSet;
 
@@ -214,22 +214,23 @@ fn file_name(name: &str, ext: &str) -> String {
     format!("{}.{ext}", if base.is_empty() { "Chart" } else { base })
 }
 
-/// Asks where to save an exported chart, and writes it there. The bytes come
-/// raw, with the kind (`pdf` or `png`) and the chart's name in headers.
+/// Asks where to save an exported file (a chart, or a pattern's pages), and
+/// writes it there. The bytes come raw, with the kind (`pdf` or `png`) and the
+/// name to suggest in headers.
 /// Resolves the path written, or None when the dialog was cancelled.
 ///
 /// Async, so the dialog waits on a worker thread: a blocking dialog on the
 /// main thread would wait for the main thread forever.
 #[tauri::command]
-pub async fn save_chart_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<Option<String>> {
+pub async fn save_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) -> CmdResult<Option<String>> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-        return refuse("The chart arrived in the wrong form.");
+        return refuse("The file arrived in the wrong form.");
     };
     let header = |key: &str| request.headers().get(key).and_then(|v| v.to_str().ok()).map(percent_decode).unwrap_or_default();
     let (label, ext, magic): (&str, &str, &[u8]) = match header("x-kind").as_str() {
         "pdf" => ("PDF", "pdf", b"%PDF-"),
         "png" => ("PNG picture", "png", b"\x89PNG"),
-        _ => return refuse("A chart is saved as a PDF or a PNG picture."),
+        _ => return refuse("Only a PDF or a PNG picture is saved this way."),
     };
     if !bytes.starts_with(magic) {
         return refuse(&format!("That is not a {label}."));
@@ -237,7 +238,7 @@ pub async fn save_chart_file(app: tauri::AppHandle, request: tauri::ipc::Request
     let picked = app
         .dialog()
         .file()
-        .set_title("Save the chart")
+        .set_title("Save as")
         .set_file_name(file_name(&header("x-name"), ext))
         .add_filter(label, &[ext])
         .blocking_save_file();

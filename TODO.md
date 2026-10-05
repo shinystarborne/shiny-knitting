@@ -38,8 +38,8 @@ starting; the details are in the sections under the list.
 
 **Patterns and the reader**
 
-6. [ ] PDF export: a screen to choose pages from a pattern and save them as a
-   PDF (the writer is built).
+6. [x] PDF export: a screen to choose pages from a pattern and save them as a
+   PDF. *0.3.26*
 7. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
 8. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
    path).
@@ -122,12 +122,6 @@ The designer is built (see Already built). Left over:
 - **Knitting from a chart:** a chart on a project's page with the current row
   marked, counted like a pattern's rows.
 
-### PDF export
-
-Choose pages from a pattern (for example one pattern out of a big EPUB
-collection) and save them as a PDF. The part that writes the PDF is finished
-and tested; the screen to choose pages is not built.
-
 ### Two projects from one pattern
 
 The row counter belongs to the pattern, so two projects knitted from the same
@@ -188,7 +182,11 @@ at once rare enough?
   behind a panel that minimises and closes.
 - **Reading:** PDF and EPUB, zoom, turning a page, contents, bookmarks, search,
   links, highlight line, row counter with named counters and your own keys,
-  highlights, notes, drawings, pins.
+  highlights, notes, drawings, pins. **Save pages…** saves chosen pages of a
+  PDF (copied as they are, by pdf-lib) or chapters of an EPUB (laid out on A4
+  as pictures, broken between lines) as a PDF, where the Save dialog says. The
+  older raster writer (`export.rs`, `save_export_pdf`) is unused, kept for a
+  pages-with-my-marks export if one is wanted.
 - **Stash statistics:** the stash's metres and weight (in the Yarn view, of
   what the filters leave). A Statistics view: in the stash now, and yarn
   added and used each calendar month for the last twelve, in metres or grams,

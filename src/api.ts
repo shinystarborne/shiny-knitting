@@ -1216,11 +1216,12 @@ export const api = {
   updateChart: (id: string, name: string, data: ChartData) => invoke<Chart>("update_chart", { id, input: { name, data } }),
   deleteChart: (id: string) => invoke<void>("delete_chart", { id }),
   /**
-   * Asks where to save an exported chart and writes it: the path, or null if
-   * the dialog was cancelled. The bytes go raw, the name and kind in headers.
+   * Asks where to save an exported file (a chart, a pattern's pages) and writes
+   * it: the path, or null if the dialog was cancelled. The bytes go raw, the
+   * name and kind in headers.
    */
-  saveChartFile: (kind: "pdf" | "png", name: string, bytes: Uint8Array) =>
-    invoke<string | null>("save_chart_file", bytes, { headers: { "x-kind": kind, "x-name": encodeURIComponent(name) } }),
+  saveFile: (kind: "pdf" | "png", name: string, bytes: Uint8Array) =>
+    invoke<string | null>("save_file", bytes, { headers: { "x-kind": kind, "x-name": encodeURIComponent(name) } }),
 
   // People and their measurements. Each change returns the whole person, so
   // the page shows what was stored.

@@ -1152,7 +1152,7 @@ export class ChartPage {
             const blob = await chartPng(name, g, { asKnitted: field<HTMLInputElement>("knitted").checked, subtitle: this.subtitle() });
             bytes = new Uint8Array(await blob.arrayBuffer());
           }
-          const path = await api.saveChartFile(as(), name, bytes);
+          const path = await api.saveFile(as(), name, bytes);
           if (path === null) {
             (act as HTMLButtonElement).disabled = false;
             return;

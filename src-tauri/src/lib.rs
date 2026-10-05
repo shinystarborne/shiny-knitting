@@ -161,7 +161,7 @@ pub fn run() {
             charts::add_chart,
             charts::update_chart,
             charts::delete_chart,
-            charts::save_chart_file,
+            charts::save_file,
             people::list_people,
             people::get_person,
             people::add_person,

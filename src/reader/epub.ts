@@ -134,6 +134,12 @@ export class EpubView implements RenderedDoc {
     return `data:${type};base64,${btoa(binary)}`;
   }
 
+  /** A chapter's markup (1-based), self-contained as it is shown: for saving it as pages. */
+  chapterHtml(chapter: number): string {
+    const href = this.chapterHrefs[chapter - 1];
+    return href ? this.prepareChapter(href) : "";
+  }
+
   /** Rewrites one chapter's markup so it can live in a sandboxed iframe. */
   private prepareChapter(href: string): string {
     let html = this.readText(href);

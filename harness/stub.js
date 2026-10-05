@@ -1841,11 +1841,11 @@ const handlers = {
   },
   // The save dialog: the bytes come raw, the kind and name in headers. A test
   // sets window.__nextSavePath (null cancels); the last export is kept.
-  save_chart_file: (bytes, options) => {
+  save_file: (bytes, options) => {
     const headers = options?.headers ?? {};
     const kind = headers["x-kind"];
     const magic = kind === "pdf" ? [0x25, 0x50, 0x44, 0x46, 0x2d] : kind === "png" ? [0x89, 0x50, 0x4e, 0x47] : null;
-    if (!magic) throw new Error("A chart is saved as a PDF or a PNG picture.");
+    if (!magic) throw new Error("Only a PDF or a PNG picture is saved this way.");
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     if (!magic.every((b, i) => data[i] === b)) throw new Error(`That is not a ${kind === "pdf" ? "PDF" : "PNG picture"}.`);
     window.__lastExport = { kind, name: decodeURIComponent(headers["x-name"] ?? ""), bytes: data };

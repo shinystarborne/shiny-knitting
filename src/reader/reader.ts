@@ -13,6 +13,7 @@ import { RowCounter } from "./counter";
 import { ProjectPanel } from "./project-panel";
 import { isCapturing } from "./keys";
 import { normalRotation } from "./rotation";
+import { savePagesDialog } from "./save-pages-dialog";
 import { scanOne } from "../ai/scan";
 import { extractFromDocument, forgetCover, prepareChosenImage, saveCover } from "../covers";
 
@@ -330,6 +331,7 @@ export class ReaderView {
             ${sidebar ? "Focus view" : "Split view"}
           </button>`}
           <button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>
+          <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
       </header>
@@ -363,7 +365,8 @@ export class ReaderView {
           new CustomEvent("change-layout", { bubbles: true, detail: sidebar ? "focus" : "split" }),
         );
       }
-      if (act === "highlight-cfg") this.openHighlightPanel();      if (act === "edit") {
+      if (act === "highlight-cfg") this.openHighlightPanel();
+      if (act === "save-pages") void this.savePages();      if (act === "edit") {
         this.root.dispatchEvent(
           new CustomEvent("edit-pattern", { bubbles: true, detail: this.pattern }),
         );
@@ -591,6 +594,19 @@ export class ReaderView {
    * The highlight settings panel. Every control writes straight through to
    * the database, so the configuration is remembered per pattern.
    */
+  /** Some of the pattern's pages, or an EPUB's chapters, saved as a PDF. */
+  private async savePages(): Promise<void> {
+    const doc = this.doc;
+    if (!doc) return;
+    const epub = doc instanceof EpubView ? doc : null;
+    await savePagesDialog(this.pattern, {
+      pageCount: doc.pageCount,
+      currentPage: () => doc.currentPage(),
+      chapterTitles: epub ? async () => (await epub.outline()).map((o) => o.title) : undefined,
+      chapterHtml: epub ? (n) => epub.chapterHtml(n) : undefined,
+    });
+  }
+
   private openHighlightPanel(): void {
     const panel = this.root.querySelector(".highlight-panel") as HTMLElement;
     const s = this.highlight?.current;
