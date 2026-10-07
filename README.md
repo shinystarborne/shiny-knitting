@@ -20,8 +20,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.36](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.36)** —
+  two projects from one pattern, each counting its own rows. The one to test.
 - **[v0.3.0-beta.35](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.35)** —
-  the finished gallery: every finished project with its photos, in the Projects tab. The one to test.
+  the finished gallery: every finished project with its photos, in the Projects tab. Superseded by `beta.36`.
 - **[v0.3.0-beta.34](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.34)** —
   a yarn's care symbols from its ball band, drawn and named, for every colour of it. Superseded by `beta.35`.
 - **[v0.3.0-beta.33](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.33)** —
