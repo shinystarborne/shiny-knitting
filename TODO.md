@@ -32,51 +32,60 @@ starting; the details are in the sections under the list.
    all of it), instead of showing 0 g. *0.3.24*
 2. [x] Ball band thumbnails on a yarn's card and in its form, opening the
    band big. *0.3.25*
+3. [ ] Ball bands out of the stash: the Ball bands view, the pictures, and
+   the thumbnails on a yarn's card and in its form. Never used. What a yarn
+   says of itself (metres and grams per ball, fibres) stays.
+4. [ ] A yarn's expected gauge and needles to use, as its band gives them:
+   sts and rows over 10 cm, and a needle size or range, in its form and on
+   its card.
+5. [ ] A yarn's care markings: the symbols (washing, bleach, drying,
+   ironing, dry cleaning) picked in its form, shown on its card, each with a
+   label saying what it means (hand wash only, do not iron...).
 
 **Projects**
 
-3. [x] Plans: projects not started yet, with a pattern or an idea, yarn, a
+6. [x] Plans: projects not started yet, with a pattern or an idea, yarn, a
    rough date and an order to drag; from a stash yarn's Planned for, or a
    Want to knit pattern. *Decided:* both, a rough time or an exact date. *0.3.27*
-4. [ ] Finished gallery: photos of finished projects with their pattern,
+7. [ ] Finished gallery: photos of finished projects with their pattern,
    yarn, needles, dates and log. *Decided:* by itself, every finished
    project, with a way to hide one.
-5. [ ] Two projects from one pattern, each with its own row counter.
+8. [ ] Two projects from one pattern, each with its own row counter.
    *Decided:* yes, a counter per project, started from the pattern's.
 
 **Patterns and the reader**
 
-6. [x] PDF export: a screen to choose pages from a pattern and save them as a
+9. [x] PDF export: a screen to choose pages from a pattern and save them as a
    PDF. *0.3.26*
-7. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
-8. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
-   path).
-9. [ ] Pins: bring one to the front.
-10. [ ] Zoom remembered per pattern.
-11. [ ] Page by page (swipe) reading.
-12. [ ] A light reader theme.
-13. [ ] Two PDFs side by side.
-14. [ ] Marks moved and resized.
-15. [ ] An eraser for drawings.
-16. [ ] Typed text on the page.
-17. [ ] "Open in the default PDF app" (the backend is there; it needs a
+10. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
+11. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
+    path).
+12. [ ] Pins: bring one to the front.
+13. [ ] Zoom remembered per pattern.
+14. [ ] Page by page (swipe) reading.
+15. [ ] A light reader theme.
+16. [ ] Two PDFs side by side.
+17. [ ] Marks moved and resized.
+18. [ ] An eraser for drawings.
+19. [ ] Typed text on the page.
+20. [ ] "Open in the default PDF app" (the backend is there; it needs a
     button).
-18. [ ] A card for a pattern whose file has gone missing.
+21. [ ] A card for a pattern whose file has gone missing.
 
 **Calculators**
 
-19. [ ] The raglan, bottom-up.
-20. [ ] The raglan worked flat, as a cardigan with front edges.
-21. [ ] A raised back neck with short rows.
-22. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
+22. [ ] The raglan, bottom-up.
+23. [ ] The raglan worked flat, as a cardigan with front edges.
+24. [ ] A raised back neck with short rows.
+25. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
 
 **Colourwork charts**
 
-23. [ ] Select, copy and paste a block of squares.
-24. [ ] A chart's colours linked to stash yarns, named in the legend.
-25. [ ] Knitting from a chart: on a project's page, the current row marked
+26. [ ] Select, copy and paste a block of squares.
+27. [ ] A chart's colours linked to stash yarns, named in the legend.
+28. [ ] Knitting from a chart: on a project's page, the current row marked
     and counted.
-26. [ ] The round yoke calculator and a yoke chart together.
+29. [ ] The round yoke calculator and a yoke chart together.
     **Decide first:** fit the chart to the calculator's counts, or the
     calculator to the chart?
 
@@ -122,6 +131,20 @@ The designer is built (see Already built). Left over:
 The row counter belongs to the pattern, so two projects knitted from the same
 pattern share their counts. A counter per project, started from the pattern's,
 would keep them apart. Decided (6 Oct 2026): yes, a counter per project.
+
+### A yarn's band, as details instead of pictures
+
+Asked for 7 Oct 2026: ball band pictures are never used, so they go (the
+Ball bands view, the thumbnails, the stored pictures). What a band says is
+kept as details on the yarn instead:
+
+- **Expected gauge:** sts and rows over 10 cm (or 4 in), as the band gives
+  it. A swatch's own gauge stays the one that counts; this is what to expect.
+- **Needles to use:** a size or a range (e.g. 3.5 to 4 mm).
+- **Care markings:** the standard care symbols, picked from a list in the
+  yarn's form, shown on its card as the symbols, each labelled with what it
+  means (machine wash 30°, hand wash only, do not bleach, do not tumble dry,
+  dry flat, do not iron, do not dry clean...).
 
 ### Small fixes
 
