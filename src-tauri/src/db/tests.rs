@@ -2308,6 +2308,39 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
 }
 
 #[test]
+fn a_removed_pattern_waits_in_the_bin_to_come_back() {
+    let conn = test_db();
+    let keep = sample(&conn, "Keep me", "Ann", "", &["hat"]);
+    let gone = sample(&conn, "Binned shawl", "Bea", "want-to-knit", &["shawl"]);
+    enabled_counter(&conn, &gone.id, "Edging", 0);
+    let ids = |f: &Filter| list_patterns(conn_ref(&conn), f).unwrap().into_iter().map(|p| p.id).collect::<Vec<_>>();
+
+    let removed = remove_pattern(&conn, &gone.id).unwrap();
+    assert!(removed.removed_at.is_some());
+    assert_eq!(ids(&Filter::default()), vec![keep.id.clone()], "out of the library");
+    let facets = list_facets(&conn).unwrap();
+    assert!(!facets.designers.contains(&"Bea".to_string()) && !facets.tags.contains(&"shawl".to_string()), "and out of its filters");
+    assert_eq!(list_removed_patterns(&conn).unwrap().iter().map(|p| p.title.as_str()).collect::<Vec<_>>(), vec!["Binned shawl"]);
+    assert_eq!(list_counters(&conn, &gone.id, "").unwrap().len(), 1, "everything of it is kept");
+
+    let back = restore_pattern(&conn, &gone.id).unwrap();
+    assert!(back.removed_at.is_none() && back.status == "want-to-knit");
+    assert_eq!(ids(&Filter::default()).len(), 2, "back in the library, as it was");
+    assert!(list_removed_patterns(&conn).unwrap().is_empty());
+    assert!(restore_pattern(&conn, "no-such").is_err());
+
+    // What has been in the Bin long enough is what goes for good.
+    remove_pattern(&conn, &gone.id).unwrap();
+    conn.execute("UPDATE patterns SET removed_at = 1000 WHERE id = ?1", params![gone.id]).unwrap();
+    assert_eq!(removed_before(&conn, 2000).unwrap(), vec![gone.id.clone()]);
+    assert!(removed_before(&conn, 500).unwrap().is_empty());
+}
+
+fn conn_ref(conn: &Connection) -> &Connection {
+    conn
+}
+
+#[test]
 fn two_projects_from_one_pattern_each_count_their_own_rows() {
     let conn = test_db();
     let p = sample(&conn, "Raglan", "A", "in-progress", &[]);

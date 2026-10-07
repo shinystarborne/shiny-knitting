@@ -43,16 +43,22 @@ pub fn run() {
             std::fs::create_dir_all(&library_dir)?;
 
             let conn = db::open(&base.join("library.db"))?;
-            app.manage(AppState {
+            let state = AppState {
                 conn: std::sync::Mutex::new(conn),
                 library_dir,
-            });
+            };
+            commands::purge_bin(&state);
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::add_pattern,
             commands::scan_pattern_folder,
             commands::list_patterns,
+            commands::remove_pattern,
+            commands::restore_pattern,
+            commands::list_removed_patterns,
+            commands::empty_bin,
             commands::get_pattern,
             commands::update_pattern,
             commands::set_pattern_status,

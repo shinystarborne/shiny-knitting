@@ -44,6 +44,8 @@ export interface Pattern {
   lastScroll: number;
   /** File name of the cover inside the library's covers folder, or "". */
   coverPath: string;
+  /** When it was removed to the Bin; null while it is in the library. */
+  removedAt?: number | null;
 }
 
 /** Mirrors `models.rs::Section`. */
@@ -1126,7 +1128,14 @@ export const api = {
   findDuplicatePatterns: () => invoke<DuplicateGroup[]>("find_duplicate_patterns"),
   /** Keeps one, folds the others into it, and removes them. */
   mergeDuplicatePatterns: (keep: string, remove: string[]) => invoke<Pattern>("merge_duplicate_patterns", { keep, remove }),
+  /** Deletes for good, file and all; removing is removePattern, to the Bin. */
   deletePattern: (id: string) => invoke<void>("delete_pattern", { id }),
+  /** Out of the library into the Bin, everything of it kept. */
+  removePattern: (id: string) => invoke<Pattern>("remove_pattern", { id }),
+  restorePattern: (id: string) => invoke<Pattern>("restore_pattern", { id }),
+  /** The Bin, the latest removed first. */
+  listRemovedPatterns: () => invoke<Pattern[]>("list_removed_patterns"),
+  emptyBin: () => invoke<void>("empty_bin"),
   getFacets: () => invoke<FacetValues>("get_facets"),
   savePosition: (id: string, page: number, scroll: number) =>
     invoke<void>("save_position", { id, page, scroll }),

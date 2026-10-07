@@ -260,8 +260,14 @@ matches is still shown on the card as written. Families you own nothing in are
 dimmed rather than hidden, since they still answer "could I knit this in
 something I have?".
 
-**Removing a pattern.** Every card has a **Remove** button. It asks first, and
-says plainly that the file and its cover go too and that it cannot be undone.
+**Removing a pattern.** Every card has a **Remove** button. It takes the
+pattern out of the library at once, asking nothing, because nothing is lost
+yet: a notice at the foot of the screen has **Undo** for a few seconds, and the
+pattern waits in the **Bin** — the library's **Bin (n)** button — with its
+file, cover, marks and counters, for 30 days. There it can be restored as it
+was, or deleted for good; **Empty the bin** deletes them all. After 30 days it
+is deleted for good by itself. Adding the same file again brings it back from
+the Bin.
 
 **Duplicates…** in the toolbar finds patterns that are in the library more
 than once: identical files, and patterns with the same title (a download's

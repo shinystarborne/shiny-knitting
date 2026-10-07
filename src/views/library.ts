@@ -10,7 +10,7 @@ import {
   type NeedleSizeFormat,
   type Pattern,
 } from "../api";
-import { askYesNo } from "../dialogs";
+import { askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { coverUrl, ensureCover, forgetCover } from "../covers";
 import { MetadataScanner, undoPattern } from "../ai/scan";
@@ -76,6 +76,7 @@ export class LibraryView {
           </select>
           <button data-act="fill-covers" class="ghost" title="Add missing covers">Covers</button>
           <button data-act="duplicates" class="ghost" title="Find patterns that are in the library more than once">Duplicates…</button>
+          <button data-act="bin" class="ghost" hidden title="Patterns removed in the last 30 days, to bring back"></button>
           <button data-act="scan" class="ghost lib-icon" hidden aria-label="Describe patterns with your model"
             title="Describe patterns with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
           <button data-act="add" class="primary">+ Add pattern</button>
@@ -212,6 +213,8 @@ export class LibraryView {
         await this.reload();
       } else if (act === "scan") {
         await this.startScan();
+      } else if (act === "bin") {
+        await this.openBin();
       } else if (act === "duplicates") {
         if (await sortOutDuplicates()) {
           this.facets = await api.getFacets();
@@ -736,6 +739,7 @@ export class LibraryView {
   private listToken = 0;
 
   private async reload(): Promise<void> {
+    void this.paintBinButton();
     const token = ++this.listToken;
     const patterns = await this.queryPatterns();
     if (token !== this.listToken) return;
@@ -815,7 +819,7 @@ export class LibraryView {
             <button class="card-more" data-act="more" data-id="${p.id}" aria-label="More"
               title="Status, tags, details, cover, start a project">⋯</button>
             <button class="card-remove" data-delete="${p.id}"
-              title="Remove this pattern from your library">Remove</button>
+              title="Remove this pattern from your library: it waits in the Bin for 30 days, to bring back">Remove</button>
           </div>
         </div>
       </article>`;
@@ -842,23 +846,116 @@ export class LibraryView {
     host.parentElement?.classList.add("has-cover");
   }
 
+  /**
+   * Removes a pattern to the Bin at once -- nothing is lost, so nothing is
+   * asked -- and offers Undo for a few seconds.
+   */
   private async confirmDelete(id: string): Promise<void> {
     const pattern = this.patterns.find((p) => p.id === id);
-    const name = pattern ? `"${pattern.title}"` : "this pattern";
-    if (
-      !(await askYesNo(
-        `Remove ${name} from your library?\n\nThe file and its cover will be deleted too. This cannot be undone.`,
-        { title: "Remove pattern", okLabel: "Remove", danger: true },
-      ))
-    ) {
-      return;
+    try {
+      await api.removePattern(id);
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Remove pattern"));
     }
-    await api.deletePattern(id);
-    forgetCover(id);
+    await this.afterBinChange();
+    showUndo(`Removed “${pattern?.title ?? "the pattern"}”. It is in the Bin for 30 days.`, async () => {
+      await api.restorePattern(id);
+      await this.afterBinChange();
+    });
+  }
+
+  private async afterBinChange(): Promise<void> {
     this.facets = await api.getFacets();
     this.renderFacets();
     await this.reload();
   }
+
+  /** "Bin (3)", shown while anything is in it. */
+  private async paintBinButton(): Promise<void> {
+    const removed = await api.listRemovedPatterns().catch(() => [] as Pattern[]);
+    const btn = this.root?.querySelector<HTMLElement>('[data-act="bin"]');
+    if (!btn) return;
+    btn.hidden = !removed.length;
+    btn.textContent = `Bin (${removed.length})`;
+  }
+
+  /** The Bin: what was removed, each to restore or delete for good, and Empty the bin. */
+  private async openBin(): Promise<void> {
+    let removed = await api.listRemovedPatterns();
+    const dialog = customDialog("The Bin", () => dialog.close(), "bin-dialog");
+    const body = document.createElement("div");
+    dialog.card.append(body);
+    const paint = () => {
+      body.innerHTML = removed.length
+        ? `<p class="hint">Removed patterns wait here for 30 days, with their file, cover, marks and counters, then are deleted for good.</p>
+           <ul class="bin-list">${removed
+             .map(
+               (p) => `
+             <li data-id="${escapeHtml(p.id)}">
+               <span><strong>${escapeHtml(p.title)}</strong>${p.designer ? ` <em>${escapeHtml(p.designer)}</em>` : ""}<small>Removed ${escapeHtml(removedDate(p.removedAt ?? 0))}</small></span>
+               <button type="button" class="ghost" data-bin="restore">Restore</button>
+               <button type="button" class="ghost danger" data-bin="delete">Delete for good</button>
+             </li>`,
+             )
+             .join("")}</ul>
+           <div class="dialog-actions"><button type="button" class="ghost danger" data-bin="empty">Empty the bin</button><button type="button" class="primary" data-bin="close">Close</button></div>`
+        : `<p class="hint">The Bin is empty.</p><div class="dialog-actions"><button type="button" class="primary" data-bin="close">Close</button></div>`;
+    };
+    body.addEventListener("click", async (e) => {
+      const btn = closestEl(e.target, "button[data-bin]");
+      if (!btn) return;
+      const act = btn.dataset.bin;
+      const id = btn.closest<HTMLElement>("li[data-id]")?.dataset.id;
+      const title = removed.find((p) => p.id === id)?.title ?? "";
+      try {
+        if (act === "close") return dialog.close();
+        if (act === "restore" && id) await api.restorePattern(id);
+        if (act === "delete" && id) {
+          if (!(await askYesNo(`Delete “${title}” for good?\n\nIts file, cover, marks and counters go too. This cannot be undone.`, { title: "Delete for good", okLabel: "Delete", danger: true }))) return;
+          await api.deletePattern(id);
+          forgetCover(id);
+        }
+        if (act === "empty") {
+          if (!(await askYesNo(`Delete all ${removed.length} for good?\n\nTheir files, covers, marks and counters go too. This cannot be undone.`, { title: "Empty the bin", okLabel: "Empty the bin", danger: true }))) return;
+          for (const p of removed) forgetCover(p.id);
+          await api.emptyBin();
+        }
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "The Bin"));
+      }
+      removed = await api.listRemovedPatterns();
+      paint();
+      await this.afterBinChange();
+    });
+    paint();
+    dialog.show();
+  }
+}
+
+/** "8 October 2026". */
+function removedDate(at: number): string {
+  return new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/** A notice at the foot of the screen with Undo, for a few seconds; a newer one takes its place. */
+function showUndo(text: string, undo: () => Promise<void>): void {
+  document.querySelector(".undo-toast")?.remove();
+  const toast = document.createElement("div");
+  toast.className = "undo-toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `<span></span><button type="button" class="ghost">Undo</button>`;
+  toast.querySelector("span")!.textContent = text;
+  const timer = window.setTimeout(() => toast.remove(), 8000);
+  toast.querySelector("button")!.addEventListener("click", async () => {
+    window.clearTimeout(timer);
+    toast.remove();
+    try {
+      await undo();
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Undo");
+    }
+  });
+  document.body.append(toast);
 }
 
 /** How many of the most used designers and tags the sidebar shows, and how many matches a search. */

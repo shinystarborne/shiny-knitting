@@ -89,6 +89,10 @@ fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
 
     let hash = db::hash_bytes(bytes);
     if let Some(existing) = db::pattern_with_hash(&state.db(), &hash)? {
+        // The same file in the Bin comes back, as it was, rather than in twice.
+        if existing.removed_at.is_some() {
+            return db::restore_pattern(&state.db(), &existing.id);
+        }
         return Err(AppError::AlreadyHave(existing.title));
     }
 
@@ -239,6 +243,48 @@ pub fn merge_duplicate_patterns(state: State<'_, AppState>, keep: String, remove
 #[tauri::command]
 pub fn delete_pattern(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     delete_pattern_from(&state, &id)
+}
+
+/// Removes a pattern to the Bin; everything of it is kept until the Bin is emptied.
+#[tauri::command]
+pub fn remove_pattern(state: State<'_, AppState>, id: String) -> CmdResult<Pattern> {
+    db::remove_pattern(&state.db(), &id)
+}
+
+#[tauri::command]
+pub fn restore_pattern(state: State<'_, AppState>, id: String) -> CmdResult<Pattern> {
+    db::restore_pattern(&state.db(), &id)
+}
+
+#[tauri::command]
+pub fn list_removed_patterns(state: State<'_, AppState>) -> CmdResult<Vec<Pattern>> {
+    db::list_removed_patterns(&state.db())
+}
+
+/// Deletes every pattern in the Bin for good, files and all.
+#[tauri::command]
+pub fn empty_bin(state: State<'_, AppState>) -> CmdResult<()> {
+    let ids = db::removed_before(&state.db(), i64::MAX)?;
+    for id in ids {
+        delete_pattern_from(&state, &id)?;
+    }
+    Ok(())
+}
+
+/// How long a pattern stays in the Bin before it is deleted for good.
+pub const BIN_DAYS: i64 = 30;
+
+/// At start: what has been in the Bin longer than BIN_DAYS goes for good.
+pub fn purge_bin(state: &AppState) {
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+        - BIN_DAYS * 86_400_000;
+    let Ok(ids) = db::removed_before(&state.db(), before) else { return };
+    for id in ids {
+        let _ = delete_pattern_from(state, &id);
+    }
 }
 
 /// Deletes a pattern and every file the library kept for it: the document

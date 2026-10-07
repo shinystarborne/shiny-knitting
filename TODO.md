@@ -69,7 +69,8 @@ starting; the details are in the sections under the list.
 
 10. [x] PDF export: a screen to choose pages from a pattern and save them as a
     PDF. *0.3.26*
-11. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
+11. [x] Restore a removed pattern: a bin, or Undo for a few seconds.
+    *Both.* *0.3.38*
 12. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
     path).
 13. [ ] Pins: bring one to the front.
@@ -315,6 +316,10 @@ separate step, not asked for yet.
   (and Look up names for shops still named after their address); two rows of
   tags on a card and the rest as +N; opens in the browser; shows how much on
   the wishlist is from it.
+- **The Bin:** Remove is patterns.removed_at, everything kept; Undo for 8
+  s, and the library's Bin (restore, delete for good, empty). Deleted for
+  good at start after 30 days (commands::purge_bin). Every library query
+  says removed_at IS NULL; adding a file that is in the Bin restores it.
 - **Backup:** Make a backup in Settings: the database (a VACUUM INTO copy)
   and every file of the library folder in one zip, stored, zip64; written as
   .part and renamed when whole; progress polled (backup_progress); the last

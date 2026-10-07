@@ -613,6 +613,11 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "used_up_at")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN used_up_at INTEGER", [])?;
     }
+    // A pattern removed to the Bin, to restore or delete for good; NULL while
+    // it is in the library.
+    if !column_exists(conn, "patterns", "removed_at")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN removed_at INTEGER", [])?;
+    }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
@@ -928,6 +933,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
         last_page: row.get("last_page")?,
         last_scroll: row.get("last_scroll")?,
         cover_path: row.get("cover_path")?,
+        removed_at: row.get("removed_at")?,
     })
 }
 
@@ -968,7 +974,7 @@ pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Patter
         None => "%".to_string(),
     };
     let mut sql = String::from(
-        "SELECT * FROM patterns WHERE 1=1 \
+        "SELECT * FROM patterns WHERE removed_at IS NULL \
          AND (title LIKE ?1 ESCAPE '\\' OR designer LIKE ?1 ESCAPE '\\' \
          OR notes LIKE ?1 ESCAPE '\\' OR tags LIKE ?1 ESCAPE '\\')",
     );
@@ -1200,7 +1206,7 @@ pub fn title_key(title: &str) -> String {
 /// comes with what is attached to each copy, for choosing which to keep.
 pub fn duplicate_groups(conn: &Connection) -> AppResult<Vec<(bool, Vec<(Pattern, i64, i64, i64, String)>)>> {
     let patterns: Vec<(Pattern, String)> = conn
-        .prepare("SELECT * FROM patterns ORDER BY added_at")?
+        .prepare("SELECT * FROM patterns WHERE removed_at IS NULL ORDER BY added_at")?
         .query_map([], |r| Ok((row_to_pattern(r)?, r.get::<_, String>("file_hash")?)))?
         .collect::<Result<_, _>>()?;
 
@@ -1324,6 +1330,39 @@ pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppRe
     update_pattern(conn, &kept)
 }
 
+/// Moves a pattern to the Bin: out of the library, everything of it kept, to
+/// restore or delete for good.
+pub fn remove_pattern(conn: &Connection, id: &str) -> AppResult<Pattern> {
+    let changed = conn.execute("UPDATE patterns SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL", params![id, now_ms()])?;
+    if changed == 0 {
+        get_pattern(conn, id)?;
+    }
+    get_pattern(conn, id)
+}
+
+/// Brings a pattern back from the Bin, as it was.
+pub fn restore_pattern(conn: &Connection, id: &str) -> AppResult<Pattern> {
+    let changed = conn.execute("UPDATE patterns SET removed_at = NULL WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That pattern is no longer in the Bin.".to_string()));
+    }
+    get_pattern(conn, id)
+}
+
+/// The Bin: patterns removed, the latest first.
+pub fn list_removed_patterns(conn: &Connection) -> AppResult<Vec<Pattern>> {
+    let mut stmt = conn.prepare("SELECT * FROM patterns WHERE removed_at IS NOT NULL ORDER BY removed_at DESC, rowid DESC")?;
+    let rows = stmt.query_map([], row_to_pattern)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Patterns in the Bin since before `before`: the ones to delete for good.
+pub fn removed_before(conn: &Connection, before: i64) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM patterns WHERE removed_at IS NOT NULL AND removed_at < ?1")?;
+    let rows = stmt.query_map(params![before], |r| r.get::<_, String>(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
 pub fn delete_pattern(conn: &Connection, id: &str) -> AppResult<()> {
     // Child rows go with it via ON DELETE CASCADE.
     conn.execute("DELETE FROM patterns WHERE id = ?1", params![id])?;
@@ -1404,7 +1443,7 @@ fn by_use(mut counts: Vec<FacetCount>) -> Vec<FacetCount> {
 pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
     let column = |col: &str| -> AppResult<Vec<String>> {
         let mut stmt = conn.prepare(&format!(
-            "SELECT DISTINCT {0} FROM patterns WHERE {0} <> '' ORDER BY {0} COLLATE NOCASE",
+            "SELECT DISTINCT {0} FROM patterns WHERE {0} <> '' AND removed_at IS NULL ORDER BY {0} COLLATE NOCASE",
             col
         ))?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
@@ -1422,7 +1461,7 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
     {
         let mut stmt = conn.prepare(
             "SELECT yarn_weight_family, COUNT(*) FROM patterns
-             WHERE yarn_weight_family <> '' GROUP BY yarn_weight_family",
+             WHERE yarn_weight_family <> '' AND removed_at IS NULL GROUP BY yarn_weight_family",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
@@ -1453,7 +1492,7 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
         // seen first.
         let mut exact: Vec<(String, usize)> = Vec::new();
         let mut stmt =
-            conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]'")?;
+            conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]' AND removed_at IS NULL")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         for r in rows {
             let list: Vec<String> = serde_json::from_str(&r?).unwrap_or_default();
@@ -1488,7 +1527,7 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
     // Each tag counted once per pattern, whatever its casing there.
     let mut tag_counts: Vec<FacetCount> = tags.iter().map(|t| FacetCount { value: t.clone(), count: 0 }).collect();
     {
-        let mut stmt = conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]'")?;
+        let mut stmt = conn.prepare("SELECT tags FROM patterns WHERE tags <> '[]' AND removed_at IS NULL")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         for r in rows {
             let mut list: Vec<String> = serde_json::from_str::<Vec<String>>(&r?).unwrap_or_default().iter().map(|t| t.to_lowercase()).collect();
@@ -1502,7 +1541,7 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
         }
     }
     let designer_counts: Vec<FacetCount> = conn
-        .prepare("SELECT designer, COUNT(*) FROM patterns WHERE designer <> '' GROUP BY designer")?
+        .prepare("SELECT designer, COUNT(*) FROM patterns WHERE designer <> '' AND removed_at IS NULL GROUP BY designer")?
         .query_map([], |r| Ok(FacetCount { value: r.get(0)?, count: r.get(1)? }))?
         .collect::<Result<_, _>>()?;
 
@@ -1512,7 +1551,7 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
     let mut needle_sizes: Vec<NeedleSizeFacet> = Vec::new();
     {
         let mut stmt =
-            conn.prepare("SELECT needle_sizes FROM patterns WHERE needle_sizes <> '[]'")?;
+            conn.prepare("SELECT needle_sizes FROM patterns WHERE needle_sizes <> '[]' AND removed_at IS NULL")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
         for r in rows {
             let mut keys: Vec<String> = serde_json::from_str(&r?).unwrap_or_default();

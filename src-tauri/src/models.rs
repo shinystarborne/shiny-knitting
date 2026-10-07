@@ -101,6 +101,9 @@ pub struct Pattern {
     pub last_scroll: f64,
     /// Cover image file inside `library/covers`, or empty when there is none.
     pub cover_path: String,
+    /// When it was removed to the Bin; None while it is in the library.
+    #[serde(default)]
+    pub removed_at: Option<i64>,
 }
 
 /// A pattern file found on disk by `scan_pattern_folder`, offered for adding

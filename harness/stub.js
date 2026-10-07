@@ -1127,7 +1127,7 @@ const handlers = {
     return clone(out);
   },
   get_pattern: ({ id }) => {
-    const p = store.patterns.find((x) => x.id === id);
+    const p = store.patterns.find((x) => x.id === id) ?? (store.bin ?? []).find((x) => x.id === id);
     // The backend's NotFound serialises as this string; a missing row is an
     // error there, not a null.
     if (!p) throw new Error(`pattern not found: ${id}`);
@@ -1202,7 +1202,31 @@ const handlers = {
     }
     return clone(kept);
   },
+  // The Bin, kept apart from store.patterns so every listing leaves it out,
+  // as the backend's removed_at IS NULL does.
+  remove_pattern: ({ id }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error(`pattern not found: ${id}`);
+    store.patterns = store.patterns.filter((x) => x.id !== id);
+    p.removedAt = Date.now();
+    (store.bin ??= []).push(p);
+    return clone(p);
+  },
+  restore_pattern: ({ id }) => {
+    const p = (store.bin ?? []).find((x) => x.id === id);
+    if (!p) throw new Error("That pattern is no longer in the Bin.");
+    store.bin = store.bin.filter((x) => x.id !== id);
+    p.removedAt = null;
+    store.patterns.push(p);
+    return clone(p);
+  },
+  list_removed_patterns: () => clone([...(store.bin ?? [])].sort((a, b) => b.removedAt - a.removedAt)),
+  empty_bin: () => {
+    for (const p of store.bin ?? []) for (const pr of store.projects) if (pr.patternId === p.id) pr.patternId = null;
+    store.bin = [];
+  },
   delete_pattern: ({ id }) => {
+    store.bin = (store.bin ?? []).filter((p) => p.id !== id);
     store.patterns = store.patterns.filter((p) => p.id !== id);
     // ON DELETE SET NULL: its projects stay, without a pattern.
     for (const pr of store.projects) if (pr.patternId === id) pr.patternId = null;
