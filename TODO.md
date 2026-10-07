@@ -42,10 +42,10 @@ starting; the details are in the sections under the list.
    sts and rows over 10 cm, and a needle size or range, in its form and on
    its card. Saved by brand and yarn name, so every colour of it has them.
    *0.3.33*
-5. [ ] A yarn's care markings: the symbols (washing, bleach, drying,
+5. [x] A yarn's care markings: the symbols (washing, bleach, drying,
    ironing, dry cleaning) picked in its form, shown on its card, each with a
    label saying what it means (hand wash only, do not iron...). Saved by
-   brand and yarn name, like 4.
+   brand and yarn name, like 4. *0.3.34*
 
 **Projects**
 
@@ -228,6 +228,11 @@ colour of a yarn already known starts with them.
   in the search and as a Planned filter. Yarn with lots, photos (pasted or dropped), weight from metres and
   grams, cone counts (2/28), weight cheat sheet, leftovers, another colour of
   the same yarn; fibre content and superwash, with Fibre and Made of filters.
+  What its ball band says, kept by brand and yarn name for every colour of
+  it (yarn_details): the gauge to expect, the needles to use, and its care
+  symbols, drawn and named (views/care.ts, models::CARE_SYMBOLS). A card
+  says what there is now (whole balls by grams per ball, started ones
+  weighed); what was bought is for the Statistics.
 - **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase
   rounds fitted to the colourwork's repeat; and a top-down raglan in the round, from a person's
   measurements and a swatch's blocked gauge (or both typed in) with the fit's

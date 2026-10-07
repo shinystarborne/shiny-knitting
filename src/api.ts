@@ -474,6 +474,8 @@ export interface YarnDetails {
   /** The needles to use, in mm: one size, or a range. */
   needleFrom: number;
   needleTo: number;
+  /** Its care symbols' ids (see views/care.ts), in the order a label is read. */
+  care: string[];
 }
 
 export interface YarnLotInput {

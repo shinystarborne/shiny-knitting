@@ -2281,6 +2281,15 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .card-details span { white-space: nowrap; }
 .yarn-details-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .yarn-details-row .field span { font-size: 12px; }
+.care-icon { width: 22px; height: 22px; flex: none; }
+.care-heading { font-size: 12px; margin-top: 4px; }
+.care-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.care-choice { display: flex; align-items: center; gap: 8px; padding: 5px 8px; text-align: left; font-size: 12px; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text-dim); }
+.care-choice:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.care-choice.on { border-color: var(--accent); color: var(--text); background: rgba(229, 72, 77, 0.12); }
+.card-care { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--text-dim); }
+.card-care li { display: flex; align-items: center; gap: 4px; }
+.card-care .care-icon { width: 20px; height: 20px; color: var(--text); }
 
 .card-plan { margin: 0; font-size: 12px; color: #a8c6f0; white-space: normal; line-height: 1.35; }
 

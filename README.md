@@ -580,10 +580,13 @@ fibres recorded passes none of the fibre boxes, since nothing is known about it.
 
 **From the ball band.** A yarn's form takes the gauge to expect (stitches
 and rows over 10 cm, or 4 in with inches chosen) and the needles to use (a
-size, or a range). They belong to the yarn, not the colour: kept once by
-brand and yarn name, every colour of it shows them, and changed on one colour
-they change for all. The card says "18 sts × 24 rows / 10 cm · needles
-5–5.5 mm". A swatch's gauge is still the one the calculators use; this is what
+size, or a range), and its **Care**: the washing, bleaching, drying, ironing
+and dry-cleaning symbols, picked from the drawn ones, each with what it means
+("Hand wash only", "Do not iron"); one way to wash at a time. They belong to
+the yarn, not the colour: kept once by brand and yarn name, every colour of it
+shows them, and changed on one colour they change for all. The card says
+"18 sts × 24 rows / 10 cm · needles 5–5.5 mm", and shows the care symbols with
+their words. A swatch's gauge is still the one the calculators use; this is what
 to expect.
 
 **Another colour of the same yarn** is quick: **+ Colour** on a card opens a new

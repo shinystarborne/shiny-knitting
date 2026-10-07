@@ -907,11 +907,17 @@ function detailsKey(brand, name) {
   return `${line(brand)}\u0000${line(name)}`;
 }
 
-const NO_DETAILS = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0 };
+const NO_DETAILS = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0, care: [] };
+
+// As models::CARE_SYMBOLS: the order a label is read.
+const CARE_SYMBOLS = [
+  "wash-30", "wash-30-gentle", "wash-30-wool", "wash-40", "wash-40-gentle", "wash-60", "hand-wash", "no-wash",
+  "no-bleach", "tumble-low", "no-tumble", "dry-flat", "iron-low", "iron-medium", "no-iron", "dry-clean", "no-dry-clean",
+];
 
 function yarnDetailsOf(brand, name) {
   const row = store.yarnDetails.find((d) => d.key === detailsKey(brand, name));
-  return row ? { gaugeSts: row.gaugeSts, gaugeRows: row.gaugeRows, needleFrom: row.needleFrom, needleTo: row.needleTo } : { ...NO_DETAILS };
+  return row ? { gaugeSts: row.gaugeSts, gaugeRows: row.gaugeRows, needleFrom: row.needleFrom, needleTo: row.needleTo, care: [...row.care] } : { ...NO_DETAILS, care: [] };
 }
 
 /** As db::set_yarn_details: checked, a range turned the right way, all 0 gone. */
@@ -924,10 +930,13 @@ function setYarnDetails(brand, name, d) {
   let [from, to] = [hundredth(d.needleFrom), hundredth(d.needleTo)];
   if (!from || (to && to < from)) [from, to] = [to, from];
   if (to === from) to = 0;
+  const odd = (d.care || []).find((c) => !CARE_SYMBOLS.includes(c));
+  if (odd) throw new Error(`“${odd}” is not a care symbol the app knows.`);
+  const care = CARE_SYMBOLS.filter((c) => (d.care || []).includes(c));
   const key = detailsKey(brand, name);
   store.yarnDetails = store.yarnDetails.filter((x) => x.key !== key);
-  const row = { key, gaugeSts: tenth(d.gaugeSts), gaugeRows: tenth(d.gaugeRows), needleFrom: from, needleTo: to };
-  if (row.gaugeSts || row.gaugeRows || row.needleFrom || row.needleTo) store.yarnDetails.push(row);
+  const row = { key, gaugeSts: tenth(d.gaugeSts), gaugeRows: tenth(d.gaugeRows), needleFrom: from, needleTo: to, care };
+  if (row.gaugeSts || row.gaugeRows || row.needleFrom || row.needleTo || care.length) store.yarnDetails.push(row);
 }
 
 function withYarnTotals(yarn) {

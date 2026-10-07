@@ -4428,9 +4428,17 @@ fn details_key(v: &str) -> String {
 pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
     Ok(conn
         .query_row(
-            "SELECT gauge_sts, gauge_rows, needle_from, needle_to FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care FROM yarn_details WHERE brand = ?1 AND name = ?2",
             params![details_key(brand), details_key(name)],
-            |r| Ok(YarnDetails { gauge_sts: r.get(0)?, gauge_rows: r.get(1)?, needle_from: r.get(2)?, needle_to: r.get(3)? }),
+            |r| {
+                Ok(YarnDetails {
+                    gauge_sts: r.get(0)?,
+                    gauge_rows: r.get(1)?,
+                    needle_from: r.get(2)?,
+                    needle_to: r.get(3)?,
+                    care: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
+                })
+            },
         )
         .optional()?
         .unwrap_or_default())
@@ -4455,20 +4463,22 @@ pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDeta
     if to == from {
         to = 0.0;
     }
+    if let Some(odd) = d.care.iter().find(|c| !crate::models::CARE_SYMBOLS.contains(&c.as_str())) {
+        return Err(AppError::Message(format!("“{odd}” is not a care symbol the app knows.")));
+    }
+    // In the order a label is read, each once.
+    let care: Vec<&str> = crate::models::CARE_SYMBOLS.iter().copied().filter(|c| d.care.iter().any(|x| x == c)).collect();
+    let care = serde_json::to_string(&care).unwrap_or_else(|_| "[]".into());
     let (brand, name) = (details_key(brand), details_key(name));
     let (sts, rows) = (tenth(d.gauge_sts), tenth(d.gauge_rows));
-    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 {
-        conn.execute(
-            "UPDATE yarn_details SET gauge_sts = 0, gauge_rows = 0, needle_from = 0, needle_to = 0 WHERE brand = ?1 AND name = ?2",
-            params![brand, name],
-        )?;
-        conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2 AND care = '[]'", params![brand, name])?;
+    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" {
+        conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2", params![brand, name])?;
         return Ok(());
     }
     conn.execute(
-        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6",
-        params![brand, name, sts, rows, from, to],
+        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7",
+        params![brand, name, sts, rows, from, to, care],
     )?;
     Ok(())
 }

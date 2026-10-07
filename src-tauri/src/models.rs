@@ -420,7 +420,21 @@ pub struct YarnDetails {
     pub needle_from: f64,
     #[serde(default)]
     pub needle_to: f64,
+    /// Its care symbols, from `CARE_SYMBOLS`, in that order.
+    #[serde(default)]
+    pub care: Vec<String>,
 }
+
+/// The care symbols a ball band can show, in the order they are read on a
+/// label: washing, bleaching, drying, ironing, dry cleaning. The app draws and
+/// names each one.
+pub const CARE_SYMBOLS: &[&str] = &[
+    "wash-30", "wash-30-gentle", "wash-30-wool", "wash-40", "wash-40-gentle", "wash-60", "hand-wash", "no-wash",
+    "no-bleach",
+    "tumble-low", "no-tumble", "dry-flat",
+    "iron-low", "iron-medium", "no-iron",
+    "dry-clean", "no-dry-clean",
+];
 
 /// Yarn used, when it was used: what a finished project took (weighed before
 /// and after), or what was left of a yarn marked used up. Kept with the

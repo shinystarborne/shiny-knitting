@@ -300,6 +300,18 @@ export async function verifyYarnStash() {
     typeIn("gaugeRows", "30");
     typeIn("needleFrom", "4");
     typeIn("needleTo", "3.5");
+    // Care: one way to wash at a time; the others as on the band.
+    const care = (id) => modal().querySelector(`[data-care="${id}"]`);
+    care("hand-wash").click();
+    care("wash-30").click();
+    check(
+      results,
+      "care: picking another way to wash takes the first away",
+      care("wash-30").getAttribute("aria-pressed") === "true" && care("hand-wash").getAttribute("aria-pressed") === "false",
+    );
+    care("hand-wash").click();
+    care("no-iron").click();
+    care("dry-flat").click();
     saveModal();
     await waitFor(() => !modal() && !!detailsOf(added().id), "the card's gauge");
     check(
@@ -307,6 +319,13 @@ export async function verifyYarnStash() {
       "a yarn's card says its gauge and needles, a range the right way round",
       detailsOf(added().id) === "22 sts × 30 rows / 10 cm · needles 3.5–4 mm",
       detailsOf(added().id),
+    );
+    const careOf = (id) => [...(cardFor(id)?.querySelectorAll(".card-care li") ?? [])].map((li) => li.textContent).join(", ");
+    check(
+      results,
+      "the card shows its care symbols, each saying what it means, in the order a label is read",
+      careOf(added().id) === "Hand wash only, Dry flat, Do not iron" && cardFor(added().id).querySelectorAll(".card-care svg").length === 3,
+      careOf(added().id),
     );
     cardFor(added().id).querySelector("[data-colour]").click();
     await waitFor(() => !!modal()?.querySelector('[data-f="gaugeSts"]'), "another colour's form");
@@ -324,7 +343,7 @@ export async function verifyYarnStash() {
     check(
       results,
       "changed on one colour, they change for every colour",
-      detailsOf(added().id) === "22 sts × 30 rows / 10 cm · needles 3.5–4.5 mm" && detailsOf(rose().id) === detailsOf(added().id),
+      detailsOf(added().id) === "22 sts × 30 rows / 10 cm · needles 3.5–4.5 mm" && detailsOf(rose().id) === detailsOf(added().id) && careOf(rose().id) === careOf(added().id),
       `${detailsOf(added().id)} | ${detailsOf(rose().id)}`,
     );
     cardFor(rose().id).click();

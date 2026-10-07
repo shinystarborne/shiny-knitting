@@ -2017,7 +2017,7 @@ fn a_yarn_round_trips_every_field() {
             bought_at: Some(1_700_000_000_000),
             ..YarnLotInput::default()
         }],
-        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25 }),
+        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()] }),
     };
     let id = uuid::Uuid::new_v4().to_string();
     let y = insert_yarn(&conn, &id, &input).unwrap();
@@ -2047,7 +2047,7 @@ fn a_yarns_details_are_shared_by_every_colour_of_it() {
     let colour = |id: &str, brand: &str, name: &str, details: Option<YarnDetails>| {
         insert_yarn(&conn, id, &YarnInput { name: name.into(), brand: brand.into(), details, ..YarnInput::default() }).unwrap()
     };
-    let band = YarnDetails { gauge_sts: 18.0, gauge_rows: 24.0, needle_from: 5.0, needle_to: 5.5 };
+    let band = YarnDetails { gauge_sts: 18.0, gauge_rows: 24.0, needle_from: 5.0, needle_to: 5.5, ..YarnDetails::default() };
     colour("rost", "Drops", "Air", Some(band.clone()));
     // Another colour, typed in another case and spacing, has them already.
     let waldgruen = colour("wald", " drops ", "AIR ", None);
@@ -2073,6 +2073,17 @@ fn a_yarns_details_are_shared_by_every_colour_of_it() {
     update_yarn(&conn, &cleared).unwrap();
     assert_eq!(get_yarn(&conn, "wald").unwrap().details, Some(YarnDetails::default()));
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM yarn_details", [], |r| r.get::<_, i64>(0)).unwrap(), 1, "only Sky's row is left");
+    let mut only_care = get_yarn(&conn, "rost").unwrap();
+    only_care.details = Some(YarnDetails { care: vec!["no-bleach".into()], ..YarnDetails::default() });
+    update_yarn(&conn, &only_care).unwrap();
+    assert_eq!(get_yarn(&conn, "wald").unwrap().details.unwrap().care, vec!["no-bleach"], "care alone is kept");
+    // Care symbols, in the order a label is read, each once; only ones the app knows.
+    let mut cared = get_yarn(&conn, "wald").unwrap();
+    cared.details = Some(YarnDetails { care: vec!["no-iron".into(), "hand-wash".into(), "no-iron".into()], ..YarnDetails::default() });
+    update_yarn(&conn, &cared).unwrap();
+    assert_eq!(get_yarn(&conn, "rost").unwrap().details.unwrap().care, vec!["hand-wash", "no-iron"], "every colour, in label order");
+    cared.details = Some(YarnDetails { care: vec!["tumble-hot".into()], ..YarnDetails::default() });
+    assert!(update_yarn(&conn, &cared).is_err());
     // A gauge past what is knittable is refused.
     let mut wild = get_yarn(&conn, "sky").unwrap();
     wild.details = Some(YarnDetails { gauge_sts: 220.0, ..YarnDetails::default() });

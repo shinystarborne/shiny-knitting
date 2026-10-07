@@ -26,6 +26,7 @@ import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 import type { YarnStart } from "./shopping";
 import { gaugeSpan, readGauge, showGauge, swatchLine } from "./measure";
+import { CARE_SYMBOLS, careIcon, toggleCare } from "./care";
 import { longDate } from "./project-form";
 
 /** One lot row in the editor, kept as strings while the form is open. */
@@ -92,7 +93,7 @@ export class YarnForm {
   /** The library, to plan a yarn for one of its patterns. */
   private patterns: Pattern[] = [];
   /** What its ball band says, shared by every colour of the yarn; gauge per 10 cm. */
-  private details: YarnDetails = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0 };
+  private details: YarnDetails = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0, care: [] };
   /** The span a gauge is shown and typed over, from Settings. */
   private unit: MeasureUnit = "cm";
 
@@ -131,7 +132,7 @@ export class YarnForm {
     // Plans are this colour's own: another colour of the yarn starts with none.
     this.plans = (editing?.plans ?? []).map((p) => ({ ...p }));
     // What the band says is the yarn's, whatever its colour.
-    if (from?.details) this.details = { ...from.details };
+    if (from?.details) this.details = { ...from.details, care: [...from.details.care] };
   }
 
   open(): void {
@@ -217,7 +218,9 @@ export class YarnForm {
         <div class="field yarn-details">
           <span>From the ball band</span>
           <div class="yarn-details-row" data-el="details"></div>
-          <p class="hint" data-el="details-hint">The gauge to expect, and the needles to use. Kept for every colour of this yarn.</p>
+          <span class="care-heading">Care</span>
+          <div class="care-pick" data-el="care"></div>
+          <p class="hint" data-el="details-hint">The gauge to expect, the needles to use, and how to wash it. Kept for every colour of this yarn.</p>
         </div>
         <div class="field">
           <span>Fibre content</span>
@@ -274,6 +277,7 @@ export class YarnForm {
 
     this.bind();
     this.renderDetails();
+    this.renderCare();
     void api
       .getMeasureUnit()
       .then((unit) => {
@@ -418,12 +422,13 @@ export class YarnForm {
     fill("gramsPerBall", (y) => y.gramsPerBall, "grams per ball");
     // What its band says, when nothing of it is typed yet: every colour has the same.
     this.readDetails();
-    const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom);
+    const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom || d.care.length);
     const band = same.find((y) => said(y.details))?.details;
     if (band && !said(this.details)) {
-      this.details = { ...band };
+      this.details = { ...band, care: [...band.care] };
       this.renderDetails();
-      filled.push("gauge and needles");
+      this.renderCare();
+      filled.push("gauge, needles and care");
     }
     // Its fibres and superwash too, when none are typed yet.
     if (this.takeFibresFrom(same)) filled.push("fibres");
@@ -602,6 +607,10 @@ export class YarnForm {
       else if (hooks && yarn) hooks.add(yarn);
     }
     if (btn.dataset.act === "add-plan") this.addPlan();
+    if (btn.dataset.act === "care") {
+      this.details = { ...this.details, care: toggleCare(this.details.care, btn.dataset.care!) };
+      this.renderCare();
+    }
     if (btn.dataset.act === "remove-plan") {
       this.plans.splice(Number(btn.dataset.plan), 1);
       this.renderPlans();
@@ -709,7 +718,17 @@ export class YarnForm {
       if (strict) throw new Error(bad[0].startsWith("gauge") ? "The gauge is a number of stitches or rows: 22, or 22.5." : "Needles are a size in mm: 4, or 3.5.");
       return;
     }
-    this.details = read;
+    this.details = { ...read, care: this.details.care };
+  }
+
+  /** The care symbols, each with what it means; one of a kind (one way to wash) at a time. */
+  private renderCare(): void {
+    const host = this.root.querySelector<HTMLElement>('[data-el="care"]');
+    if (!host) return;
+    host.innerHTML = CARE_SYMBOLS.map((c) => {
+      const on = this.details.care.includes(c.id);
+      return `<button type="button" class="care-choice${on ? " on" : ""}" data-act="care" data-care="${c.id}" aria-pressed="${on}" title="${escapeAttr(c.label)}">${careIcon(c)}<span>${escapeHtml(c.label)}</span></button>`;
+    }).join("");
   }
 
   // ---------- planned for ----------
