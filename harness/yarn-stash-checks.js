@@ -242,6 +242,48 @@ export async function verifyYarnStash() {
       qtyOf(added().id),
     );
 
+    // --- grams are only for started balls: empty, the balls are whole ---
+    const editLots = async (grams) => {
+      cardFor(added().id).click();
+      await waitFor(() => modal()?.querySelectorAll(".lot-row").length === 2, "the edit form with two lots");
+      modal().querySelectorAll('.lot-row [data-lf="gramsLeft"]').forEach((el, i) => (el.value = grams[i]));
+      saveModal();
+      await waitFor(() => !modal(), "the form to close");
+    };
+    await editLots(["", "25"]);
+    await waitFor(() => qtyOf(added().id).includes("100 g left"), "the whole balls counted");
+    // 3 whole balls of 25 g, and 25 g weighed: 100 g, 840 m.
+    check(
+      results,
+      "a lot with no grams is its balls by the ball band",
+      qtyOf(added().id) === "4 × 25 g · 100 g left · ~840 m" && added().lots.some((l) => l.weighed === false),
+      qtyOf(added().id),
+    );
+    await editLots(["", ""]);
+    await waitFor(() => !qtyOf(added().id).includes("g left"), "only whole balls");
+    check(
+      results,
+      "…and whole balls say how much by themselves",
+      qtyOf(added().id) === "4 × 25 g · ~840 m",
+      qtyOf(added().id),
+    );
+    cardFor(added().id).click();
+    await waitFor(() => modal()?.querySelectorAll(".lot-row").length === 2, "the edit form again");
+    check(
+      results,
+      "…their grams box left empty, not 0",
+      [...modal().querySelectorAll('.lot-row [data-lf="gramsLeft"]')].every((el) => el.value === ""),
+    );
+    modal().querySelectorAll('.lot-row [data-lf="gramsLeft"]')[1].value = "0";
+    saveModal();
+    await waitFor(() => !modal(), "the form to close");
+    check(
+      results,
+      "0 typed is weighed: none left of that lot",
+      added().lots.some((l) => l.weighed === true && l.gramsLeft === 0) && qtyOf(added().id) === "4 × 25 g · 75 g left · ~630 m",
+      qtyOf(added().id),
+    );
+
     // --- removing asks first, and the yarn stays gone ---
     const removedId = added().id;
     const before = store.yarns.length;

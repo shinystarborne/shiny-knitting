@@ -360,7 +360,7 @@ export class StashView {
     el.textContent = `${filtered ? "Shown" : "In the stash"}: ${metres.toLocaleString("en-GB")} m · ${weight(grams)} in ${count}`;
     el.title = unknown
       ? `${unknown} of them ${unknown === 1 ? "has" : "have"} no metres per ball, so ${unknown === 1 ? "its" : "their"} grams are in the weight but not the metres.`
-      : "The grams weighed in each lot, and the metres they come to by the ball band.";
+      : "Whole balls by the ball band, started ones as weighed, and the metres they come to.";
     if (unknown) el.textContent += ` (${unknown} without metres)`;
   }
 
@@ -544,7 +544,10 @@ function quantityLine(y: Yarn): string {
         : `${fmt(y.ballsTotal)} ball${y.ballsTotal === 1 ? "" : "s"}`,
     );
   }
-  if (y.gramsLeft > 0) parts.push(`${fmt(y.gramsLeft)} g left`);
+  // Whole balls say how much by themselves; once some are started, what is left.
+  if (y.lots.some((l) => l.weighed) || !y.ballsTotal) {
+    if (y.gramsLeft > 0) parts.push(`${fmt(y.gramsLeft)} g left`);
+  }
   if (y.metresLeft > 0) parts.push(`~${fmt(y.metresLeft)} m`);
   return parts.join(" · ") || "No quantities yet";
 }

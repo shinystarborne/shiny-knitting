@@ -114,7 +114,8 @@ export class YarnForm {
           id: lot.id,
           dyeLot: lot.dyeLot,
           balls: lot.balls ? String(lot.balls) : "",
-          gramsLeft: lot.gramsLeft ? String(lot.gramsLeft) : "",
+          // Empty when never weighed: whole balls, by the ball band.
+          gramsLeft: lot.weighed ? String(lot.gramsLeft) : "",
           location: lot.location,
           boughtAt: lot.boughtAt != null ? toDateInput(lot.boughtAt) : "",
           leftover: lot.leftover ?? false,
@@ -625,7 +626,7 @@ export class YarnForm {
           <div class="lot-row" data-lot="${i}">
             <input data-lf="dyeLot" value="${escapeAttr(lot.dyeLot)}" placeholder="Dye lot" />
             <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="Balls" title="Balls" />
-            <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Grams left, weighed" />
+            <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />
             <label class="lot-leftover" title="What a finished project left over">
@@ -863,6 +864,8 @@ export class YarnForm {
           dyeLot: lot.dyeLot.trim(),
           balls: num(lot.balls),
           gramsLeft: num(lot.gramsLeft),
+          // Grams typed, even 0, were weighed; none typed, the balls are whole.
+          weighed: lot.gramsLeft.trim() !== "",
           location: lot.location.trim(),
           boughtAt: lot.boughtAt ? Date.parse(lot.boughtAt) : null,
           leftover: lot.leftover,
@@ -894,7 +897,7 @@ export class YarnForm {
           ...shared,
           // Existing lots keep their ids, which is how the backend knows what
           // to keep; a row added in this dialog has none yet.
-          lots: lots.map((lot) => ({ ...lot, id: lot.id ?? "", yarnId: this.editing!.id })),
+          lots: lots.map((lot) => ({ ...lot, id: lot.id ?? "", yarnId: this.editing!.id, weighed: !!lot.weighed })),
         });
       } else {
         const input: YarnInput = { ...shared, lots };

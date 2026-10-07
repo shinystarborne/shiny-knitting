@@ -590,6 +590,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
     }
+    // Whether a lot's grams were weighed. A lot of balls at 0 g was never
+    // weighed -- it is its balls by the ball band -- unless a finished project
+    // left none of that yarn.
+    if !column_exists(conn, "yarn_lots", "weighed")? {
+        conn.execute_batch(
+            "ALTER TABLE yarn_lots ADD COLUMN weighed INTEGER NOT NULL DEFAULT 1;
+             UPDATE yarn_lots SET weighed = 0 WHERE grams_left = 0 AND balls > 0
+               AND NOT EXISTS (SELECT 1 FROM project_yarns py WHERE py.yarn_id = yarn_lots.yarn_id AND py.leftover_grams = 0);",
+        )?;
+    }
     move_tools_into_projects(conn)?;
     // A shop's tags, and a wishlist item's picture and when it went into the
     // stash: for a library made by the first build with shops in it.
@@ -2541,6 +2551,10 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
     Ok(())
 }
 
+/// What a lot holds, as SQL over `yarn_lots l JOIN yarns y`: weighed, or its
+/// balls by the ball band (`YarnLot::grams`).
+const LOT_GRAMS: &str = "CASE WHEN l.weighed THEN l.grams_left ELSE CAST(ROUND(l.balls * y.grams_per_ball) AS INTEGER) END";
+
 /// Finishes a project: its tools are released, and each yarn's leftover, if
 /// given, becomes what its lot holds -- tagged as a leftover in the stash, or
 /// used up at 0 g. The tools and yarns stay listed on the project, as the
@@ -2595,9 +2609,7 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
                 // left. A lot never weighed is its balls by the ball band.
                 let before: i64 = tx
                     .query_row(
-                        "SELECT CASE WHEN l.grams_left > 0 THEN l.grams_left
-                                ELSE CAST(ROUND(l.balls * y.grams_per_ball) AS INTEGER) END
-                         FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1",
+                        &format!("SELECT {LOT_GRAMS} FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1"),
                         params![l],
                         |r| r.get(0),
                     )
@@ -2607,21 +2619,25 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
                     record_use(&tx, &entry.yarn_id, Some((id, project.name.as_str())), input.finished_at.unwrap_or(now), before - grams, "finished")?;
                 }
                 tx.execute(
-                    "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3 WHERE id = ?1",
+                    "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3, weighed = 1 WHERE id = ?1",
                     params![l, grams, grams > 0],
                 )?;
             }
             None => {
                 tx.execute(
-                    "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
-                     VALUES (?1, ?2, '', 0, ?3, '', NULL, ?4)",
+                    "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+                     VALUES (?1, ?2, '', 0, ?3, '', NULL, ?4, 1)",
                     params![uuid::Uuid::new_v4().to_string(), entry.yarn_id, grams, grams > 0],
                 )?;
             }
         }
         // Nothing left of it anywhere: had, but used, into the stash's history.
         if grams == 0 {
-            let left: i64 = tx.query_row("SELECT COALESCE(SUM(grams_left), 0) FROM yarn_lots WHERE yarn_id = ?1", params![entry.yarn_id], |r| r.get(0))?;
+            let left: i64 = tx.query_row(
+                &format!("SELECT COALESCE(SUM({LOT_GRAMS}), 0) FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.yarn_id = ?1"),
+                params![entry.yarn_id],
+                |r| r.get(0),
+            )?;
             if left == 0 {
                 tx.execute(
                     "UPDATE yarns SET used_up_at = ?2 WHERE id = ?1 AND used_up_at IS NULL",
@@ -4196,6 +4212,7 @@ fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
         dye_lot: row.get("dye_lot")?,
         balls: row.get("balls")?,
         grams_left: row.get("grams_left")?,
+        weighed: Some(row.get("weighed")?),
         location: row.get("location")?,
         bought_at: row.get("bought_at")?,
         leftover: row.get("leftover")?,
@@ -4267,7 +4284,7 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
             None => plan.pattern_id = None,
         }
     }
-    yarn.grams_left = yarn.lots.iter().map(|l| l.grams_left).sum();
+    yarn.grams_left = yarn.lots.iter().map(|l| l.grams(yarn.grams_per_ball)).sum();
     yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
     yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
         (yarn.grams_left as f64 / yarn.grams_per_ball as f64 * yarn.metres_per_ball as f64).round()
@@ -4439,17 +4456,18 @@ fn insert_lot(
         .filter(|i| !i.is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     conn.execute(
-        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
         params![
             id,
             yarn_id,
             lot.dye_lot,
             lot.balls,
-            lot.grams_left,
+            if lot.is_weighed() { lot.grams_left } else { 0 },
             lot.location,
             lot.bought_at,
-            lot.leftover
+            lot.leftover,
+            lot.is_weighed()
         ],
     )?;
     Ok(())
@@ -4504,17 +4522,18 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             // Scoped to the yarn as well as the id, so a lot can never be
             // rewritten through another yarn's update.
             tx.execute(
-                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9
                  WHERE id=?1 AND yarn_id=?2",
                 params![
                     lot.id,
                     yarn.id,
                     lot.dye_lot,
                     lot.balls,
-                    lot.grams_left,
+                    if lot.is_weighed() { lot.grams_left } else { 0 },
                     lot.location,
                     lot.bought_at,
-                    lot.leftover
+                    lot.leftover,
+                    lot.is_weighed()
                 ],
             )?;
             kept.push(&lot.id);
@@ -4525,17 +4544,18 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                 lot.id.clone()
             };
             tx.execute(
-                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 params![
                     id,
                     yarn.id,
                     lot.dye_lot,
                     lot.balls,
-                    lot.grams_left,
+                    if lot.is_weighed() { lot.grams_left } else { 0 },
                     lot.location,
                     lot.bought_at,
-                    lot.leftover
+                    lot.leftover,
+                    lot.is_weighed()
                 ],
             )?;
         }

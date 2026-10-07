@@ -891,10 +891,21 @@ function newProgress(patternId) {
  * the family, the totals over the lots, and the metres left, which is weighed
  * grams scaled by the ball band — 0 when the per-ball figures are unknown.
  */
+/** As YarnLot::is_weighed: said, or else weighed when it gives grams or no balls. */
+function isWeighed(lot) {
+  return lot.weighed ?? ((lot.gramsLeft || 0) > 0 || !lot.balls);
+}
+
+/** As YarnLot::grams: weighed, or its balls by the ball band. */
+function lotGrams(lot, yarn) {
+  return isWeighed(lot) ? lot.gramsLeft || 0 : Math.round((lot.balls || 0) * (yarn.gramsPerBall || 0));
+}
+
 function withYarnTotals(yarn) {
   const out = clone(yarn);
   out.yarnWeightFamily = yarnFamily(yarn.yarnWeight);
-  out.gramsLeft = out.lots.reduce((n, l) => n + (l.gramsLeft || 0), 0);
+  out.lots = out.lots.map((l) => ({ ...l, weighed: isWeighed(l) }));
+  out.gramsLeft = out.lots.reduce((n, l) => n + lotGrams(l, out), 0);
   out.ballsTotal = out.lots.reduce((n, l) => n + (l.balls || 0), 0);
   out.metresLeft =
     out.gramsPerBall > 0 && out.metresPerBall > 0
@@ -1624,16 +1635,17 @@ const handlers = {
       if (!yarn) continue;
       let lot = yarn.lots.find((l) => l.id === e.lotId) ?? yarn.lots[0];
       if (!lot) {
-        lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, location: "", boughtAt: null, leftover: false };
+        lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, weighed: true, location: "", boughtAt: null, leftover: false };
         yarn.lots.push(lot);
       }
       // A lot never weighed is its balls by the ball band.
-      const before = lot.gramsLeft > 0 ? lot.gramsLeft : Math.round((lot.balls || 0) * (yarn.gramsPerBall || 0));
+      const before = lotGrams(lot, yarn);
       if (before > left.grams) recordUse(yarn, pr, pr.finishedAt, before - left.grams, "finished");
       lot.gramsLeft = left.grams;
+      lot.weighed = true;
       lot.leftover = left.grams > 0;
       // Nothing left of it anywhere: into the stash's history.
-      if (left.grams === 0 && yarn.lots.every((l) => !l.gramsLeft) && !yarn.usedUpAt) yarn.usedUpAt = pr.finishedAt;
+      if (left.grams === 0 && yarn.lots.every((l) => !lotGrams(l, yarn)) && !yarn.usedUpAt) yarn.usedUpAt = pr.finishedAt;
     }
     return projectOut(pr);
   },
@@ -1817,7 +1829,7 @@ const handlers = {
   set_yarn_used_up: ({ id, used }) => {
     const y = store.yarns.find((x) => x.id === id);
     if (!y) throw new Error("That yarn is no longer there.");
-    const left = y.lots.reduce((n, l) => n + (l.gramsLeft || 0), 0);
+    const left = y.lots.reduce((n, l) => n + lotGrams(l, y), 0);
     if (used && !y.usedUpAt && left > 0) recordUse(y, null, Date.now(), left, "used-up");
     if (!used) {
       const last = store.yarnUsage.filter((u) => u.yarnId === id && u.source === "used-up").sort((a, b) => b.at - a.at)[0];
@@ -2139,7 +2151,8 @@ const handlers = {
         yarnId: id,
         dyeLot: lot.dyeLot || "",
         balls: lot.balls || 0,
-        gramsLeft: lot.gramsLeft || 0,
+        gramsLeft: isWeighed(lot) ? lot.gramsLeft || 0 : 0,
+        weighed: isWeighed(lot),
         location: lot.location || "",
         boughtAt: lot.boughtAt ?? null,
         leftover: !!lot.leftover,
@@ -2159,7 +2172,8 @@ const handlers = {
       yarnId: yarn.id,
       dyeLot: lot.dyeLot || "",
       balls: lot.balls || 0,
-      gramsLeft: lot.gramsLeft || 0,
+      gramsLeft: isWeighed(lot) ? lot.gramsLeft || 0 : 0,
+      weighed: isWeighed(lot),
       location: lot.location || "",
       boughtAt: lot.boughtAt ?? null,
       leftover: !!lot.leftover,

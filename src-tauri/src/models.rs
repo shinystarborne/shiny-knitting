@@ -285,7 +285,8 @@ pub struct CoverImage {
 // ---------- yarn stash ----------
 
 /// One purchase of a yarn: a dye lot with the number of balls bought and what
-/// is left of them. Partial balls are tracked as grams left, weighed.
+/// is left of them. Whole balls are the ball band's weight each; once balls
+/// are started, what is left is weighed and kept as grams left.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct YarnLot {
@@ -294,14 +295,34 @@ pub struct YarnLot {
     pub dye_lot: String,
     /// Balls bought; halves and quarters are allowed, hence a float.
     pub balls: f64,
-    /// Grams left across the lot, partial balls included.
+    /// Grams left across the lot, partial balls included, when weighed.
     pub grams_left: i64,
+    /// Whether `grams_left` was weighed. Not weighed, the lot is its balls by
+    /// the ball band. Always given on the way out; a caller that leaves it out
+    /// means weighed when it gives grams or no balls.
+    #[serde(default)]
+    pub weighed: Option<bool>,
     pub location: String,
     pub bought_at: Option<i64>,
     /// What is left after a project: set when a finished project records its
     /// leftovers, shown as a Leftover tag in the stash.
     #[serde(default)]
     pub leftover: bool,
+}
+
+impl YarnLot {
+    pub fn is_weighed(&self) -> bool {
+        self.weighed.unwrap_or(self.grams_left > 0 || self.balls == 0.0)
+    }
+
+    /// What it holds: weighed, or its balls at the ball band's weight.
+    pub fn grams(&self, grams_per_ball: i64) -> i64 {
+        if self.is_weighed() {
+            self.grams_left
+        } else {
+            (self.balls * grams_per_ball as f64).round() as i64
+        }
+    }
 }
 
 /// One fibre in a yarn, and its share: 75 for "75% wool". A share of 0 is a
@@ -360,7 +381,8 @@ pub struct Yarn {
     pub used_up_at: Option<i64>,
     pub added_at: i64,
     pub lots: Vec<YarnLot>,
-    /// Grams left, summed over the lots.
+    /// Grams there are, summed over the lots: a lot not weighed is its balls
+    /// by the ball band.
     pub grams_left: i64,
     /// Balls bought, summed over the lots.
     pub balls_total: f64,
@@ -451,12 +473,21 @@ pub struct YarnLotInput {
     pub balls: f64,
     #[serde(default)]
     pub grams_left: i64,
+    /// As `YarnLot::weighed`.
+    #[serde(default)]
+    pub weighed: Option<bool>,
     #[serde(default)]
     pub location: String,
     #[serde(default)]
     pub bought_at: Option<i64>,
     #[serde(default)]
     pub leftover: bool,
+}
+
+impl YarnLotInput {
+    pub fn is_weighed(&self) -> bool {
+        self.weighed.unwrap_or(self.grams_left > 0 || self.balls == 0.0)
+    }
 }
 
 /// A photo belonging to a yarn. Bytes are stored under

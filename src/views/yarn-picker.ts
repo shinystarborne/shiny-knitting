@@ -13,17 +13,19 @@ export interface ChosenYarn {
  * What a lot (or a whole yarn) holds, as it is known: the grams weighed, or
  * the balls when they were never weighed. Never "0 g" for a lot not weighed.
  */
-export function holds(grams: number, balls: number): string {
-  if (grams > 0) return `${grams} g left`;
-  if (balls > 0) return `${balls} ball${balls === 1 ? "" : "s"}, not weighed`;
-  return "nothing weighed";
+export function holds(yarn: Yarn, lot: YarnLot | null): string {
+  const grams = allOf(yarn, lot);
+  const weighed = lot ? lot.weighed : yarn.lots.some((l) => l.weighed);
+  const balls = lot ? lot.balls : yarn.ballsTotal;
+  if (weighed) return grams > 0 ? `${grams} g left` : "none left";
+  if (balls > 0) return `${balls} ball${balls === 1 ? "" : "s"}${grams > 0 ? `, ${grams} g` : ""}`;
+  return "nothing said";
 }
 
 /** All of what there is, in grams: what was weighed, else the balls by the ball band. */
 export function allOf(yarn: Yarn, lot: YarnLot | null): number {
-  const grams = lot ? lot.gramsLeft : yarn.gramsLeft;
-  const balls = lot ? lot.balls : yarn.ballsTotal;
-  return grams > 0 ? grams : Math.round(balls * yarn.gramsPerBall);
+  if (!lot) return yarn.gramsLeft;
+  return lot.weighed ? lot.gramsLeft : Math.round(lot.balls * yarn.gramsPerBall);
 }
 
 /**
@@ -96,7 +98,7 @@ export class YarnPicker {
       const lot = y.lots.find((l) => l.id === c.lotId);
       const colour = y.colourway ? ` · ${y.colourway}` : "";
       const lotText = lot && y.lots.length > 1 ? ` — lot ${lot.dyeLot || "without a dye lot"}` : "";
-      const has = lot ? holds(lot.gramsLeft, lot.balls) : holds(y.gramsLeft, y.ballsTotal);
+      const has = holds(y, lot ?? null);
       return `${y.name}${colour}${lotText} (${has})`;
     };
     const others = (y: Yarn) => y.projects.filter((p) => p !== self);
@@ -124,7 +126,7 @@ export class YarnPicker {
                   .map((y) => {
                     const also = others(y);
                     const note = also.length ? ` — also on ${also.join(", ")}` : "";
-                    return `<option value="${y.id}">${escapeHtml(`${y.name}${y.colourway ? ` · ${y.colourway}` : ""} (${holds(y.gramsLeft, y.ballsTotal)})${note}`)}</option>`;
+                    return `<option value="${y.id}">${escapeHtml(`${y.name}${y.colourway ? ` · ${y.colourway}` : ""} (${holds(y, null)})${note}`)}</option>`;
                   })
                   .join("")}
               </select>
@@ -192,7 +194,7 @@ export class YarnPicker {
     const lots = yarn?.lots ?? [];
     lotSelect.hidden = lots.length < 2;
     lotSelect.innerHTML = `<option value="">Which lot?</option>${lots
-      .map((l) => `<option value="${l.id}">${escapeHtml(`${l.dyeLot || "No dye lot"} · ${holds(l.gramsLeft, l.balls)}${l.leftover ? " · leftover" : ""}`)}</option>`)
+      .map((l) => `<option value="${l.id}">${escapeHtml(`${l.dyeLot || "No dye lot"} · ${holds(yarn!, l)}${l.leftover ? " · leftover" : ""}`)}</option>`)
       .join("")}`;
   }
 

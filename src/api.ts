@@ -389,8 +389,10 @@ export interface YarnLot {
   yarnId: string;
   dyeLot: string;
   balls: number;
-  /** Grams left, weighed; a partial ball is how much of it remains. */
+  /** Grams left, weighed once balls are started; a partial ball is how much of it remains. */
   gramsLeft: number;
+  /** Whether gramsLeft was weighed. Not weighed, the lot is its balls by the ball band. */
+  weighed: boolean;
   /** Where it is kept, e.g. "under-bed box". */
   location: string;
   boughtAt: number | null;
@@ -465,6 +467,8 @@ export interface YarnLotInput {
   dyeLot: string;
   balls: number;
   gramsLeft: number;
+  /** Left out, it is weighed when it gives grams or no balls. */
+  weighed?: boolean;
   location: string;
   boughtAt: number | null;
   leftover: boolean;

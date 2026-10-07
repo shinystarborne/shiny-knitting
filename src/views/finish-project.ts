@@ -37,7 +37,7 @@ export class FinishProjectDialog {
       const lot = yarn?.lots.find((l) => l.id === y.lotId) ?? (yarn?.lots.length === 1 ? yarn.lots[0] : undefined);
       if (!yarn || !lot) return null;
       const grams = allOf(yarn, lot);
-      const balls = lot.gramsLeft > 0 ? "" : ` (${lot.balls} ball${lot.balls === 1 ? "" : "s"}, not weighed)`;
+      const balls = lot.weighed ? "" : ` (${lot.balls} ball${lot.balls === 1 ? "" : "s"}, not weighed)`;
       return grams > 0 ? { grams, text: `${grams} g before${balls}` } : null;
     };
     // Each yarn's row, with what is expected to be left filled in: what it

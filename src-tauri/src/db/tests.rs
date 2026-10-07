@@ -1810,6 +1810,7 @@ fn updating_a_yarn_reconciles_its_lots() {
             dye_lot: "D4".to_string(),
             balls: 0.5,
             grams_left: 45,
+            weighed: None,
             location: String::new(),
             bought_at: None,
             leftover: false,
@@ -2200,6 +2201,53 @@ fn saving_a_project_brings_its_tools_and_yarns_to_what_was_sent() {
         ..Default::default()
     };
     assert!(update_project(&conn, "j", &wrong_lot).is_err());
+}
+
+#[test]
+fn a_lot_not_weighed_is_its_balls_by_the_ball_band() {
+    let conn = test_db();
+    let input = |lots| YarnInput { name: "Brushed Alpaca".into(), grams_per_ball: 25, metres_per_ball: 140, lots, ..YarnInput::default() };
+    // Balls only: whole balls at the ball band's weight.
+    let whole = insert_yarn(&conn, "whole", &input(vec![lot("", 2.0, 0)])).unwrap();
+    assert_eq!(whole.lots[0].weighed, Some(false));
+    assert_eq!((whole.grams_left, whole.metres_left), (50, 280), "2 balls of 25 g, 140 m each");
+    // Started, and weighed: the grams are what there is.
+    let started = insert_yarn(&conn, "started", &input(vec![lot("A", 3.0, 60), lot("B", 2.0, 0)])).unwrap();
+    assert_eq!(started.grams_left, 110, "60 g weighed, and 2 whole balls");
+    // Weighed at 0: nothing left, balls or not.
+    let empty = insert_yarn(&conn, "empty", &input(vec![YarnLotInput { weighed: Some(true), ..lot("", 2.0, 0) }])).unwrap();
+    assert_eq!((empty.lots[0].weighed, empty.grams_left), (Some(true), 0));
+    // Saved back from the form as not weighed, grams typed earlier go.
+    let mut edited = started.clone();
+    edited.lots[0].weighed = Some(false);
+    assert_eq!(update_yarn(&conn, &edited).unwrap().grams_left, 125, "5 balls of 25 g");
+    // Used up, what it held is what was used.
+    set_yarn_used_up(&conn, "whole", Some(10)).unwrap();
+    assert_eq!(list_yarn_usage(&conn).unwrap().iter().find(|u| u.yarn_id.as_deref() == Some("whole")).map(|u| u.grams), Some(50));
+}
+
+#[test]
+fn a_library_built_before_weighing_was_said_is_migrated() {
+    let conn = test_db();
+    let input = |lots| YarnInput { name: "Air".into(), grams_per_ball: 50, lots, ..YarnInput::default() };
+    insert_yarn(&conn, "balls", &input(vec![lot("", 3.0, 0)])).unwrap();
+    insert_yarn(&conn, "weighed", &input(vec![lot("", 3.0, 120)])).unwrap();
+    insert_yarn(&conn, "finished", &input(vec![lot("", 2.0, 0)])).unwrap();
+    let p = insert_project(
+        &conn,
+        "j",
+        &crate::models::ProjectInput { name: "Jumper".into(), yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: "finished".into(), lot_id: None, planned_grams: None }], ..Default::default() },
+    )
+    .unwrap();
+    finish_project(&conn, "j", &crate::models::FinishInput { finished_at: None, leftovers: vec![crate::models::YarnLeftover { entry_id: p.yarns[0].id.clone(), grams: Some(0) }] }).unwrap();
+    // As the library was: no column, every lot 0 g or weighed.
+    conn.execute_batch("ALTER TABLE yarn_lots DROP COLUMN weighed").unwrap();
+    migrate(&conn).unwrap();
+    let weighed = |id: &str| get_yarn(&conn, id).unwrap().lots[0].weighed;
+    assert_eq!(weighed("balls"), Some(false), "3 balls at 0 g were never weighed");
+    assert_eq!(get_yarn(&conn, "balls").unwrap().grams_left, 150);
+    assert_eq!(weighed("weighed"), Some(true));
+    assert_eq!(weighed("finished"), Some(true), "a project finished with none of it left: 0 g is right");
 }
 
 #[test]
