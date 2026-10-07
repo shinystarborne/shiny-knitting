@@ -154,6 +154,10 @@ pub struct PatternInput {
 pub struct Counter {
     pub id: String,
     pub pattern_id: String,
+    /// The project it counts for; empty for the pattern's own counter, read
+    /// without a project. Two projects from one pattern each count their own.
+    #[serde(default)]
+    pub project_id: String,
     pub name: String,
     pub target: i64,
     pub current: i64,

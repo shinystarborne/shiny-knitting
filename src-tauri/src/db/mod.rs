@@ -109,6 +109,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             updated_at        INTEGER NOT NULL DEFAULT 0
         );
 
+        -- A project's own row total, for the pattern it is knitted from; the
+        -- pattern's own is in progress.
+        CREATE TABLE IF NOT EXISTS project_progress (
+            project_id  TEXT NOT NULL,
+            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
+            total_rows  INTEGER NOT NULL DEFAULT 0,
+            updated_at  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (project_id, pattern_id)
+        );
+
         CREATE TABLE IF NOT EXISTS highlights (
             pattern_id    TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
             enabled       INTEGER NOT NULL DEFAULT 0,
@@ -562,6 +572,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // A counter's own key; empty for the counters made before keys existed.
     if !column_exists(conn, "counters", "hotkey")? {
         conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // The project a counter counts for; empty for the pattern's own.
+    if !column_exists(conn, "counters", "project_id")? {
+        conn.execute("ALTER TABLE counters ADD COLUMN project_id TEXT NOT NULL DEFAULT ''", [])?;
     }
     // What a yarn is made of, and whether it is superwash.
     if !column_exists(conn, "yarns", "fibres")? {
@@ -1543,17 +1557,22 @@ pub fn list_facets(conn: &Connection) -> AppResult<Facets> {
 #[serde(rename_all = "camelCase")]
 pub struct CountOutcome {
     pub pattern_id: String,
+    /// The project counted for; empty for the pattern's own counter.
+    pub project_id: String,
     /// The project total after the action. Always one of these two numbers.
     pub total_rows: i64,
     /// Every counter after the action, in display order.
     pub counters: Vec<Counter>,
 }
 
-pub fn list_counters(conn: &Connection, pattern_id: &str) -> AppResult<Vec<Counter>> {
+/// A pattern's counters: its own (`project_id` empty), or a project's, started
+/// from the pattern's the first time they are asked for.
+pub fn list_counters(conn: &Connection, pattern_id: &str, project_id: &str) -> AppResult<Vec<Counter>> {
+    ensure_project_counter(conn, pattern_id, project_id)?;
     let mut stmt = conn.prepare(
-        "SELECT * FROM counters WHERE pattern_id = ?1 ORDER BY position ASC, rowid ASC",
+        "SELECT * FROM counters WHERE pattern_id = ?1 AND project_id = ?2 ORDER BY position ASC, rowid ASC",
     )?;
-    let rows = stmt.query_map(params![pattern_id], row_to_counter)?;
+    let rows = stmt.query_map(params![pattern_id, project_id], row_to_counter)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -1565,6 +1584,7 @@ fn row_to_counter(row: &rusqlite::Row) -> rusqlite::Result<Counter> {
     Ok(Counter {
         id: row.get("id")?,
         pattern_id: row.get("pattern_id")?,
+        project_id: row.get("project_id")?,
         name: row.get("name")?,
         target: row.get("target")?,
         current: row.get("current")?,
@@ -1578,21 +1598,24 @@ fn row_to_counter(row: &rusqlite::Row) -> rusqlite::Result<Counter> {
 pub fn add_counter(
     conn: &Connection,
     pattern_id: &str,
+    project_id: &str,
     input: &CounterInput,
 ) -> AppResult<Counter> {
+    ensure_project_counter(conn, pattern_id, project_id)?;
     let id = uuid::Uuid::new_v4().to_string();
     let position: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM counters WHERE pattern_id = ?1",
-        params![pattern_id],
+        "SELECT COALESCE(MAX(position), -1) + 1 FROM counters WHERE pattern_id = ?1 AND project_id = ?2",
+        params![pattern_id, project_id],
         |r| r.get(0),
     )?;
     conn.execute(
         "INSERT INTO counters
-           (id, pattern_id, name, target, current, enabled, excluded_from_total, position)
-         VALUES (?1,?2,?3,?4,0,?5,?6,?7)",
+           (id, pattern_id, project_id, name, target, current, enabled, excluded_from_total, position)
+         VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8)",
         params![
             id,
             pattern_id,
+            project_id,
             input.name,
             input.target,
             input.enabled as i64,
@@ -1603,6 +1626,7 @@ pub fn add_counter(
     Ok(Counter {
         id,
         pattern_id: pattern_id.to_string(),
+        project_id: project_id.to_string(),
         name: input.name.clone(),
         target: input.target,
         current: 0,
@@ -1689,16 +1713,17 @@ pub fn delete_counter(conn: &Connection, id: &str) -> AppResult<()> {
 pub fn count_one(conn: &Connection, id: &str, delta: i64) -> AppResult<CountOutcome> {
     let tx = conn.unchecked_transaction()?;
 
-    let (pattern_id, current, target, excluded) = tx
+    let (pattern_id, project_id, current, target, excluded) = tx
         .query_row(
-            "SELECT pattern_id, current, target, excluded_from_total FROM counters WHERE id = ?1",
+            "SELECT pattern_id, project_id, current, target, excluded_from_total FROM counters WHERE id = ?1",
             params![id],
             |r| {
                 Ok((
                     r.get::<_, String>(0)?,
-                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(1)?,
                     r.get::<_, i64>(2)?,
-                    r.get::<_, i64>(3)? != 0,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, i64>(4)? != 0,
                 ))
             },
         )
@@ -1712,23 +1737,16 @@ pub fn count_one(conn: &Connection, id: &str, delta: i64) -> AppResult<CountOutc
         params![id, next],
     )?;
 
-    let total: i64 = tx
-        .query_row(
-            "SELECT total_rows FROM progress WHERE pattern_id = ?1",
-            params![pattern_id],
-            |r| r.get(0),
-        )
-        .optional()?
-        .unwrap_or(0);
+    let total = read_total(&tx, &pattern_id, &project_id)?;
     let total = if excluded {
         total
     } else {
         total.saturating_add(applied).max(0)
     };
-    upsert_total(&tx, &pattern_id, total)?;
+    upsert_total(&tx, &pattern_id, &project_id, total)?;
     tx.commit()?;
 
-    outcome(conn, &pattern_id, total)
+    outcome(conn, &pattern_id, &project_id, total)
 }
 
 /// Applies one counting action across the project: the total, plus every
@@ -1740,17 +1758,11 @@ pub fn count_one(conn: &Connection, id: &str, delta: i64) -> AppResult<CountOutc
 ///
 /// One transaction, because a half-applied count is worse than a failed one:
 /// the total and the counters must never disagree about what has been worked.
-pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<CountOutcome> {
+pub fn count_rows(conn: &Connection, pattern_id: &str, project_id: &str, delta: i64) -> AppResult<CountOutcome> {
+    ensure_project_counter(conn, pattern_id, project_id)?;
     let tx = conn.unchecked_transaction()?;
 
-    let total = tx
-        .query_row(
-            "SELECT total_rows FROM progress WHERE pattern_id = ?1",
-            params![pattern_id],
-            |r| r.get::<_, i64>(0),
-        )
-        .optional()?
-        .unwrap_or(0);
+    let total = read_total(&tx, pattern_id, project_id)?;
     let next_total = total.saturating_add(delta).max(0);
 
     // Collect first, then write, so the reads are not interleaved with the
@@ -1758,9 +1770,9 @@ pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<
     let enabled: Vec<(String, i64, i64)> = {
         let mut stmt = tx.prepare(
             "SELECT id, current, target FROM counters
-             WHERE pattern_id = ?1 AND enabled = 1",
+             WHERE pattern_id = ?1 AND project_id = ?2 AND enabled = 1",
         )?;
-        let rows = stmt.query_map(params![pattern_id], |r| {
+        let rows = stmt.query_map(params![pattern_id, project_id], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?;
         let mut out = Vec::new();
@@ -1777,10 +1789,10 @@ pub fn count_rows(conn: &Connection, pattern_id: &str, delta: i64) -> AppResult<
         )?;
     }
 
-    upsert_total(&tx, pattern_id, next_total)?;
+    upsert_total(&tx, pattern_id, project_id, next_total)?;
     tx.commit()?;
 
-    outcome(conn, pattern_id, next_total)
+    outcome(conn, pattern_id, project_id, next_total)
 }
 
 /// One counter's new count, held inside its own limits.
@@ -1798,17 +1810,97 @@ fn clamp_count(current: i64, delta: i64, target: i64) -> i64 {
     }
 }
 
-fn outcome(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<CountOutcome> {
+fn outcome(conn: &Connection, pattern_id: &str, project_id: &str, total: i64) -> AppResult<CountOutcome> {
     Ok(CountOutcome {
         pattern_id: pattern_id.to_string(),
+        project_id: project_id.to_string(),
         total_rows: total,
-        counters: list_counters(conn, pattern_id)?,
+        counters: list_counters(conn, pattern_id, project_id)?,
     })
+}
+
+/// A project's own counter, made the first time it is asked for: the
+/// pattern's counters, names, targets and all. The first project to have one
+/// takes the pattern's counts too -- that is the knitting they were counting
+/// -- and any after it start from nothing. Nothing to do for the pattern's own.
+fn ensure_project_counter(conn: &Connection, pattern_id: &str, project_id: &str) -> AppResult<()> {
+    if project_id.is_empty() {
+        return Ok(());
+    }
+    let made: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM project_progress WHERE project_id = ?1 AND pattern_id = ?2",
+            params![project_id, pattern_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if made.is_some() {
+        return Ok(());
+    }
+    let project: Option<i64> = conn.query_row("SELECT 1 FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
+    if project.is_none() {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    let tx = conn.unchecked_transaction()?;
+    let first: bool = tx.query_row("SELECT NOT EXISTS (SELECT 1 FROM project_progress WHERE pattern_id = ?1)", params![pattern_id], |r| r.get(0))?;
+    let own: Vec<Counter> = {
+        let mut stmt = tx.prepare("SELECT * FROM counters WHERE pattern_id = ?1 AND project_id = '' ORDER BY position ASC, rowid ASC")?;
+        let rows = stmt.query_map(params![pattern_id], row_to_counter)?;
+        rows.collect::<Result<_, _>>()?
+    };
+    for c in own {
+        tx.execute(
+            "INSERT INTO counters (id, pattern_id, project_id, name, target, current, enabled, excluded_from_total, position, hotkey)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                pattern_id,
+                project_id,
+                c.name,
+                c.target,
+                if first { c.current } else { 0 },
+                c.enabled as i64,
+                c.excluded_from_total as i64,
+                c.position,
+                c.hotkey
+            ],
+        )?;
+    }
+    let total = if first { read_total(&tx, pattern_id, "")? } else { 0 };
+    tx.execute(
+        "INSERT INTO project_progress (project_id, pattern_id, total_rows, updated_at) VALUES (?1, ?2, ?3, ?4)",
+        params![project_id, pattern_id, total, now_ms()],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// The row total: the pattern's own, or a project's.
+fn read_total(conn: &Connection, pattern_id: &str, project_id: &str) -> AppResult<i64> {
+    let total = if project_id.is_empty() {
+        conn.query_row("SELECT total_rows FROM progress WHERE pattern_id = ?1", params![pattern_id], |r| r.get(0)).optional()?
+    } else {
+        conn.query_row(
+            "SELECT total_rows FROM project_progress WHERE project_id = ?1 AND pattern_id = ?2",
+            params![project_id, pattern_id],
+            |r| r.get(0),
+        )
+        .optional()?
+    };
+    Ok(total.unwrap_or(0))
 }
 
 // ---------- progress ----------
 
-pub fn get_progress(conn: &Connection, pattern_id: &str) -> AppResult<Progress> {
+pub fn get_progress(conn: &Connection, pattern_id: &str, project_id: &str) -> AppResult<Progress> {
+    if !project_id.is_empty() {
+        ensure_project_counter(conn, pattern_id, project_id)?;
+        return Ok(conn.query_row(
+            "SELECT total_rows, updated_at FROM project_progress WHERE project_id = ?1 AND pattern_id = ?2",
+            params![project_id, pattern_id],
+            |r| Ok(Progress { pattern_id: pattern_id.to_string(), total_rows: r.get(0)?, updated_at: r.get(1)? }),
+        )?);
+    }
     let found = conn
         .query_row(
             "SELECT pattern_id, total_rows, updated_at FROM progress WHERE pattern_id = ?1",
@@ -1829,8 +1921,9 @@ pub fn get_progress(conn: &Connection, pattern_id: &str) -> AppResult<Progress> 
     Ok(found)
 }
 
-pub fn set_total_rows(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<()> {
-    upsert_total(conn, pattern_id, total)
+pub fn set_total_rows(conn: &Connection, pattern_id: &str, project_id: &str, total: i64) -> AppResult<()> {
+    ensure_project_counter(conn, pattern_id, project_id)?;
+    upsert_total(conn, pattern_id, project_id, total)
 }
 
 /// Writes the project total, creating the progress row when none exists.
@@ -1839,7 +1932,15 @@ pub fn set_total_rows(conn: &Connection, pattern_id: &str, total: i64) -> AppRes
 /// is missing -- reachable from a partially migrated database -- while the
 /// counting paths go on to report the new total, so the stored and reported
 /// numbers quietly disagree. The upsert makes the total always land.
-fn upsert_total(conn: &Connection, pattern_id: &str, total: i64) -> AppResult<()> {
+fn upsert_total(conn: &Connection, pattern_id: &str, project_id: &str, total: i64) -> AppResult<()> {
+    if !project_id.is_empty() {
+        conn.execute(
+            "INSERT INTO project_progress (project_id, pattern_id, total_rows, updated_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(project_id, pattern_id) DO UPDATE SET total_rows = excluded.total_rows, updated_at = excluded.updated_at",
+            params![project_id, pattern_id, total.max(0), now_ms()],
+        )?;
+        return Ok(());
+    }
     conn.execute(
         "INSERT INTO progress (pattern_id, total_rows, updated_at)
          VALUES (?1, ?2, ?3)
@@ -2814,6 +2915,9 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("UPDATE wishlist SET project_id = NULL WHERE project_id = ?1", params![id])?;
     conn.execute("UPDATE swatches SET project_id = NULL WHERE project_id = ?1", params![id])?;
     conn.execute("DELETE FROM project_log WHERE project_id = ?1", params![id])?;
+    // Its own counters and row totals go with it; the pattern keeps its own.
+    conn.execute("DELETE FROM counters WHERE project_id = ?1", params![id])?;
+    conn.execute("DELETE FROM project_progress WHERE project_id = ?1", params![id])?;
     Ok(())
 }
 

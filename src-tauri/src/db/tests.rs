@@ -56,6 +56,7 @@ fn enabled_counter(conn: &Connection, pattern_id: &str, name: &str, target: i64)
     add_counter(
         conn,
         pattern_id,
+        "",
         &CounterInput {
             name: name.to_string(),
             target,
@@ -74,9 +75,9 @@ fn a_counter_key_is_stored_and_cleared() {
     assert_eq!(c.hotkey, "", "a new counter has no key");
 
     set_counter_key(&conn, &c.id, "KeyS").unwrap();
-    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].hotkey, "KeyS");
+    assert_eq!(list_counters(&conn, &p.id, "").unwrap()[0].hotkey, "KeyS");
     set_counter_key(&conn, &c.id, "").unwrap();
-    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].hotkey, "");
+    assert_eq!(list_counters(&conn, &p.id, "").unwrap()[0].hotkey, "");
 
     assert!(set_counter_key(&conn, "no-such-counter", "KeyX").is_err());
 }
@@ -329,10 +330,10 @@ fn insert_seeds_progress_and_highlight() {
     let conn = test_db();
     let p = sample(&conn, "Lace Sock", "Jess", "want-to-knit", &[]);
 
-    let progress = get_progress(&conn, &p.id).unwrap();
+    let progress = get_progress(&conn, &p.id, "").unwrap();
     assert_eq!(progress.total_rows, 0);
     // A new pattern has no counters; the ones it gets are the user's to add.
-    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+    assert!(list_counters(&conn, &p.id, "").unwrap().is_empty());
 
     // A pattern gets usable highlight settings without the caller asking.
     let h = get_highlight(&conn, &p.id).unwrap();
@@ -666,12 +667,12 @@ fn counting_moves_the_total_and_every_enabled_counter() {
     let cuff = enabled_counter(&conn, &p.id, "Cuff", 0);
 
     // Two sleeves worked in turn: one action moves both, and the total.
-    let out = count_rows(&conn, &p.id, 5).unwrap();
+    let out = count_rows(&conn, &p.id, "", 5).unwrap();
     assert_eq!(out.total_rows, 5);
     assert_eq!(counter(&out, &front.id).current, 5);
     assert_eq!(counter(&out, &cuff.id).current, 5);
 
-    let out = count_rows(&conn, &p.id, -2).unwrap();
+    let out = count_rows(&conn, &p.id, "", -2).unwrap();
     assert_eq!(out.total_rows, 3);
     assert_eq!(counter(&out, &front.id).current, 3);
     assert_eq!(counter(&out, &cuff.id).current, 3);
@@ -687,6 +688,7 @@ fn a_disabled_counter_stays_put_while_the_total_moves() {
     let set_aside = add_counter(
         &conn,
         &p.id,
+        "",
         &CounterInput {
             name: "Set aside".to_string(),
             target: 0,
@@ -695,9 +697,9 @@ fn a_disabled_counter_stays_put_while_the_total_moves() {
         },
     )
     .unwrap();
-    count_rows(&conn, &p.id, 7).unwrap();
+    count_rows(&conn, &p.id, "", 7).unwrap();
 
-    let out = count_rows(&conn, &p.id, 3).unwrap();
+    let out = count_rows(&conn, &p.id, "", 3).unwrap();
     assert_eq!(out.total_rows, 10);
     assert_eq!(counter(&out, &working.id).current, 10);
     assert_eq!(
@@ -713,8 +715,8 @@ fn several_counters_can_be_enabled_at_once() {
     let a = enabled_counter(&conn, &p.id, "Sleeve 1", 0);
     let b = enabled_counter(&conn, &p.id, "Sleeve 2", 0);
     assert_ne!(a.id, b.id, "two distinct counters");
-    count_rows(&conn, &p.id, 4).unwrap();
-    let out = list_counters(&conn, &p.id).unwrap();
+    count_rows(&conn, &p.id, "", 4).unwrap();
+    let out = list_counters(&conn, &p.id, "").unwrap();
     assert_eq!(out.iter().filter(|c| c.enabled).count(), 2);
     assert!(out.iter().all(|c| c.current == 4));
 }
@@ -727,11 +729,11 @@ fn a_counter_on_its_target_does_not_stop_the_total() {
     let p = sample(&conn, "Cardigan", "A", "in-progress", &[]);
     let front = enabled_counter(&conn, &p.id, "Front", 10);
 
-    let out = count_rows(&conn, &p.id, 10).unwrap();
+    let out = count_rows(&conn, &p.id, "", 10).unwrap();
     assert_eq!(counter(&out, &front.id).current, 10, "exactly on target");
     assert_eq!(out.total_rows, 10);
 
-    let out = count_rows(&conn, &p.id, 5).unwrap();
+    let out = count_rows(&conn, &p.id, "", 5).unwrap();
     assert_eq!(counter(&out, &front.id).current, 10, "clamped at the target");
     assert_eq!(out.total_rows, 15, "the total carries on regardless");
 }
@@ -744,12 +746,12 @@ fn counter_counting_clamps_to_target_and_floor() {
 
     // Overshooting the target stops at the target, and the total only counts
     // the rows actually applied to the counter.
-    let out = count_rows(&conn, &p.id, 10).unwrap();
+    let out = count_rows(&conn, &p.id, "", 10).unwrap();
     assert_eq!(counter(&out, &c.id).current, 4);
     assert_eq!(out.total_rows, 10, "the total is not clamped by a counter target");
 
     // Going below zero stops at zero rather than going negative.
-    let out = count_rows(&conn, &p.id, -100).unwrap();
+    let out = count_rows(&conn, &p.id, "", -100).unwrap();
     assert_eq!(counter(&out, &c.id).current, 0);
     assert_eq!(out.total_rows, 0);
 }
@@ -759,7 +761,7 @@ fn an_untargeted_counter_can_count_past_any_limit() {
     let conn = test_db();
     let p = sample(&conn, "Freeform", "A", "in-progress", &[]);
     let c = enabled_counter(&conn, &p.id, "Notes", 0);
-    let out = count_rows(&conn, &p.id, 250).unwrap();
+    let out = count_rows(&conn, &p.id, "", 250).unwrap();
     assert_eq!(counter(&out, &c.id).current, 250);
     assert_eq!(out.total_rows, 250);
 }
@@ -771,7 +773,7 @@ fn a_counter_can_be_counted_on_its_own() {
     let conn = test_db();
     let p = sample(&conn, "Sock", "A", "in-progress", &[]);
     let c = enabled_counter(&conn, &p.id, "Cuff", 0);
-    count_rows(&conn, &p.id, 4).unwrap();
+    count_rows(&conn, &p.id, "", 4).unwrap();
 
     let out = count_one(&conn, &c.id, 2).unwrap();
     assert_eq!(counter(&out, &c.id).current, 6);
@@ -785,6 +787,7 @@ fn an_excluded_counter_leaves_the_total_alone() {
     let c = add_counter(
         &conn,
         &p.id,
+        "",
         &CounterInput {
             name: "Setup row".to_string(),
             target: 0,
@@ -808,7 +811,7 @@ fn counters_are_independent_of_each_other() {
     let front = enabled_counter(&conn, &p.id, "Front", 3);
     let sleeve = enabled_counter(&conn, &p.id, "Sleeve", 0);
 
-    let out = count_rows(&conn, &p.id, 9).unwrap();
+    let out = count_rows(&conn, &p.id, "", 9).unwrap();
     assert_eq!(counter(&out, &front.id).current, 3);
     assert_eq!(counter(&out, &sleeve.id).current, 9);
     assert_eq!(out.total_rows, 9);
@@ -821,6 +824,7 @@ fn counters_can_be_renamed_switched_reset_and_deleted() {
     let c = add_counter(
         &conn,
         &p.id,
+        "",
         &CounterInput {
             name: "Draft".to_string(),
             target: 0,
@@ -831,19 +835,19 @@ fn counters_can_be_renamed_switched_reset_and_deleted() {
     .unwrap();
 
     update_counter(&conn, &c.id, "Final", 20, false).unwrap();
-    let stored = &list_counters(&conn, &p.id).unwrap()[0];
+    let stored = &list_counters(&conn, &p.id, "").unwrap()[0];
     assert_eq!(stored.name, "Final");
     assert_eq!(stored.target, 20);
 
     set_counter_enabled(&conn, &c.id, false).unwrap();
-    assert!(!list_counters(&conn, &p.id).unwrap()[0].enabled);
+    assert!(!list_counters(&conn, &p.id, "").unwrap()[0].enabled);
 
-    count_rows(&conn, &p.id, 5).unwrap();
+    count_rows(&conn, &p.id, "", 5).unwrap();
     reset_counter(&conn, &c.id).unwrap();
-    assert_eq!(list_counters(&conn, &p.id).unwrap()[0].current, 0);
+    assert_eq!(list_counters(&conn, &p.id, "").unwrap()[0].current, 0);
 
     delete_counter(&conn, &c.id).unwrap();
-    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+    assert!(list_counters(&conn, &p.id, "").unwrap().is_empty());
 }
 
 #[test]
@@ -883,19 +887,19 @@ fn the_total_is_stored_even_without_a_progress_row() {
     };
 
     drop_progress();
-    let out = count_rows(&conn, &p.id, 3).unwrap();
+    let out = count_rows(&conn, &p.id, "", 3).unwrap();
     assert_eq!(out.total_rows, 3);
-    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 3);
+    assert_eq!(get_progress(&conn, &p.id, "").unwrap().total_rows, 3);
 
     drop_progress();
-    set_total_rows(&conn, &p.id, 7).unwrap();
-    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 7);
+    set_total_rows(&conn, &p.id, "", 7).unwrap();
+    assert_eq!(get_progress(&conn, &p.id, "").unwrap().total_rows, 7);
 
     drop_progress();
     let c = enabled_counter(&conn, &p.id, "Front", 0);
     let out = count_one(&conn, &c.id, 2).unwrap();
     assert_eq!(out.total_rows, 2);
-    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 2);
+    assert_eq!(get_progress(&conn, &p.id, "").unwrap().total_rows, 2);
 }
 
 #[test]
@@ -906,11 +910,11 @@ fn extreme_deltas_saturate_instead_of_overflowing() {
     let p = sample(&conn, "Marathon", "A", "in-progress", &[]);
     let c = enabled_counter(&conn, &p.id, "Lots", 0);
 
-    let out = count_rows(&conn, &p.id, i64::MAX).unwrap();
+    let out = count_rows(&conn, &p.id, "", i64::MAX).unwrap();
     assert_eq!(out.total_rows, i64::MAX);
     assert_eq!(counter(&out, &c.id).current, i64::MAX);
 
-    let out = count_rows(&conn, &p.id, i64::MIN).unwrap();
+    let out = count_rows(&conn, &p.id, "", i64::MIN).unwrap();
     assert_eq!(out.total_rows, 0);
     assert_eq!(counter(&out, &c.id).current, 0);
 
@@ -929,7 +933,7 @@ fn deleting_a_pattern_removes_its_counters() {
     let p = sample(&conn, "Doomed", "A", "in-progress", &[]);
     enabled_counter(&conn, &p.id, "Front", 0);
     delete_pattern(&conn, &p.id).unwrap();
-    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
+    assert!(list_counters(&conn, &p.id, "").unwrap().is_empty());
 }
 
 #[test]
@@ -939,12 +943,12 @@ fn counters_persist_across_reopening() {
     let conn = test_db();
     let p = sample(&conn, "Kept", "A", "in-progress", &[]);
     let c = enabled_counter(&conn, &p.id, "Front", 100);
-    count_rows(&conn, &p.id, 42).unwrap();
-    set_total_rows(&conn, &p.id, 42).unwrap();
+    count_rows(&conn, &p.id, "", 42).unwrap();
+    set_total_rows(&conn, &p.id, "", 42).unwrap();
 
-    let reopened = get_progress(&conn, &p.id).unwrap();
+    let reopened = get_progress(&conn, &p.id, "").unwrap();
     assert_eq!(reopened.total_rows, 42);
-    let counters = list_counters(&conn, &p.id).unwrap();
+    let counters = list_counters(&conn, &p.id, "").unwrap();
     assert_eq!(counters[0].id, c.id);
     assert_eq!(counters[0].current, 42);
     assert_eq!(counters[0].name, "Front");
@@ -1004,7 +1008,7 @@ fn sections_become_counters_without_losing_anything() {
     migrate(&conn).expect("migrate");
 
     assert!(!table_exists(&conn, "sections").expect("sections"), "the old table is gone");
-    let counters = list_counters(&conn, "p1").expect("counters");
+    let counters = list_counters(&conn, "p1", "").expect("counters");
     assert_eq!(counters.len(), 2, "both sections carried over");
 
     let lace = counters.iter().find(|c| c.name == "Lace repeat").expect("lace");
@@ -1023,7 +1027,7 @@ fn sections_become_counters_without_losing_anything() {
     assert!(!lace.enabled, "the others are inert rather than lost");
 
     // The work already counted is still counted.
-    assert_eq!(get_progress(&conn, "p1").unwrap().total_rows, 340);
+    assert_eq!(get_progress(&conn, "p1", "").unwrap().total_rows, 340);
 }
 
 #[test]
@@ -1033,10 +1037,10 @@ fn the_migration_runs_only_once() {
     let conn = Connection::open_in_memory().expect("in-memory db");
     old_schema(&conn);
     migrate(&conn).expect("first");
-    let first = list_counters(&conn, "p1").unwrap().len();
+    let first = list_counters(&conn, "p1", "").unwrap().len();
     migrate(&conn).expect("second");
     migrate(&conn).expect("third");
-    assert_eq!(list_counters(&conn, "p1").unwrap().len(), first);
+    assert_eq!(list_counters(&conn, "p1", "").unwrap().len(), first);
     assert_eq!(first, 2);
 }
 
@@ -1047,8 +1051,8 @@ fn a_database_with_no_sections_migrates_cleanly() {
     let conn = test_db();
     let p = sample(&conn, "Fresh", "A", "want-to-knit", &[]);
     migrate(&conn).expect("migrate again");
-    assert!(list_counters(&conn, &p.id).unwrap().is_empty());
-    assert_eq!(get_progress(&conn, &p.id).unwrap().total_rows, 0);
+    assert!(list_counters(&conn, &p.id, "").unwrap().is_empty());
+    assert_eq!(get_progress(&conn, &p.id, "").unwrap().total_rows, 0);
 }
 
 #[test]
@@ -1059,6 +1063,7 @@ fn counter_ordering_follows_insertion() {
         add_counter(
             &conn,
             &p.id,
+            "",
             &CounterInput {
                 name: name.to_string(),
                 target: 0,
@@ -1068,7 +1073,7 @@ fn counter_ordering_follows_insertion() {
         )
         .unwrap();
     }
-    let names: Vec<String> = list_counters(&conn, &p.id)
+    let names: Vec<String> = list_counters(&conn, &p.id, "")
         .unwrap()
         .into_iter()
         .map(|c| c.name)
@@ -1079,7 +1084,7 @@ fn counter_ordering_follows_insertion() {
 #[test]
 fn progress_defaults_for_an_unknown_pattern() {
     let conn = test_db();
-    let p = get_progress(&conn, "not-a-real-id").unwrap();
+    let p = get_progress(&conn, "not-a-real-id", "").unwrap();
     assert_eq!(p.pattern_id, "not-a-real-id");
     assert_eq!(p.total_rows, 0);
 }
@@ -2300,6 +2305,45 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
     assert_eq!(get_yarn(&conn, "balls").unwrap().grams_left, 150);
     assert_eq!(weighed("weighed"), Some(true));
     assert_eq!(weighed("finished"), Some(true), "a project finished with none of it left: 0 g is right");
+}
+
+#[test]
+fn two_projects_from_one_pattern_each_count_their_own_rows() {
+    let conn = test_db();
+    let p = sample(&conn, "Raglan", "A", "in-progress", &[]);
+    let sleeve = enabled_counter(&conn, &p.id, "Sleeve", 0);
+    set_counter_key(&conn, &sleeve.id, "KeyS").unwrap();
+    count_rows(&conn, &p.id, "", 10).unwrap();
+
+    // The first project to count takes the pattern's counter, counts and all.
+    let mum = project(&conn, "For Mum", Some(&p.id));
+    let hers = list_counters(&conn, &p.id, &mum.id).unwrap();
+    assert_eq!((hers.len(), hers[0].name.as_str(), hers[0].current, hers[0].hotkey.as_str()), (1, "Sleeve", 10, "KeyS"));
+    assert_ne!(hers[0].id, sleeve.id, "a copy of its own");
+    assert_eq!(get_progress(&conn, &p.id, &mum.id).unwrap().total_rows, 10);
+    let out = count_rows(&conn, &p.id, &mum.id, 2).unwrap();
+    assert_eq!((out.project_id.as_str(), out.total_rows, out.counters[0].current), (mum.id.as_str(), 12, 12));
+    assert_eq!(list_counters(&conn, &p.id, "").unwrap()[0].current, 10, "the pattern's own is left as it was");
+
+    // A second project from it starts from the pattern's counters, at nothing.
+    let me = project(&conn, "For me", Some(&p.id));
+    let mine = list_counters(&conn, &p.id, &me.id).unwrap();
+    assert_eq!((mine[0].name.as_str(), mine[0].current), ("Sleeve", 0));
+    assert_eq!(get_progress(&conn, &p.id, &me.id).unwrap().total_rows, 0);
+    count_one(&conn, &mine[0].id, 3).unwrap();
+    assert_eq!(get_progress(&conn, &p.id, &me.id).unwrap().total_rows, 3, "a counter moves its own project's total");
+    assert_eq!(get_progress(&conn, &p.id, &mum.id).unwrap().total_rows, 12, "and not the other's");
+    let added = add_counter(&conn, &p.id, &me.id, &CounterInput { name: "Body".into(), target: 0, enabled: true, excluded_from_total: false }).unwrap();
+    assert_eq!(added.project_id, me.id);
+    assert_eq!(list_counters(&conn, &p.id, &mum.id).unwrap().len(), 1, "a counter added to one project is that project's");
+    set_total_rows(&conn, &p.id, &me.id, 0).unwrap();
+    assert_eq!(get_progress(&conn, &p.id, &mum.id).unwrap().total_rows, 12);
+
+    // Removed, a project's counters go with it; the pattern's stay.
+    delete_project(&conn, &me.id).unwrap();
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM counters WHERE project_id = ?1", params![me.id], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    assert_eq!(list_counters(&conn, &p.id, "").unwrap().len(), 1);
+    assert!(list_counters(&conn, &p.id, "no-such-project").is_err(), "only a project there is");
 }
 
 #[test]

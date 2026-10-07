@@ -55,8 +55,9 @@ starting; the details are in the sections under the list.
 7. [x] Finished gallery: photos of finished projects with their pattern,
    yarn, needles, dates and log. *Decided:* by itself, every finished
    project, with a way to hide one. *0.3.35*
-8. [ ] Two projects from one pattern, each with its own row counter.
+8. [x] Two projects from one pattern, each with its own row counter.
    *Decided:* yes, a counter per project, started from the pattern's.
+   *0.3.36*
 
 **Settings**
 
@@ -273,6 +274,12 @@ separate step, not asked for yet.
   and milestones the project writes (started, paused, frogged, finished, a new
   pattern). A live Log card on the project's board shows it and takes new
   entries.
+- **A counter per project:** counters belong to a pattern and a project
+  (counters.project_id, empty for the pattern's own), with a project's total
+  in project_progress. Made the first time asked for, from the pattern's: the
+  first project takes its counts, later ones start at 0. The reader counts for
+  the pattern's live project, asking which with two or more (remembered in
+  localStorage, counter-for:<pattern>).
 - **Finished gallery:** the Projects tab's Gallery: every finished project by
   itself, with its cover and log photos (list_gallery_photos); opened big,
   with its pattern, yarn, needles, dates, notes and log. Photos left out and

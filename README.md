@@ -372,9 +372,15 @@ it to a tab on the right edge, which brings it back where it was; **×** closes
 it, and **Open full ↗** opens it on its own. The page remembers how it was
 left, and how wide.
 
-**Row counter.** A project with a pattern has the pattern's row counter on its
-page: the same counts as in the pattern itself, not a copy, so counting in
-either place counts in both. The count keys (J and K unless you chose others)
+**Row counter.** A project with a pattern has its own row counter on its page,
+and the pattern counts for it while it is being knitted, so counting in either
+place counts in both. Each project counts its own rows: two pairs of socks from
+one pattern keep their counts apart. A project's counter starts from the
+pattern's counters, their names and targets; the first project to count takes
+the pattern's counts as they were, and any after it start from nothing. With
+two or more projects of a pattern on the needles, the pattern's counter asks
+which it is **Counting for**, and remembers. A pattern read with nothing on the
+needles has its own counter, as before. The count keys (J and K unless you chose others)
 and each counter's own key work on the page as well — in the pattern beside the
 board, or anywhere else on the page except while typing.
 

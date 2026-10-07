@@ -982,15 +982,46 @@ function requireCounter(id) {
   return c;
 }
 
+/** Where a row total is kept: the pattern's own, or a project's for that pattern. */
+function progressKey(patternId, projectId) {
+  return projectId ? `${projectId}|${patternId}` : patternId;
+}
+
+/** A counter of this pattern, for this project ("" or null: the pattern's own). */
+function inScope(c, patternId, projectId) {
+  return c.patternId === patternId && (c.projectId || "") === (projectId || "");
+}
+
+function scopedCounters(patternId, projectId) {
+  return store.counters.filter((c) => inScope(c, patternId, projectId)).sort((a, b) => a.position - b.position);
+}
+
+/** As db::ensure_project_counter: a project's counter, started from the pattern's the first time. */
+function ensureProjectCounter(patternId, projectId) {
+  if (!projectId || store.progress.has(progressKey(patternId, projectId))) return;
+  if (!store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
+  const first = ![...store.progress.keys()].some((k) => k.endsWith(`|${patternId}`));
+  for (const c of scopedCounters(patternId, "")) store.counters.push({ ...clone(c), id: `c${store.nextId++}`, projectId, current: first ? c.current : 0 });
+  const own = store.progress.get(patternId);
+  store.progress.set(progressKey(patternId, projectId), { patternId, totalRows: first && own ? own.totalRows : 0, updatedAt: Date.now() });
+}
+
+function progressOf(patternId, projectId) {
+  ensureProjectCounter(patternId, projectId);
+  const key = progressKey(patternId, projectId);
+  const pr = store.progress.get(key) || newProgress(patternId);
+  store.progress.set(key, pr);
+  return pr;
+}
+
 /** The whole counting state, as `count_rows` returns it. */
-function outcome(patternId) {
-  const pr = store.progress.get(patternId) || newProgress(patternId);
-  store.progress.set(patternId, pr);
+function outcome(patternId, projectId) {
+  const pr = progressOf(patternId, projectId);
   return {
     patternId,
+    projectId: projectId || "",
     totalRows: pr.totalRows,
-    counters: clone(store.counters.filter((c) => c.patternId === patternId)
-      .sort((a, b) => a.position - b.position)),
+    counters: clone(scopedCounters(patternId, projectId).map((c) => ({ projectId: "", ...c }))),
   };
 }
 /** As db::record_use: grams of a yarn used, with the metres they come to by its ball band. */
@@ -1223,18 +1254,22 @@ const handlers = {
   // untested on the frontend side.
   // The real `list_counters` returns a plain array; only the counting commands
   // return the whole outcome.
-  list_counters: ({ patternId }) =>
-    clone(store.counters.filter((c) => c.patternId === patternId).sort((a, b) => a.position - b.position)),
-  add_counter: ({ patternId, input }) => {
+  list_counters: ({ patternId, projectId }) => {
+    ensureProjectCounter(patternId, projectId);
+    return clone(scopedCounters(patternId, projectId).map((c) => ({ projectId: "", ...c })));
+  },
+  add_counter: ({ patternId, projectId, input }) => {
+    ensureProjectCounter(patternId, projectId);
     const c = {
       id: `c${store.nextId++}`,
       patternId,
+      projectId: projectId || "",
       name: input.name,
       target: input.target,
       current: 0,
       enabled: input.enabled,
       excludedFromTotal: input.excludedFromTotal,
-      position: store.counters.filter((x) => x.patternId === patternId).length,
+      position: scopedCounters(patternId, projectId).length,
       hotkey: "",
     };
     store.counters.push(c);
@@ -1262,28 +1297,30 @@ const handlers = {
     const c = requireCounter(id);
     Object.assign(c, { name, target, excludedFromTotal });
   },
-  set_counter_enabled: ({ patternId, id, enabled }) => {
-    requireCounter(id).enabled = enabled;
-    return outcome(patternId);
+  set_counter_enabled: ({ patternId, projectId, id, enabled }) => {
+    const c = requireCounter(id);
+    if (!inScope(c, patternId, projectId)) throw new Error(`No counter with id ${id}.`);
+    c.enabled = enabled;
+    return outcome(patternId, projectId);
   },
-  count_rows: ({ patternId, delta }) => {
-    const pr = store.progress.get(patternId) || newProgress(patternId);
+  count_rows: ({ patternId, projectId, delta }) => {
+    const pr = progressOf(patternId, projectId);
     // The total always moves, whatever any counter does.
     pr.totalRows = Math.max(0, pr.totalRows + delta);
-    for (const c of store.counters) {
-      if (c.patternId !== patternId || !c.enabled) continue;
+    for (const c of scopedCounters(patternId, projectId)) {
+      if (!c.enabled) continue;
       c.current = clampCount(c.current, delta, c.target);
     }
-    return outcome(patternId);
+    return outcome(patternId, projectId);
   },
   count_counter: ({ id, delta }) => {
     const c = requireCounter(id);
-    const pr = store.progress.get(c.patternId) || newProgress(c.patternId);
+    const pr = progressOf(c.patternId, c.projectId);
     const next = clampCount(c.current, delta, c.target);
     const applied = next - c.current;
     c.current = next;
     if (!c.excludedFromTotal) pr.totalRows = Math.max(0, pr.totalRows + applied);
-    return outcome(c.patternId);
+    return outcome(c.patternId, c.projectId);
   },
   reset_counter: ({ id }) => {
     requireCounter(id).current = 0;
@@ -1291,12 +1328,9 @@ const handlers = {
   delete_counter: ({ id }) => {
     store.counters = store.counters.filter((c) => c.id !== id);
   },
-  get_progress: ({ patternId }) => {
-    if (!store.progress.has(patternId)) store.progress.set(patternId, newProgress(patternId));
-    return clone(store.progress.get(patternId));
-  },
-  set_total_rows: ({ patternId, total }) => {
-    const pr = store.progress.get(patternId) || newProgress(patternId);
+  get_progress: ({ patternId, projectId }) => clone(progressOf(patternId, projectId)),
+  set_total_rows: ({ patternId, projectId, total }) => {
+    const pr = progressOf(patternId, projectId);
     pr.totalRows = Math.max(0, total);
     return clone(pr);
   },
@@ -1716,6 +1750,9 @@ const handlers = {
     for (const s of store.swatches) if (s.projectId === id) s.projectId = null;
     for (const e of store.projectLog) if (e.projectId === id) store.covers.delete(`log:${e.id}`);
     store.projectLog = store.projectLog.filter((e) => e.projectId !== id);
+    // Its own counters and row totals go with it.
+    store.counters = store.counters.filter((c) => c.projectId !== id);
+    for (const key of [...store.progress.keys()]) if (key.startsWith(`${id}|`)) store.progress.delete(key);
   },
 
   set_project_cover: ({ projectId, bytes }) => {

@@ -54,6 +54,8 @@ export interface Pattern {
 export interface Counter {
   id: string;
   patternId: string;
+  /** The project it counts for; "" for the pattern's own counter. */
+  projectId: string;
   name: string;
   /** Row count to aim for. 0 means no target, so it can count freely. */
   target: number;
@@ -93,6 +95,8 @@ export interface CounterInput {
  */
 export interface CountOutcome {
   patternId: string;
+  /** The project counted for; "" for the pattern's own counter. */
+  projectId: string;
   totalRows: number;
   counters: Counter[];
 }
@@ -1122,15 +1126,18 @@ export const api = {
   // Counters. `countRows` is the one counting action: it moves the project
   // total and every enabled counter together, which is why it is a single
   // command rather than the frontend adding up the pieces.
-  listCounters: (patternId: string) => invoke<Counter[]>("list_counters", { patternId }),
-  addCounter: (patternId: string, input: CounterInput) =>
-    invoke<Counter>("add_counter", { patternId, input }),
+  // A project counts its own rows: `projectId` names it, and null is the
+  // pattern's own counter, read without a project. A project's counter is
+  // started from the pattern's the first time it is asked for.
+  listCounters: (patternId: string, projectId: string | null = null) => invoke<Counter[]>("list_counters", { patternId, projectId }),
+  addCounter: (patternId: string, projectId: string | null, input: CounterInput) =>
+    invoke<Counter>("add_counter", { patternId, projectId, input }),
   updateCounter: (id: string, name: string, target: number, excludedFromTotal: boolean) =>
     invoke<void>("update_counter", { id, name, target, excludedFromTotal }),
-  setCounterEnabled: (patternId: string, id: string, enabled: boolean) =>
-    invoke<CountOutcome>("set_counter_enabled", { patternId, id, enabled }),
-  countRows: (patternId: string, delta: number) =>
-    invoke<CountOutcome>("count_rows", { patternId, delta }),
+  setCounterEnabled: (patternId: string, projectId: string | null, id: string, enabled: boolean) =>
+    invoke<CountOutcome>("set_counter_enabled", { patternId, projectId, id, enabled }),
+  countRows: (patternId: string, projectId: string | null, delta: number) =>
+    invoke<CountOutcome>("count_rows", { patternId, projectId, delta }),
   countCounter: (id: string, delta: number) => invoke<CountOutcome>("count_counter", { id, delta }),
   resetCounter: (id: string) => invoke<void>("reset_counter", { id }),
   deleteCounter: (id: string) => invoke<void>("delete_counter", { id }),
@@ -1143,9 +1150,9 @@ export const api = {
   saveNeedleSizeDisplay: (display: NeedleSizeFormat) =>
     invoke<void>("save_needle_size_display", { display }),
 
-  getProgress: (patternId: string) => invoke<Progress>("get_progress", { patternId }),
-  setTotalRows: (patternId: string, total: number) =>
-    invoke<Progress>("set_total_rows", { patternId, total }),
+  getProgress: (patternId: string, projectId: string | null = null) => invoke<Progress>("get_progress", { patternId, projectId }),
+  setTotalRows: (patternId: string, projectId: string | null, total: number) =>
+    invoke<Progress>("set_total_rows", { patternId, projectId, total }),
 
   // Annotations: highlights, notes and drawings.
   listAnnotations: (patternId: string) => invoke<Annotation[]>("list_annotations", { patternId }),

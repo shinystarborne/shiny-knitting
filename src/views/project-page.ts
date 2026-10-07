@@ -478,7 +478,8 @@ ${plan ? "" : `      <div class="project-side-dates">
     if (!patternId) return;
     const host = document.createElement("div");
     host.className = "side-section project-counter";
-    const counter = new RowCounter(host, patternId);
+    // The project's own counter: two projects from one pattern each count their own rows.
+    const counter = new RowCounter(host, patternId, this.projectId);
     this.counterHost = host;
     this.counter = counter;
     await counter.refresh().catch(() => {});

@@ -24,6 +24,8 @@ import { captureKey, isPlainPress, keyLabel } from "./keys";
 export class RowCounter {
   private root: HTMLElement;
   private patternId: string;
+  /** The project it counts for; null for the pattern's own counter. */
+  private projectId: string | null;
 
   private counters: Counter[] = [];
   private progress: Progress | null = null;
@@ -35,10 +37,55 @@ export class RowCounter {
   private counterList!: HTMLElement;
   private soundButton!: HTMLButtonElement;
 
-  constructor(root: HTMLElement, patternId: string) {
+  constructor(root: HTMLElement, patternId: string, projectId: string | null = null) {
     this.root = root;
     this.patternId = patternId;
+    this.projectId = projectId;
     this.build();
+  }
+
+  /** The project it counts for, now; null for the pattern's own. */
+  get countingFor(): string | null {
+    return this.projectId;
+  }
+
+  /**
+   * Counts for another project of the pattern (or the pattern's own, with
+   * null), and shows its counts. Each project from a pattern counts its own.
+   */
+  async countFor(projectId: string | null): Promise<void> {
+    this.projectId = projectId;
+    this.paintFor();
+    await this.refresh();
+  }
+
+  /** The projects it could count for: with two or more, a choice above the counter. */
+  private choices: { id: string; name: string }[] = [];
+
+  offerProjects(projects: { id: string; name: string }[], onChoose: (id: string) => void): void {
+    this.choices = projects;
+    this.onChoose = onChoose;
+    this.paintFor();
+  }
+
+  private onChoose: (id: string) => void = () => {};
+
+  private paintFor(): void {
+    const host = this.q<HTMLElement>('[data-el="for"]');
+    if (this.choices.length < 2) {
+      host.hidden = true;
+      host.innerHTML = "";
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = `<span>Counting for</span><select data-el="for-project" aria-label="The project it counts for">${this.choices
+      .map((p) => `<option value="${escapeHtml(p.id)}" ${p.id === this.projectId ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
+      .join("")}</select>`;
+    host.querySelector("select")!.addEventListener("change", (e) => {
+      const id = (e.target as HTMLSelectElement).value;
+      this.onChoose(id);
+      void this.countFor(id);
+    });
   }
 
   private build(): void {
@@ -52,6 +99,7 @@ export class RowCounter {
         <button class="ghost" data-act="collapse" title="Hide the counter">–</button>
       </div>
       <div class="counter-body">
+        <p class="counter-for" data-el="for" hidden></p>
         <div class="counter-total">
           <label>Project total</label>
           <div class="stepper big">
@@ -155,7 +203,7 @@ export class RowCounter {
         await this.count(-10);
         break;
       case "total-reset":
-        await api.setTotalRows(this.patternId, 0);
+        await api.setTotalRows(this.patternId, this.projectId, 0);
         await this.refresh();
         break;
 
@@ -224,7 +272,7 @@ export class RowCounter {
    * the count actually landing, and only when one did.
    */
   private async count(delta: number): Promise<void> {
-    const outcome = await api.countRows(this.patternId, delta);
+    const outcome = await api.countRows(this.patternId, this.projectId, delta);
     playClick();
     this.apply(outcome);
   }
@@ -238,7 +286,7 @@ export class RowCounter {
   private async toggle(id: string): Promise<void> {
     const current = this.counters.find((c) => c.id === id);
     if (!current) return;
-    const outcome = await api.setCounterEnabled(this.patternId, id, !current.enabled);
+    const outcome = await api.setCounterEnabled(this.patternId, this.projectId, id, !current.enabled);
     this.apply(outcome);
   }
 
@@ -277,7 +325,7 @@ export class RowCounter {
     if (!answer) return;
     const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
 
-    const created = await api.addCounter(this.patternId, {
+    const created = await api.addCounter(this.patternId, this.projectId, {
       name: (answer["Name"] ?? "").trim() || "Counter",
       target,
       // New counters start switched on: someone who has just named the part
@@ -321,8 +369,8 @@ export class RowCounter {
   /** Loads counters, progress and keys, then paints. */
   async refresh(): Promise<void> {
     const [counters, progress, keys] = await Promise.all([
-      api.listCounters(this.patternId),
-      api.getProgress(this.patternId),
+      api.listCounters(this.patternId, this.projectId),
+      api.getProgress(this.patternId, this.projectId),
       api.getCountKeys(),
     ]);
     this.counters = counters;

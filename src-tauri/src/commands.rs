@@ -335,17 +335,18 @@ pub fn read_file(state: State<'_, AppState>, id: String) -> CmdResult<tauri::ipc
 // ---------- counters ----------
 
 #[tauri::command]
-pub fn list_counters(state: State<'_, AppState>, pattern_id: String) -> CmdResult<Vec<Counter>> {
-    db::list_counters(&state.db(), &pattern_id)
+pub fn list_counters(state: State<'_, AppState>, pattern_id: String, project_id: Option<String>) -> CmdResult<Vec<Counter>> {
+    db::list_counters(&state.db(), &pattern_id, project_id.as_deref().unwrap_or(""))
 }
 
 #[tauri::command]
 pub fn add_counter(
     state: State<'_, AppState>,
     pattern_id: String,
+    project_id: Option<String>,
     input: CounterInput,
 ) -> CmdResult<Counter> {
-    db::add_counter(&state.db(), &pattern_id, &input)
+    db::add_counter(&state.db(), &pattern_id, project_id.as_deref().unwrap_or(""), &input)
 }
 
 #[tauri::command]
@@ -409,37 +410,40 @@ fn valid_count_keys(keys: &CountKeys) -> bool {
 pub fn set_counter_enabled(
     state: State<'_, AppState>,
     pattern_id: String,
+    project_id: Option<String>,
     id: String,
     enabled: bool,
 ) -> CmdResult<db::CountOutcome> {
-    set_counter_enabled_on(&state.db(), &pattern_id, &id, enabled)
+    set_counter_enabled_on(&state.db(), &pattern_id, project_id.as_deref().unwrap_or(""), &id, enabled)
 }
 
 /// The body of `set_counter_enabled`, on a plain connection for tests.
 fn set_counter_enabled_on(
     conn: &rusqlite::Connection,
     pattern_id: &str,
+    project_id: &str,
     id: &str,
     enabled: bool,
 ) -> CmdResult<db::CountOutcome> {
     // The counter must belong to the pattern the outcome is reported against:
     // a mismatched pair would toggle one pattern's counter while reporting
     // another's totals, corrupting the sidebar's picture of both.
-    let owner: Option<String> = conn
+    let owner: Option<(String, String)> = conn
         .query_row(
-            "SELECT pattern_id FROM counters WHERE id = ?1",
+            "SELECT pattern_id, project_id FROM counters WHERE id = ?1",
             rusqlite::params![id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
-    if owner.as_deref() != Some(pattern_id) {
+    if owner.as_ref().map(|(p, j)| (p.as_str(), j.as_str())) != Some((pattern_id, project_id)) {
         return Err(AppError::NotFound(format!("No counter with id {id}.")));
     }
     db::set_counter_enabled(conn, id, enabled)?;
-    let total = db::get_progress(conn, pattern_id)?.total_rows;
-    let counters = db::list_counters(conn, pattern_id)?;
+    let total = db::get_progress(conn, pattern_id, project_id)?.total_rows;
+    let counters = db::list_counters(conn, pattern_id, project_id)?;
     Ok(db::CountOutcome {
         pattern_id: pattern_id.to_string(),
+        project_id: project_id.to_string(),
         total_rows: total,
         counters,
     })
@@ -454,9 +458,10 @@ fn set_counter_enabled_on(
 pub fn count_rows(
     state: State<'_, AppState>,
     pattern_id: String,
+    project_id: Option<String>,
     delta: i64,
 ) -> CmdResult<db::CountOutcome> {
-    db::count_rows(&state.db(), &pattern_id, delta)
+    db::count_rows(&state.db(), &pattern_id, project_id.as_deref().unwrap_or(""), delta)
 }
 
 /// Moves one counter on its own, from its own buttons.
@@ -482,19 +487,21 @@ pub fn delete_counter(state: State<'_, AppState>, id: String) -> CmdResult<()> {
 // ---------- progress ----------
 
 #[tauri::command]
-pub fn get_progress(state: State<'_, AppState>, pattern_id: String) -> CmdResult<Progress> {
-    db::get_progress(&state.db(), &pattern_id)
+pub fn get_progress(state: State<'_, AppState>, pattern_id: String, project_id: Option<String>) -> CmdResult<Progress> {
+    db::get_progress(&state.db(), &pattern_id, project_id.as_deref().unwrap_or(""))
 }
 
 #[tauri::command]
 pub fn set_total_rows(
     state: State<'_, AppState>,
     pattern_id: String,
+    project_id: Option<String>,
     total: i64,
 ) -> CmdResult<Progress> {
     let conn = state.db();
-    db::set_total_rows(&conn, &pattern_id, total)?;
-    db::get_progress(&conn, &pattern_id)
+    let project_id = project_id.as_deref().unwrap_or("");
+    db::set_total_rows(&conn, &pattern_id, project_id, total)?;
+    db::get_progress(&conn, &pattern_id, project_id)
 }
 
 // ---------- highlight ----------
@@ -1145,6 +1152,7 @@ mod tests {
         let counter = db::add_counter(
             &conn,
             &a.id,
+            "",
             &CounterInput {
                 name: "Front".to_string(),
                 target: 0,
@@ -1154,13 +1162,13 @@ mod tests {
         )
         .unwrap();
 
-        let err = set_counter_enabled_on(&conn, &b.id, &counter.id, false).unwrap_err();
+        let err = set_counter_enabled_on(&conn, &b.id, "", &counter.id, false).unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)), "got {err}");
         // The mismatched call must not have toggled anything.
-        assert!(db::list_counters(&conn, &a.id).unwrap()[0].enabled);
+        assert!(db::list_counters(&conn, &a.id, "").unwrap()[0].enabled);
 
         // The matching pair works and reports the right pattern.
-        let out = set_counter_enabled_on(&conn, &a.id, &counter.id, false).unwrap();
+        let out = set_counter_enabled_on(&conn, &a.id, "", &counter.id, false).unwrap();
         assert_eq!(out.pattern_id, a.id);
         assert!(!out.counters[0].enabled);
     }

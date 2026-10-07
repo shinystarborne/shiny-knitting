@@ -1,5 +1,5 @@
 import { ROBOT } from "../ai/describe-run";
-import { api, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type SuggestionResult } from "../api";
+import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Project, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
 import { dialogOpen, say } from "../dialogs";
 import { closestEl } from "../dom";
@@ -101,6 +101,53 @@ export class ReaderView {
   /** Re-reads the side pane's project, after one was saved or finished. */
   refreshProject(): void {
     void this.projectPanel?.refresh();
+    // A project started or finished from here: the counter counts for the one being knitted.
+    if (!this.embedded) void this.recountFor();
+  }
+
+  /** The pattern's projects on the needles, the newest started first. */
+  private liveProjects: Project[] = [];
+
+  /**
+   * The project the counter counts for: the one being knitted from this
+   * pattern, the one chosen last when there are several, or none -- the
+   * pattern's own counter -- when nothing is on the needles.
+   */
+  private async counterProject(): Promise<string | null> {
+    const projects = await api.listProjects().catch(() => [] as Project[]);
+    this.liveProjects = projects.filter((p) => p.patternId === this.pattern.id && isLive(p.status)).sort((a, b) => b.startedAt - a.startedAt);
+    let remembered: string | null = null;
+    try {
+      remembered = localStorage.getItem(this.counterForKey());
+    } catch {
+      // Without storage, the newest started.
+    }
+    return (this.liveProjects.find((p) => p.id === remembered) ?? this.liveProjects[0])?.id ?? null;
+  }
+
+  private counterForKey(): string {
+    return `counter-for:${this.pattern.id}`;
+  }
+
+  private offerCounterProjects(): void {
+    this.counter?.offerProjects(
+      this.liveProjects.map((p) => ({ id: p.id, name: p.name })),
+      (id) => {
+        try {
+          localStorage.setItem(this.counterForKey(), id);
+        } catch {
+          // Remembered for this reading only.
+        }
+      },
+    );
+  }
+
+  private async recountFor(): Promise<void> {
+    if (!this.counter) return;
+    const id = await this.counterProject();
+    if (this.destroyed) return;
+    this.offerCounterProjects();
+    if (id !== this.counter.countingFor) await this.counter.countFor(id);
   }
 
   get patternId(): string {
@@ -225,9 +272,10 @@ export class ReaderView {
     } else {
       const slot = this.root.querySelector<HTMLElement>(".counter-slot");
       if (!slot) return;
-      this.counter = new RowCounter(slot, this.pattern.id);
+      this.counter = new RowCounter(slot, this.pattern.id, await this.counterProject());
       await this.counter.refresh();
       if (this.destroyed) return;
+      this.offerCounterProjects();
 
       const projectHost = this.root.querySelector<HTMLElement>("[data-project-panel]");
       if (projectHost) {
