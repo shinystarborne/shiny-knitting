@@ -20,9 +20,11 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.34](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.34)** —
+  a yarn's care symbols from its ball band, drawn and named, for every colour of it. The one to test.
 - **[v0.3.0-beta.33](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.33)** —
   a yarn's gauge and needles from its ball band, kept for every colour of
-  it. The one to test.
+  it. Superseded by `beta.34`.
 - **[v0.3.0-beta.32](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.32)** —
   ball bands out of the stash: the view, the pictures, the thumbnails. Superseded by `beta.33`.
 - **[v0.3.0-beta.31](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.31)** —
