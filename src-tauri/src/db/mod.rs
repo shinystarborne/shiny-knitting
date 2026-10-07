@@ -2591,8 +2591,18 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
         };
         match lot {
             Some(l) => {
-                // What the project took: the lot's weight before, less what is left.
-                let before: i64 = tx.query_row("SELECT grams_left FROM yarn_lots WHERE id = ?1", params![l], |r| r.get(0)).optional()?.unwrap_or(0);
+                // What the project took: the lot's weight before, less what is
+                // left. A lot never weighed is its balls by the ball band.
+                let before: i64 = tx
+                    .query_row(
+                        "SELECT CASE WHEN l.grams_left > 0 THEN l.grams_left
+                                ELSE CAST(ROUND(l.balls * y.grams_per_ball) AS INTEGER) END
+                         FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1",
+                        params![l],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or(0);
                 if before > grams {
                     record_use(&tx, &entry.yarn_id, Some((id, project.name.as_str())), input.finished_at.unwrap_or(now), before - grams, "finished")?;
                 }

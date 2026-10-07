@@ -35,7 +35,11 @@ interface Store {
   projectYarns: { id: string; projectId: string; yarnId: string; lotId: string | null; leftoverGrams: number | null }[];
   yarns: { id: string; name: string; lots: { id: string; gramsLeft: number; leftover?: boolean }[] }[];
   patterns: { id: string; title: string; status: string }[];
+  yarnUsage: { yarnId: string | null; grams: number; projectName: string }[];
 }
+
+const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
+  (window as unknown as { __TAURI_INTERNALS__: { invoke(c: string, a: unknown): Promise<T> } }).__TAURI_INTERNALS__.invoke(cmd, args);
 
 export async function verifyProjects() {
   const results: CheckResult[] = [];
@@ -172,6 +176,8 @@ export async function verifyProjects() {
     check(results, "…and asks what is left of each yarn", grams.length === 2);
     check(results, "…offering to mark the pattern Finished", !!finish()!.querySelector<HTMLInputElement>('[data-f="mark-pattern"]')?.checked);
     const entryFor = (yarnId: string) => store.projectYarns.find((e) => e.projectId === made.id && e.yarnId === yarnId)!.id;
+    const leftIn = (yarnId: string) => finish()!.querySelector<HTMLInputElement>(`input[data-entry="${entryFor(yarnId)}"]`)!.value;
+    check(results, "…filled in with what each held less what it was to take", leftIn("y1") === "50" && leftIn("y3") === "0", `${leftIn("y1")} / ${leftIn("y3")}`);
     finish()!.querySelector<HTMLInputElement>(`input[data-entry="${entryFor("y1")}"]`)!.value = "35";
     finish()!.querySelector<HTMLInputElement>(`input[data-entry="${entryFor("y3")}"]`)!.value = "0";
     (finish()!.querySelector('[data-act="finish"]') as HTMLElement).click();
@@ -205,6 +211,41 @@ export async function verifyProjects() {
     check(results, "…and offers no Finish, but a finished date", !side().querySelector('[data-act="finish"]') && !side().querySelector('[data-act="edit-links"]') && !!side().querySelector('[data-f="finished"]'));
     tab("projects");
     await waitFor(() => cards().length > 0, "the projects after the record");
+
+    // A lot never weighed: its balls by the ball band are what it held.
+    const alpaca = await invoke<{ id: string; lots: { id: string }[] }>("add_yarn", {
+      input: { name: "Brushed Alpaca", brand: "Drops", colourway: "24 Rust", yarnWeight: "Aran", metresPerBall: 140, gramsPerBall: 25, notes: "", fibres: [], superwash: false, plans: [], lots: [{ balls: 2, gramsLeft: 0 }] },
+    });
+    const hat = await invoke<{ id: string }>("add_project", {
+      input: { name: "Striped hat", patternId: null, notes: "", startedAt: null, toolIds: [], yarns: [{ id: null, yarnId: alpaca.id, lotId: alpaca.lots[0].id, plannedGrams: 20 }] },
+    });
+    tab("stash");
+    await waitFor(() => !!yarnCard(alpaca.id), "the stash with the alpaca");
+    tab("projects");
+    await waitFor(() => cards().some((c) => c.dataset.open === hat.id), "the hat's card");
+    cards().find((c) => c.dataset.open === hat.id)!.click();
+    await waitFor(() => !!page()?.querySelector('.project-side [data-act="finish"]'), "the hat's page");
+    (side().querySelector('[data-act="finish"]') as HTMLElement).click();
+    await waitFor(() => !!finish(), "the hat's finish dialog");
+    const hatText = finish()!.textContent ?? "";
+    const hatLeft = finish()!.querySelector<HTMLInputElement>("input[data-entry]")!.value;
+    check(results, "a lot never weighed held its balls by the ball band, not 0 g", /50 g before \(2 balls, not weighed\)/.test(hatText) && !/\b0 g before/.test(hatText), hatText);
+    check(results, "…less what the project was to take", hatLeft === "30" && /Worked out from what the project was to take/.test(hatText), hatLeft);
+    (finish()!.querySelector('[data-act="finish"]') as HTMLElement).click();
+    await waitFor(() => !finish() && store.projects.find((p) => p.id === hat.id)?.status === "finished", "the hat to finish");
+    const alpacaLot = store.yarns.find((y) => y.id === alpaca.id)!.lots[0];
+    check(results, "finishing without weighing still takes it off the stash", alpacaLot.gramsLeft === 30 && alpacaLot.leftover === true, JSON.stringify(alpacaLot));
+    const took = store.yarnUsage.filter((u) => u.yarnId === alpaca.id);
+    check(results, "…and records the 20 g used", took.length === 1 && took[0].grams === 20 && took[0].projectName === "Striped hat", JSON.stringify(took));
+    tab("stash");
+    await waitFor(() => !!yarnCard(alpaca.id), "the stash after the hat");
+    check(results, "the stash shows what is left", /30 g left/.test(yarnCard(alpaca.id)!.textContent ?? "") && !!yarnCard(alpaca.id)!.querySelector(".yarn-leftover"), yarnCard(alpaca.id)!.textContent ?? "");
+    // Gone again, so the suites after this one find the stash as it was.
+    await invoke("delete_project", { id: hat.id });
+    await invoke("delete_yarn", { id: alpaca.id });
+    store.yarnUsage = store.yarnUsage.filter((u) => u.yarnId !== alpaca.id);
+    tab("projects");
+    await waitFor(() => cards().length > 0, "the projects after the hat");
 
     // The reader's project pane.
     (cards().find((c) => c.dataset.open === "pr1")!.querySelector('[data-act="open-pattern"]') as HTMLElement).click();

@@ -1627,7 +1627,9 @@ const handlers = {
         lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, location: "", boughtAt: null, leftover: false };
         yarn.lots.push(lot);
       }
-      if ((lot.gramsLeft || 0) > left.grams) recordUse(yarn, pr, pr.finishedAt, lot.gramsLeft - left.grams, "finished");
+      // A lot never weighed is its balls by the ball band.
+      const before = lot.gramsLeft > 0 ? lot.gramsLeft : Math.round((lot.balls || 0) * (yarn.gramsPerBall || 0));
+      if (before > left.grams) recordUse(yarn, pr, pr.finishedAt, before - left.grams, "finished");
       lot.gramsLeft = left.grams;
       lot.leftover = left.grams > 0;
       // Nothing left of it anywhere: into the stash's history.

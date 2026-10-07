@@ -2252,6 +2252,24 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
     assert_eq!(done.yarns.iter().find(|e| e.yarn_name == "Felted Tweed").unwrap().leftover_grams, Some(35));
 
     assert!(finish_project(&conn, "j", &crate::models::FinishInput::default()).is_err(), "only once");
+
+    // A lot never weighed held its balls by the ball band.
+    let alpaca = insert_yarn(
+        &conn,
+        "alpaca",
+        &YarnInput { name: "Brushed Alpaca".into(), grams_per_ball: 25, metres_per_ball: 140, lots: vec![lot("", 2.0, 0)], ..YarnInput::default() },
+    )
+    .unwrap();
+    let hat = crate::models::ProjectInput {
+        name: "Hat".into(),
+        yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: alpaca.id.clone(), lot_id: Some(alpaca.lots[0].id.clone()), planned_grams: Some(20) }],
+        ..Default::default()
+    };
+    let h = insert_project(&conn, "h", &hat).unwrap();
+    finish_project(&conn, "h", &crate::models::FinishInput { finished_at: Some(2000), leftovers: vec![crate::models::YarnLeftover { entry_id: h.yarns[0].id.clone(), grams: Some(30) }] }).unwrap();
+    assert_eq!(get_yarn(&conn, "alpaca").unwrap().lots[0].grams_left, 30);
+    let used = list_yarn_usage(&conn).unwrap().into_iter().find(|u| u.yarn_id.as_deref() == Some("alpaca")).map(|u| (u.grams, u.metres));
+    assert_eq!(used, Some((20, 112)), "2 balls of 25 g before, 30 g left: 20 g used, not nothing");
     assert!(set_tool_project(&conn, "t1", Some("j")).is_err(), "nothing goes on a finished project");
     let renamed = update_project(&conn, "j", &crate::models::ProjectInput { name: "Blue jumper".into(), ..Default::default() }).unwrap();
     assert_eq!(renamed.name, "Blue jumper");

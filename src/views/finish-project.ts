@@ -2,6 +2,7 @@ import { api, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { closestEl } from "../dom";
 import { fromDateInput, toDateInput } from "./project-form";
 import { describe } from "./tool-filter";
+import { allOf } from "./yarn-picker";
 
 /**
  * Finishing a project: its needles, hooks and cables go back to free, and
@@ -29,10 +30,25 @@ export class FinishProjectDialog {
     ]);
     this.pattern = pattern;
     const onIt = p.toolIds.map((id) => tools.find((t) => t.id === id)).filter((t): t is Tool => !!t);
-    const lotOf = (y: Project["yarns"][number]) => {
+    // What the lot held before: weighed, or its balls by the ball band when it
+    // never was. Unknown for a yarn of several lots with none chosen.
+    const before = (y: Project["yarns"][number]) => {
       const yarn = yarns.find((x) => x.id === y.yarnId);
-      return yarn?.lots.find((l) => l.id === y.lotId) ?? (yarn?.lots.length === 1 ? yarn.lots[0] : undefined);
+      const lot = yarn?.lots.find((l) => l.id === y.lotId) ?? (yarn?.lots.length === 1 ? yarn.lots[0] : undefined);
+      if (!yarn || !lot) return null;
+      const grams = allOf(yarn, lot);
+      const balls = lot.gramsLeft > 0 ? "" : ` (${lot.balls} ball${lot.balls === 1 ? "" : "s"}, not weighed)`;
+      return grams > 0 ? { grams, text: `${grams} g before${balls}` } : null;
     };
+    // Each yarn's row, with what is expected to be left filled in: what it
+    // held, less what the project was to take.
+    const rows = p.yarns.map((y) => {
+      const had = before(y);
+      // Its colour too: five colours of one yarn are otherwise five of the same line.
+      const colourway = yarns.find((x) => x.id === y.yarnId)?.colourway;
+      return { y, had, colourway, left: had && y.plannedGrams ? Math.max(0, had.grams - y.plannedGrams) : null };
+    });
+    const guessed = rows.some((r) => r.left != null);
 
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
@@ -53,17 +69,15 @@ export class FinishProjectDialog {
           <span>What is left of the yarn</span>
           ${
             p.yarns.length
-              ? `<p class="hint">Weigh what is left. 0 means used up: a yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
+              ? `<p class="hint">${guessed ? "Worked out from what the project was to take: weigh what is left to be exact." : "Weigh what is left."} 0 means used up: a yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
                  <div class="leftover-list">
-                   ${p.yarns
-                     .map((y) => {
-                       const lot = lotOf(y);
+                   ${rows
+                     .map(({ y, had, colourway, left }) => {
                        const lotText = y.dyeLot ? ` — lot ${y.dyeLot}` : "";
-                       const had = lot ? `${lot.gramsLeft} g before` : "";
                        return `
                          <label class="leftover-row">
-                           <span>${escapeHtml(`${y.yarnName}${lotText}`)}${had ? ` <em>${escapeHtml(had)}</em>` : ""}</span>
-                           <input type="number" min="0" step="1" inputmode="numeric" data-entry="${y.id}" placeholder="g left" />
+                           <span>${escapeHtml(`${y.yarnName}${colourway ? ` · ${colourway}` : ""}${lotText}`)}${had ? ` <em>${escapeHtml(had.text)}</em>` : ""}</span>
+                           <input type="number" min="0" step="1" inputmode="numeric" data-entry="${y.id}" placeholder="g left" value="${left ?? ""}" />
                            <span class="unit">g</span>
                          </label>`;
                      })
