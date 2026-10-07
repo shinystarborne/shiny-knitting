@@ -459,6 +459,21 @@ export interface Yarn {
   metresLeft: number;
   /** The active projects using it, by name; empty when it is free. */
   projects: string[];
+  /**
+   * What its ball band says of knitting it, shared by every colour of the
+   * yarn. Always sent by the backend; left out of an update, it stays as it is.
+   */
+  details?: YarnDetails;
+}
+
+/** What a yarn's ball band says of knitting it, by brand and yarn name. 0 is not said. Mirrors `models.rs::YarnDetails`. */
+export interface YarnDetails {
+  /** The gauge to expect, per 10 cm. */
+  gaugeSts: number;
+  gaugeRows: number;
+  /** The needles to use, in mm: one size, or a range. */
+  needleFrom: number;
+  needleTo: number;
 }
 
 export interface YarnLotInput {
@@ -488,6 +503,7 @@ export interface YarnInput {
   superwash?: boolean;
   plans: YarnPlan[];
   lots: YarnLotInput[];
+  details?: YarnDetails;
 }
 
 /**

@@ -2,10 +2,12 @@ import {
   api,
   YARN_WEIGHT_OPTIONS,
   type Fibre,
+  type MeasureUnit,
   type Pattern,
   type Swatch,
   type Yarn,
   type YarnInput,
+  type YarnDetails,
   type YarnLotInput,
   type YarnPlan,
 } from "../api";
@@ -23,7 +25,7 @@ import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 import type { YarnStart } from "./shopping";
-import { swatchLine } from "./measure";
+import { gaugeSpan, readGauge, showGauge, swatchLine } from "./measure";
 import { longDate } from "./project-form";
 
 /** One lot row in the editor, kept as strings while the form is open. */
@@ -89,6 +91,10 @@ export class YarnForm {
   private plans: YarnPlan[] = [];
   /** The library, to plan a yarn for one of its patterns. */
   private patterns: Pattern[] = [];
+  /** What its ball band says, shared by every colour of the yarn; gauge per 10 cm. */
+  private details: YarnDetails = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0 };
+  /** The span a gauge is shown and typed over, from Settings. */
+  private unit: MeasureUnit = "cm";
 
   constructor(
     root: HTMLElement,
@@ -124,6 +130,8 @@ export class YarnForm {
     if (!this.fibres.length) this.fibres.push({ name: "", percent: "" });
     // Plans are this colour's own: another colour of the yarn starts with none.
     this.plans = (editing?.plans ?? []).map((p) => ({ ...p }));
+    // What the band says is the yarn's, whatever its colour.
+    if (from?.details) this.details = { ...from.details };
   }
 
   open(): void {
@@ -206,6 +214,11 @@ export class YarnForm {
             <em>2/2800</em> gives the single strand per 100 g, and is the same yarn.
           </p>
         </div>
+        <div class="field yarn-details">
+          <span>From the ball band</span>
+          <div class="yarn-details-row" data-el="details"></div>
+          <p class="hint" data-el="details-hint">The gauge to expect, and the needles to use. Kept for every colour of this yarn.</p>
+        </div>
         <div class="field">
           <span>Fibre content</span>
           <div class="fibre-list" data-el="fibres"></div>
@@ -260,6 +273,16 @@ export class YarnForm {
     `;
 
     this.bind();
+    this.renderDetails();
+    void api
+      .getMeasureUnit()
+      .then((unit) => {
+        if (unit === this.unit) return;
+        this.readDetails();
+        this.unit = unit;
+        this.renderDetails();
+      })
+      .catch(() => {});
     this.renderLots();
     this.renderFibres();
     this.renderPlans();
@@ -393,6 +416,15 @@ export class YarnForm {
     fill("yarnWeight", (y) => y.yarnWeight, "weight");
     fill("metresPerBall", (y) => y.metresPerBall, "metres");
     fill("gramsPerBall", (y) => y.gramsPerBall, "grams per ball");
+    // What its band says, when nothing of it is typed yet: every colour has the same.
+    this.readDetails();
+    const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom);
+    const band = same.find((y) => said(y.details))?.details;
+    if (band && !said(this.details)) {
+      this.details = { ...band };
+      this.renderDetails();
+      filled.push("gauge and needles");
+    }
     // Its fibres and superwash too, when none are typed yet.
     if (this.takeFibresFrom(same)) filled.push("fibres");
     if (filled.length) {
@@ -644,6 +676,42 @@ export class YarnForm {
     }));
   }
 
+  // ---------- from the ball band ----------
+
+  /** The gauge and needles, over the span chosen in Settings. */
+  private renderDetails(): void {
+    const host = this.root.querySelector<HTMLElement>('[data-el="details"]');
+    if (!host) return;
+    const d = this.details;
+    const mm = (v: number) => (v ? String(v) : "");
+    host.innerHTML = `
+      <label class="field"><span>Stitches / ${gaugeSpan(this.unit)}</span><input data-f="gaugeSts" inputmode="decimal" value="${showGauge(d.gaugeSts, this.unit)}" placeholder="e.g. 22" /></label>
+      <label class="field"><span>Rows / ${gaugeSpan(this.unit)}</span><input data-f="gaugeRows" inputmode="decimal" value="${showGauge(d.gaugeRows, this.unit)}" placeholder="e.g. 30" /></label>
+      <label class="field"><span>Needles, mm</span><input data-f="needleFrom" inputmode="decimal" value="${mm(d.needleFrom)}" placeholder="e.g. 4" /></label>
+      <label class="field"><span>to <span class="hint">(a range)</span></span><input data-f="needleTo" inputmode="decimal" value="${mm(d.needleTo)}" placeholder="e.g. 4.5" /></label>`;
+  }
+
+  /** Copies the gauge and needles typed back into state; strict on a save, so a mistyped number is said. */
+  private readDetails(strict = false): void {
+    if (!this.root.querySelector('[data-f="gaugeSts"]')) return;
+    const size = (text: string) => {
+      const t = text.trim().replace(",", ".");
+      return !t ? 0 : /^\d+(\.\d+)?$|^\.\d+$/.test(t) ? Number(t) : NaN;
+    };
+    const read = {
+      gaugeSts: readGauge(this.value("gaugeSts"), this.unit),
+      gaugeRows: readGauge(this.value("gaugeRows"), this.unit),
+      needleFrom: size(this.value("needleFrom")),
+      needleTo: size(this.value("needleTo")),
+    };
+    const bad = Object.entries(read).find(([, v]) => Number.isNaN(v));
+    if (bad) {
+      if (strict) throw new Error(bad[0].startsWith("gauge") ? "The gauge is a number of stitches or rows: 22, or 22.5." : "Needles are a size in mm: 4, or 3.5.");
+      return;
+    }
+    this.details = read;
+  }
+
   // ---------- planned for ----------
 
   /** The library pattern a choice or a typed title names: "Title — Designer", or the title alone if only one has it. */
@@ -829,6 +897,7 @@ export class YarnForm {
             lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null,
         );
 
+      this.readDetails(true);
       const shared = {
         // The same brand or yarn typed in another case files with the one
         // already there, so the lists do not fill with near-twins.
@@ -842,6 +911,7 @@ export class YarnForm {
         fibres: this.fibreValues(),
         superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,
         plans: this.plans,
+        details: this.details,
       };
 
       let saved: Yarn;
@@ -864,7 +934,8 @@ export class YarnForm {
       if (share && !share.hidden && shareBox?.checked && shared.fibres.length) {
         for (const other of this.otherColours()) {
           if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
-          await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash });
+          // Without its details: they are this yarn's, just saved, and the copy read earlier is stale.
+          await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash, details: undefined });
         }
       }
 

@@ -5,7 +5,7 @@ import { forgetYarnPhoto, yarnPhotoUrl } from "../covers";
 import { paintLazily } from "./lazy";
 import { describeFibres, fibreKind } from "./fibres";
 import { mostUsedSpellings } from "./tool-filter";
-import { swatchLine } from "./measure";
+import { detailsParts, swatchLine } from "./measure";
 import { stashModeSwitch } from "./swatches";
 
 /**
@@ -374,6 +374,7 @@ export class StashView {
           }
           ${this.planLine(y)}
           ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Its newest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
+          ${detailsParts(y.details, this.unit).length ? `<p class="card-details" title="From its ball band, for every colour of it">${detailsParts(y.details, this.unit).map((p) => `<span>${escapeHtml(p)}</span>`).join(" · ")}</p>` : ""}
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
           <div class="card-tools-row">

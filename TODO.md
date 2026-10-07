@@ -38,9 +38,10 @@ starting; the details are in the sections under the list.
 3. [x] Ball bands out of the stash: the Ball bands view, the pictures, and
    the thumbnails on a yarn's card and in its form. Never used. What a yarn
    says of itself (metres and grams per ball, fibres) stays. *0.3.32*
-4. [ ] A yarn's expected gauge and needles to use, as its band gives them:
+4. [x] A yarn's expected gauge and needles to use, as its band gives them:
    sts and rows over 10 cm, and a needle size or range, in its form and on
    its card. Saved by brand and yarn name, so every colour of it has them.
+   *0.3.33*
 5. [ ] A yarn's care markings: the symbols (washing, bleach, drying,
    ironing, dry cleaning) picked in its form, shown on its card, each with a
    label saying what it means (hand wash only, do not iron...). Saved by

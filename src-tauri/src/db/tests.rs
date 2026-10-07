@@ -2017,6 +2017,7 @@ fn a_yarn_round_trips_every_field() {
             bought_at: Some(1_700_000_000_000),
             ..YarnLotInput::default()
         }],
+        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25 }),
     };
     let id = uuid::Uuid::new_v4().to_string();
     let y = insert_yarn(&conn, &id, &input).unwrap();
@@ -2036,6 +2037,46 @@ fn a_yarn_round_trips_every_field() {
     assert_eq!(fetched.lots[0].dye_lot, "L22");
     assert_eq!(fetched.lots[0].location, "stash box 2");
     assert_eq!(fetched.lots[0].bought_at, Some(1_700_000_000_000));
+    assert_eq!(fetched.details, input.details);
+}
+
+#[test]
+fn a_yarns_details_are_shared_by_every_colour_of_it() {
+    use crate::models::YarnDetails;
+    let conn = test_db();
+    let colour = |id: &str, brand: &str, name: &str, details: Option<YarnDetails>| {
+        insert_yarn(&conn, id, &YarnInput { name: name.into(), brand: brand.into(), details, ..YarnInput::default() }).unwrap()
+    };
+    let band = YarnDetails { gauge_sts: 18.0, gauge_rows: 24.0, needle_from: 5.0, needle_to: 5.5 };
+    colour("rost", "Drops", "Air", Some(band.clone()));
+    // Another colour, typed in another case and spacing, has them already.
+    let waldgruen = colour("wald", " drops ", "AIR ", None);
+    assert_eq!(waldgruen.details, Some(band.clone()), "filed by brand and name, not colour");
+    // Changed on one colour, they change for every one.
+    let mut edited = waldgruen.clone();
+    edited.details = Some(YarnDetails { needle_from: 6.0, needle_to: 5.0, ..band.clone() });
+    update_yarn(&conn, &edited).unwrap();
+    let changed = get_yarn(&conn, "rost").unwrap().details.unwrap();
+    assert_eq!((changed.needle_from, changed.needle_to), (5.0, 6.0), "a range typed the wrong way round is turned");
+    // Saved without them (an older caller), they stay.
+    let mut plain = get_yarn(&conn, "rost").unwrap();
+    plain.details = None;
+    update_yarn(&conn, &plain).unwrap();
+    assert_eq!(get_yarn(&conn, "wald").unwrap().details.unwrap().gauge_sts, 18.0);
+    // Another yarn has its own; one size twice is one size.
+    let sky = colour("sky", "Drops", "Sky", Some(YarnDetails { needle_from: 4.0, needle_to: 4.0, ..YarnDetails::default() }));
+    assert_eq!(sky.details, Some(YarnDetails { needle_from: 4.0, ..YarnDetails::default() }));
+    assert_eq!(get_yarn(&conn, "rost").unwrap().details.unwrap().needle_from, 5.0);
+    // Cleared, they are gone for every colour.
+    let mut cleared = get_yarn(&conn, "rost").unwrap();
+    cleared.details = Some(YarnDetails::default());
+    update_yarn(&conn, &cleared).unwrap();
+    assert_eq!(get_yarn(&conn, "wald").unwrap().details, Some(YarnDetails::default()));
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM yarn_details", [], |r| r.get::<_, i64>(0)).unwrap(), 1, "only Sky's row is left");
+    // A gauge past what is knittable is refused.
+    let mut wild = get_yarn(&conn, "sky").unwrap();
+    wild.details = Some(YarnDetails { gauge_sts: 220.0, ..YarnDetails::default() });
+    assert!(update_yarn(&conn, &wild).is_err());
 }
 
 #[test]

@@ -97,6 +97,31 @@ export function showGauge(per10cm: number, unit: MeasureUnit): string {
   return String(Math.round((unit === "in" ? per10cm * PER_4_IN : per10cm) * 10) / 10);
 }
 
+/** Needles in mm, one size or a range: "4 mm", "3.5–4 mm". Empty when not said. */
+export function needleRange(from: number, to: number): string {
+  if (!from) return "";
+  return to && to !== from ? `${from}–${to} mm` : `${from} mm`;
+}
+
+/**
+ * What a yarn's ball band says of knitting it, in one line: "18 sts × 24 rows /
+ * 10 cm · needles 5–5.5 mm". Empty when it says nothing.
+ */
+export function detailsLine(d: YarnDetailsLike | undefined, unit: MeasureUnit): string {
+  return detailsParts(d, unit).join(" · ");
+}
+
+type YarnDetailsLike = { gaugeSts: number; gaugeRows: number; needleFrom: number; needleTo: number };
+
+/** The line's parts, the gauge and the needles, each to be kept whole when the line wraps. */
+export function detailsParts(d: YarnDetailsLike | undefined, unit: MeasureUnit): string[] {
+  if (!d) return [];
+  const counts = [d.gaugeSts ? `${showGauge(d.gaugeSts, unit)} sts` : "", d.gaugeRows ? `${showGauge(d.gaugeRows, unit)} rows` : ""].filter(Boolean);
+  const gauge = counts.length ? `${counts.join(" × ")} / ${gaugeSpan(unit)}` : "";
+  const needles = needleRange(d.needleFrom, d.needleTo);
+  return [gauge, needles ? `needles ${needles}` : ""].filter(Boolean);
+}
+
 /** A typed count, over the chosen span, as a count per 10 cm. 0 for empty, NaN for not a number. */
 export function readGauge(text: string, unit: MeasureUnit): number {
   const t = text.trim().replace(",", ".");

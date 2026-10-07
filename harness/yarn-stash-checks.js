@@ -287,6 +287,61 @@ export async function verifyYarnStash() {
       qtyOf(added().id),
     );
 
+    // --- what the ball band says: gauge and needles, for every colour ---
+    const detailsOf = (id) => cardFor(id)?.querySelector(".card-details")?.textContent || "";
+    const typeIn = (f, v) => {
+      const el = modal().querySelector(`[data-f="${f}"]`);
+      if (!el) throw new Error(`no field ${f} in the yarn form`);
+      el.value = v;
+    };
+    cardFor(added().id).click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="gaugeSts"]'), "the gauge fields");
+    typeIn("gaugeSts", "22");
+    typeIn("gaugeRows", "30");
+    typeIn("needleFrom", "4");
+    typeIn("needleTo", "3.5");
+    saveModal();
+    await waitFor(() => !modal() && !!detailsOf(added().id), "the card's gauge");
+    check(
+      results,
+      "a yarn's card says its gauge and needles, a range the right way round",
+      detailsOf(added().id) === "22 sts × 30 rows / 10 cm · needles 3.5–4 mm",
+      detailsOf(added().id),
+    );
+    cardFor(added().id).querySelector("[data-colour]").click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="gaugeSts"]'), "another colour's form");
+    check(
+      results,
+      "another colour of it starts with them",
+      modal().querySelector('[data-f="gaugeSts"]').value === "22" && modal().querySelector('[data-f="needleTo"]').value === "4",
+      `${modal().querySelector('[data-f="gaugeSts"]').value} / ${modal().querySelector('[data-f="needleTo"]').value}`,
+    );
+    typeIn("colourway", "Rose");
+    typeIn("needleTo", "4.5");
+    saveModal();
+    const rose = () => store.yarns.find((y) => y.name === "Mohair Silk" && y.colourway === "Rose");
+    await waitFor(() => rose() && cardFor(rose().id) && !modal(), "the new colour's card");
+    check(
+      results,
+      "changed on one colour, they change for every colour",
+      detailsOf(added().id) === "22 sts × 30 rows / 10 cm · needles 3.5–4.5 mm" && detailsOf(rose().id) === detailsOf(added().id),
+      `${detailsOf(added().id)} | ${detailsOf(rose().id)}`,
+    );
+    cardFor(rose().id).click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="gaugeSts"]'), "the colour's form");
+    typeIn("gaugeRows", "thirty");
+    saveModal();
+    await waitFor(() => !modal()?.querySelector('[data-el="error"]')?.hidden, "the error");
+    check(
+      results,
+      "a gauge that is not a number is said, not saved",
+      /number of stitches or rows/.test(modal().querySelector('[data-el="error"]').textContent),
+      modal().querySelector('[data-el="error"]').textContent,
+    );
+    modal().querySelector('[data-act="cancel"]').click();
+    await waitFor(() => !modal(), "the form to close");
+    await window.__TAURI_INTERNALS__.invoke("delete_yarn", { id: rose().id });
+
     // --- removing asks first, and the yarn stays gone ---
     const removedId = added().id;
     const before = store.yarns.length;

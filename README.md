@@ -576,8 +576,16 @@ either), and **Made of** on Only animal fibres, No animal fibres (for someone wh
 cannot wear wool), No synthetics, Superwash and Not superwash; a yarn with no
 fibres recorded passes none of the fibre boxes, since nothing is known about it.
 
+**From the ball band.** A yarn's form takes the gauge to expect (stitches
+and rows over 10 cm, or 4 in with inches chosen) and the needles to use (a
+size, or a range). They belong to the yarn, not the colour: kept once by
+brand and yarn name, every colour of it shows them, and changed on one colour
+they change for all. The card says "18 sts × 24 rows / 10 cm · needles
+5–5.5 mm". A swatch's gauge is still the one the calculators use; this is what
+to expect.
+
 **Another colour of the same yarn** is quick: **+ Colour** on a card opens a new
-yarn with its brand, name, weight and metres and grams per ball filled in, so only the
+yarn with its brand, name, weight, metres and grams per ball, gauge and needles filled in, so only the
 colourway is typed; each colour is its own card. In the form, **Brand** and
 **Name** are typed or picked — **▾** lists the brands and yarns already in the
 stash (a chosen brand narrows the names) — and picking a name you have fills in

@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput,
+    Chart, ChartInput, YarnDetails,
 };
 
 #[cfg(test)]
@@ -429,6 +429,19 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             source        TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_yarn_usage_at ON yarn_usage(at);
+
+        -- What a yarn's ball band says of knitting it, by brand and yarn name:
+        -- every colour of the yarn shares it. 0 is not said.
+        CREATE TABLE IF NOT EXISTS yarn_details (
+            brand       TEXT NOT NULL COLLATE NOCASE,
+            name        TEXT NOT NULL COLLATE NOCASE,
+            gauge_sts   REAL NOT NULL DEFAULT 0,
+            gauge_rows  REAL NOT NULL DEFAULT 0,
+            needle_from REAL NOT NULL DEFAULT 0,
+            needle_to   REAL NOT NULL DEFAULT 0,
+            care        TEXT NOT NULL DEFAULT '[]',
+            PRIMARY KEY (brand, name)
+        );
 
         CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
         CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
@@ -4201,6 +4214,7 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
         projects: Vec::new(),
         used_in: Vec::new(),
         planned_in: Vec::new(),
+        details: None,
     })
 }
 
@@ -4240,6 +4254,7 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
             None => plan.pattern_id = None,
         }
     }
+    yarn.details = Some(get_yarn_details(conn, &yarn.brand, &yarn.name)?);
     yarn.grams_left = yarn.lots.iter().map(|l| l.grams(yarn.grams_per_ball)).sum();
     yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
     yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
@@ -4397,8 +4412,65 @@ pub fn insert_yarn(conn: &Connection, id: &str, input: &YarnInput) -> AppResult<
     for lot in &input.lots {
         insert_lot(&tx, id, lot)?;
     }
+    if let Some(details) = &input.details {
+        set_yarn_details(&tx, &input.brand, &input.name, details)?;
+    }
     tx.commit()?;
     get_yarn(conn, id)
+}
+
+/// A brand or yarn name as its details are filed: one line, trimmed.
+fn details_key(v: &str) -> String {
+    v.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// What the ball band says of a yarn, by its brand and name; all 0 when nothing is.
+pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
+    Ok(conn
+        .query_row(
+            "SELECT gauge_sts, gauge_rows, needle_from, needle_to FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            params![details_key(brand), details_key(name)],
+            |r| Ok(YarnDetails { gauge_sts: r.get(0)?, gauge_rows: r.get(1)?, needle_from: r.get(2)?, needle_to: r.get(3)? }),
+        )
+        .optional()?
+        .unwrap_or_default())
+}
+
+/// Sets what the ball band says of a yarn, for every colour of it. A range
+/// typed the wrong way round is turned; one size twice is one size.
+pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDetails) -> AppResult<()> {
+    let ok = |v: f64, max: f64| v.is_finite() && (0.0..=max).contains(&v);
+    if !ok(d.gauge_sts, 100.0) || !ok(d.gauge_rows, 150.0) {
+        return Err(AppError::Message("A gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.".to_string()));
+    }
+    if !ok(d.needle_from, 50.0) || !ok(d.needle_to, 50.0) {
+        return Err(AppError::Message("Needles are a size in mm, up to 50.".to_string()));
+    }
+    let tenth = |v: f64| (v * 10.0).round() / 10.0;
+    let hundredth = |v: f64| (v * 100.0).round() / 100.0;
+    let (mut from, mut to) = (hundredth(d.needle_from), hundredth(d.needle_to));
+    if from == 0.0 || (to != 0.0 && to < from) {
+        std::mem::swap(&mut from, &mut to);
+    }
+    if to == from {
+        to = 0.0;
+    }
+    let (brand, name) = (details_key(brand), details_key(name));
+    let (sts, rows) = (tenth(d.gauge_sts), tenth(d.gauge_rows));
+    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 {
+        conn.execute(
+            "UPDATE yarn_details SET gauge_sts = 0, gauge_rows = 0, needle_from = 0, needle_to = 0 WHERE brand = ?1 AND name = ?2",
+            params![brand, name],
+        )?;
+        conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2 AND care = '[]'", params![brand, name])?;
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6",
+        params![brand, name, sts, rows, from, to],
+    )?;
+    Ok(())
 }
 
 fn insert_lot(
@@ -4518,6 +4590,9 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
     }
     for stale in existing.iter().filter(|id| !kept.contains(id)) {
         tx.execute("DELETE FROM yarn_lots WHERE id = ?1", params![stale])?;
+    }
+    if let Some(details) = &yarn.details {
+        set_yarn_details(&tx, &yarn.brand, &yarn.name, details)?;
     }
     tx.commit()?;
     get_yarn(conn, &yarn.id)

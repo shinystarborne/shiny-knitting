@@ -398,6 +398,28 @@ pub struct Yarn {
     /// The plans (projects not started) it is meant for, by name.
     #[serde(default)]
     pub planned_in: Vec<String>,
+    /// What its ball band says of knitting it, shared by every colour of the
+    /// yarn. Always given on the way out; left out on the way in, it is left
+    /// as it is.
+    #[serde(default)]
+    pub details: Option<YarnDetails>,
+}
+
+/// What a yarn's ball band says of knitting it, kept by brand and yarn name,
+/// not by colour: every colour of Drops Air has the same. 0 is not said.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct YarnDetails {
+    /// The gauge to expect, in stitches and rows per 10 cm.
+    #[serde(default)]
+    pub gauge_sts: f64,
+    #[serde(default)]
+    pub gauge_rows: f64,
+    /// The needles to use, in mm: one size, or a range from one to the other.
+    #[serde(default)]
+    pub needle_from: f64,
+    #[serde(default)]
+    pub needle_to: f64,
 }
 
 /// Yarn used, when it was used: what a finished project took (weighed before
@@ -444,6 +466,9 @@ pub struct YarnInput {
     pub plans: Vec<YarnPlan>,
     #[serde(default)]
     pub lots: Vec<YarnLotInput>,
+    /// As `Yarn::details`: left out, the yarn's details stay as they are.
+    #[serde(default)]
+    pub details: Option<YarnDetails>,
 }
 
 /// A lot as the dialog sends it. An `id` names an existing lot to keep; a lot

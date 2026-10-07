@@ -50,6 +50,8 @@ const store = {
   charts: [],
   // Yarn used, when: as the backend's yarn_usage.
   yarnUsage: [],
+  // What a yarn's ball band says, by brand and name: as the backend's yarn_details.
+  yarnDetails: [],
   // People and their measurement sets, as the backend's two tables.
   people: [],
   measurementSets: [],
@@ -899,6 +901,35 @@ function lotGrams(lot, yarn) {
   return isWeighed(lot) ? lot.gramsLeft || 0 : Math.round((lot.balls || 0) * (yarn.gramsPerBall || 0));
 }
 
+/** As db::details_key: one line, trimmed; compared without case. */
+function detailsKey(brand, name) {
+  const line = (v) => String(v ?? "").split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+  return `${line(brand)}\u0000${line(name)}`;
+}
+
+const NO_DETAILS = { gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0 };
+
+function yarnDetailsOf(brand, name) {
+  const row = store.yarnDetails.find((d) => d.key === detailsKey(brand, name));
+  return row ? { gaugeSts: row.gaugeSts, gaugeRows: row.gaugeRows, needleFrom: row.needleFrom, needleTo: row.needleTo } : { ...NO_DETAILS };
+}
+
+/** As db::set_yarn_details: checked, a range turned the right way, all 0 gone. */
+function setYarnDetails(brand, name, d) {
+  const ok = (v, max) => Number.isFinite(v) && v >= 0 && v <= max;
+  if (!ok(d.gaugeSts || 0, 100) || !ok(d.gaugeRows || 0, 150)) throw new Error("A gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.");
+  if (!ok(d.needleFrom || 0, 50) || !ok(d.needleTo || 0, 50)) throw new Error("Needles are a size in mm, up to 50.");
+  const tenth = (v) => Math.round((v || 0) * 10) / 10;
+  const hundredth = (v) => Math.round((v || 0) * 100) / 100;
+  let [from, to] = [hundredth(d.needleFrom), hundredth(d.needleTo)];
+  if (!from || (to && to < from)) [from, to] = [to, from];
+  if (to === from) to = 0;
+  const key = detailsKey(brand, name);
+  store.yarnDetails = store.yarnDetails.filter((x) => x.key !== key);
+  const row = { key, gaugeSts: tenth(d.gaugeSts), gaugeRows: tenth(d.gaugeRows), needleFrom: from, needleTo: to };
+  if (row.gaugeSts || row.gaugeRows || row.needleFrom || row.needleTo) store.yarnDetails.push(row);
+}
+
 function withYarnTotals(yarn) {
   const out = clone(yarn);
   out.yarnWeightFamily = yarnFamily(yarn.yarnWeight);
@@ -912,6 +943,7 @@ function withYarnTotals(yarn) {
   out.lots = out.lots.map((l) => ({ leftover: false, ...l }));
   out.fibres = tidyFibres(out.fibres);
   out.superwash = !!out.superwash;
+  out.details = yarnDetailsOf(out.brand, out.name);
   // A linked pattern's title as it is now; a removed one keeps the title it had.
   out.plans = (out.plans || []).map((plan) => {
     const pattern = plan.patternId && store.patterns.find((p) => p.id === plan.patternId);
@@ -2126,6 +2158,7 @@ const handlers = {
         leftover: !!lot.leftover,
       })),
     };
+    if (input.details) setYarnDetails(y.brand, y.name, input.details);
     store.yarns.push(y);
     return withYarnTotals(y);
   },
@@ -2160,6 +2193,8 @@ const handlers = {
     delete next.ballsTotal;
     delete next.metresLeft;
     delete next.projects;
+    delete next.details;
+    if (yarn.details) setYarnDetails(next.brand, next.name, yarn.details);
     store.yarns[i] = next;
     return withYarnTotals(next);
   },
