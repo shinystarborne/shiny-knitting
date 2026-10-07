@@ -23,7 +23,8 @@ starting; the details are in the sections under the list.
 - [x] **Finishing a project does not update the stash** (reported 6 Oct
   2026, in 0.3.27). A lot never weighed counted as 0 g; now it is its balls
   by the ball band, and each leftover is filled in as what it held less what
-  the project was to take. *0.3.28*
+  the project was to take. *0.3.28* Then everywhere: whole balls count by
+  the ball band, grams only once balls are started. *0.3.29*
 
 **Yarn and the stash**
 
