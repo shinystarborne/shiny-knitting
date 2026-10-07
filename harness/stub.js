@@ -999,11 +999,13 @@ function scopedCounters(patternId, projectId) {
 /** As db::ensure_project_counter: a project's counter, started from the pattern's the first time. */
 function ensureProjectCounter(patternId, projectId) {
   if (!projectId || store.progress.has(progressKey(patternId, projectId))) return;
-  if (!store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
-  const first = ![...store.progress.keys()].some((k) => k.endsWith(`|${patternId}`));
+  const project = store.projects.find((p) => p.id === projectId);
+  if (!project) throw new Error("That project is no longer there.");
+  // Only one on the needles takes the pattern's counts.
+  const first = isLive(project.status) && ![...store.progress.entries()].some(([k, v]) => k.endsWith(`|${patternId}`) && v.tookCounts);
   for (const c of scopedCounters(patternId, "")) store.counters.push({ ...clone(c), id: `c${store.nextId++}`, projectId, current: first ? c.current : 0 });
   const own = store.progress.get(patternId);
-  store.progress.set(progressKey(patternId, projectId), { patternId, totalRows: first && own ? own.totalRows : 0, updatedAt: Date.now() });
+  store.progress.set(progressKey(patternId, projectId), { patternId, totalRows: first && own ? own.totalRows : 0, updatedAt: Date.now(), tookCounts: first });
 }
 
 function progressOf(patternId, projectId) {

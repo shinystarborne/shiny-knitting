@@ -116,6 +116,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
             total_rows  INTEGER NOT NULL DEFAULT 0,
             updated_at  INTEGER NOT NULL DEFAULT 0,
+            -- The one project that took the pattern's counts, when its counter was made.
+            took_counts INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (project_id, pattern_id)
         );
 
@@ -1820,9 +1822,11 @@ fn outcome(conn: &Connection, pattern_id: &str, project_id: &str, total: i64) ->
 }
 
 /// A project's own counter, made the first time it is asked for: the
-/// pattern's counters, names, targets and all. The first project to have one
-/// takes the pattern's counts too -- that is the knitting they were counting
-/// -- and any after it start from nothing. Nothing to do for the pattern's own.
+/// pattern's counters, names, targets and all. The first project on the
+/// needles to have one takes the pattern's counts too -- that is the knitting
+/// they were counting -- and any other starts from nothing: a finished one
+/// opened first must not take the count from the one being knitted. Nothing
+/// to do for the pattern's own.
 fn ensure_project_counter(conn: &Connection, pattern_id: &str, project_id: &str) -> AppResult<()> {
     if project_id.is_empty() {
         return Ok(());
@@ -1837,12 +1841,13 @@ fn ensure_project_counter(conn: &Connection, pattern_id: &str, project_id: &str)
     if made.is_some() {
         return Ok(());
     }
-    let project: Option<i64> = conn.query_row("SELECT 1 FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
-    if project.is_none() {
+    let status: Option<String> = conn.query_row("SELECT status FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
+    let Some(status) = status else {
         return Err(AppError::NotFound("That project is no longer there.".to_string()));
-    }
+    };
     let tx = conn.unchecked_transaction()?;
-    let first: bool = tx.query_row("SELECT NOT EXISTS (SELECT 1 FROM project_progress WHERE pattern_id = ?1)", params![pattern_id], |r| r.get(0))?;
+    let first: bool = is_live(&status)
+        && tx.query_row("SELECT NOT EXISTS (SELECT 1 FROM project_progress WHERE pattern_id = ?1 AND took_counts = 1)", params![pattern_id], |r| r.get(0))?;
     let own: Vec<Counter> = {
         let mut stmt = tx.prepare("SELECT * FROM counters WHERE pattern_id = ?1 AND project_id = '' ORDER BY position ASC, rowid ASC")?;
         let rows = stmt.query_map(params![pattern_id], row_to_counter)?;
@@ -1868,8 +1873,8 @@ fn ensure_project_counter(conn: &Connection, pattern_id: &str, project_id: &str)
     }
     let total = if first { read_total(&tx, pattern_id, "")? } else { 0 };
     tx.execute(
-        "INSERT INTO project_progress (project_id, pattern_id, total_rows, updated_at) VALUES (?1, ?2, ?3, ?4)",
-        params![project_id, pattern_id, total, now_ms()],
+        "INSERT INTO project_progress (project_id, pattern_id, total_rows, updated_at, took_counts) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![project_id, pattern_id, total, now_ms(), first],
     )?;
     tx.commit()?;
     Ok(())

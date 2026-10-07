@@ -2315,7 +2315,12 @@ fn two_projects_from_one_pattern_each_count_their_own_rows() {
     set_counter_key(&conn, &sleeve.id, "KeyS").unwrap();
     count_rows(&conn, &p.id, "", 10).unwrap();
 
-    // The first project to count takes the pattern's counter, counts and all.
+    // One finished long ago, opened first, does not take the count from the one being knitted.
+    let old = project(&conn, "Old one", Some(&p.id));
+    conn.execute("UPDATE projects SET status = 'finished' WHERE id = ?1", params![old.id]).unwrap();
+    assert_eq!((get_progress(&conn, &p.id, &old.id).unwrap().total_rows, list_counters(&conn, &p.id, &old.id).unwrap()[0].current), (0, 0));
+
+    // The first project on the needles to count takes the pattern's counter, counts and all.
     let mum = project(&conn, "For Mum", Some(&p.id));
     let hers = list_counters(&conn, &p.id, &mum.id).unwrap();
     assert_eq!((hers.len(), hers[0].name.as_str(), hers[0].current, hers[0].hotkey.as_str()), (1, "Sleeve", 10, "KeyS"));
