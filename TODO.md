@@ -58,39 +58,45 @@ starting; the details are in the sections under the list.
 8. [ ] Two projects from one pattern, each with its own row counter.
    *Decided:* yes, a counter per project, started from the pattern's.
 
+**Settings**
+
+9. [ ] Make a backup: in Settings, one click saves the whole library (the
+   database and every file: patterns, covers, photos) to a zip, where the
+   Save dialog says.
+
 **Patterns and the reader**
 
-9. [x] PDF export: a screen to choose pages from a pattern and save them as a
-   PDF. *0.3.26*
-10. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
-11. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
+10. [x] PDF export: a screen to choose pages from a pattern and save them as a
+    PDF. *0.3.26*
+11. [ ] Restore a removed pattern: a bin, or Undo for a few seconds.
+12. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
     path).
-12. [ ] Pins: bring one to the front.
-13. [ ] Zoom remembered per pattern.
-14. [ ] Page by page (swipe) reading.
-15. [ ] A light reader theme.
-16. [ ] Two PDFs side by side.
-17. [ ] Marks moved and resized.
-18. [ ] An eraser for drawings.
-19. [ ] Typed text on the page.
-20. [ ] "Open in the default PDF app" (the backend is there; it needs a
+13. [ ] Pins: bring one to the front.
+14. [ ] Zoom remembered per pattern.
+15. [ ] Page by page (swipe) reading.
+16. [ ] A light reader theme.
+17. [ ] Two PDFs side by side.
+18. [ ] Marks moved and resized.
+19. [ ] An eraser for drawings.
+20. [ ] Typed text on the page.
+21. [ ] "Open in the default PDF app" (the backend is there; it needs a
     button).
-21. [ ] A card for a pattern whose file has gone missing.
+22. [ ] A card for a pattern whose file has gone missing.
 
 **Calculators**
 
-22. [ ] The raglan, bottom-up.
-23. [ ] The raglan worked flat, as a cardigan with front edges.
-24. [ ] A raised back neck with short rows.
-25. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
+23. [ ] The raglan, bottom-up.
+24. [ ] The raglan worked flat, as a cardigan with front edges.
+25. [ ] A raised back neck with short rows.
+26. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
 
 **Colourwork charts**
 
-26. [ ] Select, copy and paste a block of squares.
-27. [ ] A chart's colours linked to stash yarns, named in the legend.
-28. [ ] Knitting from a chart: on a project's page, the current row marked
+27. [ ] Select, copy and paste a block of squares.
+28. [ ] A chart's colours linked to stash yarns, named in the legend.
+29. [ ] Knitting from a chart: on a project's page, the current row marked
     and counted.
-29. [ ] The round yoke calculator and a yoke chart together.
+30. [ ] The round yoke calculator and a yoke chart together.
     **Decide first:** fit the chart to the calculator's counts, or the
     calculator to the chart?
 
@@ -154,6 +160,14 @@ colour of a yarn already known starts with them.
   means (machine wash 30°, hand wash only, do not bleach, do not tumble dry,
   dry flat, do not iron, do not dry clean...).
 
+### Backup
+
+Asked for 7 Oct 2026: **Make a backup** in Settings. One click saves the whole
+library -- the database and the library folder's files (pattern files,
+covers, yarn, swatch, log and wishlist photos, board pictures) -- to one zip,
+named with the date, where the Save dialog says. Restoring from one is a
+separate step, not asked for yet.
+
 ### Small fixes
 
 - **Restore a removed pattern.** Removing is immediate and also deletes the
@@ -188,7 +202,6 @@ colour of a yarn already known starts with them.
   too, so "could I knit this in something I have?" can match on them.
 - **Ravelry import.** Ravelry can export your library and stash; a one-time
   import would fill both tabs.
-- **Backup.** One click to save the whole library to a zip file.
 - **Needles a plan needs.** Once plans exist, warn that a plan needs a 4 mm
   circular you do not own, or that is busy on another project.
 
