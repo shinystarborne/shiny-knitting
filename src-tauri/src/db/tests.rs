@@ -2239,7 +2239,7 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
         &crate::models::ProjectInput { name: "Jumper".into(), yarns: vec![crate::models::ProjectYarnInput { id: None, yarn_id: "finished".into(), lot_id: None, planned_grams: None }], ..Default::default() },
     )
     .unwrap();
-    finish_project(&conn, "j", &crate::models::FinishInput { finished_at: None, leftovers: vec![crate::models::YarnLeftover { entry_id: p.yarns[0].id.clone(), grams: Some(0) }] }).unwrap();
+    finish_project(&conn, "j", &crate::models::FinishInput { finished_at: None, leftovers: vec![crate::models::YarnLeftover { entry_id: p.yarns[0].id.clone(), grams: Some(0), ..Default::default() }] }).unwrap();
     // As the library was: no column, every lot 0 g or weighed.
     conn.execute_batch("ALTER TABLE yarn_lots DROP COLUMN weighed").unwrap();
     migrate(&conn).unwrap();
@@ -2248,6 +2248,47 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
     assert_eq!(get_yarn(&conn, "balls").unwrap().grams_left, 150);
     assert_eq!(weighed("weighed"), Some(true));
     assert_eq!(weighed("finished"), Some(true), "a project finished with none of it left: 0 g is right");
+}
+
+#[test]
+fn finishing_takes_what_a_project_used_in_grams_or_balls() {
+    let conn = test_db();
+    let alpaca = |id: &str, gpb: i64| {
+        insert_yarn(&conn, id, &YarnInput { name: format!("Alpaca {id}"), grams_per_ball: gpb, metres_per_ball: 140, lots: vec![lot("", 2.0, 0)], ..YarnInput::default() }).unwrap()
+    };
+    let (balls, grams, all, bare) = (alpaca("balls", 25), alpaca("grams", 25), alpaca("all", 25), alpaca("bare", 0));
+    let yarns = [&balls, &grams, &all, &bare]
+        .iter()
+        .map(|y| crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: None, planned_grams: None })
+        .collect();
+    let p = insert_project(&conn, "p", &crate::models::ProjectInput { name: "Stripes".into(), yarns, ..Default::default() }).unwrap();
+    let entry = |id: &str| p.yarns.iter().find(|e| e.yarn_id == id).unwrap().id.clone();
+    let used = |id: &str, g: Option<i64>, b: Option<f64>| crate::models::YarnLeftover { entry_id: entry(id), used_grams: g, used_balls: b, ..Default::default() };
+
+    // Both said for one yarn is refused, and nothing is finished.
+    let both = crate::models::YarnLeftover { grams: Some(10), ..used("grams", Some(5), None) };
+    assert!(finish_project(&conn, "p", &crate::models::FinishInput { leftovers: vec![both], ..Default::default() }).is_err());
+    // Balls of a yarn with no grams per ball cannot be counted.
+    let err = finish_project(&conn, "p", &crate::models::FinishInput { leftovers: vec![used("bare", None, Some(1.0))], ..Default::default() }).unwrap_err();
+    assert!(err.to_string().contains("in grams"), "{err}");
+    assert_eq!(get_project(&conn, "p").unwrap().status, "active");
+
+    let finish = crate::models::FinishInput {
+        finished_at: Some(500),
+        leftovers: vec![used("balls", None, Some(1.0)), used("grams", Some(30), None), used("all", Some(80), None)],
+    };
+    finish_project(&conn, "p", &finish).unwrap();
+    let left = |id: &str| get_yarn(&conn, id).unwrap();
+    assert_eq!(left("balls").lots[0].grams_left, 25, "1 ball of 2 used: one ball's weight left");
+    assert_eq!(left("grams").lots[0].grams_left, 20, "30 g of 50 g used, from one ball and another");
+    assert_eq!(left("all").lots[0].grams_left, 0, "more than there was: none left");
+    assert!(left("all").used_up_at.is_some(), "and into the history");
+    assert_eq!(left("bare").lots[0].weighed, Some(false), "nothing said: as it was");
+    let uses = list_yarn_usage(&conn).unwrap();
+    let took = |id: &str| uses.iter().find(|u| u.yarn_id.as_deref() == Some(id)).map(|u| u.grams);
+    assert_eq!((took("balls"), took("grams"), took("all")), (Some(25), Some(30), Some(80)), "what it used is what was said");
+    let record = get_project(&conn, "p").unwrap();
+    assert_eq!(record.yarns.iter().find(|e| e.yarn_id == "balls").unwrap().leftover_grams, Some(25), "the project says what was left");
 }
 
 #[test]
@@ -2271,9 +2312,9 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
     let finish = crate::models::FinishInput {
         finished_at: Some(1234),
         leftovers: vec![
-            crate::models::YarnLeftover { entry_id: entry("Felted Tweed"), grams: Some(35) },
-            crate::models::YarnLeftover { entry_id: entry("Used up"), grams: Some(0) },
-            crate::models::YarnLeftover { entry_id: entry("No lots"), grams: Some(12) },
+            crate::models::YarnLeftover { entry_id: entry("Felted Tweed"), grams: Some(35), ..Default::default() },
+            crate::models::YarnLeftover { entry_id: entry("Used up"), grams: Some(0), ..Default::default() },
+            crate::models::YarnLeftover { entry_id: entry("No lots"), grams: Some(12), ..Default::default() },
         ],
     };
     let done = finish_project(&conn, "j", &finish).unwrap();
@@ -2314,7 +2355,7 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
         ..Default::default()
     };
     let h = insert_project(&conn, "h", &hat).unwrap();
-    finish_project(&conn, "h", &crate::models::FinishInput { finished_at: Some(2000), leftovers: vec![crate::models::YarnLeftover { entry_id: h.yarns[0].id.clone(), grams: Some(30) }] }).unwrap();
+    finish_project(&conn, "h", &crate::models::FinishInput { finished_at: Some(2000), leftovers: vec![crate::models::YarnLeftover { entry_id: h.yarns[0].id.clone(), grams: Some(30), ..Default::default() }] }).unwrap();
     assert_eq!(get_yarn(&conn, "alpaca").unwrap().lots[0].grams_left, 30);
     let used = list_yarn_usage(&conn).unwrap().into_iter().find(|u| u.yarn_id.as_deref() == Some("alpaca")).map(|u| (u.grams, u.metres));
     assert_eq!(used, Some((20, 112)), "2 balls of 25 g before, 30 g left: 20 g used, not nothing");

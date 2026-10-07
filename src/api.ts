@@ -1019,9 +1019,15 @@ export interface DuplicateGroup {
 }
 
 /** How much of one of a project's yarns is left; 0 is used up, null unknown. */
+/** One of a project's yarns when finishing it: what is left, or what it used. */
 export interface YarnLeftover {
   entryId: string;
+  /** Grams left; 0 for used up. */
   grams: number | null;
+  /** Grams it used. */
+  usedGrams?: number;
+  /** Balls it used, each the ball band's weight. */
+  usedBalls?: number;
 }
 
 /**

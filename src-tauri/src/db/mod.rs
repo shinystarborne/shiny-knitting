@@ -2580,17 +2580,19 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
         params![id, now],
     )?;
     for left in &input.leftovers {
-        let Some(grams) = left.grams else { continue };
-        if grams < 0 {
-            return Err(AppError::Message("Leftovers are a number of grams, 0 or more.".to_string()));
+        let said = [left.grams.is_some(), left.used_grams.is_some(), left.used_balls.is_some()].iter().filter(|s| **s).count();
+        if said == 0 {
+            continue;
+        }
+        if said > 1 {
+            return Err(AppError::Message("Say what is left of a yarn, or what it used: one of them.".to_string()));
+        }
+        if left.grams.is_some_and(|g| g < 0) || left.used_grams.is_some_and(|g| g < 0) || left.used_balls.is_some_and(|b| !(b >= 0.0)) {
+            return Err(AppError::Message("Yarn is a number of grams or balls, 0 or more.".to_string()));
         }
         let Some(entry) = project.yarns.iter().find(|y| y.id == left.entry_id) else {
             return Err(AppError::Message("That yarn is not on this project.".to_string()));
         };
-        tx.execute(
-            "UPDATE project_yarns SET leftover_grams = ?2 WHERE id = ?1",
-            params![entry.id, grams],
-        )?;
         // The lot the yarn came from; for a yarn with one lot, that one; for
         // one with none, a lot is made to hold what is left.
         let lot: Option<String> = match &entry.lot_id {
@@ -2603,21 +2605,46 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
                 )
                 .optional()?,
         };
+        // What the lot held before: weighed, or its balls by the ball band.
+        let before: i64 = match &lot {
+            Some(l) => tx
+                .query_row(
+                    &format!("SELECT {LOT_GRAMS} FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1"),
+                    params![l],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .unwrap_or(0),
+            None => 0,
+        };
+        // A ball used is the ball band's weight of it.
+        let used_balls = match left.used_balls {
+            Some(balls) => {
+                let per_ball: i64 = tx.query_row("SELECT grams_per_ball FROM yarns WHERE id = ?1", params![entry.yarn_id], |r| r.get(0))?;
+                if per_ball <= 0 {
+                    return Err(AppError::Message(format!("{} has no grams per ball: say what it used in grams.", entry.yarn_name)));
+                }
+                Some((balls * per_ball as f64).round() as i64)
+            }
+            None => None,
+        };
+        // What is left, and what the project took: one from the other.
+        let (grams, used) = match left.grams {
+            Some(g) => (g, (before - g).max(0)),
+            None => {
+                let used = left.used_grams.or(used_balls).unwrap_or(0);
+                ((before - used).max(0), used)
+            }
+        };
+        if used > 0 {
+            record_use(&tx, &entry.yarn_id, Some((id, project.name.as_str())), input.finished_at.unwrap_or(now), used, "finished")?;
+        }
+        tx.execute(
+            "UPDATE project_yarns SET leftover_grams = ?2 WHERE id = ?1",
+            params![entry.id, grams],
+        )?;
         match lot {
             Some(l) => {
-                // What the project took: the lot's weight before, less what is
-                // left. A lot never weighed is its balls by the ball band.
-                let before: i64 = tx
-                    .query_row(
-                        &format!("SELECT {LOT_GRAMS} FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1"),
-                        params![l],
-                        |r| r.get(0),
-                    )
-                    .optional()?
-                    .unwrap_or(0);
-                if before > grams {
-                    record_use(&tx, &entry.yarn_id, Some((id, project.name.as_str())), input.finished_at.unwrap_or(now), before - grams, "finished")?;
-                }
                 tx.execute(
                     "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3, weighed = 1 WHERE id = ?1",
                     params![l, grams, grams > 0],

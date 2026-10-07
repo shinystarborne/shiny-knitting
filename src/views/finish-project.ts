@@ -6,14 +6,17 @@ import { allOf } from "./yarn-picker";
 
 /**
  * Finishing a project: its needles, hooks and cables go back to free, and
- * what is left of each yarn is weighed and goes back into the stash -- as a
- * leftover, or used up at 0 g. Optionally the pattern is marked Finished too.
+ * each yarn's use is said -- in grams or balls used, or the grams left -- so
+ * what is left goes back into the stash, as a leftover, or used up at 0 g.
+ * Optionally the pattern is marked Finished too.
  */
 export class FinishProjectDialog {
   private root: HTMLElement;
   private project: Project;
   private onDone: (project: Project) => void;
   private pattern: Pattern | null = null;
+  /** Per yarn on the project: what it held before, when known, and its grams per ball. */
+  private held = new Map<string, { before: number | null; text: string; perBall: number }>();
 
   constructor(root: HTMLElement, project: Project, onDone: (project: Project) => void) {
     this.root = root;
@@ -37,18 +40,28 @@ export class FinishProjectDialog {
       const lot = yarn?.lots.find((l) => l.id === y.lotId) ?? (yarn?.lots.length === 1 ? yarn.lots[0] : undefined);
       if (!yarn || !lot) return null;
       const grams = allOf(yarn, lot);
-      const balls = lot.weighed ? "" : ` (${lot.balls} ball${lot.balls === 1 ? "" : "s"}, not weighed)`;
+      const balls = lot.weighed ? "" : ` (${lot.balls} whole ball${lot.balls === 1 ? "" : "s"})`;
       return grams > 0 ? { grams, text: `${grams} g before${balls}` } : null;
     };
-    // Each yarn's row, with what is expected to be left filled in: what it
-    // held, less what the project was to take.
+    // Each yarn's row, filled in with what the project was to take: in balls
+    // when that is whole balls, else in grams.
     const rows = p.yarns.map((y) => {
       const had = before(y);
-      // Its colour too: five colours of one yarn are otherwise five of the same line.
-      const colourway = yarns.find((x) => x.id === y.yarnId)?.colourway;
-      return { y, had, colourway, left: had && y.plannedGrams ? Math.max(0, had.grams - y.plannedGrams) : null };
+      const yarn = yarns.find((x) => x.id === y.yarnId);
+      const perBall = yarn?.gramsPerBall ?? 0;
+      this.held.set(y.id, { before: had?.grams ?? null, text: had?.text ?? "", perBall });
+      const planned = y.plannedGrams ?? null;
+      const inBalls = planned != null && perBall > 0 && planned % perBall === 0;
+      return {
+        y,
+        // Its colour too: five colours of one yarn are otherwise five of the same line.
+        colourway: yarn?.colourway,
+        perBall,
+        value: planned == null ? "" : inBalls ? String(planned / perBall) : String(planned),
+        unit: inBalls ? "used-balls" : "used-g",
+      };
     });
-    const guessed = rows.some((r) => r.left != null);
+    const guessed = rows.some((r) => r.value !== "");
 
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
@@ -66,20 +79,23 @@ export class FinishProjectDialog {
         </div>
 
         <div class="field">
-          <span>What is left of the yarn</span>
+          <span>The yarn it used</span>
           ${
             p.yarns.length
-              ? `<p class="hint">${guessed ? "Worked out from what the project was to take: weigh what is left to be exact." : "Weigh what is left."} 0 means used up: a yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
+              ? `<p class="hint">How much of each it used, in grams or balls (a ball is its weight per ball), or what is left of it.${guessed ? " Filled in from what the project was to take." : ""} A yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
                  <div class="leftover-list">
                    ${rows
-                     .map(({ y, had, colourway, left }) => {
+                     .map(({ y, colourway, perBall, value, unit }) => {
                        const lotText = y.dyeLot ? ` — lot ${y.dyeLot}` : "";
+                       const option = (v: string, label: string) => `<option value="${v}" ${v === unit ? "selected" : ""}>${label}</option>`;
                        return `
-                         <label class="leftover-row">
-                           <span>${escapeHtml(`${y.yarnName}${colourway ? ` · ${colourway}` : ""}${lotText}`)}${had ? ` <em>${escapeHtml(had.text)}</em>` : ""}</span>
-                           <input type="number" min="0" step="1" inputmode="numeric" data-entry="${y.id}" placeholder="g left" value="${left ?? ""}" />
-                           <span class="unit">g</span>
-                         </label>`;
+                         <div class="leftover-row">
+                           <span>${escapeHtml(`${y.yarnName}${colourway ? ` · ${colourway}` : ""}${lotText}`)} <em data-note="${y.id}"></em></span>
+                           <input type="number" min="0" step="any" inputmode="decimal" data-entry="${y.id}" value="${value}" aria-label="How much" />
+                           <select data-unit="${y.id}" aria-label="Used or left">
+                             ${option("used-g", "g used")}${perBall > 0 ? option("used-balls", "balls used") : ""}${option("left", "g left")}
+                           </select>
+                         </div>`;
                      })
                      .join("")}
                  </div>`
@@ -110,6 +126,41 @@ export class FinishProjectDialog {
       </div>
     `;
     this.root.addEventListener("click", this.onClick);
+    this.root.addEventListener("input", this.onInput);
+    this.root.addEventListener("change", this.onInput);
+    for (const y of p.yarns) this.note(y.id);
+  }
+
+  private onInput = (e: Event): void => {
+    const el = e.target as HTMLElement;
+    const id = el.dataset?.entry ?? el.dataset?.unit;
+    if (id) this.note(id);
+  };
+
+  /** What a yarn's row says it held, and what will be left of it. */
+  private note(id: string): void {
+    const el = this.root.querySelector<HTMLElement>(`[data-note="${id}"]`);
+    const held = this.held.get(id);
+    if (!el || !held) return;
+    const said = this.said(id);
+    let left: number | null = null;
+    if (said && "grams" in said) left = said.grams;
+    else if (said && held.before != null) {
+      const used = "usedGrams" in said ? said.usedGrams : Math.round(said.usedBalls * held.perBall);
+      left = Math.max(0, held.before - used);
+    }
+    const after = left == null ? "" : left === 0 ? "used up" : `${left} g left`;
+    el.textContent = [held.text, after].filter(Boolean).join(" → ");
+  }
+
+  /** What a yarn's row says, as the backend takes it; null when empty or not a number. */
+  private said(id: string): { grams: number } | { usedGrams: number } | { usedBalls: number } | null {
+    const raw = this.root.querySelector<HTMLInputElement>(`[data-entry="${id}"]`)?.value.trim().replace(",", ".") ?? "";
+    const unit = this.root.querySelector<HTMLSelectElement>(`[data-unit="${id}"]`)?.value;
+    if (!raw || !/^\d+(\.\d+)?$/.test(raw)) return null;
+    const n = Number(raw);
+    if (unit === "used-balls") return { usedBalls: n };
+    return unit === "left" ? { grams: Math.round(n) } : { usedGrams: Math.round(n) };
   }
 
   private onClick = (e: MouseEvent): void => {
@@ -127,9 +178,11 @@ export class FinishProjectDialog {
     button.disabled = true;
     try {
       const leftovers = [...this.root.querySelectorAll<HTMLInputElement>("input[data-entry]")].map((input) => {
+        const id = input.dataset.entry!;
         const raw = input.value.trim();
-        if (raw && !/^\d+$/.test(raw)) throw new Error(`“${raw}” is not a number of grams.`);
-        return { entryId: input.dataset.entry!, grams: raw ? Number(raw) : null };
+        const said = this.said(id);
+        if (raw && !said) throw new Error(`“${raw}” is not a number.`);
+        return { entryId: id, grams: null, ...said };
       });
       const date = (this.root.querySelector('[data-f="finished"]') as HTMLInputElement).value;
       const done = await api.finishProject(this.project.id, leftovers, date ? fromDateInput(date) : null);
@@ -149,6 +202,8 @@ export class FinishProjectDialog {
 
   private close(): void {
     this.root.removeEventListener("click", this.onClick);
+    this.root.removeEventListener("input", this.onInput);
+    this.root.removeEventListener("change", this.onInput);
     this.root.className = "modal-backdrop hidden";
     this.root.innerHTML = "";
   }

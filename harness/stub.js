@@ -1617,10 +1617,16 @@ const handlers = {
     if (!pr) throw new Error("That project is no longer there.");
     if (!isLive(pr.status)) throw new Error("That project is already finished or frogged.");
     const now = Date.now();
+    // As db::finish_project: what is left, or grams or balls used -- one of them.
+    const said = (left) => [left.grams, left.usedGrams, left.usedBalls].filter((v) => v != null).length;
     for (const left of input.leftovers || []) {
-      if (left.grams == null) continue;
-      if (left.grams < 0) throw new Error("Leftovers are a number of grams, 0 or more.");
-      if (!store.projectYarns.some((e) => e.id === left.entryId && e.projectId === id)) throw new Error("That yarn is not on this project.");
+      if (!said(left)) continue;
+      if (said(left) > 1) throw new Error("Say what is left of a yarn, or what it used: one of them.");
+      if ([left.grams, left.usedGrams, left.usedBalls].some((v) => v != null && !(v >= 0))) throw new Error("Yarn is a number of grams or balls, 0 or more.");
+      const e = store.projectYarns.find((x) => x.id === left.entryId && x.projectId === id);
+      if (!e) throw new Error("That yarn is not on this project.");
+      const yarn = store.yarns.find((y) => y.id === e.yarnId);
+      if (left.usedBalls != null && !(yarn?.gramsPerBall > 0)) throw new Error(`${yarn?.name ?? "That yarn"} has no grams per ball: say what it used in grams.`);
     }
     pr.status = "finished";
     pr.finishedAt = input.finishedAt ?? now;
@@ -1628,24 +1634,26 @@ const handlers = {
     for (const l of store.projectTools) if (l.projectId === id && !l.releasedAt) l.releasedAt = now;
     for (const e of store.projectYarns) if (e.projectId === id && !e.releasedAt) e.releasedAt = now;
     for (const left of input.leftovers || []) {
-      if (left.grams == null) continue;
+      if (!said(left)) continue;
       const e = store.projectYarns.find((x) => x.id === left.entryId);
-      e.leftoverGrams = left.grams;
       const yarn = store.yarns.find((y) => y.id === e.yarnId);
       if (!yarn) continue;
       let lot = yarn.lots.find((l) => l.id === e.lotId) ?? yarn.lots[0];
+      // A lot never weighed is its balls by the ball band.
+      const before = lot ? lotGrams(lot, yarn) : 0;
+      const used = left.grams != null ? Math.max(0, before - left.grams) : left.usedGrams ?? Math.round(left.usedBalls * yarn.gramsPerBall);
+      const grams = left.grams ?? Math.max(0, before - used);
+      if (used > 0) recordUse(yarn, pr, pr.finishedAt, used, "finished");
+      e.leftoverGrams = grams;
       if (!lot) {
         lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, weighed: true, location: "", boughtAt: null, leftover: false };
         yarn.lots.push(lot);
       }
-      // A lot never weighed is its balls by the ball band.
-      const before = lotGrams(lot, yarn);
-      if (before > left.grams) recordUse(yarn, pr, pr.finishedAt, before - left.grams, "finished");
-      lot.gramsLeft = left.grams;
+      lot.gramsLeft = grams;
       lot.weighed = true;
-      lot.leftover = left.grams > 0;
+      lot.leftover = grams > 0;
       // Nothing left of it anywhere: into the stash's history.
-      if (left.grams === 0 && yarn.lots.every((l) => !lotGrams(l, yarn)) && !yarn.usedUpAt) yarn.usedUpAt = pr.finishedAt;
+      if (grams === 0 && yarn.lots.every((l) => !lotGrams(l, yarn)) && !yarn.usedUpAt) yarn.usedUpAt = pr.finishedAt;
     }
     return projectOut(pr);
   },

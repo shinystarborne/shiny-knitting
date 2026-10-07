@@ -938,14 +938,21 @@ pub struct ProjectInput {
     pub plan_date: Option<i64>,
 }
 
-/// How much of one of a project's yarns is left, given when finishing it.
+/// How much of one of a project's yarns is left, or how much it used, given
+/// when finishing it: one of the three. None of them leaves the stash as it was.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct YarnLeftover {
     pub entry_id: String,
-    /// Grams left; 0 for used up. None leaves the stash as it was.
+    /// Grams left; 0 for used up.
     #[serde(default)]
     pub grams: Option<i64>,
+    /// Grams it used, from one ball or several.
+    #[serde(default)]
+    pub used_grams: Option<i64>,
+    /// Balls it used, each the ball band's weight.
+    #[serde(default)]
+    pub used_balls: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
