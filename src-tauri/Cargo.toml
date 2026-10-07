@@ -45,6 +45,8 @@ windows = { version = "0.60", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# Making a backup: the whole library in one zip, zip64 for one past 4 GB.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3"

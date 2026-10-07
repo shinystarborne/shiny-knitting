@@ -1,5 +1,6 @@
 import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
 import { closestEl } from "../dom";
+import { longDate, toDateInput } from "./project-form";
 
 /**
  * The app settings: updates first, then describing patterns with a model,
@@ -76,6 +77,17 @@ export class SettingsDialog {
           <button class="ghost" data-act="check-updates">Check for updates</button>
         </div>
         <em class="hint block" data-el="update-result"></em>
+
+        <h3>Backup</h3>
+        <p class="hint block">
+          Saves the whole library — every pattern, cover and photo, and everything
+          you have written down — to one zip file, where you choose. Keep it
+          somewhere other than this computer: a USB stick, or a cloud folder.
+        </p>
+        <div class="model-row">
+          <button class="ghost" data-act="backup">Make a backup…</button>
+        </div>
+        <em class="hint block" data-el="backup-result"></em>
 
         <h3>Needle sizes</h3>
         <label class="field">
@@ -227,7 +239,36 @@ export class SettingsDialog {
     box.innerHTML = privacyNote(url);
   }
 
+  /** When the last backup was made, under the button. */
+  private async showLastBackup(): Promise<void> {
+    const last = await api.lastBackup().catch(() => null);
+    const out = this.root.querySelector<HTMLElement>('[data-el="backup-result"]');
+    if (!out || out.textContent) return;
+    out.textContent = last ? `Last backup: ${longDate(last.at)}, ${last.files} files, ${bytesLabel(last.bytes)}, in ${last.path}` : "No backup made yet.";
+  }
+
+  /** Asks where, then copies the library there, saying how far it has got. */
+  private async backup(btn: HTMLButtonElement): Promise<void> {
+    const out = this.root.querySelector<HTMLElement>('[data-el="backup-result"]')!;
+    btn.disabled = true;
+    const poll = window.setInterval(() => {
+      void api.backupProgress().then((p) => {
+        if (p.running && p.total) out.textContent = `Copying ${p.done} of ${p.total} files…`;
+      });
+    }, 400);
+    try {
+      const done = await api.makeBackup(`Shiny Knitting backup ${toDateInput(Date.now())}.zip`);
+      if (done) out.textContent = `Backup saved: ${done.files} files, ${bytesLabel(done.bytes)}, in ${done.path}`;
+    } catch (err) {
+      out.textContent = `The backup was not made: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      window.clearInterval(poll);
+      btn.disabled = false;
+    }
+  }
+
   private bind(): void {
+    void this.showLastBackup();
     const baseInput = this.root.querySelector('[data-f="baseUrl"]') as HTMLInputElement;
     baseInput.addEventListener("input", () => this.updatePrivacy());
     // The model's own settings show only while it is switched on.
@@ -245,6 +286,7 @@ export class SettingsDialog {
       if (act === "test") void this.test(btn as HTMLButtonElement);
       if (act === "check-updates") void this.checkUpdates(btn as HTMLButtonElement);
       if (act === "download-update") void this.downloadUpdate(btn as HTMLButtonElement);
+      if (act === "backup") void this.backup(btn as HTMLButtonElement);
     });
 
     // Clicking the backdrop dismisses; a click inside the form does not.
@@ -529,6 +571,13 @@ function isPrivateAddress(raw: string): boolean {
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** 6.1 GB, 820 MB, 12 kB. */
+function bytesLabel(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+  if (n >= 1e6) return `${Math.round(n / 1e6)} MB`;
+  return `${Math.max(1, Math.round(n / 1e3))} kB`;
 }
 
 function escapeHtml(v: string): string {

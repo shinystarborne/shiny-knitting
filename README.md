@@ -578,6 +578,13 @@ got there on the wishlist, with no shop.
 
 The gear at the right end of the tab bar opens **Settings**, from any tab.
 
+**Make a backup** is in Settings: one click asks where to save, and copies the
+whole library there as one zip — every pattern file, cover and photo, and a
+clean copy of the database with everything written down in it — named with
+the date. It says how far it has got as it copies (a library of several
+gigabytes takes well under a minute) and, afterwards, when the last backup was
+made. Keep it somewhere other than this computer.
+
 ## Yarn stash
 
 The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A

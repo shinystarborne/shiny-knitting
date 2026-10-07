@@ -1001,6 +1001,20 @@ export type MeasurementKey = (typeof MEASUREMENTS)[number]["key"];
 /** How lengths are shown and typed; always stored in centimetres. */
 export type MeasureUnit = "cm" | "in";
 
+/** A backup made: where, when, how many files and how many bytes. Mirrors `backup.rs::BackupDone`. */
+export interface BackupDone {
+  path: string;
+  at: number;
+  files: number;
+  bytes: number;
+}
+
+export interface BackupProgress {
+  running: boolean;
+  done: number;
+  total: number;
+}
+
 /** One time someone was measured. Mirrors `models.rs::MeasurementSet`. */
 export interface MeasurementSet {
   id: string;
@@ -1301,6 +1315,11 @@ export const api = {
   /** Who a project is for, or no one with null. */
   setProjectPerson: (projectId: string, personId: string | null) => invoke<Project>("set_project_person", { projectId, personId }),
   getMeasureUnit: () => invoke<MeasureUnit>("get_measure_unit"),
+  /** Asks where to save, then the whole library to one zip there; null when cancelled. */
+  makeBackup: (name: string) => invoke<BackupDone | null>("make_backup", { name }),
+  /** How far the backup being made has got. */
+  backupProgress: () => invoke<BackupProgress>("backup_progress"),
+  lastBackup: () => invoke<BackupDone | null>("last_backup"),
   saveMeasureUnit: (unit: MeasureUnit) => invoke<MeasureUnit>("save_measure_unit", { unit }),
 
   // Shops, and the wishlist. Web addresses are tidied by the backend, so use

@@ -1,5 +1,6 @@
 mod ai;
 mod annotations;
+mod backup;
 mod charts;
 mod commands;
 mod covers;
@@ -123,6 +124,9 @@ pub fn run() {
             projects::finish_project,
             projects::set_project_status,
             projects::set_plan_order,
+            backup::make_backup,
+            backup::backup_progress,
+            backup::last_backup,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::delete_project,

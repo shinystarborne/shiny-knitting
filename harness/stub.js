@@ -2016,6 +2016,23 @@ const handlers = {
     pr.personId = personId || null;
     return projectOut(pr);
   },
+  // As backup.rs: the save dialog answered by store.backupTo (null: cancelled),
+  // progress polled while it runs, and the last one remembered.
+  make_backup: async ({ name }) => {
+    store.backupName = name;
+    const to = store.backupTo === undefined ? `D:/Backups/${name}` : store.backupTo;
+    if (!to) return null;
+    const total = store.patterns.length + 1;
+    for (let done = 0; done <= total; done++) {
+      store.backupProgress = { running: true, done, total };
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    store.backupProgress = { running: false, done: 0, total: 0 };
+    store.lastBackup = { path: to, at: Date.now(), files: total, bytes: 6100000000 };
+    return clone(store.lastBackup);
+  },
+  backup_progress: () => clone(store.backupProgress ?? { running: false, done: 0, total: 0 }),
+  last_backup: () => clone(store.lastBackup ?? null),
   get_measure_unit: () => store.measureUnit ?? "cm",
   save_measure_unit: ({ unit }) => {
     store.measureUnit = unit;

@@ -61,9 +61,9 @@ starting; the details are in the sections under the list.
 
 **Settings**
 
-9. [ ] Make a backup: in Settings, one click saves the whole library (the
+9. [x] Make a backup: in Settings, one click saves the whole library (the
    database and every file: patterns, covers, photos) to a zip, where the
-   Save dialog says.
+   Save dialog says. *0.3.37*
 
 **Patterns and the reader**
 
@@ -315,6 +315,11 @@ separate step, not asked for yet.
   (and Look up names for shops still named after their address); two rows of
   tags on a card and the rest as +N; opens in the browser; shows how much on
   the wishlist is from it.
+- **Backup:** Make a backup in Settings: the database (a VACUUM INTO copy)
+  and every file of the library folder in one zip, stored, zip64; written as
+  .part and renamed when whole; progress polled (backup_progress); the last
+  one remembered (app_settings last_backup). backup.json says what it is. A
+  real 6.5 GB library took 20 s. Restoring is not built yet.
 - **App:** updates found by themselves (at every start and every hour, with a
   card that says so) and installed in place in one click, with betas; settings
   behind the gear.
