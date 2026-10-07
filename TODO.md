@@ -26,7 +26,8 @@ starting; the details are in the sections under the list.
   the project was to take. *0.3.28* Then everywhere: whole balls count by
   the ball band, grams only once balls are started. *0.3.29*
 - [x] **Finishing says what each yarn used**, in grams or balls (a ball is
-  its weight per ball), or what is left. *0.3.30*
+  its weight per ball), or what is left. *0.3.30* A yarn's card says what
+  there is now, not what was bought (that is for the Statistics). *0.3.31*
 
 **Yarn and the stash**
 

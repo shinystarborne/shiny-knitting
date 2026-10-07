@@ -20,9 +20,12 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.31](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.31)** —
+  a yarn's card says how much you have, not how much you bought. The one
+  to test.
 - **[v0.3.0-beta.30](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.30)** —
   finishing a project says what each yarn used, in grams or balls, and
-  works out what is left. The one to test.
+  works out what is left. Superseded by `beta.31`.
 - **[v0.3.0-beta.29](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.29)** —
   a lot's whole balls count by the ball band everywhere, its grams only
   once balls are started. Superseded by `beta.30`.
