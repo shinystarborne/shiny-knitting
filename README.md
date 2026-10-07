@@ -205,8 +205,8 @@ Back up that one folder and you have backed up the whole app.
 **Browse for a file…**. The title is pre-filled from the filename; edit it and
 fill in designer, tags, and needle size while you are there. Browse hands the
 app a path and the file is copied on the Rust side; a dropped file has no path,
-so its contents travel across, raw, as bytes, and are written off the main
-thread — a large PDF drops nearly as fast as it browses.
+so its contents travel across raw, as bytes, and are written off the main
+thread.
 
 **Add folder…** adds a whole folder at once: every PDF and EPUB under it,
 subfolders included, is copied in with its title taken from the file name. A
