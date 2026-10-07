@@ -20,11 +20,10 @@ starting; the details are in the sections under the list.
 
 **Bugs: before the next task**
 
-- [ ] **Finishing a project does not update the stash** (reported 6 Oct
-  2026, in 0.3.27). To find out first: whether the grams left, typed in the
-  Finish dialog, reach the yarn's lots; whether the stash shows them without
-  going away and back; and whether a yarn with nothing typed (left as it was)
-  should come off by what the project was to take instead.
+- [x] **Finishing a project does not update the stash** (reported 6 Oct
+  2026, in 0.3.27). A lot never weighed counted as 0 g; now it is its balls
+  by the ball band, and each leftover is filled in as what it held less what
+  the project was to take. *0.3.28*
 
 **Yarn and the stash**
 
