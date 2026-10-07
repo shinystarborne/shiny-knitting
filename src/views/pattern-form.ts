@@ -26,7 +26,7 @@ import { changeCover } from "./cover-dialog";
 export class PatternForm {
   private root: HTMLElement;
   private editing: Pattern | null;
-  private fileBytes: number[] | null = null;
+  private fileBytes: Uint8Array | null = null;
   /**
    * A path on disk, when the file was chosen with the native dialog.
    *
@@ -229,8 +229,9 @@ export class PatternForm {
     // A webview file gives us contents and no usable path, so the bytes are
     // what we have to send.
     this.filePath = null;
-    const buffer = new Uint8Array(await file.arrayBuffer());
-    this.fileBytes = Array.from(buffer);
+    // Kept as bytes: copied out into an array of numbers, a large PDF took
+    // seconds before it was even sent.
+    this.fileBytes = new Uint8Array(await file.arrayBuffer());
 
     // Pre-fill the title from the filename, with the extension removed. It is
     // a starting point to correct, not a locked value.
@@ -366,21 +367,22 @@ export class PatternForm {
         this.onDone(await api.updatePattern(updated));
       } else {
         if (!this.fileBytes && !this.filePath) throw new Error("Choose a file first.");
-        const created = await api.addPattern({
+        const details = {
           title: this.value("title").trim() || "Untitled pattern",
           designer: this.value("designer").trim(),
           fileName: this.fileName,
-          // One of these is set: the path when the native dialog was used,
-          // the bytes when a file was dropped or picked in the webview.
-          sourcePath: this.filePath ?? undefined,
-          bytes: this.fileBytes ?? undefined,
           status: this.value("status"),
           difficulty: this.value("difficulty"),
           needleSize: this.value("needleSize").trim(),
           yarnWeight: this.value("yarnWeight").trim(),
           notes: this.value("notes"),
           tags: this.tagList,
-        });
+        };
+        // The path when the native dialog was used, copied by the backend;
+        // the bytes, raw, when a file was dropped or picked in the webview.
+        const created = this.filePath
+          ? await api.addPattern({ ...details, sourcePath: this.filePath })
+          : await api.uploadPattern(details, this.fileBytes!);
         this.onDone(created);
       }
       this.close();

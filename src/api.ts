@@ -1113,6 +1113,15 @@ export const api = {
     tags: string[];
     notes: string;
   }) => invoke<Pattern>("add_pattern", { input }),
+  /**
+   * A pattern from a file dropped or picked in the app, which has its contents
+   * and no path: the file goes raw, as the request's body, and the rest as JSON
+   * in a header — never as a JSON array of numbers, three characters a byte.
+   */
+  uploadPattern: (
+    input: { title: string; designer: string; fileName: string; yarnWeight?: string; status: string; difficulty: string; needleSize: string; tags: string[]; notes: string },
+    bytes: Uint8Array,
+  ) => invoke<Pattern>("upload_pattern", bytes, { headers: { "x-input": encodeURIComponent(JSON.stringify(input)) } }),
 
   listPatterns: (filter: Filter = {}) => invoke<Pattern[]>("list_patterns", { filter }),
   /**

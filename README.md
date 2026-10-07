@@ -203,10 +203,10 @@ Back up that one folder and you have backed up the whole app.
 
 **Adding a pattern.** "Add pattern", then drop a PDF/EPUB onto the box or press
 **Browse for a file…**. The title is pre-filled from the filename; edit it and
-fill in designer, tags, and needle size while you are there. Browse is the
-faster of the two for anything sizeable: it hands the app a path and the file is
-copied on the Rust side, whereas a dropped file's contents have to travel across
-the app boundary, which is slow for a PDF of any size.
+fill in designer, tags, and needle size while you are there. Browse hands the
+app a path and the file is copied on the Rust side; a dropped file has no path,
+so its contents travel across, raw, as bytes, and are written off the main
+thread — a large PDF drops nearly as fast as it browses.
 
 **Add folder…** adds a whole folder at once: every PDF and EPUB under it,
 subfolders included, is copied in with its title taken from the file name. A

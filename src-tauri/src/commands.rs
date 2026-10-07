@@ -34,6 +34,30 @@ pub fn add_pattern(state: State<'_, AppState>, input: PatternInput) -> CmdResult
     add_pattern_to(&state, input)
 }
 
+/// A pattern from a file dropped or picked in the app, which has its contents
+/// but no path. The bytes come raw, as the request's body, and the rest of the
+/// pattern as JSON in the `x-input` header: as a JSON array of numbers, a
+/// 100 MB PDF was some 350 MB of text to write out and parse back. Async, so
+/// the copy is written off the main thread and the window keeps moving.
+#[tauri::command]
+pub async fn upload_pattern(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> CmdResult<Pattern> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(AppError::Message("The file arrived in the wrong form.".into()));
+    };
+    let header = request.headers().get("x-input").and_then(|v| v.to_str().ok()).unwrap_or_default();
+    add_pattern_to(&state, upload_input(header, bytes)?)
+}
+
+/// The pattern an upload describes: its details from the header, its file
+/// from the body. Never a path: an upload is only ever its own contents.
+fn upload_input(header: &str, bytes: &[u8]) -> CmdResult<PatternInput> {
+    let mut input: PatternInput = serde_json::from_str(&crate::charts::percent_decode(header))
+        .map_err(|e| AppError::Message(format!("The pattern's details arrived in the wrong form: {e}")))?;
+    input.source_path = None;
+    input.bytes = Some(bytes.to_vec());
+    Ok(input)
+}
+
 /// The body of `add_pattern`, on a plain state reference so tests can reach it
 /// without a Tauri runtime.
 fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
@@ -88,7 +112,10 @@ fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
     };
 
     let hash = db::hash_bytes(bytes);
-    if let Some(existing) = db::pattern_with_hash(&state.db(), &hash)? {
+    // Bound first: in the `if let` itself the lock would be held through the
+    // block, and restoring takes it again -- a lock waiting on itself for ever.
+    let existing = db::pattern_with_hash(&state.db(), &hash)?;
+    if let Some(existing) = existing {
         // The same file in the Bin comes back, as it was, rather than in twice.
         if existing.removed_at.is_some() {
             return db::restore_pattern(&state.db(), &existing.id);
@@ -1304,6 +1331,24 @@ mod tests {
             tags: vec![],
             notes: String::new(),
         }
+    }
+
+    #[test]
+    fn an_upload_is_its_details_in_a_header_and_its_file_raw() {
+        let (state, dir) = state_in_temp_library();
+        // As the frontend sends it: the JSON percent-encoded, a path it must not be trusted with.
+        let header = "%7B%22title%22%3A%22Dropped%20Socks%22%2C%22designer%22%3A%22Ann%22%2C%22fileName%22%3A%22socks.pdf%22%2C%22sourcePath%22%3A%22C%3A%2Fsecret.pdf%22%2C%22status%22%3A%22%22%2C%22difficulty%22%3A%22%22%2C%22needleSize%22%3A%22%22%2C%22tags%22%3A%5B%5D%2C%22notes%22%3A%22%22%7D";
+        let input = upload_input(header, b"%PDF-1.7 dropped").unwrap();
+        assert_eq!((input.title.as_str(), input.file_name.as_str(), input.source_path.as_deref()), ("Dropped Socks", "socks.pdf", None));
+        let added = add_pattern_to(&state, input).unwrap();
+        assert_eq!(std::fs::read(&added.file_path).unwrap(), b"%PDF-1.7 dropped");
+        assert!(upload_input("not json", b"x").is_err());
+
+        // Removed to the Bin, the same file added again comes back from it.
+        db::remove_pattern(&state.db(), &added.id).unwrap();
+        let again = add_pattern_to(&state, dropped("Dropped again", "socks.pdf", b"%PDF-1.7 dropped")).unwrap();
+        assert_eq!((again.id.as_str(), again.removed_at), (added.id.as_str(), None));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -2557,6 +2557,14 @@ const handlers = {
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   },
 
+  // As commands::upload_pattern: the file raw, as the body; the rest as JSON in a header.
+  upload_pattern: (bytes, options) => {
+    if (!(bytes instanceof Uint8Array) && !(bytes instanceof ArrayBuffer)) throw new Error("The file arrived in the wrong form.");
+    const input = JSON.parse(decodeURIComponent(options?.headers?.["x-input"] ?? ""));
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    window.__lastUpload = { input, bytes: data };
+    return handlers.add_pattern({ input: { ...input, sourcePath: undefined, bytes: data } });
+  },
   add_pattern: async ({ input }) => {
     // A real macrotask pause per add, so a bulk run yields between items and a
     // click on the panel's Stop button is processed mid-run rather than after
@@ -2581,8 +2589,11 @@ const handlers = {
       ? `path:${input.sourcePath}`
       : `bytes:${(input.bytes || []).length}`;
     const contentHash = pseudoHash(basis);
+    // Kept by id: one in the Bin comes back from it, as in commands::add_pattern_to.
     const duplicate = store.contentHashes.get(contentHash);
-    if (duplicate) throw new Error(`already in the library as "${duplicate}"`);
+    if (duplicate && (store.bin ?? []).some((x) => x.id === duplicate)) return handlers.restore_pattern({ id: duplicate });
+    const had = store.patterns.find((x) => x.id === duplicate);
+    if (had) throw new Error(`already in the library as "${had.title}"`);
     const id = `p${store.nextId++}`;
     const p = {
       id,
@@ -2605,7 +2616,7 @@ const handlers = {
       coverPath: "",
     };
     store.patterns.push(p);
-    store.contentHashes.set(contentHash, p.title);
+    store.contentHashes.set(contentHash, p.id);
     store.progress.set(id, { patternId: id, totalRows: 0, updatedAt: Date.now() });
     store.highlights.set(id, {
       patternId: id, enabled: true, offsetY: 0.35, thickness: 3, width: 0,

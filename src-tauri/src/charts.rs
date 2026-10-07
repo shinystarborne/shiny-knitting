@@ -184,7 +184,7 @@ pub fn delete_chart(state: State<'_, AppState>, id: String) -> CmdResult<()> {
 
 /// Undoes a header's percent-encoding (the page sends `encodeURIComponent`,
 /// since a header carries ASCII only).
-fn percent_decode(text: &str) -> String {
+pub(crate) fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

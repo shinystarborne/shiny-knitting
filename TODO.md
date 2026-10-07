@@ -71,8 +71,8 @@ starting; the details are in the sections under the list.
     PDF. *0.3.26*
 11. [x] Restore a removed pattern: a bin, or Undo for a few seconds.
     *Both.* *0.3.38*
-12. [ ] Faster drag and drop of a large PDF (it arrives as its contents, not a
-    path).
+12. [x] Faster drag and drop of a large PDF (it arrives as its contents, not a
+    path). Sent raw now (upload_pattern), not as a JSON array. *0.3.39*
 13. [ ] Pins: bring one to the front.
 14. [ ] Zoom remembered per pattern.
 15. [ ] Page by page (swipe) reading.
