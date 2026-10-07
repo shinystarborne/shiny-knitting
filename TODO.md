@@ -25,6 +25,8 @@ starting; the details are in the sections under the list.
   by the ball band, and each leftover is filled in as what it held less what
   the project was to take. *0.3.28* Then everywhere: whole balls count by
   the ball band, grams only once balls are started. *0.3.29*
+- [x] **Finishing says what each yarn used**, in grams or balls (a ball is
+  its weight per ball), or what is left. *0.3.30*
 
 **Yarn and the stash**
 
