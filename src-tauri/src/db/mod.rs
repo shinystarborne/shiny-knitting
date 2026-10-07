@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput, BallBand,
+    Chart, ChartInput,
 };
 
 #[cfg(test)]
@@ -430,15 +430,6 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_yarn_usage_at ON yarn_usage(at);
 
-        -- A picture of a ball band, filed by the yarn's brand and name.
-        CREATE TABLE IF NOT EXISTS ball_bands (
-            id          TEXT PRIMARY KEY,
-            brand       TEXT NOT NULL DEFAULT '',
-            name        TEXT NOT NULL,
-            photo_path  TEXT NOT NULL DEFAULT '',
-            added_at    INTEGER NOT NULL
-        );
-
         CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
         CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
         "#,
@@ -589,6 +580,14 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
+    }
+    // Ball bands' pictures are gone (0.3.32): their table goes when nothing
+    // is in it, and stays, unread, when something is.
+    let bands: Option<i64> = conn
+        .query_row("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ball_bands'", [], |r| r.get(0))
+        .optional()?;
+    if bands.is_some() && conn.query_row("SELECT COUNT(*) FROM ball_bands", [], |r| r.get::<_, i64>(0))? == 0 {
+        conn.execute("DROP TABLE ball_bands", [])?;
     }
     // Whether a lot's grams were weighed. A lot of balls at 0 g was never
     // weighed -- it is its balls by the ball band -- unless a finished project
@@ -3547,7 +3546,7 @@ pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
     Ok(conn.query_row("SELECT size_mm FROM tools WHERE id = ?1", params![id], |r| r.get(0)).optional()?)
 }
 
-// ---------- used up, and ball bands ----------
+// ---------- used up ----------
 
 /// Marks a yarn used up (now, or at `at`), into the stash's history; or, with
 /// None, back in the stash.
@@ -3606,76 +3605,6 @@ pub fn list_yarn_usage(conn: &Connection) -> AppResult<Vec<crate::models::YarnUs
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
-}
-
-fn row_to_band(row: &rusqlite::Row) -> rusqlite::Result<BallBand> {
-    Ok(BallBand {
-        id: row.get("id")?,
-        brand: row.get("brand")?,
-        name: row.get("name")?,
-        photo_path: row.get("photo_path")?,
-        added_at: row.get("added_at")?,
-    })
-}
-
-/// Every ball band, by brand and name, the oldest picture of each first.
-pub fn list_ball_bands(conn: &Connection) -> AppResult<Vec<BallBand>> {
-    let mut stmt = conn.prepare("SELECT * FROM ball_bands ORDER BY brand COLLATE NOCASE, name COLLATE NOCASE, added_at, rowid")?;
-    let rows = stmt.query_map([], row_to_band)?;
-    Ok(rows.collect::<Result<_, _>>()?)
-}
-
-pub fn get_ball_band(conn: &Connection, id: &str) -> AppResult<BallBand> {
-    conn.query_row("SELECT * FROM ball_bands WHERE id = ?1", params![id], row_to_band)
-        .optional()?
-        .ok_or_else(|| AppError::NotFound("That ball band is no longer there.".to_string()))
-}
-
-/// A brand and name as filed: one line each; the name is needed. A brand or
-/// name already filed in another case is filed with it.
-fn band_names(conn: &Connection, brand: &str, name: &str) -> AppResult<(String, String)> {
-    let line = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect::<String>();
-    let (brand, name) = (line(brand), line(name));
-    if name.is_empty() {
-        return Err(AppError::Message("Say which yarn it is: its name, as Air for Drops Air.".to_string()));
-    }
-    let same = |sql: &str, v: &str| -> AppResult<String> {
-        Ok(conn.query_row(sql, params![v], |r| r.get::<_, String>(0)).optional()?.unwrap_or_else(|| v.to_string()))
-    };
-    let brand = same("SELECT brand FROM ball_bands WHERE brand = ?1 COLLATE NOCASE LIMIT 1", &brand)?;
-    let name = same("SELECT name FROM ball_bands WHERE name = ?1 COLLATE NOCASE LIMIT 1", &name)?;
-    Ok((brand, name))
-}
-
-pub fn insert_ball_band(conn: &Connection, id: &str, brand: &str, name: &str) -> AppResult<BallBand> {
-    let (brand, name) = band_names(conn, brand, name)?;
-    conn.execute(
-        "INSERT INTO ball_bands (id, brand, name, photo_path, added_at) VALUES (?1, ?2, ?3, '', ?4)",
-        params![id, brand, name, now_ms()],
-    )?;
-    get_ball_band(conn, id)
-}
-
-pub fn set_ball_band_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
-    conn.execute("UPDATE ball_bands SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
-    Ok(())
-}
-
-/// Files every picture of one yarn's band under another brand and name.
-pub fn rename_ball_bands(conn: &Connection, from_brand: &str, from_name: &str, brand: &str, name: &str) -> AppResult<Vec<BallBand>> {
-    let (brand, name) = band_names(conn, brand, name)?;
-    conn.execute(
-        "UPDATE ball_bands SET brand = ?3, name = ?4 WHERE brand = ?1 COLLATE NOCASE AND name = ?2 COLLATE NOCASE",
-        params![from_brand, from_name, brand, name],
-    )?;
-    list_ball_bands(conn)
-}
-
-/// Removes a picture, returning its file.
-pub fn delete_ball_band(conn: &Connection, id: &str) -> AppResult<String> {
-    let band = get_ball_band(conn, id)?;
-    conn.execute("DELETE FROM ball_bands WHERE id = ?1", params![id])?;
-    Ok(band.photo_path)
 }
 
 // ---------- colourwork charts ----------

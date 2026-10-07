@@ -3093,17 +3093,17 @@ fn a_used_up_yarn_leaves_the_stash_for_its_history() {
 }
 
 #[test]
-fn ball_bands_are_filed_by_brand_and_name() {
+fn ball_bands_go_when_nothing_is_in_them() {
     let conn = test_db();
-    insert_ball_band(&conn, "b1", " Drops ", "Air").unwrap();
-    let second = insert_ball_band(&conn, "b2", "DROPS", "air").unwrap();
-    assert_eq!((second.brand.as_str(), second.name.as_str()), ("Drops", "Air"), "filed with the one there, whatever the case");
-    assert!(insert_ball_band(&conn, "b3", "Drops", "  ").is_err(), "a band needs the yarn's name");
-    insert_ball_band(&conn, "b4", "", "Mystery wool").unwrap();
-    let all = rename_ball_bands(&conn, "drops", "AIR", "Garnstudio", "Air").unwrap();
-    assert_eq!(all.iter().filter(|b| b.brand == "Garnstudio").count(), 2, "every picture of the yarn moves");
-    assert_eq!(delete_ball_band(&conn, "b1").unwrap(), "");
-    assert_eq!(list_ball_bands(&conn).unwrap().len(), 2);
+    let table = |conn: &Connection| conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'ball_bands'", [], |r| r.get::<_, i64>(0)).unwrap();
+    let make = "CREATE TABLE ball_bands (id TEXT PRIMARY KEY, brand TEXT NOT NULL DEFAULT '', name TEXT NOT NULL, photo_path TEXT NOT NULL DEFAULT '', added_at INTEGER NOT NULL)";
+    conn.execute(make, []).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(table(&conn), 0, "an empty table goes");
+    conn.execute(make, []).unwrap();
+    conn.execute("INSERT INTO ball_bands (id, name, added_at) VALUES ('b', 'Air', 1)", []).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(table(&conn), 1, "one with a band in it stays");
 }
 
 #[test]

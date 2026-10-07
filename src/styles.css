@@ -2269,18 +2269,6 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .usage-table summary { cursor: pointer; font-size: 12px; color: var(--text-dim); }
 .usage-table table { margin: 6px 0 4px; }
 
-/* A yarn's ball band, small: on its card, and in its form. */
-.cover .card-band { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 0; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 6px; background: #0f1114; overflow: hidden; line-height: 0; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45); }
-.card-band img { width: 84px; height: 54px; object-fit: contain; }
-.card-band:hover:not(:disabled) { border-color: var(--accent); }
-.yarn-band { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 0; }
-.yarn-band:empty { display: none; }
-.yarn-band-label { font-size: 13px; }
-.yarn-band-pic { padding: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; line-height: 0; background: #0f1114; }
-.yarn-band-pic img { height: 54px; width: auto; max-width: 160px; object-fit: contain; }
-.yarn-band-pic:hover:not(:disabled) { border-color: var(--accent); }
-.yarn-band button.ghost { padding: 3px 10px; font-size: 12px; }
-
 /* The stash's total, beside its switch. */
 .stash-total { font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
@@ -2288,30 +2276,6 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .card-used-up { margin: 0; font-size: 12px; color: var(--text-dim); }
 .card-went { margin: 0; font-size: 12px; color: #a8c6f0; line-height: 1.35; }
 .stash-history .card .cover { filter: saturate(0.6); }
-
-/* Ball bands: by brand, a card per yarn with its band's first picture. */
-.band-results { display: flex; flex-direction: column; gap: 22px; align-content: start; }
-.band-brand h2 { margin: 0 0 10px; font-size: 16px; }
-.band-grid { display: grid; grid-template-columns: repeat(auto-fill, 230px); gap: 14px; }
-.band-card { display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color 0.12s ease, transform 0.12s ease; }
-.band-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-.band-pic { position: relative; height: 160px; background: #0f1114 center / contain no-repeat; }
-.band-count { position: absolute; right: 8px; bottom: 8px; padding: 2px 8px; font-size: 11px; border-radius: 999px; background: rgba(0, 0, 0, 0.6); color: #fff; }
-.band-body { padding: 10px 12px 12px; }
-.band-body h3 { margin: 0 0 4px; font-size: 15px; }
-.band-body p { margin: 2px 0 0; font-size: 12px; color: var(--text-dim); }
-.band-missing h3 { margin: 0 0 8px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.band-missing-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.band-missing-list button { padding: 4px 10px; font-size: 12px; }
-.dialog-card.band-dialog { max-width: 560px; }
-.dialog-card.band-view { max-width: min(900px, 94vw); }
-.band-names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.cover-drop.band-drop { height: 180px; }
-.band-view .cover-drop.band-drop { height: 70px; }
-.band-pictures { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
-.band-picture { margin: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.band-picture img { width: 100%; border-radius: 8px; background: #0f1114; }
-.band-picture button { padding: 2px 10px; font-size: 12px; }
 
 .card-plan { margin: 0; font-size: 12px; color: #a8c6f0; white-space: normal; line-height: 1.35; }
 

@@ -19,7 +19,6 @@ import { PeopleView, PersonPage } from "./views/people";
 import { SwatchesView, type StashMode } from "./views/swatches";
 import { StashHistoryView } from "./views/stash-history";
 import { StashStatsView } from "./views/stash-stats";
-import { BallBandsView } from "./views/ball-bands";
 import { CalculatorsView, openCalculatorsOn } from "./views/calculators";
 import { ChartPage } from "./views/charts";
 import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
@@ -27,7 +26,7 @@ import { PatternForm } from "./views/pattern-form";
 import { YarnForm } from "./views/yarn-form";
 import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
-import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearBallBandCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
+import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
@@ -181,7 +180,7 @@ class App {
     });
     this.screen.addEventListener("stash-mode", (e) => {
       const mode = (e as CustomEvent<string>).detail;
-      this.stashMode = mode === "swatches" || mode === "bands" || mode === "history" || mode === "stats" ? mode : "yarn";
+      this.stashMode = mode === "swatches" || mode === "history" || mode === "stats" ? mode : "yarn";
       void this.showStash();
     });
     this.screen.addEventListener("add-swatch", (e) => {
@@ -392,7 +391,6 @@ class App {
     clearYarnPhotoCache();
     clearWishPhotoCache();
     clearSwatchPhotoCache();
-    clearBallBandCache();
   }
 
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
@@ -422,7 +420,6 @@ class App {
     this.clearScreen();
     this.setActiveTab("stash");
     if (this.stashMode === "swatches") await new SwatchesView(this.screen).mount();
-    else if (this.stashMode === "bands") await new BallBandsView(this.screen).mount();
     else if (this.stashMode === "history") await new StashHistoryView(this.screen).mount();
     else if (this.stashMode === "stats") await new StashStatsView(this.screen).mount();
     else await new StashView(this.screen).mount();

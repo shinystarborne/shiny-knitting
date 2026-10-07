@@ -35,9 +35,9 @@ starting; the details are in the sections under the list.
    all of it), instead of showing 0 g. *0.3.24*
 2. [x] Ball band thumbnails on a yarn's card and in its form, opening the
    band big. *0.3.25*
-3. [ ] Ball bands out of the stash: the Ball bands view, the pictures, and
+3. [x] Ball bands out of the stash: the Ball bands view, the pictures, and
    the thumbnails on a yarn's card and in its form. Never used. What a yarn
-   says of itself (metres and grams per ball, fibres) stays.
+   says of itself (metres and grams per ball, fibres) stays. *0.3.32*
 4. [ ] A yarn's expected gauge and needles to use, as its band gives them:
    sts and rows over 10 cm, and a needle size or range, in its form and on
    its card. Saved by brand and yarn name, so every colour of it has them.
@@ -218,13 +218,10 @@ colour of a yarn already known starts with them.
   bought, or when the yarn was added), so it goes back as far as the stash
   does. Used is recorded as it goes (a finished project's, weighed before and
   after; what was left of yarn marked used up), from 0.3.23 on.
-- **Stash history and ball bands:** yarn used up (from its card, or by
-  finishing a project with none of it left) leaves the stash for a History,
-  with when and what it went into, and can come back. Ball bands: pictures of
-  each yarn's band, several each, filed by brand and yarn for every colour of
-  it, with what the stash knows of the yarn, and the stash's yarn without one
-  offered to add. A yarn's card and form show its band small, to open big;
-  the form offers to add one for a yarn without.
+- **Stash history:** yarn used up (from its card, or by finishing a project
+  with none of it left) leaves the stash for a History, with when and what it
+  went into, and can come back. (Ball band pictures were here until
+  0.3.31; taken out, never used. An empty ball_bands table is dropped.)
 - **Stash:** what a yarn is planned for: patterns from the library (searched
   by title and designer) or titles typed for ones not got yet, on its card,
   in the search and as a Planned filter. Yarn with lots, photos (pasted or dropped), weight from metres and

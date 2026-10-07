@@ -507,15 +507,6 @@ export interface YarnUse {
   source: "finished" | "used-up";
 }
 
-/** A picture of a ball band, filed by the yarn's brand and name. Mirrors `models.rs::BallBand`. */
-export interface BallBand {
-  id: string;
-  brand: string;
-  name: string;
-  photoPath: string;
-  addedAt: number;
-}
-
 export interface YarnFilter {
   search?: string;
   /** "history" for the used up, "all" for everything; the stash by default. */
@@ -1316,15 +1307,6 @@ export const api = {
   /** Every use of yarn recorded, the newest first. */
   listYarnUsage: () => invoke<YarnUse[]>("list_yarn_usage"),
 
-  // Ball bands: pictures of the paper round a ball, filed by brand and name.
-  listBallBands: () => invoke<BallBand[]>("list_ball_bands"),
-  addBallBand: (brand: string, name: string, bytes: number[]) => invoke<BallBand>("add_ball_band", { brand, name, bytes }),
-  /** Every picture of one yarn's band, filed under another brand and name. */
-  renameBallBands: (fromBrand: string, fromName: string, brand: string, name: string) =>
-    invoke<BallBand[]>("rename_ball_bands", { fromBrand, fromName, brand, name }),
-  deleteBallBand: (id: string) => invoke<void>("delete_ball_band", { id }),
-  /** Raw binary, as `getCover` returns it. */
-  getBallBandPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_ball_band_photo", { id }),
 
   // AI metadata.
   getAiSettings: () => invoke<AiSettingsView>("get_ai_settings"),

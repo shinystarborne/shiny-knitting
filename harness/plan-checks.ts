@@ -81,7 +81,7 @@ export async function verifyPlans() {
     made.push(plan.id);
     check(results, "saved as a plan, its time and date, its yarn and how much", plan.status === "planned" && plan.planWhen === "before winter" && new Date(plan.planDate!).getDate() === 20 && store.projectYarns.some((e) => e.projectId === plan.id && e.yarnId === yarnId && e.plannedGrams === 80), JSON.stringify(plan));
     const row = rows().find((r) => r.dataset.plan === plan.id)!;
-    check(results, "…listed with when, and its yarn", /before winter · January 20, 2027/.test(row.textContent ?? "") && row.textContent!.includes(`${yarnName} (80 g)`), row.textContent ?? "");
+    check(results, "…listed with when, and its yarn", /before winter · 20 January 2027/.test(row.textContent ?? "") && row.textContent!.includes(`${yarnName} (80 g)`), row.textContent ?? "");
 
     // ---------- the order ----------
     const sooner = await invoke<Proj>("add_project", { input: { name: "Spring hat", planned: true, planDate: new Date(2026, 11, 1).getTime(), yarns: [], toolIds: [] } });

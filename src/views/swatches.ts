@@ -8,12 +8,11 @@ import { longDate } from "./project-form";
 import { matches } from "./shopping";
 
 /** What the Stash tab shows: the yarn, the swatches, the ball bands, or the yarn used up. */
-export type StashMode = "yarn" | "swatches" | "bands" | "history" | "stats";
+export type StashMode = "yarn" | "swatches" | "history" | "stats";
 
 const STASH_MODES: { mode: StashMode; label: string; title: string }[] = [
   { mode: "yarn", label: "Yarn", title: "The yarn you have" },
   { mode: "swatches", label: "Swatches", title: "Your gauge swatches" },
-  { mode: "bands", label: "Ball bands", title: "Pictures of the ball bands, by brand and yarn" },
   { mode: "history", label: "History", title: "Yarn you had, and used up" },
   { mode: "stats", label: "Statistics", title: "How much is in the stash, and yarn added and used month by month" },
 ];

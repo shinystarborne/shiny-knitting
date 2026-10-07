@@ -386,9 +386,13 @@ except a needle that has gone onto another project since. The Projects tab
 filters by all four.
 
 **Finishing.** **Finish project…** releases every needle, hook and cable back to
-free, and asks what is left of each yarn: weigh it and type the grams. That
-becomes what the lot holds, with a **Leftover** tag in the stash; 0 g is used
-up; left empty, the stash stays as it was. It also offers to mark the pattern
+free, and asks what each yarn used: **g used**, **balls used** (a ball is the
+yarn's weight per ball, so 1 of 2 balls leaves one), or **g left** if you
+weighed it. Each row starts with what the project was to take, and says what
+it held and what will be left as you type ("50 g before (2 whole balls) → 25 g
+left"). What is left becomes what the lot holds, with a **Leftover** tag in the
+stash; nothing left is used up; left empty, the stash stays as it was. What it
+used goes into the stash's Statistics. It also offers to mark the pattern
 Finished. A finished project keeps the list of what it used and what was left,
 as a record.
 
@@ -552,8 +556,9 @@ The gear at the right end of the tab bar opens **Settings**, from any tab.
 ## Yarn stash
 
 The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A
-card shows the name, brand and colourway, the weight, a photo, and what is
-left of it: "4 × 100 g · 240 g left · ~528 m". A yarn on an active project says
+card shows the name, brand and colourway, the weight, a photo, and how much you
+have now, not how much you bought: "2 × 25 g · ~280 m" for whole balls, "240 g
+(2.4 balls) · ~528 m" once some are started. A yarn on an active project says
 which ("In use: Gift hat"), and one holding a project's leftover is tagged
 **Leftover**; **Availability** down the side filters on Free, In use and
 Leftover. A lot's **Leftover** box can also be ticked or cleared by hand.
@@ -570,22 +575,24 @@ cannot wear wool), No synthetics, Superwash and Not superwash; a yarn with no
 fibres recorded passes none of the fibre boxes, since nothing is known about it.
 
 **Another colour of the same yarn** is quick: **+ Colour** on a card opens a new
-yarn with its brand, name, weight and ball band filled in, so only the
+yarn with its brand, name, weight and metres and grams per ball filled in, so only the
 colourway is typed; each colour is its own card. In the form, **Brand** and
 **Name** are typed or picked — **▾** lists the brands and yarns already in the
 stash (a chosen brand narrows the names) — and picking a name you have fills in
 the rest of that yarn, leaving anything already typed alone. A name or brand
 typed in another case files with the one already there.
 
-**Partial balls are weighed, not guessed.** Put the grams left on a lot and
-the metres left are worked out from the ball band (metres per ball ÷ grams
-per ball × grams left), so a half-used ball counts as what it actually is.
-When the per-ball figures are unknown the metres line simply stays off rather
-than being invented.
+**Whole balls by the ball band, started ones weighed.** A lot of balls with
+no grams typed is whole balls, each the yarn's grams per ball. Once balls are
+started, put the grams left on the lot, and that is what there is, so a
+half-used ball counts as what it actually is. The metres are worked out from
+the grams (metres per ball ÷ grams per ball × grams). When the per-ball
+figures are unknown the metres line simply stays off rather than being
+invented.
 
 **Lots are first-class.** The same yarn bought twice is two lots, because dye
 lots differ between purchases and mixing them shows in the knitting. Each lot
-keeps its dye lot, balls, grams left, where it lives, and when it was bought;
+keeps its dye lot, balls bought, grams left, where it lives, and when it was bought;
 a yarn's totals add up over all of them. A new yarn starts with one empty lot
 row, and the **+ Add lot** button adds another.
 
