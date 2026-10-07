@@ -625,7 +625,7 @@ export class YarnForm {
         (lot, i) => `
           <div class="lot-row" data-lot="${i}">
             <input data-lf="dyeLot" value="${escapeAttr(lot.dyeLot)}" placeholder="Dye lot" />
-            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="Balls" title="Balls" />
+            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="Balls bought" title="Balls bought, for the Statistics. What there is now is the grams left, once balls are started." />
             <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />

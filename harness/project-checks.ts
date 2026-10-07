@@ -258,7 +258,8 @@ export async function verifyProjects() {
     check(results, "…and records the 25 g used", took.length === 1 && took[0].grams === 25 && took[0].projectName === "Striped hat", JSON.stringify(took));
     tab("stash");
     await waitFor(() => !!yarnCard(alpaca.id), "the stash after the hat");
-    check(results, "the stash shows what is left", /25 g left/.test(yarnCard(alpaca.id)!.textContent ?? "") && !!yarnCard(alpaca.id)!.querySelector(".yarn-leftover"), yarnCard(alpaca.id)!.textContent ?? "");
+    const alpacaQty = yarnCard(alpaca.id)!.querySelector(".card-qty")?.textContent ?? "";
+    check(results, "the stash shows what there is now, not what was bought: one ball", alpacaQty === "1 × 25 g · ~140 m" && !!yarnCard(alpaca.id)!.querySelector(".yarn-leftover"), alpacaQty);
     // Gone again, so the suites after this one find the stash as it was.
     await invoke("delete_project", { id: hat.id });
     await invoke("delete_yarn", { id: alpaca.id });

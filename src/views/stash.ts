@@ -360,7 +360,7 @@ export class StashView {
     el.textContent = `${filtered ? "Shown" : "In the stash"}: ${metres.toLocaleString("en-GB")} m · ${weight(grams)} in ${count}`;
     el.title = unknown
       ? `${unknown} of them ${unknown === 1 ? "has" : "have"} no metres per ball, so ${unknown === 1 ? "its" : "their"} grams are in the weight but not the metres.`
-      : "Whole balls by the ball band, started ones as weighed, and the metres they come to.";
+      : "What there is now: whole balls by the ball band, started ones as weighed, and the metres they come to.";
     if (unknown) el.textContent += ` (${unknown} without metres)`;
   }
 
@@ -529,27 +529,29 @@ function yarnPill(y: Yarn): string {
 }
 
 /**
- * The quantity line: "3 × 100 g · 240 g left · ~530 m".
+ * The quantity line: how much there is now, not how much was bought (that is
+ * the Statistics'). "2 × 25 g · ~280 m" for whole balls, "60 g (2.4 balls) ·
+ * ~336 m" once some are started.
  *
- * The figures come from the backend already summed and derived — grams left
- * is weighed, so a partial ball counts as what is left of it, and the metres
- * are what those grams work out to, not what the balls once held.
+ * The figures come from the backend already summed and derived: whole balls
+ * by the ball band, started ones as weighed, and the metres those grams work
+ * out to.
  */
 function quantityLine(y: Yarn): string {
   const parts: string[] = [];
-  if (y.ballsTotal > 0) {
-    parts.push(
-      y.gramsPerBall > 0
-        ? `${fmt(y.ballsTotal)} × ${fmt(y.gramsPerBall)} g`
-        : `${fmt(y.ballsTotal)} ball${y.ballsTotal === 1 ? "" : "s"}`,
-    );
-  }
-  // Whole balls say how much by themselves; once some are started, what is left.
-  if (y.lots.some((l) => l.weighed) || !y.ballsTotal) {
-    if (y.gramsLeft > 0) parts.push(`${fmt(y.gramsLeft)} g left`);
+  const per = y.gramsPerBall;
+  const grams = y.gramsLeft;
+  if (per > 0 && grams > 0) {
+    const balls = grams / per;
+    parts.push(Number.isInteger(balls) ? `${balls} × ${fmt(per)} g` : `${fmt(grams)} g (${fmt(Math.round(balls * 10) / 10)} balls)`);
+  } else if (grams > 0) {
+    parts.push(`${fmt(grams)} g`);
+  } else if (!y.lots.some((l) => l.weighed) && y.ballsTotal > 0) {
+    // Whole balls of a yarn with no weight per ball: only their count is known.
+    parts.push(`${fmt(y.ballsTotal)} ball${y.ballsTotal === 1 ? "" : "s"}`);
   }
   if (y.metresLeft > 0) parts.push(`~${fmt(y.metresLeft)} m`);
-  return parts.join(" · ") || "No quantities yet";
+  return parts.join(" · ") || (y.lots.length ? "None left" : "No quantities yet");
 }
 
 function fmt(n: number): string {

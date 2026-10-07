@@ -30,7 +30,7 @@ async function waitFor(pred, what, timeoutMs = 15000) {
 
 /** The derived figures the backend would send for a stored yarn. */
 function expectedTotals(yarn) {
-  const gramsLeft = yarn.lots.reduce((n, l) => n + (l.gramsLeft || 0), 0);
+  const gramsLeft = yarn.lots.reduce((n, l) => n + (l.weighed === false ? Math.round(l.balls * yarn.gramsPerBall) : l.gramsLeft || 0), 0);
   const balls = yarn.lots.reduce((n, l) => n + (l.balls || 0), 0);
   const metres =
     yarn.gramsPerBall > 0 && yarn.metresPerBall > 0
@@ -39,9 +39,12 @@ function expectedTotals(yarn) {
   return { gramsLeft, balls, metres };
 }
 
+/** What a card says there is now: grams, and the balls they come to. */
 function qtyLine(yarn) {
   const t = expectedTotals(yarn);
-  return `${t.balls} × ${yarn.gramsPerBall} g · ${t.gramsLeft} g left · ~${t.metres} m`;
+  const balls = t.gramsLeft / yarn.gramsPerBall;
+  const have = Number.isInteger(balls) ? `${balls} × ${yarn.gramsPerBall} g` : `${t.gramsLeft} g (${Math.round(balls * 10) / 10} balls)`;
+  return `${have} · ~${t.metres} m`;
 }
 
 export async function verifyYarnStash() {
@@ -169,12 +172,12 @@ export async function verifyYarnStash() {
     );
     modal().querySelector('.lot-row [data-lf="gramsLeft"]').value = "30";
     saveModal();
-    await waitFor(() => qtyOf(added().id).includes("30 g left"), "the updated quantities");
+    await waitFor(() => qtyOf(added().id).startsWith("30 g"), "the updated quantities");
     // 30 g of a 25 g / 210 m ball is 252 m.
     check(
       results,
       "editing grams left updates the metres line",
-      qtyOf(added().id) === "3 × 25 g · 30 g left · ~252 m",
+      qtyOf(added().id) === "30 g (1.2 balls) · ~252 m",
       qtyOf(added().id),
     );
 
@@ -238,7 +241,7 @@ export async function verifyYarnStash() {
     check(
       results,
       "the totals add up over both lots",
-      qtyOf(added().id) === "4 × 25 g · 55 g left · ~462 m",
+      qtyOf(added().id) === "55 g (2.2 balls) · ~462 m",
       qtyOf(added().id),
     );
 
@@ -251,16 +254,16 @@ export async function verifyYarnStash() {
       await waitFor(() => !modal(), "the form to close");
     };
     await editLots(["", "25"]);
-    await waitFor(() => qtyOf(added().id).includes("100 g left"), "the whole balls counted");
+    await waitFor(() => qtyOf(added().id).startsWith("4 × 25 g"), "the whole balls counted");
     // 3 whole balls of 25 g, and 25 g weighed: 100 g, 840 m.
     check(
       results,
       "a lot with no grams is its balls by the ball band",
-      qtyOf(added().id) === "4 × 25 g · 100 g left · ~840 m" && added().lots.some((l) => l.weighed === false),
+      qtyOf(added().id) === "4 × 25 g · ~840 m" && added().lots.some((l) => l.weighed === false),
       qtyOf(added().id),
     );
     await editLots(["", ""]);
-    await waitFor(() => !qtyOf(added().id).includes("g left"), "only whole balls");
+    await waitFor(() => added().lots.every((l) => l.weighed === false), "only whole balls");
     check(
       results,
       "…and whole balls say how much by themselves",
@@ -280,7 +283,7 @@ export async function verifyYarnStash() {
     check(
       results,
       "0 typed is weighed: none left of that lot",
-      added().lots.some((l) => l.weighed === true && l.gramsLeft === 0) && qtyOf(added().id) === "4 × 25 g · 75 g left · ~630 m",
+      added().lots.some((l) => l.weighed === true && l.gramsLeft === 0) && qtyOf(added().id) === "3 × 25 g · ~630 m",
       qtyOf(added().id),
     );
 
