@@ -20,8 +20,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.38](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.38)** —
+  removed patterns wait in the Bin for 30 days, with Undo. The one to test.
 - **[v0.3.0-beta.37](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.37)** —
-  Make a backup in Settings: the whole library in one zip. The one to test.
+  Make a backup in Settings: the whole library in one zip. Superseded by `beta.38`.
 - **[v0.3.0-beta.36](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.36)** —
   two projects from one pattern, each counting its own rows. Superseded by `beta.37`.
 - **[v0.3.0-beta.35](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.35)** —
