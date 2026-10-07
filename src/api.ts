@@ -706,6 +706,10 @@ export interface Project {
   planDate: number | null;
   /** Where a plan is in the plans' order. */
   planOrder: number;
+  /** A finished project is in the gallery by itself, unless hidden from it. */
+  galleryHidden: boolean;
+  /** The photos the gallery leaves out: "cover", or a log entry's id. */
+  gallerySkip: string[];
 }
 
 export interface ProjectYarnInput {
@@ -851,6 +855,15 @@ export interface LinkPreview {
 // ---------- a project's log ----------
 
 /** One entry in a project's log. Mirrors `models.rs::LogEntry`. */
+/** A photo in a finished project's log, for the gallery. Mirrors `models.rs::GalleryPhoto`. */
+export interface GalleryPhoto {
+  projectId: string;
+  /** The log entry's id; its picture is that entry's photo. */
+  id: string;
+  at: number;
+  text: string;
+}
+
 export interface LogEntry {
   id: string;
   projectId: string;
@@ -1229,6 +1242,10 @@ export const api = {
 
   // A project's log: newest first, milestones written by the backend itself.
   listProjectLog: (projectId: string) => invoke<LogEntry[]>("list_project_log", { projectId }),
+  /** Every photo in a finished project's log, oldest first. */
+  listGalleryPhotos: () => invoke<GalleryPhoto[]>("list_gallery_photos"),
+  /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
+  setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
   /** Dated now. */
   addLogEntry: (projectId: string, text: string) => invoke<LogEntry>("add_log_entry", { projectId, text }),
   updateLogEntry: (id: string, text: string, at: number) => invoke<LogEntry>("update_log_entry", { id, text, at }),

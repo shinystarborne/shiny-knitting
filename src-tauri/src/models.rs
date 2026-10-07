@@ -899,6 +899,23 @@ pub struct Project {
     /// Where a plan is in the list of plans, dragged into order.
     #[serde(default)]
     pub plan_order: f64,
+    /// A finished project is in the gallery by itself, unless hidden from it.
+    #[serde(default)]
+    pub gallery_hidden: bool,
+    /// The photos the gallery leaves out: "cover", or a log entry's id.
+    #[serde(default)]
+    pub gallery_skip: Vec<String>,
+}
+
+/// A photo in a project's log, for the gallery: its entry, when, and what it says.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryPhoto {
+    pub project_id: String,
+    /// The log entry's id; its picture is that entry's photo.
+    pub id: String,
+    pub at: i64,
+    pub text: String,
 }
 
 /// One yarn on a project, and, once finished, how much of it was left.

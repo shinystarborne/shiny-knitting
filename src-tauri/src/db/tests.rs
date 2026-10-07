@@ -2303,6 +2303,34 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
 }
 
 #[test]
+fn the_gallery_is_every_finished_projects_photos() {
+    let conn = test_db();
+    let hat = project(&conn, "Hat", None);
+    let socks = project(&conn, "Socks", None);
+    insert_log_entry(&conn, "cast-on", &hat.id, "Cast on", Some(100)).unwrap();
+    set_log_photo(&conn, "cast-on", "cast-on.jpg").unwrap();
+    insert_log_entry(&conn, "words", &hat.id, "Only words", Some(200)).unwrap();
+    insert_log_entry(&conn, "done", &hat.id, "Blocked", Some(300)).unwrap();
+    set_log_photo(&conn, "done", "done.jpg").unwrap();
+    insert_log_entry(&conn, "heel", &socks.id, "Heel", Some(150)).unwrap();
+    set_log_photo(&conn, "heel", "heel.jpg").unwrap();
+    assert!(list_gallery_photos(&conn).unwrap().is_empty(), "nothing finished, nothing in the gallery");
+
+    finish_project(&conn, &hat.id, &crate::models::FinishInput::default()).unwrap();
+    let photos = list_gallery_photos(&conn).unwrap();
+    assert_eq!(photos.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), vec!["cast-on", "done"], "a finished project's log photos, oldest first; not the socks still on the needles");
+    assert_eq!((photos[1].text.as_str(), photos[1].at), ("Blocked", 300));
+
+    let shown = get_project(&conn, &hat.id).unwrap();
+    assert!(!shown.gallery_hidden && shown.gallery_skip.is_empty(), "in the gallery by itself");
+    let skip = vec!["cover".to_string(), "cast-on".into(), "cast-on".into(), "heel".into(), "nonsense".into()];
+    let hidden = set_project_gallery(&conn, &hat.id, true, &skip).unwrap();
+    assert!(hidden.gallery_hidden);
+    assert_eq!(hidden.gallery_skip, vec!["cover", "cast-on"], "its own photos, each once; another project's are let go");
+    assert!(set_project_gallery(&conn, "gone", false, &[]).is_err());
+}
+
+#[test]
 fn finishing_takes_what_a_project_used_in_grams_or_balls() {
     let conn = test_db();
     let alpaca = |id: &str, gpb: i64| {

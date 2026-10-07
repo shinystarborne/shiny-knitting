@@ -1,14 +1,17 @@
-import { api, isRecord, PROJECT_STATUSES, projectStatusLabel, type Project, type ProjectStatus } from "../api";
+import { api, isRecord, PROJECT_STATUSES, projectStatusLabel, type GalleryPhoto, type Project, type ProjectStatus } from "../api";
 import { say } from "../dialogs";
 import { coverUrl, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { longDate } from "./project-form";
 import { paintLazily } from "./lazy";
+import { openGalleryProject, photosOf, tileHtml, tilePicture } from "./gallery";
 
 type Status = ProjectStatus;
 
-/** What the tab shows, kept while the app is open: the projects, or the plans. */
-const kept: { mode: "projects" | "plans" } = { mode: "projects" };
+type Mode = "projects" | "plans" | "gallery";
+
+/** What the tab shows, kept while the app is open: the projects, the plans, or the gallery; and whether the gallery shows the hidden. */
+const kept: { mode: Mode; hidden: boolean } = { mode: "projects", hidden: false };
 
 /**
  * The projects screen: everything being knitted, and everything finished.
@@ -24,6 +27,8 @@ export class ProjectsView {
   private status = new Set<Status>();
   private search = "";
   private results!: HTMLElement;
+  /** Every finished project's log photos, for the gallery. */
+  private logged: GalleryPhoto[] = [];
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -38,11 +43,13 @@ export class ProjectsView {
           <div class="seg" role="tablist" aria-label="Show">
             <button data-act="mode" data-mode="projects" role="tab">Projects</button>
             <button data-act="mode" data-mode="plans" role="tab" title="What to knit next: projects not started yet">Plans</button>
+            <button data-act="mode" data-mode="gallery" role="tab" title="Every finished project, with its photos">Gallery</button>
           </div>
         </div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search name, pattern, notes..." />
           <button data-act="sort-plans" class="ghost" title="Plans with a date first, the soonest first; the rest as they are">Sort by date</button>
+          <button data-act="show-hidden" class="ghost" title="Projects hidden from the gallery, to show again"></button>
           <button data-act="add" class="primary">+ New project</button>
         </div>
       </header>
@@ -75,7 +82,7 @@ export class ProjectsView {
     this.root.addEventListener("click", (e) => void this.onClick(e));
     this.wireDrag();
 
-    this.projects = await api.listProjects();
+    [this.projects, this.logged] = await Promise.all([api.listProjects(), api.listGalleryPhotos().catch(() => [] as GalleryPhoto[])]);
     this.renderFacets();
     this.paint();
   }
@@ -89,7 +96,12 @@ export class ProjectsView {
     if (btn) {
       const act = btn.dataset.act;
       if (act === "mode") {
-        kept.mode = btn.dataset.mode === "plans" ? "plans" : "projects";
+        const mode = btn.dataset.mode;
+        kept.mode = mode === "plans" || mode === "gallery" ? mode : "projects";
+        return this.paint();
+      }
+      if (act === "show-hidden") {
+        kept.hidden = !kept.hidden;
         return this.paint();
       }
       if (act === "add") this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: kept.mode === "plans" ? { planned: true } : {} }));
@@ -107,8 +119,62 @@ export class ProjectsView {
       }
       return;
     }
+    const tile = closestEl(e.target, "[data-gallery]");
+    if (tile) return void (await this.openTile(tile.dataset.gallery!));
     const card = closestEl(e.target, "[data-open]");
     if (card) this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: card.dataset.open }));
+  }
+
+  /** A finished project, big, over the gallery. */
+  private async openTile(id: string): Promise<void> {
+    const p = this.projects.find((x) => x.id === id);
+    if (!p) return;
+    await openGalleryProject(p, photosOf(p, this.logged), {
+      changed: (next) => {
+        this.projects = this.projects.map((x) => (x.id === next.id ? next : x));
+        this.paint();
+      },
+      openPage: (pid) => this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: pid })),
+      openPattern: (pid) => this.root.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: pid })),
+    });
+  }
+
+  /** Every finished project, the newest first; the hidden ones only when asked for. */
+  private paintGallery(): void {
+    const words = this.search.split(/\s+/).filter(Boolean);
+    const finished = this.projects.filter((p) => p.status === "finished").sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+    const hiddenCount = finished.filter((p) => p.galleryHidden).length;
+    const toggle = this.root.querySelector<HTMLElement>('[data-act="show-hidden"]')!;
+    toggle.hidden = !hiddenCount && !kept.hidden;
+    toggle.textContent = kept.hidden ? "Hide the hidden" : `Show hidden (${hiddenCount})`;
+    const shown = finished.filter((p) => {
+      if (p.galleryHidden && !kept.hidden) return false;
+      const text = [p.name, p.patternTitle, p.notes, ...p.yarns.map((y) => y.yarnName)].join(" ").toLowerCase();
+      return words.every((w) => text.includes(w));
+    });
+    if (!shown.length) {
+      this.results.innerHTML = `
+        <div class="empty">
+          <h2>${finished.length ? (words.length ? "Nothing by that name" : "Every finished project is hidden") : "Nothing finished yet"}</h2>
+          <p>${finished.length ? (words.length ? "Try another word." : "Show hidden brings them back.") : "A project goes into the gallery by itself when it is finished, with its cover and the photos in its log."}</p>
+        </div>`;
+      return;
+    }
+    paintLazily(this.results, shown, (p) => tileHtml(p, photosOf(p, this.logged)), {
+      pictures: ".gallery-tile",
+      paint: (tile) => this.paintTile(tile),
+    });
+  }
+
+  private async paintTile(tile: HTMLElement): Promise<void> {
+    const p = this.projects.find((x) => x.id === tile.dataset.gallery);
+    const box = tile.querySelector<HTMLElement>(".gallery-pic");
+    if (!p || !box) return;
+    const url = await tilePicture(p, photosOf(p, this.logged));
+    if (url) {
+      box.style.backgroundImage = `url("${url}")`;
+      box.classList.add("filled");
+    }
   }
 
   private renderFacets(): void {
@@ -129,11 +195,16 @@ export class ProjectsView {
 
   private paint(): void {
     const plans = kept.mode === "plans";
+    const gallery = kept.mode === "gallery";
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-act="mode"]')) b.classList.toggle("on", b.dataset.mode === kept.mode);
     this.root.classList.toggle("plans-mode", plans);
+    this.root.classList.toggle("gallery-mode", gallery);
     this.root.querySelector('[data-act="add"]')!.textContent = plans ? "+ New plan" : "+ New project";
+    (this.root.querySelector('[data-act="add"]') as HTMLElement).hidden = gallery;
     (this.root.querySelector('[data-act="sort-plans"]') as HTMLElement).hidden = !plans;
+    (this.root.querySelector('[data-act="show-hidden"]') as HTMLElement).hidden = !gallery;
     if (plans) return this.paintPlans();
+    if (gallery) return this.paintGallery();
     const shown = this.projects.filter((p) => {
       if (p.status === "planned") return false;
       if (this.status.size && !this.status.has(p.status)) return false;

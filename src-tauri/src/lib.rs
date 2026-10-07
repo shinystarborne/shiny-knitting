@@ -123,6 +123,8 @@ pub fn run() {
             projects::finish_project,
             projects::set_project_status,
             projects::set_plan_order,
+            projects::list_gallery_photos,
+            projects::set_project_gallery,
             projects::delete_project,
             projects::set_project_cover,
             projects::get_project_cover,

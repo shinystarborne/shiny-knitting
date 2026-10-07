@@ -760,6 +760,8 @@ function projectOut(pr) {
     planWhen: "",
     planDate: null,
     planOrder: 0,
+    galleryHidden: false,
+    gallerySkip: [],
     ...pr,
     patternId: pattern ? pr.patternId : null,
     patternTitle: pattern ? pattern.title : "",
@@ -1595,6 +1597,21 @@ const handlers = {
       pr.planDate = input.planDate ?? null;
       syncLinks(id, { ...input, toolIds: [] });
     }
+    return projectOut(pr);
+  },
+  // As db::list_gallery_photos: a finished project's log photos, oldest first.
+  list_gallery_photos: () =>
+    store.projectLog
+      .filter((e) => e.photoPath && store.projects.find((p) => p.id === e.projectId)?.status === "finished")
+      .sort((a, b) => a.at - b.at || a.seq - b.seq)
+      .map((e) => ({ projectId: e.projectId, id: e.id, at: e.at, text: e.text })),
+  // As db::set_project_gallery: its own photos, each once.
+  set_project_gallery: ({ id, hidden, skip }) => {
+    const pr = store.projects.find((x) => x.id === id);
+    if (!pr) throw new Error("That project is no longer there.");
+    const own = new Set(["cover", ...store.projectLog.filter((e) => e.projectId === id).map((e) => e.id)]);
+    pr.galleryHidden = !!hidden;
+    pr.gallerySkip = [...new Set(skip || [])].filter((k) => own.has(k));
     return projectOut(pr);
   },
   set_plan_order: ({ ids }) => {

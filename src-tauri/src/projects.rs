@@ -41,6 +41,18 @@ pub fn update_project(state: State<'_, AppState>, id: String, input: ProjectInpu
     db::update_project(&state.db(), &id, &tidy(input))
 }
 
+/// Every photo in a finished project's log, for the gallery.
+#[tauri::command]
+pub fn list_gallery_photos(state: State<'_, AppState>) -> CmdResult<Vec<crate::models::GalleryPhoto>> {
+    db::list_gallery_photos(&state.db())
+}
+
+/// A finished project hidden from the gallery or shown, and the photos it leaves out.
+#[tauri::command]
+pub fn set_project_gallery(state: State<'_, AppState>, id: String, hidden: bool, skip: Vec<String>) -> CmdResult<Project> {
+    db::set_project_gallery(&state.db(), &id, hidden, &skip)
+}
+
 /// The plans in the order given, as dragged.
 #[tauri::command]
 pub fn set_plan_order(state: State<'_, AppState>, ids: Vec<String>) -> CmdResult<()> {

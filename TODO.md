@@ -52,9 +52,9 @@ starting; the details are in the sections under the list.
 6. [x] Plans: projects not started yet, with a pattern or an idea, yarn, a
    rough date and an order to drag; from a stash yarn's Planned for, or a
    Want to knit pattern. *Decided:* both, a rough time or an exact date. *0.3.27*
-7. [ ] Finished gallery: photos of finished projects with their pattern,
+7. [x] Finished gallery: photos of finished projects with their pattern,
    yarn, needles, dates and log. *Decided:* by itself, every finished
-   project, with a way to hide one.
+   project, with a way to hide one. *0.3.35*
 8. [ ] Two projects from one pattern, each with its own row counter.
    *Decided:* yes, a counter per project, started from the pattern's.
 
@@ -273,6 +273,10 @@ separate step, not asked for yet.
   and milestones the project writes (started, paused, frogged, finished, a new
   pattern). A live Log card on the project's board shows it and takes new
   entries.
+- **Finished gallery:** the Projects tab's Gallery: every finished project by
+  itself, with its cover and log photos (list_gallery_photos); opened big,
+  with its pattern, yarn, needles, dates, notes and log. Photos left out and
+  a project hidden are kept on the project (gallery_skip, gallery_hidden).
 - **Plans:** what to knit next, in the Projects tab's Plans list: projects
   not started, with a pattern (or only a name), yarn from the stash and how
   much, a rough time and or an exact date. Dragged into order, or sorted by

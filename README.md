@@ -402,6 +402,14 @@ used goes into the stash's Statistics. It also offers to mark the pattern
 Finished. A finished project keeps the list of what it used and what was left,
 as a record.
 
+**The gallery.** The Projects tab switches between **Projects**, **Plans** and
+**Gallery**. Every finished project is in the gallery by itself, newest first,
+shown by its photos: its cover and the photos in its log. Opened, it shows them
+big, one at a time (the arrow keys go through them), beside its pattern, yarn,
+needles and hooks, dates, who it was for, notes and log. **Choose photos**
+leaves some out; **Hide from the gallery** takes the whole project out, and
+**Show hidden** brings the hidden ones back to show again.
+
 **The log.** A project's page switches between its **Board** and its **Log**,
 a diary of the knitting, the newest first, a day at a time. Type what happened
 — what you changed in the pattern, where you stopped, how the yarn behaves —

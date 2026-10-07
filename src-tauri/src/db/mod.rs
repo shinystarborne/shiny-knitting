@@ -574,6 +574,13 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "plans")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
     }
+    // A finished project in the gallery: hidden from it, and the photos it leaves out.
+    if !column_exists(conn, "projects", "gallery_hidden")? {
+        conn.execute_batch(
+            "ALTER TABLE projects ADD COLUMN gallery_hidden INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE projects ADD COLUMN gallery_skip TEXT NOT NULL DEFAULT '[]';",
+        )?;
+    }
     // A plan's time as said, its exact date, and its place in the plans' order.
     if !column_exists(conn, "projects", "plan_when")? {
         conn.execute_batch(
@@ -2285,6 +2292,8 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         plan_when: row.get("plan_when")?,
         plan_date: row.get("plan_date")?,
         plan_order: row.get("plan_order")?,
+        gallery_hidden: row.get("gallery_hidden")?,
+        gallery_skip: serde_json::from_str(&row.get::<_, String>("gallery_skip")?).unwrap_or_default(),
     })
 }
 
@@ -2416,6 +2425,40 @@ fn insert_plan(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<P
     }
     log_milestone(&tx, id, "Planned", Some(now))?;
     tx.commit()?;
+    get_project(conn, id)
+}
+
+/// Every photo in a finished project's log, oldest first: with the covers,
+/// what the gallery is made of.
+pub fn list_gallery_photos(conn: &Connection) -> AppResult<Vec<crate::models::GalleryPhoto>> {
+    let mut stmt = conn.prepare(
+        "SELECT l.project_id, l.id, l.at, l.text FROM project_log l JOIN projects pr ON pr.id = l.project_id
+         WHERE pr.status = 'finished' AND l.photo_path <> '' ORDER BY l.at, l.rowid",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(crate::models::GalleryPhoto { project_id: r.get(0)?, id: r.get(1)?, at: r.get(2)?, text: r.get(3)? })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Hides a project from the gallery or shows it, and the photos it leaves
+/// out: "cover", or its log entries' ids. Anything else is let go.
+pub fn set_project_gallery(conn: &Connection, id: &str, hidden: bool, skip: &[String]) -> AppResult<Project> {
+    let project = get_project(conn, id)?;
+    let logged: Vec<String> = conn
+        .prepare("SELECT id FROM project_log WHERE project_id = ?1")?
+        .query_map(params![id], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    let mut kept: Vec<&str> = Vec::new();
+    for s in skip {
+        if (s == "cover" || logged.contains(s)) && !kept.contains(&s.as_str()) {
+            kept.push(s);
+        }
+    }
+    conn.execute(
+        "UPDATE projects SET gallery_hidden = ?2, gallery_skip = ?3 WHERE id = ?1",
+        params![project.id, hidden, serde_json::to_string(&kept).unwrap_or_else(|_| "[]".into())],
+    )?;
     get_project(conn, id)
 }
 
