@@ -37,10 +37,11 @@ starting; the details are in the sections under the list.
    says of itself (metres and grams per ball, fibres) stays.
 4. [ ] A yarn's expected gauge and needles to use, as its band gives them:
    sts and rows over 10 cm, and a needle size or range, in its form and on
-   its card.
+   its card. Saved by brand and yarn name, so every colour of it has them.
 5. [ ] A yarn's care markings: the symbols (washing, bleach, drying,
    ironing, dry cleaning) picked in its form, shown on its card, each with a
-   label saying what it means (hand wash only, do not iron...).
+   label saying what it means (hand wash only, do not iron...). Saved by
+   brand and yarn name, like 4.
 
 **Projects**
 
@@ -136,7 +137,10 @@ would keep them apart. Decided (6 Oct 2026): yes, a counter per project.
 
 Asked for 7 Oct 2026: ball band pictures are never used, so they go (the
 Ball bands view, the thumbnails, the stored pictures). What a band says is
-kept as details on the yarn instead:
+kept as details on the yarn instead. These belong to the yarn, not the
+colour: saved once by brand and yarn name, shared by every colour of it in
+the stash and its history. Changed on one colour, they change for all; a new
+colour of a yarn already known starts with them.
 
 - **Expected gauge:** sts and rows over 10 cm (or 4 in), as the band gives
   it. A swatch's own gauge stays the one that counts; this is what to expect.
