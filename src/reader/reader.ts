@@ -381,6 +381,7 @@ export class ReaderView {
             <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
             <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click where it belongs">🅣</button>
             <button data-mark="draw" class="ghost icon-btn" aria-label="Draw" title="Draw: drag on the page">✏️</button>
+            <button data-mark="text" class="ghost icon-btn" aria-label="Text" title="Text: click where it goes, and type">Aa</button>
             <button data-mark="erase" class="ghost icon-btn" aria-label="Eraser" title="Eraser: drag over a drawing to rub it out">⌫</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
             <button data-act="mark-undo" class="ghost icon-btn" aria-label="Undo" title="Undo the last mark made" data-mark-undo>↶</button>

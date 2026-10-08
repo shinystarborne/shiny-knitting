@@ -1525,6 +1525,10 @@ fn a_mark_moved_keeps_its_new_shape() {
     assert!(set_annotation_geometry(&conn, &mark.id, "not json").is_err());
     assert!(set_annotation_geometry(&conn, &mark.id, "[]").is_err(), "a mark is somewhere");
     assert!(set_annotation_geometry(&conn, "gone", r#"[{"x":0,"y":0}]"#).is_err());
+
+    // Typed text is a kind of its own, its words kept.
+    let typed = insert_annotation(&conn, &p.id, &crate::models::AnnotationInput { kind: "text".into(), text: "Row 12: k2tog".into(), geometry: r#"[{"x":0.1,"y":0.1,"w":0.2,"h":0.02}]"#.into(), ..input }).unwrap();
+    assert_eq!((typed.kind.as_str(), typed.text.as_str()), ("text", "Row 12: k2tog"));
 }
 
 #[test]

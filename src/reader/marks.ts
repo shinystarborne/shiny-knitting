@@ -40,7 +40,10 @@ import { boxFromView, boxToView, pointFromView, pointToView, type Rotation } fro
  */
 
 /** What the toolbar has selected. */
-export type MarkTool = "none" | "highlight" | "note" | "draw" | "erase" | "pin";
+export type MarkTool = "none" | "highlight" | "note" | "draw" | "text" | "erase" | "pin";
+
+/** A new line of typed text, as a fraction of the page's height: about 11 pt on A4. */
+const TEXT_LINE = 0.018;
 
 /** How far round the eraser rubs out, as a fraction of the page's width. */
 const ERASER = 0.014;
@@ -165,6 +168,7 @@ export class MarkLayer {
     this.scroller.classList.toggle("mark-tool-draw", tool === "draw" || tool === "highlight");
     this.scroller.classList.toggle("mark-tool-pick", tool === "none");
     this.scroller.classList.toggle("mark-tool-erase", tool === "erase");
+    this.scroller.classList.toggle("mark-tool-text", tool === "text");
   }
 
   get currentTool(): MarkTool {
@@ -283,6 +287,8 @@ export class MarkLayer {
           // Gone after an edit, or outside the chapter's box mid-reflow: drawn
           // nowhere rather than against the page edge.
           if (ranges.length) this.paintRects(mark, host, visibleRectsForRanges(ranges, page));
+        } else if (mark.kind === "text") {
+          this.paintText(mark, host, page);
         } else {
           this.paintRects(mark, host, mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry));
         }
@@ -306,6 +312,64 @@ export class MarkLayer {
       ? pointsToJson(parsePoints(mark.geometry).map((p) => pointToView(p, r)))
       : rectsToJson(parseRects(mark.geometry).map((b) => boxToView(b, r)));
     return { ...mark, geometry };
+  }
+
+  /** Typed words in their box, the letters sized to its height so they scale with the page. */
+  private paintText(mark: Annotation, host: HTMLElement, page: HTMLElement): void {
+    const rect = parseRects(mark.geometry)[0];
+    if (!rect) return;
+    const el = document.createElement("div");
+    el.className = "mark mark-text";
+    el.dataset.id = mark.id;
+    Object.assign(el.style, { left: pct(rect.x), top: pct(rect.y), width: pct(rect.w), height: pct(rect.h), color: mark.color });
+    const lines = Math.max(1, mark.text.split("\n").length);
+    const line = (rect.h * page.getBoundingClientRect().height) / lines;
+    el.style.fontSize = `${line * 0.78}px`;
+    el.style.lineHeight = `${line}px`;
+    el.textContent = mark.text;
+    host.appendChild(el);
+  }
+
+  /** Text typed onto the page where it was clicked, in the mark colour. */
+  private async addTextAt(x: number, y: number, pageNumber: number, page: HTMLElement): Promise<void> {
+    const text = (await askText("Type what goes on the page. Enter starts a new line; Ctrl+Enter puts it there.", { title: "Text on the page", okLabel: "Put it there", multiline: true }))?.replace(/\r/g, "");
+    if (!text?.trim()) return;
+    const at = pointFrom(x, y, page);
+    if (!at) return;
+    const box = page.getBoundingClientRect();
+    const rect = { x: at.x, y: at.y, ...textSize(text, TEXT_LINE, box) };
+    const created = await api.addAnnotation(this.patternId, {
+      kind: "text",
+      page: pageNumber,
+      geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
+      quote: "",
+      occurrence: 0,
+      color: this.colour,
+      text,
+    });
+    this.marks.push(created);
+    this.onChange?.();
+    this.repaint();
+  }
+
+  /** Changes typed text, keeping the size of its letters. */
+  private async editText(mark: Annotation): Promise<void> {
+    const text = (await askText("Change the text, or clear it to remove it.", { title: "Text on the page", okLabel: "Save", value: mark.text, multiline: true }))?.replace(/\r/g, "");
+    if (text === null || text === undefined) return;
+    if (!text.trim()) {
+      await this.removeById(mark.id);
+      this.repaint();
+      return;
+    }
+    const page = this.doc.pageElement(mark.page);
+    const shown = parseRects(this.shown(mark).geometry)[0];
+    if (!page || !shown) return;
+    const line = shown.h / Math.max(1, mark.text.split("\n").length);
+    const rect = { x: shown.x, y: shown.y, ...textSize(text, line, page.getBoundingClientRect()) };
+    await api.editAnnotation(mark.id, text, mark.color);
+    const stored = await api.moveAnnotation(mark.id, rectsToJson([boxFromView(rect, this.turnOf(mark.page))]));
+    Object.assign(mark, stored, { text });
+    this.repaint();
   }
 
   private paintRects(mark: Annotation, host: HTMLElement, rects: Rect[]): void {
@@ -752,6 +816,7 @@ export class MarkLayer {
       const mark = this.marks.find((m) => m.id === pending.id);
       if (moved <= CLICK_SLOP && mark) {
         if (mark.kind === "note") this.editNote(mark);
+        else if (mark.kind === "text") void this.editText(mark);
         else void this.removeMark(mark);
       }
     }
@@ -866,6 +931,9 @@ export class MarkLayer {
     } else if (this.tool === "note") {
       e.preventDefault();
       void this.addNoteAt(x, y, n);
+    } else if (this.tool === "text" && !(page instanceof HTMLIFrameElement)) {
+      e.preventDefault();
+      void this.addTextAt(x, y, n, page);
     } else if (this.tool === "erase" && !(page instanceof HTMLIFrameElement)) {
       e.preventDefault();
       this.erasing = { pointer: e.pointerId, n, page, base: new Map(), parts: new Map() };
@@ -1063,8 +1131,24 @@ function pointFrom(x: number, y: number, page: HTMLElement): Point | null {
 }
 
 /** How a mark is named when asking whether to remove it. */
+/** The box typed text needs, at a line height given as a fraction of the page's height. */
+function textSize(text: string, line: number, page: DOMRect): { w: number; h: number } {
+  const lines = text.split("\n");
+  const px = line * page.height;
+  const ctx = document.createElement("canvas").getContext("2d");
+  let widest = 0;
+  if (ctx) {
+    ctx.font = `${px * 0.78}px ${getComputedStyle(document.body).fontFamily}`;
+    widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  } else {
+    widest = Math.max(...lines.map((l) => l.length)) * px * 0.45;
+  }
+  return { w: Math.min(1, (widest + 4) / (page.width || 1)), h: line * lines.length };
+}
+
 function describeMark(mark: Annotation): string {
   if (mark.kind === "note") return "this note";
+  if (mark.kind === "text") return "this text";
   if (mark.kind === "draw") return "this drawing";
   return mark.quote ? `this highlight on “${mark.quote.slice(0, 40)}”` : "this highlight";
 }

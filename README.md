@@ -867,6 +867,11 @@ default, so reading and tidying up need no tool chosen at all.
 - **Note** (🅣) — click anywhere to drop a note. Clearing the text and saving
   removes the note rather than leaving an empty dot behind.
 - **Draw** (✏️) — a thin pen, freehand, over charts and diagrams.
+- **Text** (Aa) — click where it goes on a PDF page and type: a size, a
+  change you made, a row to remember. Enter starts a new line, `Ctrl`+`Enter`
+  puts it there, in the mark colour; it scales with the page. With Select,
+  click it to change it (cleared, it is gone), drag it to move it, and drag its
+  corner to make the letters bigger or smaller.
 - **Eraser** (⌫) — drag over a drawing or a highlighter stroke to rub out the
   part it passes over, as a pencil eraser would: across the middle of a line
   leaves two, along it takes it away. Notes and highlights over text are left

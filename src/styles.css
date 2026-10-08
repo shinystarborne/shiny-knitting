@@ -1217,6 +1217,9 @@ kbd {
    stroke being drawn. */
 .mark-tool-draw { cursor: crosshair; user-select: none; }
 .mark-tool-erase { cursor: cell; user-select: none; }
+.mark-tool-text { cursor: text; }
+/* Typed text on the page: the words alone, in the mark colour, sized to their box. */
+.mark-text { white-space: pre; overflow: visible; font-weight: 600; font-family: inherit; }
 .mark-tool-pick .mark { cursor: pointer; }
 
 .epub-frame {

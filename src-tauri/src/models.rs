@@ -559,6 +559,8 @@ pub enum AnnotationKind {
     Note,
     /// Freehand strokes drawn over the page.
     Draw,
+    /// Words typed onto the page, in a box that scales with it.
+    Text,
 }
 
 impl AnnotationKind {
@@ -567,6 +569,7 @@ impl AnnotationKind {
             AnnotationKind::Highlight => "highlight",
             AnnotationKind::Note => "note",
             AnnotationKind::Draw => "draw",
+            AnnotationKind::Text => "text",
         }
     }
 
@@ -576,6 +579,7 @@ impl AnnotationKind {
         match value {
             "note" => AnnotationKind::Note,
             "draw" => AnnotationKind::Draw,
+            "text" => AnnotationKind::Text,
             _ => AnnotationKind::Highlight,
         }
     }

@@ -1433,7 +1433,7 @@ const handlers = {
     const a = {
       id: `a${store.nextId++}`,
       patternId,
-      kind: ["highlight", "note", "draw"].includes(input.kind) ? input.kind : "highlight",
+      kind: ["highlight", "note", "draw", "text"].includes(input.kind) ? input.kind : "highlight",
       page: Math.max(1, input.page || 1),
       geometry: input.geometry || "[]",
       quote: input.quote || "",

@@ -33,6 +33,8 @@ export interface AskOptions {
   /** Prefilled text, and a hint shown while the field is empty. */
   value?: string;
   placeholder?: string;
+  /** Several lines: Enter starts a new one, Ctrl+Enter answers. */
+  multiline?: boolean;
 }
 
 /**
@@ -102,18 +104,18 @@ export function askText(message: string, options: AskOptions = {}): Promise<stri
       close(overlay);
       resolve(answer);
     };
-    const field = dom("input", {
-      class: "dialog-input",
-      type: "text",
-      value: options.value ?? "",
-    });
+    const field = (options.multiline
+      ? dom("textarea", { class: "dialog-input dialog-text", rows: "3" })
+      : dom("input", { class: "dialog-input", type: "text" })) as HTMLInputElement | HTMLTextAreaElement;
+    field.value = options.value ?? "";
     if (options.placeholder) field.placeholder = options.placeholder;
 
     const confirmButton = button(options.okLabel ?? "OK", "primary", () => finish(field.value));
     // Enter answers, as it would in a browser prompt, so this is not a slower
     // version of the thing it replaces.
     field.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+      const ke = e as KeyboardEvent;
+      if (ke.key === "Enter" && (!options.multiline || ke.ctrlKey || ke.metaKey)) {
         e.preventDefault();
         finish(field.value);
       }
