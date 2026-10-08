@@ -1,7 +1,7 @@
 import { api, isLive, type MeasureUnit, type Person, type Project, type Swatch } from "../api";
 import { say } from "../dialogs";
 import { closestEl } from "../dom";
-import { raglan, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
+import { raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
@@ -9,7 +9,7 @@ import { ChartList } from "./charts";
 type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "charts";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
-  { key: "raglan", label: "Raglan sweater", hint: "Top-down, in the round" },
+  { key: "raglan", label: "Raglan sweater", hint: "Top-down or bottom-up, in the round" },
   { key: "yoke", label: "Round yoke (lopapeysa)", hint: "Top-down, in the round" },
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
@@ -200,7 +200,18 @@ export class CalculatorsView {
     return `
       <div class="calc-grid">
         <section class="calc-inputs">
-          <h2>${yoke ? "Round yoke" : "Raglan sweater"} <span class="hint">${yoke ? "lopapeysa, " : ""}top-down, in the round</span></h2>
+          <h2>${yoke ? "Round yoke" : "Raglan sweater"} <span class="hint">${yoke ? "lopapeysa, top-down" : kept.values.direction === "up" ? "bottom-up" : "top-down"}, in the round</span></h2>
+          ${
+            yoke
+              ? ""
+              : `<label class="field">
+            <span>Worked</span>
+            <select data-k="direction">
+              <option value="down" ${kept.values.direction !== "up" ? "selected" : ""}>Top-down: from the neck</option>
+              <option value="up" ${kept.values.direction === "up" ? "selected" : ""}>Bottom-up: body and sleeves first, joined for the yoke</option>
+            </select>
+          </label>`
+          }
           <label class="field">
             <span>For</span>
             <select data-k="person">
@@ -394,11 +405,23 @@ export class CalculatorsView {
     const input = this.garmentInput();
     const r = raglan(input);
     if ("error" in r) throw new Error(r.error);
-    const steps = raglanSteps(r, input, this.len);
-    this.keepPlan("Raglan", input, r.finished, steps);
+    const up = kept.values.direction === "up";
+    const steps = up ? raglanBottomUpSteps(r, input, this.len) : raglanSteps(r, input, this.len);
+    this.keepPlan(up ? "Raglan, bottom-up" : "Raglan", input, r.finished, steps);
+    const numbers = up
+      ? table([
+          ["Body cast on", `${r.body}`, `chest ${this.len(r.finished.chest)}`],
+          ["Sleeve cast on", `${r.wristSts} → ${r.upperArmSts}`, `${this.len(r.finished.wrist)} → ${this.len(r.finished.upperArm)}`],
+          ["Underarm on hold", `${r.underarmSts}`, "at each side, body and sleeve"],
+          ["At the join", `${r.front} back, ${r.front} front`, `${r.sleeve} each sleeve`],
+          ["Decrease rounds", `${Math.max(r.bodyIncreases, r.sleeveIncreases)}`, scheduleUp(r)],
+          ["Yoke", `${r.yokeRounds} rounds`, this.len(r.finished.yokeDepth)],
+          ["At the neck", `${r.castOn}`, `${r.front0} back and front, ${r.sleeve0} each sleeve; neck ${this.len(r.finished.neck)}`],
+        ])
+      : "";
     return `
       ${this.resultHead("The numbers")}
-      ${table([
+      ${numbers || table([
         ["Cast on", `${r.castOn}`, `neck ${this.len(r.finished.neck)}`],
         ["At the start", `${r.front0} back, ${r.front0} front`, `${r.sleeve0} each sleeve`],
         ["Increase rounds", `${Math.max(r.bodyIncreases, r.sleeveIncreases)}`, schedule(r)],
@@ -580,6 +603,10 @@ export class CalculatorsView {
       if (fit) this.setField("bodyEase", fit.ease ? showLength(fit.ease, this.unit) : "0");
     }
     if (key === "round" || key === "countsAre") kept.values[key] = el.value;
+    if (key === "direction") {
+      const hint = this.main.querySelector<HTMLElement>(".calc-inputs h2 .hint");
+      if (hint) hint.textContent = `${el.value === "up" ? "bottom-up" : "top-down"}, in the round`;
+    }
     this.calculate();
   }
 
@@ -590,6 +617,11 @@ export class CalculatorsView {
     kept.values[key] = value;
     return this;
   }
+}
+
+/** The bottom-up order: every other round first, by the underarm, every round last, by the neck. */
+function scheduleUp(r: RaglanResult): string {
+  return [r.everyOther ? `every other round ×${r.everyOther}` : "", r.everyRound ? `every round ×${r.everyRound}` : ""].filter(Boolean).join(", then ");
 }
 
 /** "every other round 28 times", or "every round 4 times, then every other round 20 times". */

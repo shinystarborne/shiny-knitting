@@ -6,7 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
-import { even, nearestRepeat, raglan, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
+import { even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
   name: string;
@@ -90,6 +90,12 @@ function pure(results: CheckResult[]): void {
   check(results, "…and it measures what was asked", Math.abs(r.finished.chest - 100) < 0.5 && r.warnings.length === 0, JSON.stringify(r.finished));
   const steps = raglanSteps(r, ADULT, (cm) => `${Math.round(cm * 10) / 10} cm`);
   check(results, "the steps say it in words", steps[0].startsWith("Cast on 104 stitches") && steps.some((s) => /every other round 28 times/.test(s)) && steps.some((s) => /every 6 rounds 19 times, to 40 stitches/.test(s)), steps.join(" | "));
+  const up = raglanBottomUpSteps(r, ADULT, (cm) => `${Math.round(cm * 10) / 10} cm`);
+  check(results, "bottom-up: the sleeves from the cuff, increasing to the upper arm", up[0].startsWith("Sleeves (two the same): cast on 40 stitches") && up.some((s) => /every 6 rounds 19 times, to 78 stitches/.test(s)), up.slice(0, 2).join(" | "));
+  check(results, "…the body from the hem, the underarms on hold, joined for the yoke", up.some((s) => /^Body: cast on 220 stitches/.test(s)) && up.some((s) => /^Join: .*: 328 stitches/.test(s)) && up.some((s) => /Kitchener/.test(s)), up.join(" | "));
+  const plainAt = up.findIndex((s) => /^Knit 4 rounds plain/.test(s));
+  const decAt = up.findIndex((s) => /^Work 28 decrease rounds: on every other round 28 times/.test(s));
+  check(results, "…the plain rounds first, by the underarm, then the decreases to the neck's 104", plainAt >= 0 && decAt > plainAt && up.some((s) => /104 in all/.test(s)), up.join(" | "));
 
   const shallow = raglan({ ...ADULT, yokeDepth: 14 }) as RaglanResult;
   check(results, "a shallow yoke increases on some rounds in a row", shallow.everyRound > 0 && shallow.everyRound + 2 * shallow.everyOther === Math.round(14 * 3), JSON.stringify(shallow));
@@ -168,6 +174,9 @@ export async function verifyCalculators() {
     check(results, "the raglan is worked out as it is typed", cell("Cast on") === "104" && cell("Body") === "220" && cell("Sleeve") === "78 → 40", `${cell("Cast on")} / ${cell("Body")} / ${cell("Sleeve")}`);
     const steps = [...view()!.querySelectorAll(".calc-steps li")].map((li) => li.textContent ?? "");
     check(results, "…with the steps in words", steps.length >= 9 && steps[0].startsWith("Cast on 104 stitches"), steps[0]);
+    type("direction", "up");
+    check(results, "Worked bottom-up, the table and the steps start from the body and sleeves", cell("Body cast on") === "220" && cell("At the neck") === "104" && /^Sleeves \(two the same\)/.test(view()!.querySelector(".calc-steps li")?.textContent ?? "") && /bottom-up/.test(view()!.querySelector(".calc-inputs h2")?.textContent ?? ""), cell("Body cast on"));
+    type("direction", "down");
     type("chest", "lots");
     check(results, "something that is not a length says so", /chest is not a length/.test(results_()), results_());
     type("chest", "92");

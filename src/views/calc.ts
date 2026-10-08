@@ -465,6 +465,58 @@ export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: num
   return steps;
 }
 
+/**
+ * The same raglan worked from the bottom up: the body from the hem and the
+ * sleeves from the cuff, joined at the underarms, and the yoke decreased to
+ * the neck. Every count is the top-down one, met in the other order: the
+ * plain rounds come first, by the underarm, and the decreases close in on the
+ * neck where the top-down increases began.
+ */
+export function raglanBottomUpSteps(r: RaglanResult, i: RaglanInput, len: (cm: number) => string): string[] {
+  const steps: string[] = [];
+  const half = r.underarmSts / 2;
+  steps.push(
+    `Sleeves (two the same): cast on ${r.wristSts} stitches, join to knit in the round, and work ${r.cuffRounds} rounds of rib (${len(i.cuffRib)}) for the cuff.`,
+  );
+  if (r.sleeveDecreases) {
+    steps.push(
+      `Increase round: k1, make 1 left, knit to the last stitch, make 1 right, k1: 2 stitches more. Work it every ${r.sleeveEvery} rounds ${r.sleeveDecreases} times, to ${r.upperArmSts} stitches, and knit until the sleeve measures ${len(i.armLength)} from the cast-on.`,
+    );
+  } else {
+    steps.push(`Knit until the sleeve measures ${len(i.armLength)} from the cast-on.`);
+  }
+  steps.push(
+    `Put the underarm on hold: the last ${Math.floor(half)} and the first ${Math.ceil(half)} stitches of the round, ${r.underarmSts} in all. ${r.sleeve} stay for the yoke. Keep each sleeve aside.`,
+  );
+  steps.push(
+    `Body: cast on ${r.body} stitches, join to knit in the round, work ${r.hemRounds} rounds of rib (${len(i.hemRib)}), then knit ${r.bodyRounds} rounds, until it measures ${len(i.bodyLength)} from the cast-on.`,
+  );
+  steps.push(
+    `Put the underarms on hold: the last ${Math.floor(half)} and the first ${Math.ceil(half)} stitches of the round, and the ${r.underarmSts} halfway round. ${r.front} stay each for the back and front.`,
+  );
+  steps.push(
+    `Join: knit the back's ${r.front}, place a marker, a sleeve's ${r.sleeve}, place a marker, the front's ${r.front}, place a marker, the other sleeve's ${r.sleeve}, and place the marker for the start of the round: ${2 * r.front + 2 * r.sleeve} stitches.`,
+  );
+  if (r.plainRounds) steps.push(`Knit ${r.plainRounds} rounds plain.`);
+  steps.push("Decrease round: *knit to 3 stitches before the marker, ssk, k1, slip the marker, k1, k2tog*, 4 times, knit to the end: 8 stitches fewer.");
+  const both = Math.min(r.bodyIncreases, r.sleeveIncreases);
+  const only = Math.abs(r.bodyIncreases - r.sleeveIncreases);
+  const where = r.bodyIncreases > r.sleeveIncreases ? "the back and front" : "the sleeves";
+  const spacing = [
+    r.everyOther ? `on every other round ${r.everyOther} times` : "",
+    r.everyRound ? `${r.everyOther ? "then " : ""}on every round ${r.everyRound} times` : "",
+  ].filter(Boolean);
+  steps.push(
+    `Work ${Math.max(r.bodyIncreases, r.sleeveIncreases)} decrease rounds: ${spacing.join(", ")}.${
+      only ? ` ${both} of them decrease at all 8 places; on the other ${only}, decrease only on ${where} (4 stitches fewer), spread among the rest.` : ""
+    } The yoke measures ${len(r.finished.yokeDepth)}.`,
+  );
+  steps.push(`You have ${r.front0} stitches each for the back and front, and ${r.sleeve0} for each sleeve: ${r.castOn} in all.`);
+  steps.push(`Neckband: ${r.neckRibRounds} rounds of rib (${len(i.neckRib)}). Bind off loosely, so it goes over the head.`);
+  steps.push(`Graft the ${r.underarmSts} held stitches of each underarm, sleeve to body, with Kitchener stitch.`);
+  return steps;
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }

@@ -553,6 +553,10 @@ typed in.
   the underarm, the body, the sleeve from upper arm to wrist, and what it all
   measures — and the steps in words. When the body and sleeves need different
   numbers of increase rounds, or the yoke is too shallow for them, it says so.
+  **Worked bottom-up** turns it round: the sleeves from the cuff and the body
+  from the hem, the underarms put on hold, all joined for the yoke and
+  decreased to the neck, the underarms grafted at the end — the same counts,
+  met in the other order.
 - **Round yoke (lopapeysa)**, top-down in the round, from the same measurements
   (its yoke depth filled in as the armhole depth + 2 cm, since a round yoke
   covers the shoulders). Three increase rounds, or up to six for a rounder yoke,
