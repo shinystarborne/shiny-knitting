@@ -357,7 +357,8 @@ export class LibraryView {
       <button role="menuitem" data-menu="details"><span class="tick"></span>Details…</button>
       <button role="menuitem" data-menu="cover"><span class="tick"></span>Cover…</button>
       <button role="menuitem" data-menu="project"><span class="tick"></span>Start a project…</button>
-      <button role="menuitem" data-menu="plan"><span class="tick"></span>Plan it…</button>`;
+      <button role="menuitem" data-menu="plan"><span class="tick"></span>Plan it…</button>
+      <button role="menuitem" data-menu="external"><span class="tick"></span>Open in your ${pattern.format === "epub" ? "EPUB" : "PDF"} app ↗</button>`;
     document.body.appendChild(menu);
     // Under the button, kept on screen.
     const at = button.getBoundingClientRect();
@@ -442,6 +443,13 @@ export class LibraryView {
       if (await changeCover(pattern)) await this.afterCoverChange(patternId);
     } else if (action === "project") {
       this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId } }));
+    } else if (action === "external") {
+      // The file itself, in whatever Windows opens such files with: to print, or to fill in.
+      try {
+        await api.openPatternFile(patternId);
+      } catch (err) {
+        this.flash(err instanceof Error ? err.message : String(err), true);
+      }
     } else if (action === "plan") {
       this.root.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId, planned: true } }));
     }

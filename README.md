@@ -818,6 +818,10 @@ bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.
 
+**Open ↗** in the reader bar, or **Open in your PDF app** in a pattern's ⋯
+menu, opens the file itself in the program Windows uses for it: to print it,
+or to fill in a form in it.
+
 **Two patterns side by side.** **Beside…** in the reader bar opens another
 pattern from the library next to this one — a separate chart, a size table,
 a second pattern — each with its own zoom, scroll and marks; the one beside

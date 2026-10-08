@@ -89,8 +89,8 @@ starting; the details are in the sections under the list.
 18. [x] Marks moved and resized. With Select: drag to move, the corner to resize. *0.3.47*
 19. [x] An eraser for drawings. ⌫: rubs out what it passes over, splitting a stroke. *0.3.48*
 20. [x] Typed text on the page. Aa: click, type; moved, resized and changed with Select. *0.3.49*
-21. [ ] "Open in the default PDF app" (the backend is there; it needs a
-    button).
+21. [x] "Open in the default PDF app" (the backend is there; it needs a
+    button). Open ↗ in the reader, and in the ⋯ menu. *0.3.50*
 22. [ ] A card for a pattern whose file has gone missing.
 
 **Calculators**

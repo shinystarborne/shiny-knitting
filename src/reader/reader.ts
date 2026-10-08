@@ -419,6 +419,7 @@ export class ReaderView {
           ${embedded ? "" : `<button data-act="beside" class="ghost" title="Open another pattern beside this one: a chart, a size table, a second pattern">Beside…</button>`}
           ${this.embedded?.beside ? `<button data-act="close-beside" class="ghost icon-btn" aria-label="Close it" title="Close the pattern beside">✕</button>` : ""}
           <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
+          <button data-act="open-external" class="ghost" title="Open the file in your ${this.pattern.format === "epub" ? "EPUB" : "PDF"} app: to print it, or to fill in a form">Open ↗</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
       </header>
@@ -476,6 +477,9 @@ export class ReaderView {
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
       if (act === "page-mode") void this.setPageMode(!this.doc?.isPageMode?.());
       if (act === "beside") void this.chooseBeside();
+      if (act === "open-external") {
+        void api.openPatternFile(this.pattern.id).catch((err) => say(err instanceof Error ? err.message : String(err), "Open"));
+      }
       if (act === "close-beside") this.embedded?.beside?.close();
       if (act === "theme") {
         const light = !this.root.classList.contains("light");
