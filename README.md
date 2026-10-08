@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.47](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.47)** —
+  marks moved and resized with Select. The one to test.
 - **[v0.3.0-beta.46](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.46)** —
-  two patterns side by side: Beside… in the reader bar. The one to test.
+  two patterns side by side: Beside… in the reader bar. Superseded by `beta.47`.
 - **[v0.3.0-beta.45](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.45)** —
   light reading: ☀ in the reader bar. Superseded by `beta.46`.
 - **[v0.3.0-beta.44](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.44)** —
