@@ -197,6 +197,7 @@ export class ReaderView {
     this.doc.onReflow = () => {
       this.marks?.repaint();
       this.refreshZoomReadout();
+      this.rememberZoom();
     };
     try {
       await this.doc.load(data);
@@ -204,6 +205,10 @@ export class ReaderView {
       if (!this.destroyed) this.showError(e);
       return;
     }
+    if (this.destroyed) return;
+    // As far zoomed as it was when last read, before its place is put back.
+    const zoom = this.pattern.zoom ?? 1;
+    if (Math.abs(zoom - 1) > 0.001) await this.doc.setZoomLevel?.(zoom);
     if (this.destroyed) return;
     this.refreshZoomReadout();
 
@@ -997,6 +1002,20 @@ export class ReaderView {
   }
 
   /** Updates the zoom percentage readout, and disables Zoom out at the floor. */
+  private zoomTimer: number | null = null;
+
+  /** Keeps the zoom a moment after it settles, for the next time the pattern is opened. */
+  private rememberZoom(): void {
+    const zoom = this.doc?.zoomLevel?.();
+    if (zoom === undefined || Math.abs(zoom - (this.pattern.zoom ?? 1)) < 0.001) return;
+    if (this.zoomTimer !== null) window.clearTimeout(this.zoomTimer);
+    this.zoomTimer = window.setTimeout(() => {
+      this.zoomTimer = null;
+      this.pattern.zoom = zoom;
+      void api.saveZoom(this.pattern.id, zoom).catch(() => {});
+    }, 400);
+  }
+
   private refreshZoomReadout(): void {
     const pct = this.doc?.zoomPercent?.();
     if (pct === undefined) return;

@@ -377,6 +377,13 @@ pub fn get_facets(state: State<'_, AppState>) -> CmdResult<db::Facets> {
     db::list_facets(&state.db())
 }
 
+/// How far a pattern is zoomed, put back the next time it is opened.
+#[tauri::command]
+pub fn save_zoom(state: State<'_, AppState>, id: String, zoom: f64) -> CmdResult<()> {
+    db::set_pattern_zoom(&state.db(), &id, zoom)
+}
+
+/// Where a pattern was left: its page and how far down it.
 #[tauri::command]
 pub fn save_position(
     state: State<'_, AppState>,

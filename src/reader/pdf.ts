@@ -65,6 +65,9 @@ export interface RenderedDoc {
   zoomToFit?(): void;
   /** The current zoom as a percentage of fit-width, for the readout. */
   zoomPercent?(): number;
+  /** The zoom as a multiple of fit-width, to remember; and putting one back. */
+  zoomLevel?(): number;
+  setZoomLevel?(zoom: number): Promise<void>;
   /**
    * Paints one region of a page into a canvas at a given on-screen width.
    *
@@ -324,6 +327,14 @@ export class PdfView implements RenderedDoc {
     // by however far the two disagreed.
     const fit = Math.min(available, FIT_WIDTH_CAP);
     return fit * this.zoom;
+  }
+
+  zoomLevel(): number {
+    return this.zoom;
+  }
+
+  setZoomLevel(zoom: number): Promise<void> {
+    return this.setZoom(zoom);
   }
 
   zoomPercent(): number {

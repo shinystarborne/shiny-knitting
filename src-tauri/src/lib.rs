@@ -68,6 +68,7 @@ pub fn run() {
             commands::delete_pattern,
             commands::get_facets,
             commands::save_position,
+            commands::save_zoom,
             commands::read_file,
             commands::list_counters,
             commands::add_counter,

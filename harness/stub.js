@@ -1256,6 +1256,10 @@ const handlers = {
     designerCounts: countedByUse(store.patterns.map((p) => p.designer).filter(Boolean).map((d) => [d])),
     tagCounts: countedByUse(store.patterns.map((p) => p.tags)),
   }),
+  save_zoom: ({ id, zoom }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (p) p.zoom = Math.min(4, Math.max(0.4, Number.isFinite(zoom) ? zoom : 1));
+  },
   save_position: ({ id, page, scroll }) => {
     const p = store.patterns.find((x) => x.id === id);
     if (p) {

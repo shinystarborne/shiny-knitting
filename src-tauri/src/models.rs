@@ -104,6 +104,14 @@ pub struct Pattern {
     /// When it was removed to the Bin; None while it is in the library.
     #[serde(default)]
     pub removed_at: Option<i64>,
+    /// How far it was zoomed when last read, as a multiple of fit-width; 1 is
+    /// fit-width. Put back when it is opened again.
+    #[serde(default = "fit_width")]
+    pub zoom: f64,
+}
+
+fn fit_width() -> f64 {
+    1.0
 }
 
 /// A pattern file found on disk by `scan_pattern_folder`, offered for adding

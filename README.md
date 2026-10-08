@@ -798,7 +798,8 @@ installer once.
 Your place in the document is saved as you scroll, so reopening a pattern
 returns you to the same page and position.
 
-A PDF opens fit to the width of the pane. `+`/`-`/fit buttons in the reader
+A PDF opens fit to the width of the pane, or as far zoomed as it was when you
+last read it: each pattern keeps its own zoom. `+`/`-`/fit buttons in the reader
 bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.

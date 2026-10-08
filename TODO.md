@@ -82,7 +82,7 @@ starting; the details are in the sections under the list.
 12. [x] Faster drag and drop of a large PDF (it arrives as its contents, not a
     path). Sent raw now (upload_pattern), not as a JSON array. *0.3.39*
 13. [x] Pins: bring one to the front. Pressed, or shown from its chip. *0.3.42*
-14. [ ] Zoom remembered per pattern.
+14. [x] Zoom remembered per pattern. *0.3.43*
 15. [ ] Page by page (swipe) reading.
 16. [ ] A light reader theme.
 17. [ ] Two PDFs side by side.

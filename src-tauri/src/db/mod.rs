@@ -613,6 +613,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "used_up_at")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN used_up_at INTEGER", [])?;
     }
+    // How far a pattern was zoomed when last read; 1 is fit-width.
+    if !column_exists(conn, "patterns", "zoom")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN zoom REAL NOT NULL DEFAULT 1", [])?;
+    }
     // A pattern removed to the Bin, to restore or delete for good; NULL while
     // it is in the library.
     if !column_exists(conn, "patterns", "removed_at")? {
@@ -938,6 +942,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
         last_scroll: row.get("last_scroll")?,
         cover_path: row.get("cover_path")?,
         removed_at: row.get("removed_at")?,
+        zoom: row.get("zoom")?,
     })
 }
 
@@ -1370,6 +1375,13 @@ pub fn removed_before(conn: &Connection, before: i64) -> AppResult<Vec<String>> 
 pub fn delete_pattern(conn: &Connection, id: &str) -> AppResult<()> {
     // Child rows go with it via ON DELETE CASCADE.
     conn.execute("DELETE FROM patterns WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Keeps how far a pattern is zoomed, held to what the reader can show.
+pub fn set_pattern_zoom(conn: &Connection, id: &str, zoom: f64) -> AppResult<()> {
+    let zoom = if zoom.is_finite() { zoom.clamp(0.4, 4.0) } else { 1.0 };
+    conn.execute("UPDATE patterns SET zoom = ?2 WHERE id = ?1", params![id, zoom])?;
     Ok(())
 }
 

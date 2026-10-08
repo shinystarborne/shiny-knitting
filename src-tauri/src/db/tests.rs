@@ -1493,6 +1493,19 @@ fn pins_are_stored_and_listed_newest_on_top() {
 }
 
 #[test]
+fn a_patterns_zoom_is_kept_within_what_the_reader_shows() {
+    let conn = test_db();
+    let p = sample(&conn, "Zoomed", "A", "", &[]);
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().zoom, 1.0, "fit-width until zoomed");
+    set_pattern_zoom(&conn, &p.id, 1.44).unwrap();
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().zoom, 1.44);
+    set_pattern_zoom(&conn, &p.id, 99.0).unwrap();
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().zoom, 4.0);
+    set_pattern_zoom(&conn, &p.id, f64::NAN).unwrap();
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().zoom, 1.0);
+}
+
+#[test]
 fn a_pin_comes_to_the_front_of_its_patterns_pins() {
     let conn = test_db();
     let p = sample(&conn, "Pinned", "A", "in-progress", &[]);

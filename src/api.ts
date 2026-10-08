@@ -46,6 +46,8 @@ export interface Pattern {
   coverPath: string;
   /** When it was removed to the Bin; null while it is in the library. */
   removedAt?: number | null;
+  /** How far it was zoomed when last read, as a multiple of fit-width; 1 is fit-width. */
+  zoom?: number;
 }
 
 /** Mirrors `models.rs::Section`. */
@@ -1149,6 +1151,8 @@ export const api = {
   listRemovedPatterns: () => invoke<Pattern[]>("list_removed_patterns"),
   emptyBin: () => invoke<void>("empty_bin"),
   getFacets: () => invoke<FacetValues>("get_facets"),
+  /** How far a pattern is zoomed, put back the next time it is opened. */
+  saveZoom: (id: string, zoom: number) => invoke<void>("save_zoom", { id, zoom }),
   savePosition: (id: string, page: number, scroll: number) =>
     invoke<void>("save_position", { id, page, scroll }),
   /**
