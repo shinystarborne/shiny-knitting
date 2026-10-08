@@ -97,7 +97,7 @@ starting; the details are in the sections under the list.
 
 23. [x] The raglan, bottom-up. Worked: bottom-up, the same counts the other way. *0.3.52*
 24. [x] The raglan worked flat, as a cardigan with front edges. Bands and buttonholes picked up. *0.3.53*
-25. [ ] A raised back neck with short rows.
+25. [x] A raised back neck with short rows. German short rows across the back, in the raglan and the round yoke. *0.3.54*
 26. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
 
 **Colourwork charts**

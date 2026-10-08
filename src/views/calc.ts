@@ -135,6 +135,8 @@ export interface RaglanInput {
   neckRib: number;
   hemRib: number;
   cuffRib: number;
+  /** How much higher the back of the neck is than the front, by short rows, in cm; 0 or left out for none. */
+  backNeck?: number;
 }
 
 export interface RaglanResult {
@@ -452,6 +454,14 @@ export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: num
   const p = r.pieces;
   const steps: string[] = [];
   steps.push(`Cast on ${r.castOn} stitches. Join to knit in the round, and work ${p.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
+  // The neck shared as the body and sleeves share the yoke's last round.
+  const back = Math.round((r.castOn * p.front) / r.yokeTotal);
+  const sleeve = Math.round((r.castOn * p.sleeve) / r.yokeTotal);
+  const raised = backNeck(i, sleeve, r.castOn - back - 2 * sleeve);
+  if (raised) {
+    steps.push(`The round starts at an edge of the back: the next ${back} stitches are the back, then ${sleeve} a shoulder, the front, and ${sleeve} the other shoulder.`);
+    steps.push(...backNeckSteps(raised, back, "", false, len));
+  }
   steps.push("Knit the yoke in rounds, the colourwork if there is one, with these increase rounds, measured from the neckband:");
   for (const round of r.rounds) {
     steps.push(`At ${len(round.atCm)} (round ${round.atRound}), from ${round.from} to ${round.to}: ${round.text}`);
@@ -512,6 +522,8 @@ export function raglanBottomUpSteps(r: RaglanResult, i: RaglanInput, len: (cm: n
     } The yoke measures ${len(r.finished.yokeDepth)}.`,
   );
   steps.push(`You have ${r.front0} stitches each for the back and front, and ${r.sleeve0} for each sleeve: ${r.castOn} in all.`);
+  const raised = backNeck(i, r.sleeve0, r.front0);
+  if (raised) steps.push(...backNeckSteps(raised, r.front0, "", false, len));
   steps.push(`Neckband: ${r.neckRibRounds} rounds of rib (${len(i.neckRib)}). Bind off loosely, so it goes over the head.`);
   steps.push(`Graft the ${r.underarmSts} held stitches of each underarm, sleeve to body, with Kitchener stitch.`);
   return steps;
@@ -585,8 +597,10 @@ export function cardiganSteps(c: CardiganResult, i: RaglanInput, len: (cm: numbe
   const steps: string[] = [];
   steps.push(`Cast on ${c.castOn} stitches. Work flat, in rows.`);
   steps.push(
-    `Set-up row (wrong side): purl ${c.front0} for the left front, place a marker, ${r.sleeve0} for a sleeve, place a marker, ${r.front0} for the back, place a marker, ${r.sleeve0} for the other sleeve, place a marker, ${c.front0} for the right front.`,
+    `Set-up row (wrong side): purl ${c.front0} for the right front, place a marker, ${r.sleeve0} for a sleeve, place a marker, ${r.front0} for the back, place a marker, ${r.sleeve0} for the other sleeve, place a marker, ${c.front0} for the left front.`,
   );
+  const raised = backNeck(i, r.sleeve0, 2 * c.front0);
+  if (raised) steps.push(...backNeckSteps(raised, r.front0, `knit the left front's ${c.front0} and the sleeve's ${r.sleeve0}, then `, true, len));
   steps.push("Increase row (right side): *knit to 1 stitch before the marker, make 1 right, k1, slip the marker, k1, make 1 left*, 4 times, knit to the end: 8 stitches more.");
   const both = Math.min(r.bodyIncreases, r.sleeveIncreases);
   const only = Math.abs(r.bodyIncreases - r.sleeveIncreases);
@@ -630,6 +644,59 @@ export function cardiganSteps(c: CardiganResult, i: RaglanInput, len: (cm: numbe
   return steps;
 }
 
+// ---------- a raised back neck, by short rows ----------
+
+export interface BackNeck {
+  /** Short-row pairs, each two rows more across the back than the front. */
+  pairs: number;
+  /** Turned this many stitches past each edge of the back the first time, and this many further each time after. */
+  first: number;
+  step: number;
+  /** What it raises the back by, knitted. */
+  cm: number;
+}
+
+/**
+ * Short rows across the back of a raglan's neck, so the back is higher than
+ * the front and the neck sits where a neck does. Each pair turns a little
+ * further from the back, into the sleeves and on towards the front, stopping
+ * short of the front's middle. None when nothing is asked.
+ */
+export function backNeck(i: RaglanInput, sleeve: number, front: number): BackNeck | null {
+  const want = i.backNeck ?? 0;
+  if (!(want > 0)) return null;
+  const rpc = i.gauge.rows / 10;
+  const asked = Math.max(1, Math.round((want * rpc) / 2));
+  // From each edge of the back, through a sleeve and up to a little short of the front's middle.
+  const room = Math.max(1, sleeve + Math.floor(front / 2) - 3);
+  const first = Math.min(room, Math.max(2, Math.round(sleeve / 2)));
+  const pairs = Math.min(asked, room - first + 1);
+  const step = pairs > 1 ? Math.max(1, Math.floor((room - first) / (pairs - 1))) : 0;
+  return { pairs, first, step, cm: (pairs * 2) / rpc };
+}
+
+/**
+ * The short rows in words, begun on the right side at the back's first
+ * stitch (`lead` says how to get there); flat, the rows then go on to the
+ * ends, in the round to the end of the round and once all round.
+ */
+function backNeckSteps(b: BackNeck, back: number, lead: string, flat: boolean, len: (cm: number) => string): string[] {
+  const steps = [
+    `Raise the back of the neck by ${len(b.cm)} with ${b.pairs} pairs of German short rows across the back. Row 1 (right side): ${lead}knit the back's ${back} and ${b.first} more, turn. Row 2: make a double stitch, purl across the back and ${b.first} past its other edge, turn.`,
+  ];
+  if (b.pairs > 1) {
+    steps.push(
+      `Then ${b.pairs - 1} more pairs, each turning ${b.step} further: make a double stitch, knit to the double stitch, knit it as one, knit ${b.step} more, turn; make a double stitch, purl to the double stitch, purl it as one, purl ${b.step} more, turn.`,
+    );
+  }
+  steps.push(
+    flat
+      ? "Make a double stitch and knit to the end of the row, knitting the double stitch you come to as one. Next row (wrong side): purl to the end, purling the other as one."
+      : "Make a double stitch and knit to the end of the round. Next round: knit all round, knitting both double stitches each as one.",
+  );
+  return steps;
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
@@ -645,6 +712,8 @@ export function raglanSteps(r: RaglanResult, i: RaglanInput, len: (cm: number) =
   steps.push(
     `Set up: knit ${r.front0} for the back, place a marker, ${r.sleeve0} for a sleeve, place a marker, ${r.front0} for the front, place a marker, ${r.sleeve0} for the other sleeve, place the marker for the start of the round.`,
   );
+  const raised = backNeck(i, r.sleeve0, r.front0);
+  if (raised) steps.push(...backNeckSteps(raised, r.front0, "", false, len));
   const both = Math.min(r.bodyIncreases, r.sleeveIncreases);
   const only = Math.abs(r.bodyIncreases - r.sleeveIncreases);
   const where = r.bodyIncreases > r.sleeveIncreases ? "the back and front" : "the sleeves";

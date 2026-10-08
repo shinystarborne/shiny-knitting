@@ -6,7 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
-import { cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
+import { backNeck, cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
   name: string;
@@ -100,6 +100,19 @@ function pure(results: CheckResult[]): void {
   const cardSteps = cardiganSteps(card, ADULT, (cm) => `${Math.round(cm * 10) / 10} cm`);
   check(results, "…its steps: flat, increasing on right-side rows, the bands and neckband picked up", cardSteps[0] === `Cast on ${card.castOn} stitches. Work flat, in rows.` && cardSteps.some((t) => /every right-side row 28 times/.test(t)) && cardSteps.some((t) => /^Buttonhole band/.test(t)) && cardSteps.some((t) => /^Neckband: pick up/.test(t)), cardSteps.join(" | "));
   check(results, "…a band wider than the neck's front is said", "error" in cardigan(ADULT, 30, 6));
+  const cmLen = (cm: number) => `${Math.round(cm * 10) / 10} cm`;
+  const raised = backNeck({ ...ADULT, backNeck: 2 }, r.sleeve0, r.front0)!;
+  check(results, "a back neck raised 2 cm at 30 rows: 3 pairs of short rows, 2 cm", raised.pairs === 3 && raised.cm === 2 && raised.first >= 2, JSON.stringify(raised));
+  check(results, "…none asked, none made", backNeck(ADULT, r.sleeve0, r.front0) === null && backNeck({ ...ADULT, backNeck: 0 }, r.sleeve0, r.front0) === null);
+  const deep = backNeck({ ...ADULT, backNeck: 40 }, r.sleeve0, r.front0)!;
+  check(results, "…asked too much, the turns still stop short of the front's middle", deep.first + deep.step * (deep.pairs - 1) <= r.sleeve0 + r.front0 / 2 - 3 && deep.cm < 40, JSON.stringify(deep));
+  const downRaised = raglanSteps(r, { ...ADULT, backNeck: 2 }, cmLen);
+  const setAt = downRaised.findIndex((t) => /^Set up:/.test(t));
+  check(results, "…top-down, the short rows straight after the set-up, then all round once", /^Raise the back of the neck by 2 cm with 3 pairs/.test(downRaised[setAt + 1]) && downRaised.some((t) => /knitting both double stitches each as one/.test(t)) && raglanSteps(r, ADULT, cmLen).every((t) => !/short rows/.test(t)), downRaised[setAt + 1]);
+  const upRaised = raglanBottomUpSteps(r, { ...ADULT, backNeck: 2 }, cmLen);
+  check(results, "…bottom-up, just before the neckband", /^Neckband/.test(upRaised[upRaised.findIndex((t) => /^Raise the back/.test(t)) + 3]), upRaised.join(" | "));
+  const cardRaised = cardiganSteps(card, { ...ADULT, backNeck: 2 }, cmLen);
+  check(results, "…as a cardigan, rows begun from the left front, the other double stitch on the wrong side", cardRaised.some((t) => t.includes(`Row 1 (right side): knit the left front's ${card.front0} and the sleeve's ${r.sleeve0}, then knit the back's ${r.front0}`)) && cardRaised.some((t) => t.endsWith("Next row (wrong side): purl to the end, purling the other as one.")), cardRaised.join(" | "));
   const plainAt = up.findIndex((s) => /^Knit 4 rounds plain/.test(s));
   const decAt = up.findIndex((s) => /^Work 28 decrease rounds: on every other round 28 times/.test(s));
   check(results, "…the plain rounds first, by the underarm, then the decreases to the neck's 104", plainAt >= 0 && decAt > plainAt && up.some((s) => /104 in all/.test(s)), up.join(" | "));
@@ -130,6 +143,8 @@ function pure(results: CheckResult[]): void {
   check(results, "one round too few for a big step says so", /choose more increase rounds/.test((roundYoke({ ...LOPI, neck: 20, neckEase: 0 }, 1) as { error: string }).error ?? ""));
   const ysteps = roundYokeSteps(y6, LOPI, (cm) => `${Math.round(cm * 10) / 10} cm`);
   check(results, "the yoke's steps in words", ysteps[0] === "Cast on 84 stitches. Join to knit in the round, and work 7 rounds of rib (3 cm) for the neckband." && ysteps.some((s) => s.startsWith("At 2.3 cm (round 6), from 84 to 126:")) && ysteps.some((s) => /to split evenly/.test(s)), ysteps.join(" | "));
+  const yRaised = roundYokeSteps(y6, { ...LOPI, backNeck: 2 }, (cm) => `${Math.round(cm * 10) / 10} cm`);
+  check(results, "…a round yoke's back neck raised over the back's share of the cast-on, before the yoke", /^The round starts at an edge of the back: the next \d+ stitches are the back/.test(yRaised[1]) && /^Raise the back of the neck/.test(yRaised[2]) && /^Knit the yoke in rounds/.test(yRaised[5]), yRaised.slice(0, 6).join(" | "));
 }
 
 export async function verifyCalculators() {
@@ -187,6 +202,10 @@ export async function verifyCalculators() {
     check(results, "Worked flat, as a cardigan: its band and buttons asked, its own numbers", !(view()!.querySelector('[data-el="cardigan"]') as HTMLElement).hidden && /^\d+$/.test(cell("Front bands").split(" ")[0]) && /^Cast on \d+ stitches\. Work flat/.test(view()!.querySelector(".calc-steps li")?.textContent ?? "") && /cardigan/.test(view()!.querySelector(".calc-inputs h2")?.textContent ?? ""), cell("Front bands"));
     type("direction", "down");
     check(results, "…and back to top-down, the band asked no more", (view()!.querySelector('[data-el="cardigan"]') as HTMLElement).hidden);
+    type("backNeck", "2");
+    check(results, "A back neck raised by 2 cm puts short rows in the steps", [...view()!.querySelectorAll(".calc-steps li")].some((li) => /German short rows/.test(li.textContent ?? "")));
+    type("backNeck", "0");
+    check(results, "…and 0 takes them out", [...view()!.querySelectorAll(".calc-steps li")].every((li) => !/short rows/.test(li.textContent ?? "")));
     type("chest", "lots");
     check(results, "something that is not a length says so", /chest is not a length/.test(results_()), results_());
     type("chest", "92");

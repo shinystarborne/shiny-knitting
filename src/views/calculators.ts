@@ -48,6 +48,7 @@ const EASE_FIELDS: { key: keyof RaglanInput; label: string; hint: string; start:
   { key: "neckRib", label: "Neckband", hint: "Rib depth", start: 2.5 },
   { key: "hemRib", label: "Hem rib", hint: "Rib depth", start: 5 },
   { key: "cuffRib", label: "Cuff", hint: "Rib depth", start: 5 },
+  { key: "backNeck", label: "Back neck raised by", hint: "Short rows across the back, so the neck sits higher behind than in front: 0 for none, about 2 is usual", start: 0 },
 ];
 
 /**
