@@ -573,6 +573,13 @@ typed in.
   from the row gauge, each turning a little further into the sleeves and
   stopping short of the front's middle — straight after the set-up top-down,
   just before the neckband bottom-up, and the same in the round yoke.
+  **Rib** (1x1, 2x2, or any count) fits the counts to it: the hem and cuffs
+  a whole number of repeats, the neck too (a raglan's comes out so by itself;
+  a round yoke's fits the rib and the colourwork's repeat both, or, where
+  they would only meet in a big step, the neckband is cast on for the rib and
+  one round after it makes the yoke's count), and a cardigan's flat rib —
+  hem, bands and neckband — half a repeat more, so each row begins and ends
+  alike, the body made the hem's count on the row before it.
 - **Round yoke (lopapeysa)**, top-down in the round, from the same measurements
   (its yoke depth filled in as the armhole depth + 2 cm, since a round yoke
   covers the shoulders). Three increase rounds, or up to six for a rounder yoke,

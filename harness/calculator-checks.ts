@@ -6,7 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
-import { backNeck, cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
+import { backNeck, cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, ribCount, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
   name: string;
@@ -101,6 +101,34 @@ function pure(results: CheckResult[]): void {
   check(results, "…its steps: flat, increasing on right-side rows, the bands and neckband picked up", cardSteps[0] === `Cast on ${card.castOn} stitches. Work flat, in rows.` && cardSteps.some((t) => /every right-side row 28 times/.test(t)) && cardSteps.some((t) => /^Buttonhole band/.test(t)) && cardSteps.some((t) => /^Neckband: pick up/.test(t)), cardSteps.join(" | "));
   check(results, "…a band wider than the neck's front is said", "error" in cardigan(ADULT, 30, 6));
   const cmLen = (cm: number) => `${Math.round(cm * 10) / 10} cm`;
+  const LOPI_RIB: RaglanInput = { ...ADULT, gauge: { sts: 18, rows: 24 }, chest: 96, upperArm: 31, wrist: 17, neck: 38, yokeDepth: 23, armLength: 46, bodyLength: 38, bodyEase: 10, wristEase: 3, neckRib: 3, hemRib: 6, cuffRib: 6 };
+  check(results, "a rib's count: whole repeats in the round, half a repeat more flat", ribCount(102, 4) === 104 && ribCount(102, 4, true) === 102 && ribCount(104, 4, true) === 106 && ribCount(100, 2, true) === 101 && ribCount(103, 0) === 103 && ribCount(103) === 103);
+  // A raglan's neck needs nothing: with the hem a multiple of 4, its halves less the underarms are even, and the lines keep it so.
+  const ribNecks = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40].map((neck) => raglan({ ...ADULT, neck, rib: 4 }) as RaglanResult);
+  check(results, "2x2 rib: a raglan's neck comes out a multiple of 4 by itself", ribNecks.every((x) => x.castOn % 4 === 0 && x.neckRibSts === x.castOn), ribNecks.map((x) => x.castOn).join(" "));
+  // A round yoke's neck fits the rib and the repeat together, when that is a small step.
+  const y6r = roundYoke({ ...LOPI_RIB, rib: 4 }, 3, 6) as RoundYokeResult;
+  check(results, "…a round yoke's neck a multiple of the repeat and the rib both (12, for 6 and 2x2)", y6r.castOn % 12 === 0 && y6r.neckRibSts === y6r.castOn, `${y6r.castOn}`);
+  // A repeat of 7 and 2x2 would only meet at 28: the neckband is the rib's, one round makes it the yoke's.
+  const y7r = [34, 35, 36, 37, 38, 39, 40].map((neck) => roundYoke({ ...LOPI_RIB, neck, rib: 4 }, 3, 7) as RoundYokeResult).find((x) => x.castOn % 4 !== 0)!;
+  check(results, "…a repeat of 7: the neckband cast on a multiple of 4, one round to the yoke's 7s", !!y7r && y7r.neckRibSts % 4 === 0 && y7r.castOn % 7 === 0 && Math.abs(y7r.neckRibSts - y7r.castOn) <= 2, JSON.stringify(y7r && { rib: y7r.neckRibSts, castOn: y7r.castOn }));
+  if (y7r) {
+    const s7 = roundYokeSteps(y7r, { ...LOPI_RIB, rib: 4 }, cmLen);
+    check(results, "…said in the steps, the round written out", s7[0].startsWith(`Cast on ${y7r.neckRibSts} stitches`) && s7[1].startsWith(`Next round, from the rib's count to the yoke's, from ${y7r.neckRibSts} to ${y7r.castOn}: `), s7.slice(0, 2).join(" | "));
+  }
+  const ribbed = [88, 89, 90, 91, 92, 93].map((chest) => raglan({ ...ADULT, chest, wrist: 15, rib: 4 }) as RaglanResult);
+  check(results, "…the hem and the cuffs a multiple of 4", ribbed.every((x) => x.body % 4 === 0 && x.wristSts % 4 === 0 && x.front + x.underarmSts === x.body / 2), ribbed.map((x) => `${x.body}/${x.wristSts}`).join(" "));
+  check(results, "…1x1 changes no count in the round", ["castOn", "body", "wristSts", "neckRibSts"].every((k) => (raglan({ ...ADULT, rib: 2 }) as unknown as Record<string, number>)[k] === (r as unknown as Record<string, number>)[k === "neckRibSts" ? "castOn" : k]));
+  const ribCard = cardigan({ ...ADULT, rib: 4 }, 2.5, 6) as Exclude<ReturnType<typeof cardigan>, { error: string }>;
+  check(results, "…a cardigan's flat rib, hem, bands and neckband, a multiple of 4 plus 2", ribCard.hemRibSts % 4 === 2 && ribCard.bandPickUp % 4 === 2 && ribCard.neckPickUp % 4 === 2 && Math.abs(ribCard.hemRibSts - ribCard.body) <= 2, JSON.stringify({ hem: ribCard.hemRibSts, body: ribCard.body, band: ribCard.bandPickUp, neck: ribCard.neckPickUp }));
+  // The body is the round one less the band: a 4-stitch band leaves it a multiple of 4, which flat 2x2 does not fit.
+  const offInput = { ...ADULT, rib: 4 };
+  const offCard = cardigan(offInput, 2, 6) as Exclude<ReturnType<typeof cardigan>, { error: string }>;
+  check(results, "…a 2 cm band leaves a body the hem's rib does not fit", offCard.bandSts === 4 && offCard.body % 4 === 0 && offCard.hemRibSts % 4 === 2, JSON.stringify({ band: offCard.bandSts, body: offCard.body, hem: offCard.hemRibSts }));
+  {
+    const cs = cardiganSteps(offCard, offInput, cmLen);
+    check(results, "…the body made the hem's count on the row before it", cs.some((t) => t.startsWith(`Next row (right side), to a count the rib fits, from ${offCard.body} to ${offCard.hemRibSts}:`)) && cs.some((t) => /^Hem: \d+ rows of rib/.test(t)), cs.join(" | "));
+  }
   const raised = backNeck({ ...ADULT, backNeck: 2 }, r.sleeve0, r.front0)!;
   check(results, "a back neck raised 2 cm at 30 rows: 3 pairs of short rows, 2 cm", raised.pairs === 3 && raised.cm === 2 && raised.first >= 2, JSON.stringify(raised));
   check(results, "…none asked, none made", backNeck(ADULT, r.sleeve0, r.front0) === null && backNeck({ ...ADULT, backNeck: 0 }, r.sleeve0, r.front0) === null);
@@ -205,6 +233,12 @@ export async function verifyCalculators() {
     type("backNeck", "2");
     check(results, "A back neck raised by 2 cm puts short rows in the steps", [...view()!.querySelectorAll(".calc-steps li")].some((li) => /German short rows/.test(li.textContent ?? "")));
     type("backNeck", "0");
+    type("rib", "4");
+    type("neck", "37");
+    check(results, "2x2 rib picked: the neck cast on a multiple of 4, the hem and cuff too", Number(cell("Cast on")) % 4 === 0 && Number(cell("Body")) % 4 === 0 && Number(cell("Sleeve").split(" → ")[1]) % 4 === 0, `${cell("Cast on")} / ${cell("Body")} / ${cell("Sleeve")}`);
+    type("rib", "2");
+    type("neck", "36");
+    check(results, "…and back to 1x1, the counts as they were", cell("Cast on") === "104" && cell("Body") === "220");
     check(results, "…and 0 takes them out", [...view()!.querySelectorAll(".calc-steps li")].every((li) => !/short rows/.test(li.textContent ?? "")));
     type("chest", "lots");
     check(results, "something that is not a length says so", /chest is not a length/.test(results_()), results_());
@@ -233,7 +267,7 @@ export async function verifyCalculators() {
     pick("yoke");
     await waitFor(() => !!field("increases"), "the round yoke");
     check(results, "the round yoke keeps the raglan's measurements", field("chest")?.value === "92" && /Yoke depth/.test(view()!.querySelector(".calc-inputs")!.textContent ?? ""));
-    const expected = roundYoke(ADULT) as RoundYokeResult;
+    const expected = roundYoke({ ...ADULT, rib: 2 }) as RoundYokeResult;
     check(results, "…and works it out", cell("Cast on") === String(expected.castOn) && cell("Increase round 3") === `${expected.rounds[2].from} → ${expected.rounds[2].to}`, `${cell("Cast on")} / ${cell("Increase round 3")}`);
     type("increases", "5");
     check(results, "…with more increase rounds when asked", !!cell("Increase round 5") && !cell("Increase round 6"));

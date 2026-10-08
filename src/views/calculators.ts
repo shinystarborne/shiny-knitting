@@ -39,6 +39,13 @@ const RAGLAN_FIELDS: { key: keyof RaglanInput; label: string; hint?: string; fro
   { key: "armLength", label: "Arm length", hint: "Underarm to wrist, cuff included", from: "arm_length" },
   { key: "bodyLength", label: "Body length", hint: "Underarm to hem, hem rib included", start: 35 },
 ];
+/** The ribs a garment's counts are fitted to, by the stitches in a repeat. */
+const RIBS = [
+  { sts: 2, label: "1x1 (k1, p1)" },
+  { sts: 4, label: "2x2 (k2, p2)" },
+  { sts: 0, label: "Any count" },
+];
+
 const EASE_FIELDS: { key: keyof RaglanInput; label: string; hint: string; start: number }[] = [
   { key: "bodyEase", label: "Body ease", hint: "Added to the chest; the fit sets it", start: 5 },
   { key: "sleeveEase", label: "Sleeve ease", hint: "Added to the upper arm", start: 4 },
@@ -245,6 +252,10 @@ export class CalculatorsView {
             <span>How loose</span>
             <select data-k="fit">${FITS.map((f) => `<option value="${f.key}" ${f.key === fit ? "selected" : ""}>${f.label}</option>`).join("")}</select>
           </label>
+          <label class="field" title="The counts at the neck, hem and cuffs are fitted to it, so the rib comes out even">
+            <span>Rib</span>
+            <select data-k="rib">${RIBS.map((r) => `<option value="${r.sts}" ${String(r.sts) === (kept.values.rib ?? "2") ? "selected" : ""}>${r.label}</option>`).join("")}</select>
+          </label>
           <div class="calc-fields">${EASE_FIELDS.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
         </section>
         <section class="calc-results" data-el="results"></section>
@@ -362,6 +373,7 @@ export class CalculatorsView {
       this.need(!Number.isNaN(v), `The ${f.label.toLowerCase()} is not a length.`);
       (input as unknown as Record<string, number>)[f.key] = v;
     }
+    input.rib = Number(kept.values.rib ?? "2");
     return input;
   }
 
@@ -393,7 +405,8 @@ export class CalculatorsView {
     return `
       ${this.resultHead("The numbers")}
       ${table([
-        ["Cast on", `${r.castOn}`, `neck ${this.len(r.finished.neck)}`],
+        ["Cast on", `${r.neckRibSts}`, `neck ${this.len(r.finished.neck)}`],
+        ...(r.neckRibSts !== r.castOn ? [["After the neckband", `${r.neckRibSts} → ${r.castOn}`, "for the yoke"]] : []),
         ...r.rounds.map((y, n) => [`Increase round ${n + 1}`, `${y.from} → ${y.to}`, `at ${this.len(y.atCm)}`]),
         ...(r.adjust ? [["To split evenly", `${r.adjust.from} → ${r.adjust.to}`, "at the underarm"]] : []),
         ["Yoke", `${r.yokeRounds} rounds`, this.len(r.finished.yokeDepth)],
@@ -425,12 +438,14 @@ export class CalculatorsView {
           ["Decrease rounds", `${Math.max(r.bodyIncreases, r.sleeveIncreases)}`, scheduleUp(r)],
           ["Yoke", `${r.yokeRounds} rounds`, this.len(r.finished.yokeDepth)],
           ["At the neck", `${r.castOn}`, `${r.front0} back and front, ${r.sleeve0} each sleeve; neck ${this.len(r.finished.neck)}`],
+          ...(r.neckRibSts !== r.castOn ? [["Neckband", `${r.castOn} → ${r.neckRibSts}`, "for the rib"]] : []),
         ])
       : "";
     return `
       ${this.resultHead("The numbers")}
       ${numbers || table([
-        ["Cast on", `${r.castOn}`, `neck ${this.len(r.finished.neck)}`],
+        ["Cast on", `${r.neckRibSts}`, `neck ${this.len(r.finished.neck)}`],
+        ...(r.neckRibSts !== r.castOn ? [["After the neckband", `${r.neckRibSts} → ${r.castOn}`, "for the yoke"]] : []),
         ["At the start", `${r.front0} back, ${r.front0} front`, `${r.sleeve0} each sleeve`],
         ["Increase rounds", `${Math.max(r.bodyIncreases, r.sleeveIncreases)}`, schedule(r)],
         ["Yoke", `${r.yokeRounds} rounds`, this.len(r.finished.yokeDepth)],
@@ -462,6 +477,7 @@ export class CalculatorsView {
         ["At the split", `${c.front} each front, ${r.front} back`, `${r.sleeve} each sleeve`],
         ["Underarm cast-on", `${r.underarmSts}`, "at each side"],
         ["Body", `${c.body}`, `chest ${this.len(r.finished.chest)}, with the bands`],
+        ...(c.hemRibSts !== c.body ? [["Hem rib", `${c.body} → ${c.hemRibSts}`, "on the row before it"]] : []),
         ["Sleeve", `${r.upperArmSts} → ${r.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
         ["Front bands", `${c.bandPickUp} each`, `${c.bandRows} rows; ${c.buttons ? `${c.buttons} buttonholes` : "no buttonholes"}`],
         ["Neckband", `${c.neckPickUp}`, `${r.neckRibRounds} rows`],

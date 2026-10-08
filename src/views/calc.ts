@@ -25,6 +25,23 @@ export function nearestRepeat(exact: number, multiple = 1, plus = 0): number {
   return k * m + plus;
 }
 
+/**
+ * The count nearest to `n` that a rib of `rib` stitches works out on: in the
+ * round a whole number of repeats, so the rib meets itself; flat half a
+ * repeat more, so the row begins and ends alike (k2, *p2, k2*). Any count
+ * when no rib is given.
+ */
+export function ribCount(n: number, rib = 0, flat = false): number {
+  if (!(rib >= 2)) return n;
+  return flat ? nearestRepeat(n, rib, Math.floor(rib / 2)) : nearestRepeat(n, rib);
+}
+
+/** A round from one count to another, the stitches gained or lost spread evenly: "from the rib's 104 to 106: *K52, M1* 2 times." */
+function evenRound(from: number, to: number, what: string, inRound = true): string {
+  const s = spreadEvenly(from, to - from, inRound);
+  return `${what}, from ${from} to ${to}: ${"error" in s ? `${to > from ? "increase" : "decrease"} ${Math.abs(to - from)} evenly.` : s.text}`;
+}
+
 // ---------- stitches and rows for a size ----------
 
 export interface Sized {
@@ -137,9 +154,13 @@ export interface RaglanInput {
   cuffRib: number;
   /** How much higher the back of the neck is than the front, by short rows, in cm; 0 or left out for none. */
   backNeck?: number;
+  /** The stitches in one repeat of the rib: 2 for 1x1, 4 for 2x2; 0 or left out for any count. */
+  rib?: number;
 }
 
 export interface RaglanResult {
+  /** The neckband's stitches: the cast-on fitted to the rib, made the cast-on after it. */
+  neckRibSts: number;
   castOn: number;
   /** Stitches at the cast-on: the back and front each, and each sleeve. */
   front0: number;
@@ -216,13 +237,20 @@ export function pieces(i: RaglanInput, depthName = "armhole depth"): Pieces | { 
     if (!(v > 0)) return { error: `Give the ${what}.` };
   }
   const warnings: string[] = [];
-  const body = even((i.chest + i.bodyEase) * spc);
+  // A whole number of rib repeats round the hem and the cuff, kept even for the halves.
+  const rib = (i.rib ?? 0) >= 2 ? i.rib! : 0;
+  const ribEven = rib % 2 ? 2 * rib : rib;
+  const body = ribEven ? nearestRepeat(even((i.chest + i.bodyEase) * spc), ribEven) : even((i.chest + i.bodyEase) * spc);
   const underarmSts = Math.max(2, even(i.underarm * spc));
   const upperArmSts = even((i.upperArm + i.sleeveEase) * spc);
   const front = body / 2 - underarmSts;
   const sleeve = upperArmSts - underarmSts;
   if (sleeve < 2 || front < 2) return { error: "The underarm cast-on is wider than the sleeve or body: make it smaller." };
-  const wristSts = Math.min(upperArmSts, even((i.wrist + i.wristEase) * spc));
+  let wristSts = Math.min(upperArmSts, even((i.wrist + i.wristEase) * spc));
+  if (ribEven) {
+    wristSts = nearestRepeat(wristSts, ribEven);
+    while (wristSts > upperArmSts && wristSts > ribEven) wristSts -= ribEven;
+  }
   const sleeveDecreases = (upperArmSts - wristSts) / 2;
   const sleeveRounds = Math.max(0, Math.round((i.armLength - i.cuffRib) * rpc));
   const sleeveEvery = sleeveDecreases ? Math.floor(sleeveRounds / (sleeveDecreases + 1)) : 0;
@@ -295,6 +323,7 @@ export function raglan(i: RaglanInput): RaglanResult | { error: string } {
   const yokeRounds = everyRound + 2 * everyOther + plainRounds;
 
   return {
+    neckRibSts: ribCount(castOn, i.rib),
     castOn,
     front0,
     sleeve0,
@@ -342,6 +371,8 @@ export interface YokeRound {
 }
 
 export interface RoundYokeResult {
+  /** The neckband's stitches: the cast-on fitted to the rib, made the cast-on after it. */
+  neckRibSts: number;
   castOn: number;
   rounds: YokeRound[];
   /** The stitches the last increase round leaves, and the yoke's at the split; they differ by a little when a pattern repeat rounded the counts. */
@@ -379,8 +410,12 @@ export function roundYoke(i: RaglanInput, increases = 3, repeat = 1): RoundYokeR
   // Counts from the underarm up: the yoke, each step smaller by the same
   // fraction, the neck last; each kept to the repeat.
   const ratio = (neckTarget / yokeTotal) ** (1 / k);
+  // The neck kept to the rib as well, when both fit in a small step; else a round after the neckband makes it so.
+  const rib = (i.rib ?? 0) >= 2 ? i.rib! : 1;
+  const both = (rep * rib) / gcd(rep, rib);
+  const neckRep = both <= Math.max(12, rep) ? both : rep;
   const counts = [nearestRepeat(yokeTotal, rep)];
-  for (let s = 1; s <= k; s++) counts.push(nearestRepeat(s === k ? neckTarget : yokeTotal * ratio ** s, rep));
+  for (let s = 1; s <= k; s++) counts.push(s === k ? nearestRepeat(neckTarget, neckRep) : nearestRepeat(yokeTotal * ratio ** s, rep));
   if (ratio < 0.5) return { error: `${k} increase rounds would each more than double the stitches: choose more increase rounds.` };
   const depthRounds = Math.round(i.yokeDepth * p.rpc);
   const yokeEnd = counts[0];
@@ -408,6 +443,7 @@ export function roundYoke(i: RaglanInput, increases = 3, repeat = 1): RoundYokeR
     adjust = { atCm: i.yokeDepth, atRound: depthRounds, from: yokeEnd, to: yokeTotal, text: spread.text };
   }
   return {
+    neckRibSts: ribCount(castOn, i.rib),
     castOn,
     rounds,
     yokeEnd,
@@ -453,7 +489,8 @@ function belowTheYoke(p: Below, i: RaglanInput, len: (cm: number) => string): st
 export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: number) => string): string[] {
   const p = r.pieces;
   const steps: string[] = [];
-  steps.push(`Cast on ${r.castOn} stitches. Join to knit in the round, and work ${p.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
+  steps.push(`Cast on ${r.neckRibSts} stitches. Join to knit in the round, and work ${p.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
+  if (r.neckRibSts !== r.castOn) steps.push(evenRound(r.neckRibSts, r.castOn, "Next round, from the rib's count to the yoke's"));
   // The neck shared as the body and sleeves share the yoke's last round.
   const back = Math.round((r.castOn * p.front) / r.yokeTotal);
   const sleeve = Math.round((r.castOn * p.sleeve) / r.yokeTotal);
@@ -524,6 +561,7 @@ export function raglanBottomUpSteps(r: RaglanResult, i: RaglanInput, len: (cm: n
   steps.push(`You have ${r.front0} stitches each for the back and front, and ${r.sleeve0} for each sleeve: ${r.castOn} in all.`);
   const raised = backNeck(i, r.sleeve0, r.front0);
   if (raised) steps.push(...backNeckSteps(raised, r.front0, "", false, len));
+  if (r.neckRibSts !== r.castOn) steps.push(evenRound(r.castOn, r.neckRibSts, "Next round, to a count the rib fits"));
   steps.push(`Neckband: ${r.neckRibRounds} rounds of rib (${len(i.neckRib)}). Bind off loosely, so it goes over the head.`);
   steps.push(`Graft the ${r.underarmSts} held stitches of each underarm, sleeve to body, with Kitchener stitch.`);
   return steps;
@@ -551,6 +589,8 @@ export interface CardiganResult {
   holeEvery: number;
   /** The neckband, picked up round the neck and the tops of the bands. */
   neckPickUp: number;
+  /** The hem's rib, the body made it on the last row before it. */
+  hemRibSts: number;
   warnings: string[];
 }
 
@@ -580,15 +620,16 @@ export function cardigan(i: RaglanInput, bandWidth: number, buttons: number): Ca
   const body = 2 * front + r.front + 2 * r.underarmSts;
   // Along a front edge: the yoke and the body, picked up 3 stitches in every 4 rows.
   const edgeRows = r.yokeRounds + r.bodyRounds + r.hemRounds + r.neckRibRounds;
-  const bandPickUp = Math.max(4, Math.round((edgeRows * 3) / 4));
+  const bandPickUp = ribCount(Math.max(4, Math.round((edgeRows * 3) / 4)), i.rib, true);
   const bandRows = Math.max(2, Math.round(bandWidth * rpc));
   const holes = Math.max(0, Math.round(buttons));
   // Evenly spaced along the band, the top and bottom ones near the ends.
   const holeEvery = holes > 1 ? Math.floor((bandPickUp - 6) / (holes - 1)) : 0;
   const firstHole = holes ? Math.max(2, Math.floor((bandPickUp - (holes - 1) * holeEvery) / 2)) : 0;
   if (holes > 1 && holeEvery < 4) warnings.push(`${holes} buttons are too many for a ${bandPickUp}-stitch band: give fewer.`);
-  const neckPickUp = castOn + 2 * Math.max(2, Math.round((bandRows * 3) / 4));
-  return { r, bandSts, front0: f0, front, castOn, body, bandPickUp, bandRows, buttons: holes, firstHole, holeEvery, neckPickUp, warnings };
+  const neckPickUp = ribCount(castOn + 2 * Math.max(2, Math.round((bandRows * 3) / 4)), i.rib, true);
+  const hemRibSts = ribCount(body, i.rib, true);
+  return { r, bandSts, front0: f0, front, castOn, body, bandPickUp, bandRows, buttons: holes, firstHole, holeEvery, neckPickUp, hemRibSts, warnings };
 }
 
 /** The cardigan as written steps, from the neck down. */
@@ -619,7 +660,13 @@ export function cardiganSteps(c: CardiganResult, i: RaglanInput, len: (cm: numbe
   steps.push(
     `Separate (right side): knit the left front's ${c.front}, put the sleeve's ${r.sleeve} on hold, cast on ${r.underarmSts} for the underarm, knit the back's ${r.front}, put the other sleeve on hold, cast on ${r.underarmSts}, knit the right front's ${c.front}. The body has ${c.body} stitches.`,
   );
-  steps.push(`Body: work ${r.bodyRounds} rows (${len(i.bodyLength - i.hemRib)}), then ${r.hemRounds} rows of rib (${len(i.hemRib)}). Bind off.`);
+  if (c.hemRibSts !== c.body) {
+    steps.push(`Body: work ${r.bodyRounds} rows (${len(i.bodyLength - i.hemRib)}).`);
+    steps.push(evenRound(c.body, c.hemRibSts, "Next row (right side), to a count the rib fits", false));
+    steps.push(`Hem: ${r.hemRounds} rows of rib (${len(i.hemRib)}). Bind off.`);
+  } else {
+    steps.push(`Body: work ${r.bodyRounds} rows (${len(i.bodyLength - i.hemRib)}), then ${r.hemRounds} rows of rib (${len(i.hemRib)}). Bind off.`);
+  }
   steps.push(
     `Sleeves, in the round: pick up ${r.underarmSts} stitches at the underarm and knit the ${r.sleeve} held: ${r.upperArmSts} stitches, the start of the round at the middle of the underarm.`,
   );
@@ -697,6 +744,10 @@ function backNeckSteps(b: BackNeck, back: number, lead: string, flat: boolean, l
   return steps;
 }
 
+function gcd(a: number, b: number): number {
+  return b ? gcd(b, a % b) : a;
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
@@ -708,7 +759,8 @@ function round1(n: number): number {
  */
 export function raglanSteps(r: RaglanResult, i: RaglanInput, len: (cm: number) => string): string[] {
   const steps: string[] = [];
-  steps.push(`Cast on ${r.castOn} stitches. Join to knit in the round, and work ${r.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
+  steps.push(`Cast on ${r.neckRibSts} stitches. Join to knit in the round, and work ${r.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
+  if (r.neckRibSts !== r.castOn) steps.push(evenRound(r.neckRibSts, r.castOn, "Next round, from the rib's count to the yoke's"));
   steps.push(
     `Set up: knit ${r.front0} for the back, place a marker, ${r.sleeve0} for a sleeve, place a marker, ${r.front0} for the front, place a marker, ${r.sleeve0} for the other sleeve, place the marker for the start of the round.`,
   );
