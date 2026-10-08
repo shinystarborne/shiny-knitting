@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.44](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.44)** —
+  read a PDF a page at a time: keys, ‹ › or a swipe turn it. The one to test.
 - **[v0.3.0-beta.43](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.43)** —
-  each pattern keeps its own zoom. The one to test.
+  each pattern keeps its own zoom. Superseded by `beta.44`.
 - **[v0.3.0-beta.42](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.42)** —
   a pin comes to the front when pressed. Superseded by `beta.43`.
 - **[v0.3.0-beta.41](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.41)** —
