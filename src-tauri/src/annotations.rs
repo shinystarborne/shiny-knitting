@@ -211,6 +211,12 @@ pub fn update_pin(
     db::update_pin_placement(&conn, &id, &clamped)
 }
 
+/// Brings a pin to the front of the pattern's pins.
+#[tauri::command]
+pub fn raise_pin(state: State<'_, AppState>, id: String) -> CmdResult<Pin> {
+    db::raise_pin(&state.db(), &id)
+}
+
 #[tauri::command]
 pub fn rename_pin(state: State<'_, AppState>, id: String, title: String) -> CmdResult<()> {
     let title = clean_title(&title);

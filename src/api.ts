@@ -1222,6 +1222,8 @@ export const api = {
   pinCount: (patternId: string) => invoke<number>("pin_count", { patternId }),
   addPin: (patternId: string, input: PinInput) => invoke<Pin>("add_pin", { patternId, input }),
   updatePin: (id: string, placement: PinPlacement) => invoke<Pin>("update_pin", { id, placement }),
+  /** To the front of the pattern's pins. */
+  raisePin: (id: string) => invoke<Pin>("raise_pin", { id }),
   renamePin: (id: string, title: string) => invoke<void>("rename_pin", { id, title }),
   deletePin: (id: string) => invoke<void>("delete_pin", { id }),
   /** Raw binary; the caller makes a blob URL and lets the browser decode it. */

@@ -202,6 +202,7 @@ pub fn run() {
             annotations::pin_count,
             annotations::add_pin,
             annotations::update_pin,
+            annotations::raise_pin,
             annotations::rename_pin,
             annotations::delete_pin,
             annotations::get_pin_image,

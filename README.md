@@ -867,8 +867,9 @@ panel you can:
   board, onto that board; in a pattern opened from the library, onto the board
   of its project on the needles (asked which, when there are several).
 
-The panel is drawn straight from the PDF, so it stays as sharp as the page at
-any size. Panels stay where you put them — including across closing the
+Pressed anywhere, a pin comes to the front, above the others, and stays there;
+one shown again from its chip comes to the front too. The panel is drawn
+straight from the PDF, so it stays as sharp as the page at any size. Panels stay where you put them — including across closing the
 pattern. Hover a panel's header to see the words under its crop.
 
 Pins are for **PDFs**. An EPUB's text is reflowed and rewrapped by the window it

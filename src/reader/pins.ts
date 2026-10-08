@@ -360,6 +360,8 @@ export class PinLayer {
     grip.title = "Drag to resize";
 
     card.append(bar, wrap, grip);
+    // Pressed anywhere, a pin comes to the front, as a window does.
+    card.addEventListener("pointerdown", () => void this.bringToFront(pin, card), true);
 
     // Header buttons must stay plain clicks, so a press on one does not also
     // start dragging the panel.
@@ -410,8 +412,34 @@ export class PinLayer {
 
   private async setHidden(pin: Pin, hidden: boolean): Promise<void> {
     pin.hidden = hidden;
+    // Shown again from its chip, it is the one wanted: on top.
+    if (!hidden) this.raiseInPlace(pin);
     this.render();
     await this.savePlacement(pin);
+    if (!hidden) await this.saveRaise(pin);
+  }
+
+  /** The top of this pattern's pins, and this one above it, on screen at once. */
+  private raiseInPlace(pin: Pin): boolean {
+    const top = Math.max(...this.pins.map((p) => p.z));
+    if (pin.z >= top && this.pins.filter((p) => p.z === top).length === 1) return false;
+    pin.z = top + 1;
+    return true;
+  }
+
+  private async bringToFront(pin: Pin, card: HTMLElement): Promise<void> {
+    if (!this.raiseInPlace(pin)) return;
+    card.style.zIndex = String(10 + pin.z);
+    await this.saveRaise(pin);
+  }
+
+  private async saveRaise(pin: Pin): Promise<void> {
+    try {
+      const stored = await api.raisePin(pin.id);
+      pin.z = stored.z;
+    } catch (e) {
+      this.report(e);
+    }
   }
 
   /** Removes a pin straight away, as Shelfmind's chip ✕ does. */

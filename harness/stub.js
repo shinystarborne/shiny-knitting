@@ -1494,6 +1494,14 @@ const handlers = {
     store.pinImages.set(id, input.imageBytes);
     return clone(pin);
   },
+  // As db::raise_pin: above every other pin of its pattern.
+  raise_pin: ({ id }) => {
+    const pin = store.pins.find((p) => p.id === id);
+    if (!pin) throw new Error(`No pin with id ${id}.`);
+    const top = Math.max(...store.pins.filter((p) => p.patternId === pin.patternId).map((p) => p.z));
+    if (pin.z < top) pin.z = top + 1;
+    return clone(pin);
+  },
   update_pin: ({ id, placement }) => {
     const pin = store.pins.find((p) => p.id === id);
     if (!pin) throw new Error("no pin with that id");

@@ -1493,6 +1493,23 @@ fn pins_are_stored_and_listed_newest_on_top() {
 }
 
 #[test]
+fn a_pin_comes_to_the_front_of_its_patterns_pins() {
+    let conn = test_db();
+    let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
+    let other = sample(&conn, "Other", "A", "in-progress", &[]);
+    let first = insert_pin(&conn, &p.id, &pin_input(), "a.jpg").unwrap();
+    let second = insert_pin(&conn, &p.id, &pin_input(), "b.jpg").unwrap();
+    for _ in 0..3 {
+        insert_pin(&conn, &other.id, &pin_input(), "c.jpg").unwrap();
+    }
+    let raised = raise_pin(&conn, &first.id).unwrap();
+    assert!(raised.z > second.z, "above the other pin of its pattern");
+    assert_eq!(list_pins(&conn, &p.id).unwrap()[0].id, first.id, "listed on top");
+    assert_eq!(raise_pin(&conn, &first.id).unwrap().z, raised.z, "one already on top stays as it is");
+    assert!(raise_pin(&conn, "gone").is_err());
+}
+
+#[test]
 fn the_pin_limit_is_counted_not_guessed() {
     let conn = test_db();
     let p = sample(&conn, "Pinned", "A", "in-progress", &[]);

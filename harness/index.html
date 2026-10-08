@@ -17,7 +17,7 @@
       __projectChecks(), __yarnWeightChecks(), __needleSizeChecks(),
       __shoppingChecks(), __peopleChecks(), __swatchChecks(),
       __calculatorChecks(), __logChecks(), __chartChecks(),
-      __stashHistoryChecks(), __savePagesChecks(), __planChecks(), __galleryChecks(), __counterProjectChecks(), __backupChecks(), __binChecks(), __uploadChecks(), __chartLineChecks() and __cropChecks().
+      __stashHistoryChecks(), __savePagesChecks(), __planChecks(), __galleryChecks(), __counterProjectChecks(), __backupChecks(), __binChecks(), __uploadChecks(), __chartLineChecks(), __cropChecks() and __pinFrontChecks().
 
       no-dialogs.js comes first so the harness behaves like the real app, where
       window.prompt, confirm and alert do not work. See the file for why.
@@ -50,6 +50,7 @@
     <script type="module" src="/harness/upload-checks.ts"></script>
     <script type="module" src="/harness/chart-line-checks.ts"></script>
     <script type="module" src="/harness/crop-checks.ts"></script>
+    <script type="module" src="/harness/pin-front-checks.ts"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

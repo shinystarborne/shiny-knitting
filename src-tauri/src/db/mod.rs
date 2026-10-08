@@ -4302,6 +4302,18 @@ pub fn update_pin_placement(
     get_pin(conn, id)
 }
 
+/// Brings a pin to the front of its pattern's pins: above every other one.
+/// One already on top stays as it is.
+pub fn raise_pin(conn: &Connection, id: &str) -> AppResult<Pin> {
+    let pin = get_pin(conn, id)?;
+    conn.execute(
+        "UPDATE pins SET z = (SELECT MAX(z) + 1 FROM pins WHERE pattern_id = ?2)
+         WHERE id = ?1 AND z < (SELECT MAX(z) FROM pins WHERE pattern_id = ?2)",
+        params![id, pin.pattern_id],
+    )?;
+    get_pin(conn, id)
+}
+
 pub fn rename_pin(conn: &Connection, id: &str, title: &str) -> AppResult<()> {
     let changed = conn.execute(
         "UPDATE pins SET title = ?2 WHERE id = ?1",
