@@ -1226,6 +1226,8 @@ export const api = {
   pinCount: (patternId: string) => invoke<number>("pin_count", { patternId }),
   addPin: (patternId: string, input: PinInput) => invoke<Pin>("add_pin", { patternId, input }),
   updatePin: (id: string, placement: PinPlacement) => invoke<Pin>("update_pin", { id, placement }),
+  /** A mark moved or resized: its new shape, stored upright. */
+  moveAnnotation: (id: string, geometry: string) => invoke<Annotation>("move_annotation", { id, geometry }),
   /** To the front of the pattern's pins. */
   raisePin: (id: string) => invoke<Pin>("raise_pin", { id }),
   renamePin: (id: string, title: string) => invoke<void>("rename_pin", { id, title }),

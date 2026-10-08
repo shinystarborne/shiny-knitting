@@ -49,6 +49,12 @@ pub fn edit_annotation(
 
 // ---------- bookmarks ----------
 
+/// A mark moved or resized on its page.
+#[tauri::command]
+pub fn move_annotation(state: State<'_, AppState>, id: String, geometry: String) -> CmdResult<Annotation> {
+    db::set_annotation_geometry(&state.db(), &id, &geometry)
+}
+
 #[tauri::command]
 pub fn list_bookmarks(state: State<'_, AppState>, pattern_id: String) -> CmdResult<Vec<Bookmark>> {
     db::list_bookmarks(&state.db(), &pattern_id)

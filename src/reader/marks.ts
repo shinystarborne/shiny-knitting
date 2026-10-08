@@ -85,6 +85,11 @@ export class MarkLayer {
    * again. Only a press that comes back up where it went down is a click.
    */
   private pendingClick: { pointer: number; x: number; y: number; id: string } | null = null;
+  /**
+   * A mark being moved, or resized by its corner, with Select: what it was,
+   * on the page as shown, so each move works from there rather than adding up.
+   */
+  private grabbed: { pointer: number; x: number; y: number; id: string; mode: "move" | "size"; stored: string; page: HTMLElement; moved: boolean } | null = null;
   /** The note editor, while one is open. */
   private notePopover: HTMLElement | null = null;
   /** The click listener that dismisses the note editor, so it can always be
@@ -517,6 +522,66 @@ export class MarkLayer {
     return null;
   }
 
+  /** Whether a mark can be moved, or resized by its corner, from where it was pressed. */
+  private grabMode(mark: Annotation, x: number, y: number, page: HTMLElement): "move" | "size" | null {
+    const textHighlight = mark.kind === "highlight" && !isStroke(mark) && !!mark.quote;
+    if (textHighlight) return null;
+    const box = page.getBoundingClientRect();
+    const bounds = this.viewBounds(mark);
+    if (!bounds) return null;
+    const right = box.left + (bounds.x + bounds.w) * box.width;
+    const bottom = box.top + (bounds.y + bounds.h) * box.height;
+    const corner = Math.abs(x - right) <= 12 && Math.abs(y - bottom) <= 12;
+    return corner && mark.kind !== "note" ? "size" : "move";
+  }
+
+  /** The box round a mark on its page as shown, in fractions of the page. */
+  private viewBounds(stored: Annotation): Rect | null {
+    const mark = this.shown(stored);
+    const rects = isStroke(mark) ? boundsOf(parsePoints(mark.geometry)) : mark.kind === "note" ? noteRects(mark) : parseRects(mark.geometry);
+    if (!rects.length) return null;
+    const x = Math.min(...rects.map((r) => r.x));
+    const y = Math.min(...rects.map((r) => r.y));
+    return { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y };
+  }
+
+  /** Moves or resizes the grabbed mark under the pointer, from where it was. */
+  private dragMark(e: PointerEvent): void {
+    const g = this.grabbed!;
+    if (e.pointerId !== g.pointer) return;
+    if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) <= CLICK_SLOP) return;
+    g.moved = true;
+    const mark = this.marks.find((m) => m.id === g.id);
+    if (!mark) return;
+    const box = g.page.getBoundingClientRect();
+    const dx = (e.clientX - g.x) / (box.width || 1);
+    const dy = (e.clientY - g.y) / (box.height || 1);
+    const r = this.turnOf(mark.page);
+    const from = this.shown({ ...mark, geometry: g.stored });
+    const bounds = this.viewBounds({ ...mark, geometry: g.stored })!;
+    // Resized from the top-left corner, which stays put; never smaller than a sliver.
+    const sx = g.mode === "size" ? Math.max(0.02, bounds.w + dx) / Math.max(0.001, bounds.w) : 1;
+    const sy = g.mode === "size" ? Math.max(0.02, bounds.h + dy) / Math.max(0.001, bounds.h) : 1;
+    const mx = g.mode === "move" ? dx : 0;
+    const my = g.mode === "move" ? dy : 0;
+    const fx = (v: number) => bounds.x + (v - bounds.x) * sx + mx;
+    const fy = (v: number) => bounds.y + (v - bounds.y) * sy + my;
+    mark.geometry = isStroke(mark)
+      ? pointsToJson(parsePoints(from.geometry).map((p) => pointFromView({ x: fx(p.x), y: fy(p.y) }, r)))
+      : rectsToJson(parseRects(from.geometry).map((b) => boxFromView({ x: fx(b.x), y: fy(b.y), w: b.w * sx, h: b.h * sy }, r)));
+    this.repaint();
+  }
+
+  /** With Select, the pointer says what a press on a mark would do: move it, or size it by its corner. */
+  private hoverCursor(e: PointerEvent): void {
+    if (this.tool !== "none" || this.drawingPointer !== null) return;
+    const hit = this.pageAt(e.clientX, e.clientY);
+    const mark = hit ? this.markAt(e.clientX, e.clientY) : null;
+    const mode = mark && hit ? this.grabMode(mark, e.clientX, e.clientY, hit[1]) : null;
+    const cursor = mode === "size" ? "nwse-resize" : mode === "move" ? "move" : "";
+    if (this.scroller.style.cursor !== cursor) this.scroller.style.cursor = cursor;
+  }
+
   /**
    * The rectangles a mark is hit-tested against.
    *
@@ -551,10 +616,31 @@ export class MarkLayer {
   };
 
   private onPointerMove = (e: PointerEvent): void => {
+    if (this.grabbed) return this.dragMark(e);
+    this.hoverCursor(e);
     this.pointerMove(e, 0, 0);
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    const grabbed = this.grabbed;
+    if (grabbed && grabbed.pointer === e.pointerId) {
+      this.grabbed = null;
+      if (grabbed.moved) {
+        // Moved or resized, not clicked: kept, and nothing asked.
+        this.pendingClick = null;
+        const mark = this.marks.find((m) => m.id === grabbed.id);
+        if (mark) {
+          void api
+            .moveAnnotation(mark.id, mark.geometry)
+            .then((stored) => Object.assign(mark, stored))
+            .catch(() => {
+              mark.geometry = grabbed.stored;
+              this.repaint();
+            });
+        }
+        return;
+      }
+    }
     const pending = this.pendingClick;
     if (pending && pending.pointer === e.pointerId) {
       this.pendingClick = null;
@@ -627,6 +713,19 @@ export class MarkLayer {
       // release, so that a drag starting on a mark still selects text.
       const mark = this.markAt(x, y);
       this.pendingClick = mark ? { pointer: e.pointerId, x: e.clientX, y: e.clientY, id: mark.id } : null;
+      // A drawing, a note or a box can be moved, and a drawing or a box resized
+      // by its corner; text highlights stay with their words.
+      const page = hit?.[1];
+      const mode = mark && page && dx === 0 && dy === 0 ? this.grabMode(mark, x, y, page) : null;
+      if (mark && page && mode) {
+        e.preventDefault();
+        this.grabbed = { pointer: e.pointerId, x, y, id: mark.id, mode, stored: mark.geometry, page, moved: false };
+        try {
+          this.scroller.setPointerCapture(e.pointerId);
+        } catch {
+          // It still moves while the pointer stays over the page.
+        }
+      }
       return;
     }
     if (!hit) return;

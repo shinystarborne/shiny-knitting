@@ -1445,6 +1445,20 @@ const handlers = {
     store.annotations.push(a);
     return clone(a);
   },
+  // As db::set_annotation_geometry: a list of points or rectangles, somewhere.
+  move_annotation: ({ id, geometry }) => {
+    const a = store.annotations.find((x) => x.id === id);
+    if (!a) throw new Error(`No annotation with id ${id}.`);
+    let parsed;
+    try {
+      parsed = JSON.parse(geometry);
+    } catch {
+      throw new Error("That is not a mark's shape.");
+    }
+    if (!Array.isArray(parsed) || !parsed.length || !parsed.every((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))) throw new Error("That is not a mark's shape.");
+    a.geometry = geometry;
+    return clone(a);
+  },
   edit_annotation: ({ id, text, color }) => {
     const a = store.annotations.find((x) => x.id === id);
     if (!a) throw new Error("no annotation with that id");

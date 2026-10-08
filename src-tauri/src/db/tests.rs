@@ -1506,6 +1506,28 @@ fn a_patterns_zoom_is_kept_within_what_the_reader_shows() {
 }
 
 #[test]
+fn a_mark_moved_keeps_its_new_shape() {
+    let conn = test_db();
+    let p = sample(&conn, "Marked", "A", "", &[]);
+    let input = crate::models::AnnotationInput {
+        kind: "draw".into(),
+        page: 1,
+        geometry: r#"[{"x":0.1,"y":0.1},{"x":0.2,"y":0.2}]"#.into(),
+        quote: String::new(),
+        occurrence: 0,
+        color: "#e5484d".into(),
+        text: String::new(),
+    };
+    let mark = insert_annotation(&conn, &p.id, &input).unwrap();
+    let moved = set_annotation_geometry(&conn, &mark.id, r#"[{"x":0.3,"y":0.4},{"x":0.4,"y":0.5}]"#).unwrap();
+    assert_eq!(moved.geometry, r#"[{"x":0.3,"y":0.4},{"x":0.4,"y":0.5}]"#);
+    assert_eq!(list_annotations(&conn, &p.id).unwrap()[0].geometry, moved.geometry);
+    assert!(set_annotation_geometry(&conn, &mark.id, "not json").is_err());
+    assert!(set_annotation_geometry(&conn, &mark.id, "[]").is_err(), "a mark is somewhere");
+    assert!(set_annotation_geometry(&conn, "gone", r#"[{"x":0,"y":0}]"#).is_err());
+}
+
+#[test]
 fn a_pin_comes_to_the_front_of_its_patterns_pins() {
     let conn = test_db();
     let p = sample(&conn, "Pinned", "A", "in-progress", &[]);

@@ -2181,25 +2181,27 @@ pub fn list_annotations(conn: &Connection, pattern_id: &str) -> AppResult<Vec<An
     let mut stmt = conn.prepare(
         "SELECT * FROM annotations WHERE pattern_id = ?1 ORDER BY page ASC, rowid ASC",
     )?;
-    let rows = stmt.query_map(params![pattern_id], |row| {
-        Ok(Annotation {
-            id: row.get("id")?,
-            pattern_id: row.get("pattern_id")?,
-            kind: row.get("kind")?,
-            page: row.get("page")?,
-            geometry: row.get("geometry")?,
-            quote: row.get("quote")?,
-            occurrence: row.get("occurrence")?,
-            color: row.get("color")?,
-            text: row.get("text")?,
-            created_at: row.get("created_at")?,
-        })
-    })?;
+    let rows = stmt.query_map(params![pattern_id], row_to_annotation)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
     }
     Ok(out)
+}
+
+fn row_to_annotation(row: &rusqlite::Row) -> rusqlite::Result<Annotation> {
+    Ok(Annotation {
+        id: row.get("id")?,
+        pattern_id: row.get("pattern_id")?,
+        kind: row.get("kind")?,
+        page: row.get("page")?,
+        geometry: row.get("geometry")?,
+        quote: row.get("quote")?,
+        occurrence: row.get("occurrence")?,
+        color: row.get("color")?,
+        text: row.get("text")?,
+        created_at: row.get("created_at")?,
+    })
 }
 
 pub fn insert_annotation(
@@ -2244,6 +2246,21 @@ pub fn insert_annotation(
         text: input.text.clone(),
         created_at,
     })
+}
+
+/// A mark moved or resized: its new geometry, which must be a list of
+/// rectangles or points, as every mark's is.
+pub fn set_annotation_geometry(conn: &Connection, id: &str, geometry: &str) -> AppResult<Annotation> {
+    let parsed: serde_json::Value = serde_json::from_str(geometry).map_err(|_| AppError::Message("That is not a mark's shape.".to_string()))?;
+    let items = parsed.as_array().filter(|a| !a.is_empty()).ok_or_else(|| AppError::Message("That is not a mark's shape.".to_string()))?;
+    if !items.iter().all(|i| i.get("x").and_then(|v| v.as_f64()).is_some_and(f64::is_finite) && i.get("y").and_then(|v| v.as_f64()).is_some_and(f64::is_finite)) {
+        return Err(AppError::Message("That is not a mark's shape.".to_string()));
+    }
+    let changed = conn.execute("UPDATE annotations SET geometry = ?2 WHERE id = ?1", params![id, geometry])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("No annotation with id {id}.")));
+    }
+    conn.query_row("SELECT * FROM annotations WHERE id = ?1", params![id], row_to_annotation).map_err(Into::into)
 }
 
 pub fn update_annotation_text(

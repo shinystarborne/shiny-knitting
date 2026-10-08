@@ -204,6 +204,7 @@ pub fn run() {
             annotations::add_pin,
             annotations::update_pin,
             annotations::raise_pin,
+            annotations::move_annotation,
             annotations::rename_pin,
             annotations::delete_pin,
             annotations::get_pin_image,

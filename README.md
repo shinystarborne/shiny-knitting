@@ -854,7 +854,9 @@ default, so reading and tidying up need no tool chosen at all.
 
 - **Select** (➤) — click a note to open it and change the wording, or click a
   highlight or drawing to be offered its removal. Nothing is deleted without
-  asking.
+  asking. Drag a drawing, a highlighter stroke or a note to move it, and a
+  drawing's bottom-right corner to resize it (the pointer says which); a
+  highlight made over text stays with its words.
 - **Highlighter** (🖊) — drag over the page like a highlighter pen: a broad,
   see-through band in the current colour, over text or over a chart alike.
   It scales with the page, so it stays on the same rows at any zoom.
