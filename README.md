@@ -806,6 +806,12 @@ bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.
 
+**A page at a time.** **Pages** in the reader bar shows a PDF one page at a
+time, each fitted whole to the pane: `→`/`←` and `PageDown`/`PageUp`, the
+**‹ ›** at the sides, or a sideways swipe (two fingers on a trackpad, or a
+finger on a screen) turn the page. The pattern remembers it; pressed again,
+the pages scroll as before, at the zoom they had.
+
 **Turning a page.** A chart printed sideways to fit can be turned the right way
 up: **⟳** turns the page taking up most of the pane a quarter turn clockwise,
 and `Shift`-click turns it back. Only that page turns, and it stays turned the

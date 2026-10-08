@@ -575,6 +575,16 @@ kbd {
   outline: none;
 }
 .doc-scroller:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-soft); }
+/* A page at a time: each page fitted whole, the scroll snapping from one to the next. */
+.doc-scroller.page-mode { scroll-snap-type: y mandatory; padding-bottom: 20px; }
+.doc-scroller.page-mode .pdf-page { scroll-snap-align: start; }
+.doc-pane { position: relative; }
+.page-turn { display: none; position: absolute; top: 50%; transform: translateY(-50%); z-index: 6; width: 34px; height: 64px; padding: 0; font-size: 26px; line-height: 1; border-radius: 8px; background: rgba(15, 17, 20, 0.6); border: 1px solid var(--border); color: var(--text); opacity: 0.6; }
+.page-turn:hover { opacity: 1; }
+.page-turn.prev { left: 8px; }
+.page-turn.next { right: 22px; }
+.doc-pane.page-mode .page-turn { display: block; }
+[data-act="page-mode"].on { border-color: var(--accent); color: var(--text); }
 
 .pdf-pages,
 .epub-chapters {

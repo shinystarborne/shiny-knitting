@@ -68,6 +68,10 @@ export interface RenderedDoc {
   /** The zoom as a multiple of fit-width, to remember; and putting one back. */
   zoomLevel?(): number;
   setZoomLevel?(zoom: number): Promise<void>;
+  /** One page at a time, each fitted whole to the pane; and turning one. */
+  isPageMode?(): boolean;
+  setPageMode?(on: boolean): Promise<void>;
+  turnPage?(direction: 1 | -1): void;
   /**
    * Paints one region of a page into a canvas at a given on-screen width.
    *
@@ -331,6 +335,47 @@ export class PdfView implements RenderedDoc {
 
   zoomLevel(): number {
     return this.zoom;
+  }
+
+  /** One page at a time: each fitted whole to the pane, the scroll snapping page to page. */
+  private pageMode = false;
+  /** The zoom before page mode, put back after it. */
+  private zoomBeforePages = 1;
+
+  isPageMode(): boolean {
+    return this.pageMode;
+  }
+
+  async setPageMode(on: boolean): Promise<void> {
+    if (on === this.pageMode) return;
+    const page = this.currentPage();
+    this.pageMode = on;
+    this.scroller.classList.toggle("page-mode", on);
+    if (on) {
+      this.zoomBeforePages = this.zoom;
+      await this.setZoom(await this.fitPageZoom());
+    } else {
+      await this.setZoom(this.zoomBeforePages);
+    }
+    this.goToPage(page);
+  }
+
+  turnPage(direction: 1 | -1): void {
+    this.goToPage(this.currentPage() + direction);
+  }
+
+  /** The zoom at which a whole page fits the pane's height. */
+  private async fitPageZoom(): Promise<number> {
+    if (!this.task) return 1;
+    try {
+      const base = (await this.task.getPage(1)).getViewport({ scale: 1 });
+      const widthAtFit = this.targetWidth() / this.zoom;
+      const heightAtFit = (widthAtFit * base.height) / base.width;
+      const room = Math.max(200, this.scroller.clientHeight - 24);
+      return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, room / heightAtFit));
+    } catch {
+      return this.zoom;
+    }
   }
 
   setZoomLevel(zoom: number): Promise<void> {
@@ -824,6 +869,9 @@ export class PdfView implements RenderedDoc {
     if (!this.task) return;
     // Canvas CSS sizes and page heights both depend on width, so a resize
     // means discarding the rendered bitmaps and starting over.
+    const page = this.pageMode ? this.currentPage() : 0;
+    // A page fitted whole stays fitted whole in a window of another size.
+    if (this.pageMode) this.zoom = await this.fitPageZoom();
     this.rendered.clear();
     for (const page of this.pages) {
       page.style.height = "";
@@ -832,6 +880,7 @@ export class PdfView implements RenderedDoc {
     // scroll height stays roughly right throughout the re-render.
     await this.reserveHeights();
     await this.render();
+    if (page) this.goToPage(page);
     // Every page just repainted at a different pixel size -- a window
     // resize is a fit-width zoom in every way that matters to a mark's
     // position, it just was not asked for. Without this, a mark stays

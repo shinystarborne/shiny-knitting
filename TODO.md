@@ -83,7 +83,7 @@ starting; the details are in the sections under the list.
     path). Sent raw now (upload_pattern), not as a JSON array. *0.3.39*
 13. [x] Pins: bring one to the front. Pressed, or shown from its chip. *0.3.42*
 14. [x] Zoom remembered per pattern. *0.3.43*
-15. [ ] Page by page (swipe) reading.
+15. [x] Page by page (swipe) reading. **Pages**: a page fitted whole, turned by keys, ‹ › or a swipe. *0.3.44*
 16. [ ] A light reader theme.
 17. [ ] Two PDFs side by side.
 18. [ ] Marks moved and resized.

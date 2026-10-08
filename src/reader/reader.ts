@@ -210,6 +210,9 @@ export class ReaderView {
     const zoom = this.pattern.zoom ?? 1;
     if (Math.abs(zoom - 1) > 0.001) await this.doc.setZoomLevel?.(zoom);
     if (this.destroyed) return;
+    // A page at a time, when it was last read so; only a PDF has pages to fit.
+    if (!this.doc.setPageMode) this.root.querySelector<HTMLElement>('[data-act="page-mode"]')?.remove();
+    this.bindSwipe();
     this.refreshZoomReadout();
 
     // The line goes with the counter, on a project's page: a pattern read on
@@ -298,6 +301,14 @@ export class ReaderView {
     this.bindKeys();
     this.bindPositionSaving();
     this.restorePosition();
+    let pages = false;
+    try {
+      pages = localStorage.getItem(this.pagesKey()) === "1";
+    } catch {
+      // Scrolling, then.
+    }
+    if (pages) await this.setPageMode(true);
+    if (this.destroyed) return;
 
     // The toolbar opens on Select, so the common case -- reading, and removing
     // a mark by clicking it -- needs no tool chosen, and a stray drag on the
@@ -376,6 +387,7 @@ export class ReaderView {
                   <span class="zoom-pct" data-zoom-pct>100%</span>
                   <button data-act="zoom-in" class="ghost icon-btn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
                   <button data-act="zoom-fit" class="ghost icon-btn" aria-label="Fit width" title="Fit width (Ctrl+0)">⇔</button>
+                  <button data-act="page-mode" class="ghost" title="One page at a time, fitted whole: ← and →, PageUp and PageDown, or a swipe turn the page">Pages</button>
                   <button data-act="rotate" class="ghost icon-btn" aria-label="Rotate page"
                     title="Turn the page in view a quarter turn clockwise — for a chart printed sideways. Shift-click turns it back.">⟳</button>
                 </div>`
@@ -394,6 +406,8 @@ export class ReaderView {
       <div class="reader-body">
         <div class="doc-pane">
           <div class="doc-scroller" tabindex="0"></div>
+          <button class="page-turn prev" data-act="page-prev" aria-label="The page before" title="The page before (←)">‹</button>
+          <button class="page-turn next" data-act="page-next" aria-label="The next page" title="The next page (→)">›</button>
         </div>
         ${embedded ? "" : this.sidePaneHtml(sidebar)}
       </div>
@@ -438,6 +452,9 @@ export class ReaderView {
       if (act === "zoom-in") this.doc?.zoomIn?.();
       if (act === "zoom-out") this.doc?.zoomOut?.();
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
+      if (act === "page-mode") void this.setPageMode(!this.doc?.isPageMode?.());
+      if (act === "page-prev") this.doc?.turnPage?.(-1);
+      if (act === "page-next") this.doc?.turnPage?.(1);
       if (act === "rotate") void this.rotatePageInView(e.shiftKey ? -90 : 90);
     });
 
@@ -1006,6 +1023,8 @@ export class ReaderView {
 
   /** Keeps the zoom a moment after it settles, for the next time the pattern is opened. */
   private rememberZoom(): void {
+    // A page fitted whole is page mode's, not the zoom the pattern is read at.
+    if (this.doc?.isPageMode?.()) return;
     const zoom = this.doc?.zoomLevel?.();
     if (zoom === undefined || Math.abs(zoom - (this.pattern.zoom ?? 1)) < 0.001) return;
     if (this.zoomTimer !== null) window.clearTimeout(this.zoomTimer);
@@ -1014,6 +1033,58 @@ export class ReaderView {
       this.pattern.zoom = zoom;
       void api.saveZoom(this.pattern.id, zoom).catch(() => {});
     }, 400);
+  }
+
+  private pagesKey(): string {
+    return `pages:${this.pattern.id}`;
+  }
+
+  /** One page at a time, or the pages in a scroll; remembered for the pattern. */
+  private async setPageMode(on: boolean): Promise<void> {
+    if (!this.doc?.setPageMode) return;
+    await this.doc.setPageMode(on);
+    this.root.querySelector('[data-act="page-mode"]')?.classList.toggle("on", on);
+    this.root.querySelector(".doc-pane")?.classList.toggle("page-mode", on);
+    try {
+      if (on) localStorage.setItem(this.pagesKey(), "1");
+      else localStorage.removeItem(this.pagesKey());
+    } catch {
+      // Remembered for this reading only.
+    }
+    this.refreshZoomReadout();
+    this.scroller.focus();
+  }
+
+  /** A swipe sideways turns the page: a trackpad's two fingers, or a finger on a screen. */
+  private bindSwipe(): void {
+    let sideways = 0;
+    let resting = 0;
+    this.scroller.addEventListener(
+      "wheel",
+      (e) => {
+        if (!this.doc?.isPageMode?.() || e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+        e.preventDefault();
+        if (Date.now() < resting) return;
+        sideways += e.deltaX;
+        if (Math.abs(sideways) > 60) {
+          this.doc.turnPage?.(sideways > 0 ? 1 : -1);
+          sideways = 0;
+          resting = Date.now() + 450;
+        }
+      },
+      { passive: false },
+    );
+    let from: { x: number; y: number } | null = null;
+    this.scroller.addEventListener("pointerdown", (e) => {
+      from = e.pointerType === "touch" && this.doc?.isPageMode?.() ? { x: e.clientX, y: e.clientY } : null;
+    });
+    this.scroller.addEventListener("pointerup", (e) => {
+      if (!from) return;
+      const dx = e.clientX - from.x;
+      const dy = e.clientY - from.y;
+      from = null;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) this.doc?.turnPage?.(dx < 0 ? 1 : -1);
+    });
   }
 
   private refreshZoomReadout(): void {
@@ -1059,6 +1130,16 @@ export class ReaderView {
       // own keys, and Ctrl/Cmd is also the combination every other app uses
       // for zoom, so it is the one combination guaranteed not to collide.
       if ((e.ctrlKey || e.metaKey) && this.handleZoomKey(e)) return;
+
+      // A page at a time: the arrows and PageUp/PageDown turn the page.
+      if (this.doc?.isPageMode?.() && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const turn = { ArrowRight: 1, ArrowLeft: -1, PageDown: 1, PageUp: -1 }[e.key] as 1 | -1 | undefined;
+        if (turn) {
+          e.preventDefault();
+          this.doc.turnPage?.(turn);
+          return;
+        }
+      }
 
       // Row keys next: they are the synchronised action, and the counter
       // below must not swallow them.
