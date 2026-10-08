@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.54](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.54)** —
+  a raised back neck, by short rows, in the raglan and round yoke. The one to test.
 - **[v0.3.0-beta.53](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.53)** —
-  the raglan worked flat, as a cardigan with front bands. The one to test.
+  the raglan worked flat, as a cardigan with front bands. Superseded by `beta.54`.
 - **[v0.3.0-beta.52](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.52)** —
   the raglan calculator worked bottom-up too. Superseded by `beta.53`.
 - **[v0.3.0-beta.51](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.51)** —
