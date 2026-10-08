@@ -517,6 +517,119 @@ export function raglanBottomUpSteps(r: RaglanResult, i: RaglanInput, len: (cm: n
   return steps;
 }
 
+// ---------- the raglan worked flat, as a cardigan ----------
+
+export interface CardiganResult {
+  r: RaglanResult;
+  /** The front band's width in stitches: what the two fronts are short of the back, together. */
+  bandSts: number;
+  /** Each front at the cast-on and at the split. */
+  front0: number;
+  front: number;
+  /** Stitches cast on: the two fronts, the back and the sleeves, without the bands. */
+  castOn: number;
+  /** The body below the split, without the bands. */
+  body: number;
+  /** Stitches picked up along each front edge, rows for the bands, and where the buttonholes go. */
+  bandPickUp: number;
+  bandRows: number;
+  buttons: number;
+  /** Stitches before the first buttonhole, and between each and the next. */
+  firstHole: number;
+  holeEvery: number;
+  /** The neckband, picked up round the neck and the tops of the bands. */
+  neckPickUp: number;
+  warnings: string[];
+}
+
+/**
+ * The top-down raglan worked flat, open at the front as a cardigan: the same
+ * yoke, its fronts each half the front less half a band, the bands picked up
+ * along the front edges at the end -- one with the buttonholes, spaced evenly
+ * -- and a neckband round the top. Increases on the right-side rows; where the
+ * yoke is too shallow for that, on wrong-side rows too.
+ */
+export function cardigan(i: RaglanInput, bandWidth: number, buttons: number): CardiganResult | { error: string } {
+  const r = raglan(i);
+  if ("error" in r) return r;
+  if (!(bandWidth > 0)) return { error: "Give the front band's width." };
+  const spc = i.gauge.sts / 10;
+  const rpc = i.gauge.rows / 10;
+  const bandSts = Math.max(2, even(bandWidth * spc));
+  const front0 = (r.front0 - bandSts) / 2;
+  if (front0 < 1) return { error: "The front band is wider than the front of the neck: make it narrower." };
+  const warnings = [...r.warnings];
+  // Odd halves are rounded down: the fronts are then a stitch narrower than the
+  // back, which the band's width covers.
+  const f0 = Math.floor(front0);
+  if (f0 !== front0) warnings.push("The front band takes an odd number of stitches from the neck: each front is a stitch narrower, which the bands cover.");
+  const front = f0 + r.bodyIncreases;
+  const castOn = 2 * f0 + r.front0 + 2 * r.sleeve0;
+  const body = 2 * front + r.front + 2 * r.underarmSts;
+  // Along a front edge: the yoke and the body, picked up 3 stitches in every 4 rows.
+  const edgeRows = r.yokeRounds + r.bodyRounds + r.hemRounds + r.neckRibRounds;
+  const bandPickUp = Math.max(4, Math.round((edgeRows * 3) / 4));
+  const bandRows = Math.max(2, Math.round(bandWidth * rpc));
+  const holes = Math.max(0, Math.round(buttons));
+  // Evenly spaced along the band, the top and bottom ones near the ends.
+  const holeEvery = holes > 1 ? Math.floor((bandPickUp - 6) / (holes - 1)) : 0;
+  const firstHole = holes ? Math.max(2, Math.floor((bandPickUp - (holes - 1) * holeEvery) / 2)) : 0;
+  if (holes > 1 && holeEvery < 4) warnings.push(`${holes} buttons are too many for a ${bandPickUp}-stitch band: give fewer.`);
+  const neckPickUp = castOn + 2 * Math.max(2, Math.round((bandRows * 3) / 4));
+  return { r, bandSts, front0: f0, front, castOn, body, bandPickUp, bandRows, buttons: holes, firstHole, holeEvery, neckPickUp, warnings };
+}
+
+/** The cardigan as written steps, from the neck down. */
+export function cardiganSteps(c: CardiganResult, i: RaglanInput, len: (cm: number) => string): string[] {
+  const r = c.r;
+  const steps: string[] = [];
+  steps.push(`Cast on ${c.castOn} stitches. Work flat, in rows.`);
+  steps.push(
+    `Set-up row (wrong side): purl ${c.front0} for the left front, place a marker, ${r.sleeve0} for a sleeve, place a marker, ${r.front0} for the back, place a marker, ${r.sleeve0} for the other sleeve, place a marker, ${c.front0} for the right front.`,
+  );
+  steps.push("Increase row (right side): *knit to 1 stitch before the marker, make 1 right, k1, slip the marker, k1, make 1 left*, 4 times, knit to the end: 8 stitches more.");
+  const both = Math.min(r.bodyIncreases, r.sleeveIncreases);
+  const only = Math.abs(r.bodyIncreases - r.sleeveIncreases);
+  const where = r.bodyIncreases > r.sleeveIncreases ? "the back and fronts" : "the sleeves";
+  const spacing = [
+    r.everyRound ? `on the right side and the wrong side, every row, ${r.everyRound} times (on a wrong-side row, make 1 purlwise)` : "",
+    r.everyOther ? `${r.everyRound ? "then " : ""}on every right-side row ${r.everyOther} times` : "",
+  ].filter(Boolean);
+  steps.push(
+    `Work ${Math.max(r.bodyIncreases, r.sleeveIncreases)} increase rows: ${spacing.join(", ")}.${
+      only ? ` ${both} of them increase at all 8 places; on the other ${only}, increase only on ${where}.` : ""
+    }`,
+  );
+  if (r.plainRounds) steps.push(`Work ${r.plainRounds} rows plain, until the yoke measures ${len(r.finished.yokeDepth)} from the cast-on.`);
+  steps.push(`You have ${c.front} stitches for each front, ${r.front} for the back, and ${r.sleeve} for each sleeve.`);
+  steps.push(
+    `Separate (right side): knit the left front's ${c.front}, put the sleeve's ${r.sleeve} on hold, cast on ${r.underarmSts} for the underarm, knit the back's ${r.front}, put the other sleeve on hold, cast on ${r.underarmSts}, knit the right front's ${c.front}. The body has ${c.body} stitches.`,
+  );
+  steps.push(`Body: work ${r.bodyRounds} rows (${len(i.bodyLength - i.hemRib)}), then ${r.hemRounds} rows of rib (${len(i.hemRib)}). Bind off.`);
+  steps.push(
+    `Sleeves, in the round: pick up ${r.underarmSts} stitches at the underarm and knit the ${r.sleeve} held: ${r.upperArmSts} stitches, the start of the round at the middle of the underarm.`,
+  );
+  if (r.sleeveDecreases) {
+    steps.push(
+      `Decrease round: k1, k2tog, knit to 3 stitches before the end, ssk, k1: 2 stitches fewer. Work it every ${r.sleeveEvery} rounds ${r.sleeveDecreases} times, to ${r.wristSts} stitches, and knit until the sleeve measures ${len(i.armLength - i.cuffRib)} from the underarm.`,
+    );
+  } else {
+    steps.push(`Knit until the sleeve measures ${len(i.armLength - i.cuffRib)} from the underarm.`);
+  }
+  steps.push(`Cuff: ${r.cuffRounds} rounds of rib (${len(i.cuffRib)}). Bind off.`);
+  steps.push(`Button band: along the left front edge, from the neck down, pick up ${c.bandPickUp} stitches (3 in every 4 rows). Work ${c.bandRows} rows of rib (${len(c.bandSts / (i.gauge.sts / 10))}). Bind off in rib.`);
+  if (c.buttons) {
+    const holes = c.buttons > 1 ? `, then every ${c.holeEvery} stitches after it, ${c.buttons} buttonholes in all` : "";
+    steps.push(
+      `Buttonhole band: along the right front edge, from the hem up, pick up ${c.bandPickUp} stitches. Halfway through its ${c.bandRows} rows, make the buttonholes: the first ${c.firstHole} stitches from the hem${holes} -- for each, bind off 2 and cast them on again on the next row. Finish the rows and bind off in rib.`,
+    );
+  } else {
+    steps.push(`Other band: along the right front edge, from the hem up, pick up ${c.bandPickUp} stitches, work ${c.bandRows} rows of rib, and bind off in rib.`);
+  }
+  steps.push(`Neckband: pick up ${c.neckPickUp} stitches round the neck and the tops of the bands, work ${r.neckRibRounds} rows of rib (${len(i.neckRib)}), and bind off loosely.`);
+  return steps;
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }

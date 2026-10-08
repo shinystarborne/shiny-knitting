@@ -1,7 +1,7 @@
 import { api, isLive, type MeasureUnit, type Person, type Project, type Swatch } from "../api";
 import { say } from "../dialogs";
 import { closestEl } from "../dom";
-import { raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
+import { cardigan, cardiganSteps, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
@@ -9,7 +9,7 @@ import { ChartList } from "./charts";
 type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "charts";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
-  { key: "raglan", label: "Raglan sweater", hint: "Top-down or bottom-up, in the round" },
+  { key: "raglan", label: "Raglan sweater", hint: "Top-down, bottom-up, or a cardigan" },
   { key: "yoke", label: "Round yoke (lopapeysa)", hint: "Top-down, in the round" },
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
@@ -200,7 +200,7 @@ export class CalculatorsView {
     return `
       <div class="calc-grid">
         <section class="calc-inputs">
-          <h2>${yoke ? "Round yoke" : "Raglan sweater"} <span class="hint">${yoke ? "lopapeysa, top-down" : kept.values.direction === "up" ? "bottom-up" : "top-down"}, in the round</span></h2>
+          <h2>${yoke ? "Round yoke" : "Raglan sweater"} <span class="hint">${yoke ? "lopapeysa, top-down, in the round" : workedHint(kept.values.direction)}</span></h2>
           ${
             yoke
               ? ""
@@ -209,8 +209,14 @@ export class CalculatorsView {
             <select data-k="direction">
               <option value="down" ${kept.values.direction !== "up" ? "selected" : ""}>Top-down: from the neck</option>
               <option value="up" ${kept.values.direction === "up" ? "selected" : ""}>Bottom-up: body and sleeves first, joined for the yoke</option>
+              <option value="flat" ${kept.values.direction === "flat" ? "selected" : ""}>Flat, as a cardigan: open at the front, with bands</option>
             </select>
-          </label>`
+          </label>
+          <div class="calc-fields" data-el="cardigan" ${kept.values.direction === "flat" ? "" : "hidden"}>
+            ${this.lengthField("bandWidth", "Front band width", "How wide each front band is, picked up along the front edge", 2.5)}
+            <label class="field calc-field" title="Buttonholes on the right band; 0 for none"><span>Buttons</span>
+              <input data-k="buttons" inputmode="numeric" value="${esc(kept.values.buttons ?? "6")}" /></label>
+          </div>`
           }
           <label class="field">
             <span>For</span>
@@ -405,6 +411,7 @@ export class CalculatorsView {
     const input = this.garmentInput();
     const r = raglan(input);
     if ("error" in r) throw new Error(r.error);
+    if (kept.values.direction === "flat") return this.cardiganResult(input);
     const up = kept.values.direction === "up";
     const steps = up ? raglanBottomUpSteps(r, input, this.len) : raglanSteps(r, input, this.len);
     this.keepPlan(up ? "Raglan, bottom-up" : "Raglan", input, r.finished, steps);
@@ -432,6 +439,33 @@ export class CalculatorsView {
         ["Sleeve", `${r.upperArmSts} → ${r.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
       ])}
       ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
+      <h3>Steps</h3>
+      <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+      ${this.actions()}`;
+  }
+
+  /** The raglan worked flat, as a cardigan: its own numbers and steps. */
+  private cardiganResult(input: RaglanInput): string {
+    const band = this.num("bandWidth");
+    const c = cardigan(input, band, Math.max(0, Math.round(this.num("buttons"))));
+    if ("error" in c) throw new Error(c.error);
+    const r = c.r;
+    const steps = cardiganSteps(c, input, this.len);
+    this.keepPlan("Raglan cardigan", input, r.finished, steps);
+    return `
+      ${this.resultHead("The numbers")}
+      ${table([
+        ["Cast on", `${c.castOn}`, `${c.front0} each front, ${r.front0} back, ${r.sleeve0} each sleeve`],
+        ["Increase rows", `${Math.max(r.bodyIncreases, r.sleeveIncreases)}`, scheduleFlat(r)],
+        ["Yoke", `${r.yokeRounds} rows`, this.len(r.finished.yokeDepth)],
+        ["At the split", `${c.front} each front, ${r.front} back`, `${r.sleeve} each sleeve`],
+        ["Underarm cast-on", `${r.underarmSts}`, "at each side"],
+        ["Body", `${c.body}`, `chest ${this.len(r.finished.chest)}, with the bands`],
+        ["Sleeve", `${r.upperArmSts} → ${r.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
+        ["Front bands", `${c.bandPickUp} each`, `${c.bandRows} rows; ${c.buttons ? `${c.buttons} buttonholes` : "no buttonholes"}`],
+        ["Neckband", `${c.neckPickUp}`, `${r.neckRibRounds} rows`],
+      ])}
+      ${c.warnings.length ? `<ul class="calc-warnings">${c.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       <h3>Steps</h3>
       <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
       ${this.actions()}`;
@@ -605,7 +639,9 @@ export class CalculatorsView {
     if (key === "round" || key === "countsAre") kept.values[key] = el.value;
     if (key === "direction") {
       const hint = this.main.querySelector<HTMLElement>(".calc-inputs h2 .hint");
-      if (hint) hint.textContent = `${el.value === "up" ? "bottom-up" : "top-down"}, in the round`;
+      if (hint) hint.textContent = workedHint(el.value);
+      const extra = this.main.querySelector<HTMLElement>('[data-el="cardigan"]');
+      if (extra) extra.hidden = el.value !== "flat";
     }
     this.calculate();
   }
@@ -617,6 +653,16 @@ export class CalculatorsView {
     kept.values[key] = value;
     return this;
   }
+}
+
+/** How the raglan is worked, under its heading. */
+function workedHint(direction: string | undefined): string {
+  return direction === "up" ? "bottom-up, in the round" : direction === "flat" ? "a cardigan, worked flat from the neck" : "top-down, in the round";
+}
+
+/** A cardigan's increase rows: on every row where the yoke is shallow, then on right-side rows. */
+function scheduleFlat(r: RaglanResult): string {
+  return [r.everyRound ? `every row ×${r.everyRound}` : "", r.everyOther ? `every right-side row ×${r.everyOther}` : ""].filter(Boolean).join(", then ");
 }
 
 /** The bottom-up order: every other round first, by the underarm, every round last, by the neck. */

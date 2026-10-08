@@ -558,7 +558,12 @@ typed in.
   **Worked bottom-up** turns it round: the sleeves from the cuff and the body
   from the hem, the underarms put on hold, all joined for the yoke and
   decreased to the neck, the underarms grafted at the end — the same counts,
-  met in the other order.
+  met in the other order. **Flat, as a cardigan** works it in rows from the
+  neck, open at the front: give the front band's width and the number of
+  buttons, and the fronts come out each half the front less half a band, the
+  increases on right-side rows, the body flat and the sleeves in the round,
+  and the bands picked up along the fronts at the end — the buttonholes
+  spaced evenly on one — with the neckband round the top.
 - **Round yoke (lopapeysa)**, top-down in the round, from the same measurements
   (its yoke depth filled in as the armhole depth + 2 cm, since a round yoke
   covers the shoulders). Three increase rounds, or up to six for a rounder yoke,

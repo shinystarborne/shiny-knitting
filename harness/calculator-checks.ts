@@ -6,7 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
-import { even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
+import { cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
   name: string;
@@ -93,6 +93,13 @@ function pure(results: CheckResult[]): void {
   const up = raglanBottomUpSteps(r, ADULT, (cm) => `${Math.round(cm * 10) / 10} cm`);
   check(results, "bottom-up: the sleeves from the cuff, increasing to the upper arm", up[0].startsWith("Sleeves (two the same): cast on 40 stitches") && up.some((s) => /every 6 rounds 19 times, to 78 stitches/.test(s)), up.slice(0, 2).join(" | "));
   check(results, "…the body from the hem, the underarms on hold, joined for the yoke", up.some((s) => /^Body: cast on 220 stitches/.test(s)) && up.some((s) => /^Join: .*: 328 stitches/.test(s)) && up.some((s) => /Kitchener/.test(s)), up.join(" | "));
+  const card = cardigan(ADULT, 2.5, 6) as Exclude<ReturnType<typeof cardigan>, { error: string }>;
+  check(results, "a cardigan: two fronts, a back and two sleeves cast on, the band left out", card.castOn === 2 * card.front0 + r.front0 + 2 * r.sleeve0 && Math.abs(2 * card.front0 + card.bandSts - r.front0) <= 1, JSON.stringify({ castOn: card.castOn, front0: card.front0, band: card.bandSts }));
+  check(results, "…each front grows by one at its raglan line, the body adds up", card.front === card.front0 + r.bodyIncreases && card.body === 2 * card.front + r.front + 2 * r.underarmSts);
+  check(results, "…six buttonholes fit along the band", card.buttons === 6 && card.firstHole >= 2 && card.firstHole + 5 * card.holeEvery < card.bandPickUp, JSON.stringify({ first: card.firstHole, every: card.holeEvery, band: card.bandPickUp }));
+  const cardSteps = cardiganSteps(card, ADULT, (cm) => `${Math.round(cm * 10) / 10} cm`);
+  check(results, "…its steps: flat, increasing on right-side rows, the bands and neckband picked up", cardSteps[0] === `Cast on ${card.castOn} stitches. Work flat, in rows.` && cardSteps.some((t) => /every right-side row 28 times/.test(t)) && cardSteps.some((t) => /^Buttonhole band/.test(t)) && cardSteps.some((t) => /^Neckband: pick up/.test(t)), cardSteps.join(" | "));
+  check(results, "…a band wider than the neck's front is said", "error" in cardigan(ADULT, 30, 6));
   const plainAt = up.findIndex((s) => /^Knit 4 rounds plain/.test(s));
   const decAt = up.findIndex((s) => /^Work 28 decrease rounds: on every other round 28 times/.test(s));
   check(results, "…the plain rounds first, by the underarm, then the decreases to the neck's 104", plainAt >= 0 && decAt > plainAt && up.some((s) => /104 in all/.test(s)), up.join(" | "));
@@ -176,7 +183,10 @@ export async function verifyCalculators() {
     check(results, "…with the steps in words", steps.length >= 9 && steps[0].startsWith("Cast on 104 stitches"), steps[0]);
     type("direction", "up");
     check(results, "Worked bottom-up, the table and the steps start from the body and sleeves", cell("Body cast on") === "220" && cell("At the neck") === "104" && /^Sleeves \(two the same\)/.test(view()!.querySelector(".calc-steps li")?.textContent ?? "") && /bottom-up/.test(view()!.querySelector(".calc-inputs h2")?.textContent ?? ""), cell("Body cast on"));
+    type("direction", "flat");
+    check(results, "Worked flat, as a cardigan: its band and buttons asked, its own numbers", !(view()!.querySelector('[data-el="cardigan"]') as HTMLElement).hidden && /^\d+$/.test(cell("Front bands").split(" ")[0]) && /^Cast on \d+ stitches\. Work flat/.test(view()!.querySelector(".calc-steps li")?.textContent ?? "") && /cardigan/.test(view()!.querySelector(".calc-inputs h2")?.textContent ?? ""), cell("Front bands"));
     type("direction", "down");
+    check(results, "…and back to top-down, the band asked no more", (view()!.querySelector('[data-el="cardigan"]') as HTMLElement).hidden);
     type("chest", "lots");
     check(results, "something that is not a length says so", /chest is not a length/.test(results_()), results_());
     type("chest", "92");

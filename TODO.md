@@ -96,7 +96,7 @@ starting; the details are in the sections under the list.
 **Calculators**
 
 23. [x] The raglan, bottom-up. Worked: bottom-up, the same counts the other way. *0.3.52*
-24. [ ] The raglan worked flat, as a cardigan with front edges.
+24. [x] The raglan worked flat, as a cardigan with front edges. Bands and buttonholes picked up. *0.3.53*
 25. [ ] A raised back neck with short rows.
 26. [ ] Rib repeats that fit the counts (2x2 wants a multiple of 4).
 
