@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.43](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.43)** —
+  each pattern keeps its own zoom. The one to test.
 - **[v0.3.0-beta.42](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.42)** —
-  a pin comes to the front when pressed. The one to test.
+  a pin comes to the front when pressed. Superseded by `beta.43`.
 - **[v0.3.0-beta.41](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.41)** —
   crop a picture on a project's board, or a photo in its log. Superseded by `beta.42`.
 - **[v0.3.0-beta.40](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.40)** —
