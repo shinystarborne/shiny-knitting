@@ -84,7 +84,7 @@ starting; the details are in the sections under the list.
 13. [x] Pins: bring one to the front. Pressed, or shown from its chip. *0.3.42*
 14. [x] Zoom remembered per pattern. *0.3.43*
 15. [x] Page by page (swipe) reading. **Pages**: a page fitted whole, turned by keys, ‹ › or a swipe. *0.3.44*
-16. [ ] A light reader theme.
+16. [x] A light reader theme. ☀ / ☾ in the reader bar. *0.3.45*
 17. [ ] Two PDFs side by side.
 18. [ ] Marks moved and resized.
 19. [ ] An eraser for drawings.

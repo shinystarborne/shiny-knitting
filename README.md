@@ -808,6 +808,10 @@ bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.
 
+**Light reading.** ☀ in the reader bar turns the reader light — pale paper
+colours for the bar, the notes and the space around the pages — for every
+pattern, until ☾ turns it dark again. The rest of the app stays dark.
+
 **A page at a time.** **Pages** in the reader bar shows a PDF one page at a
 time, each fitted whole to the pane: `→`/`←` and `PageDown`/`PageUp`, the
 **‹ ›** at the sides, or a sideways swipe (two fingers on a trackpad, or a

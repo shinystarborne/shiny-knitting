@@ -344,7 +344,7 @@ export class ReaderView {
     const sidebar = this.layout === "split";
     this.root = document.createElement("div");
     const embedded = !!this.embedded;
-    this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}${embedded ? " embedded" : ""}`;
+    this.root.className = `reader ${sidebar ? "layout-split" : "layout-focus"}${embedded ? " embedded" : ""}${readerTheme() === "light" ? " light" : ""}`;
     this.root.innerHTML = `
       <header class="reader-bar">
         ${embedded ? "" : `<button class="ghost back" data-act="back">← Library</button>`}
@@ -395,6 +395,7 @@ export class ReaderView {
           }
           <button data-act="describe" class="ghost icon-btn" hidden aria-label="Describe with your model"
             title="Describe this pattern with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
+          <button data-act="theme" class="ghost icon-btn" aria-label="Light or dark reading" title="${readerTheme() === "light" ? "Dark reading" : "Light reading"}">${readerTheme() === "light" ? "☾" : "☀"}</button>
           ${embedded ? "" : `<button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
           </button>`}
@@ -453,6 +454,13 @@ export class ReaderView {
       if (act === "zoom-out") this.doc?.zoomOut?.();
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
       if (act === "page-mode") void this.setPageMode(!this.doc?.isPageMode?.());
+      if (act === "theme") {
+        const light = !this.root.classList.contains("light");
+        setReaderTheme(light ? "light" : "dark");
+        this.root.classList.toggle("light", light);
+        btn.textContent = light ? "☾" : "☀";
+        btn.title = light ? "Dark reading" : "Light reading";
+      }
       if (act === "page-prev") this.doc?.turnPage?.(-1);
       if (act === "page-next") this.doc?.turnPage?.(1);
       if (act === "rotate") void this.rotatePageInView(e.shiftKey ? -90 : 90);
@@ -1308,5 +1316,27 @@ function fieldValue(pattern: Pattern, field: string): string {
       return pattern.notes.includes("Yarn:") ? "" : pattern.notes;
     default:
       return "";
+  }
+}
+
+const THEME_KEY = "reader-theme";
+
+/**
+ * Light or dark reading, for every pattern: a preference rather than pattern
+ * data, so it lives in local storage, as the counting sound does.
+ */
+function readerTheme(): "light" | "dark" {
+  try {
+    return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+function setReaderTheme(theme: "light" | "dark"): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Light for this reading only.
   }
 }

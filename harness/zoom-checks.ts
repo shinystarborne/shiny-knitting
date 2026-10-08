@@ -47,6 +47,14 @@ export async function verifyZoom() {
   };
 
   try {
+    // Scrolling, not a page at a time, which fits its own zoom.
+    for (const id of [pattern, other]) {
+      try {
+        localStorage.removeItem(`pages:${id}`);
+      } catch {
+        // Nothing kept.
+      }
+    }
     store.patterns.find((p) => p.id === pattern)!.zoom = 1;
     await open(pattern);
     check(results, "a pattern opens at fit-width until it is zoomed", readout() === "100%", readout());

@@ -500,6 +500,23 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 /* ---------- reader ---------- */
 
 .reader { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Light reading: the reader's own colours, paper on a pale desk; the rest of the app stays dark. */
+.reader.light {
+  --bg: #f3f0e8;
+  --bg-raised: #fbfaf6;
+  --bg-input: #ffffff;
+  --border: #d8d2c4;
+  --text: #24221d;
+  --text-dim: #6b665a;
+  --accent-soft: rgba(229, 72, 77, 0.12);
+  color-scheme: light;
+  background: var(--bg);
+  color: var(--text);
+}
+.reader.light .doc-scroller { background: #e4e0d6; }
+.reader.light .pdf-page,
+.reader.light .epub-frame { box-shadow: 0 2px 12px rgba(60, 50, 30, 0.18); }
+.reader.light .page-turn { background: rgba(255, 255, 255, 0.75); }
 
 .reader-bar {
   display: flex;
