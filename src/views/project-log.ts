@@ -3,6 +3,7 @@ import { forgetLogPhoto, logPhotoUrl } from "../covers";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { PhotoBox } from "./photo-box";
+import { cropImage } from "./crop-dialog";
 
 /**
  * A project's log: a diary of the knitting, the newest first, a day at a
@@ -119,6 +120,7 @@ export class ProjectLog {
           <span class="log-time">${esc(time)}</span>
           ${e.milestone ? `<span class="log-milestone">${esc(e.text)}</span>` : ""}
           <span class="spacer"></span>
+          ${e.photoPath ? `<button class="card-remove" data-act="crop" data-id="${esc(e.id)}" title="Crop its photo">Crop</button>` : ""}
           <button class="card-remove" data-act="edit" data-id="${esc(e.id)}" title="Change it">Edit</button>
           <button class="card-remove" data-act="remove" data-id="${esc(e.id)}" title="Take it out of the log">Remove</button>
         </div>
@@ -133,6 +135,7 @@ export class ProjectLog {
     const btn = closestEl(e.target, "button[data-act]");
     const act = btn?.dataset.act;
     if (act === "add") await this.add();
+    if (act === "crop" && btn?.dataset.id) return void (await this.cropPhoto(btn.dataset.id));
     if (act === "photo-file") this.composerPhoto?.choose();
     if (act === "photo-remove") this.composerPhoto?.reset();
     if (act === "edit") {
@@ -147,6 +150,21 @@ export class ProjectLog {
     if (act === "edit-photo-file") this.editPhoto?.choose();
     if (act === "edit-photo-remove") this.editPhoto?.remove();
     if (act === "remove") await this.remove(btn!.dataset.id!);
+  }
+
+  /** Crops an entry's photo; the cropped one replaces it. */
+  private async cropPhoto(id: string): Promise<void> {
+    const url = await logPhotoUrl(id);
+    if (!url) return;
+    const cropped = await cropImage(url, "Crop the photo", "image/jpeg");
+    if (!cropped) return;
+    try {
+      await api.setLogPhoto(id, await bytes(cropped));
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Crop"));
+    }
+    forgetLogPhoto(id);
+    await this.reload();
   }
 
   /** Adds what is typed, and the photo if there is one, dated now. */

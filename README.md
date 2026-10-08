@@ -369,7 +369,9 @@ what it is made of and what it should look like, as on a Miro board:
 - **Note** — a sticky note, in five colours; double-click to write
 - **Text** — words on the board itself, for headings
 - **Link** — a web address, opened in your browser
-- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder
+- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder; its
+  ✂ crops it (drag a box over the part to keep), and the picture takes the
+  new shape. A pin from the pattern crops the same way.
 - **Pattern**, **Yarn**, **Needle** — cards for things already in the app,
   this project's own listed first; a pattern's card opens it
 - **Colour** — a swatch, with a name; double-click to change the colour
@@ -442,7 +444,7 @@ it, or be an entry on its own (pasted, dropped or chosen; click it to see it
 bigger). The project writes its own milestones as they happen: started,
 paused, back on the needles, frogged, started again, a new pattern, finished.
 Any entry can be changed — its words, its day and time, its photo — or
-removed. A finished project keeps its log as its record.
+removed, and a photo cropped with **Crop**. A finished project keeps its log as its record.
 
 The log can be on the board too: **📓 Log** in the board's toolbar adds a card
 that shows it, the newest first with its photos, and keeps up with it. Write in

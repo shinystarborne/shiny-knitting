@@ -2474,6 +2474,20 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   z-index: 2;
 }
 .board-x:hover { background: var(--accent); color: #fff; }
+.board-x.board-crop { right: 16px; }
+
+/* Cropping a picture: the picture, and the box over the part to keep. */
+.dialog-card.crop-dialog { max-width: min(1000px, 94vw); }
+.crop-stage { position: relative; display: block; width: fit-content; max-width: 100%; margin: 8px auto; cursor: crosshair; user-select: none; touch-action: none; }
+.crop-stage img { display: block; max-width: min(900px, 88vw); max-height: 62vh; }
+.crop-box { position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); cursor: move; }
+.crop-box[hidden] { display: none; }
+.crop-handle { position: absolute; width: 12px; height: 12px; background: var(--accent); border-radius: 3px; }
+.crop-handle[data-corner="nw"] { left: -7px; top: -7px; cursor: nwse-resize; }
+.crop-handle[data-corner="ne"] { right: -7px; top: -7px; cursor: nesw-resize; }
+.crop-handle[data-corner="sw"] { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.crop-handle[data-corner="se"] { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.crop-stage { overflow: hidden; }
 .board-grip {
   right: -4px;
   bottom: -4px;

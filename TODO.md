@@ -29,6 +29,14 @@ starting; the details are in the sections under the list.
   its weight per ball), or what is left. *0.3.30* A yarn's card says what
   there is now, not what was bought (that is for the Statistics). *0.3.31*
 
+**Asked for along the way**
+
+- [x] A chart's highlight line steps up the page; counting only on a
+  project's page; pins onto its board; the pattern beside the board by
+  default. *0.3.40*
+- [x] Crop a picture on a project's board (and a pin), or a photo in its
+  log. *0.3.41*
+
 **Yarn and the stash**
 
 1. [x] A project's yarn: how much it is expected to take (grams, balls, or

@@ -2,6 +2,7 @@ import { api, type BoardItem, type BoardKind, type LogEntry, type Pattern, type 
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
 import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, logPhotoUrl, prepareBoardImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
+import { cropImage } from "./crop-dialog";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -463,6 +464,7 @@ export class Board {
     if (act === "fit") this.setView(fitView(this.items, box.width, box.height));
     if (!id) return;
     if (act === "remove") await this.remove(id);
+    if (act === "crop") await this.crop(id);
     if (act === "open") this.open(id);
     if (act === "edit-link") await this.editLink(id);
     if (act === "log-add") await this.addToLog(id);
@@ -697,6 +699,27 @@ export class Board {
 
   // ---------- changing ----------
 
+  /** Crops a picture on the board: the new one replaces it, and the item takes its shape at the same width. */
+  private async crop(id: string): Promise<void> {
+    const item = this.items.find((i) => i.id === id);
+    const url = item && (await boardImageUrl(id));
+    if (!item || !url) return;
+    const cropped = await cropImage(url);
+    if (!cropped) return;
+    const prepared = await prepareBoardImage(cropped);
+    if (!prepared) return void (await say("The cropped picture could not be made.", "Crop"));
+    try {
+      const stored = await api.setBoardImage(id, await blobBytes(prepared.blob));
+      const i = this.items.findIndex((x) => x.id === id);
+      if (i >= 0) this.items[i] = stored;
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Crop"));
+    }
+    forgetBoardImage(id);
+    await this.save(id, { h: Math.max(40, Math.round((item.w * prepared.height) / prepared.width)) });
+    this.render();
+  }
+
   private async save(id: string, patch: Parameters<typeof api.updateBoardItem>[1]): Promise<void> {
     try {
       const stored = await api.updateBoardItem(id, patch);
@@ -797,7 +820,9 @@ export class Board {
     const d = item.data;
     const style = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z}`;
     const cls = `board-item kind-${item.kind}${item.id === this.selected ? " selected" : ""}`;
-    const remove = `<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
+    // A picture, or a pin, can be cropped: ✂ beside the ✕.
+    const crop = item.hasImage && (item.kind === "image" || item.kind === "pin") ? `<button class="board-x board-crop" data-act="crop" title="Crop the picture">✂</button>` : "";
+    const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
     let body = "";
     let extra = "";
