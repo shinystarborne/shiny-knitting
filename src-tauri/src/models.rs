@@ -254,6 +254,10 @@ pub struct HighlightSettings {
     /// Animate the scroll when the line moves.
     pub animate: bool,
     pub animation_ms: i64,
+    /// Rows go up the page, as a chart is read, bottom to top: counting a row
+    /// steps the line up. Off, as written instructions are, it steps down.
+    #[serde(default)]
+    pub reads_up: bool,
 }
 
 impl HighlightSettings {
@@ -270,6 +274,7 @@ impl HighlightSettings {
             opacity: 0.3,
             animate: true,
             animation_ms: 260,
+            reads_up: false,
         }
     }
 }

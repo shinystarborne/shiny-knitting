@@ -120,6 +120,8 @@ export interface HighlightSettings {
   opacity: number;
   animate: boolean;
   animationMs: number;
+  /** Rows go up the page, as a chart is read: counting a row steps the line up. */
+  readsUp?: boolean;
 }
 
 /** One row of the yarn weight filter, from the standard weight table. */

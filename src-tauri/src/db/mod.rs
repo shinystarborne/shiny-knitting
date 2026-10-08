@@ -618,6 +618,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "patterns", "removed_at")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN removed_at INTEGER", [])?;
     }
+    // A chart's line steps up the page when a row is counted; text's, down.
+    if !column_exists(conn, "highlights", "reads_up")? {
+        conn.execute("ALTER TABLE highlights ADD COLUMN reads_up INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
@@ -2001,7 +2005,7 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
     let found = conn
         .query_row(
             "SELECT pattern_id, enabled, offset_y, thickness, width, inset_x,
-                    color, opacity, animate, animation_ms
+                    color, opacity, animate, animation_ms, reads_up
              FROM highlights WHERE pattern_id = ?1",
             params![pattern_id],
             |r| {
@@ -2016,6 +2020,7 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
                     opacity: r.get(7)?,
                     animate: r.get::<_, i64>(8)? != 0,
                     animation_ms: r.get(9)?,
+                    reads_up: r.get::<_, i64>(10)? != 0,
                 })
             },
         )
@@ -2027,14 +2032,14 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
 pub fn save_highlight(conn: &Connection, h: &HighlightSettings) -> AppResult<()> {
     conn.execute(
         "INSERT INTO highlights
-           (pattern_id, enabled, offset_y, thickness, width, inset_x, color, opacity, animate, animation_ms)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+           (pattern_id, enabled, offset_y, thickness, width, inset_x, color, opacity, animate, animation_ms, reads_up)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
          ON CONFLICT(pattern_id) DO UPDATE SET
            enabled=excluded.enabled, offset_y=excluded.offset_y,
            thickness=excluded.thickness, width=excluded.width,
            inset_x=excluded.inset_x, color=excluded.color,
            opacity=excluded.opacity, animate=excluded.animate,
-           animation_ms=excluded.animation_ms",
+           animation_ms=excluded.animation_ms, reads_up=excluded.reads_up",
         params![
             h.pattern_id,
             h.enabled as i64,
@@ -2045,7 +2050,8 @@ pub fn save_highlight(conn: &Connection, h: &HighlightSettings) -> AppResult<()>
             h.color,
             h.opacity,
             h.animate as i64,
-            h.animation_ms
+            h.animation_ms,
+            h.reads_up as i64
         ],
     )?;
     Ok(())

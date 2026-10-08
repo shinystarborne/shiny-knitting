@@ -713,6 +713,10 @@ export class ReaderView {
         <span>Opacity <em>${Math.round(s.opacity * 100)}%</em></span>
         <input type="range" data-f="opacity" min="0.1" max="1" step="0.05" value="${s.opacity}" />
       </label>
+      <label class="row" title="A chart is read from the bottom row up: counting a row moves the line up to the next one">
+        <span>Rows go up the page (a chart)</span>
+        <input type="checkbox" data-f="readsUp" ${s.readsUp ? "checked" : ""} />
+      </label>
       <label class="row">
         <span>Smooth movement</span>
         <input type="checkbox" data-f="animate" ${s.animate ? "checked" : ""} />
@@ -817,8 +821,9 @@ export class ReaderView {
    * line is already where it should be; `Alt` moves without counting, for
    * re-aligning the line after dragging it somewhere free.
    *
-   * Moving down counts up: the line tracks progress through the document, and
-   * the project total counts rows worked, so the two run in the same direction.
+   * Counting up moves the line on to the next row: down the page for written
+   * instructions, and up it for a chart, which is read from the bottom row up
+   * (the line's "Rows go up the page" setting, kept per pattern).
    * Every counter that is switched on moves with it; the counter's own buttons
    * are for nudging one without counting a project row.
    *
@@ -848,7 +853,8 @@ export class ReaderView {
     // A line that is switched off is not moved: it would step out of sight
     // and scroll the page under the reader for no visible reason.
     if (!e.shiftKey && line.enabled) {
-      line.stepRow(direction, true);
+      // On to the next row: down for text, up for a chart.
+      line.stepRow(this.highlight?.current.readsUp ? (-direction as 1 | -1) : direction, true);
       line.flush();
     }
     this.refreshRowReadout();

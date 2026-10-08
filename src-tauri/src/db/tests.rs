@@ -1100,9 +1100,12 @@ fn highlight_settings_round_trip() {
     h.color = "#00ff88".to_string();
     h.animate = false;
     h.offset_y = 0.8;
+    assert!(!h.reads_up, "a line steps down the page unless told it is a chart");
+    h.reads_up = true;
     save_highlight(&conn, &h).unwrap();
 
     let loaded = get_highlight(&conn, &p.id).unwrap();
+    assert!(loaded.reads_up, "a chart's line steps up, kept with the pattern");
     assert_eq!(loaded.thickness, 8.0);
     assert_eq!(loaded.width, 640.0);
     assert_eq!(loaded.color, "#00ff88");
