@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.51](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.51)** —
+  a card for a pattern whose file has gone missing, with Find it…. The one to test.
 - **[v0.3.0-beta.50](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.50)** —
-  open a pattern's file in your PDF app. The one to test.
+  open a pattern's file in your PDF app. Superseded by `beta.51`.
 - **[v0.3.0-beta.49](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.49)** —
   typed text on the page. Superseded by `beta.50`.
 - **[v0.3.0-beta.48](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.48)** —
