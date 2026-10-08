@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.40](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.40)** —
+  counting on the project's page, pins onto its board, and a chart's line going up. The one to test.
 - **[v0.3.0-beta.39](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.39)** —
-  a dropped PDF goes across raw, much faster; adding a file from the Bin no longer freezes. The one to test.
+  a dropped PDF goes across raw, much faster; adding a file from the Bin no longer freezes. Superseded by `beta.40`.
 - **[v0.3.0-beta.38](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.38)** —
   removed patterns wait in the Bin for 30 days, with Undo. Superseded by `beta.39`.
 - **[v0.3.0-beta.37](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.37)** —
