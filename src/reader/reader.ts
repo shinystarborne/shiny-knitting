@@ -377,10 +377,11 @@ export class ReaderView {
             >${this.rowLabel}</span
           >` : ""}
           <div class="mark-tools" role="toolbar" aria-label="Marking">
-            <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it">➤</button>
+            <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it, drag it to move it">➤</button>
             <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
             <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click where it belongs">🅣</button>
             <button data-mark="draw" class="ghost icon-btn" aria-label="Draw" title="Draw: drag on the page">✏️</button>
+            <button data-mark="erase" class="ghost icon-btn" aria-label="Eraser" title="Eraser: drag over a drawing to rub it out">⌫</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
             <button data-act="mark-undo" class="ghost icon-btn" aria-label="Undo" title="Undo the last mark made" data-mark-undo>↶</button>
             <button data-act="mark-clear" class="ghost icon-btn" aria-label="Clear all marks" title="Remove every highlight, note and drawing on this pattern" data-mark-clear>🗑</button>

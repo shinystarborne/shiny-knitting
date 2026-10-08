@@ -865,6 +865,10 @@ default, so reading and tidying up need no tool chosen at all.
 - **Note** (🅣) — click anywhere to drop a note. Clearing the text and saving
   removes the note rather than leaving an empty dot behind.
 - **Draw** (✏️) — a thin pen, freehand, over charts and diagrams.
+- **Eraser** (⌫) — drag over a drawing or a highlighter stroke to rub out the
+  part it passes over, as a pencil eraser would: across the middle of a line
+  leaves two, along it takes it away. Notes and highlights over text are left
+  alone.
 
 The colour wheel picks the colour for both pens. **Undo** (↶) removes the last
 mark made; **Clear** (🗑) removes every mark on the pattern, after asking once.

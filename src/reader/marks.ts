@@ -40,7 +40,10 @@ import { boxFromView, boxToView, pointFromView, pointToView, type Rotation } fro
  */
 
 /** What the toolbar has selected. */
-export type MarkTool = "none" | "highlight" | "note" | "draw" | "pin";
+export type MarkTool = "none" | "highlight" | "note" | "draw" | "erase" | "pin";
+
+/** How far round the eraser rubs out, as a fraction of the page's width. */
+const ERASER = 0.014;
 
 /** Colours offered, chosen to stay legible over a mostly white page. */
 export const MARK_COLOURS = [
@@ -90,6 +93,11 @@ export class MarkLayer {
    * on the page as shown, so each move works from there rather than adding up.
    */
   private grabbed: { pointer: number; x: number; y: number; id: string; mode: "move" | "size"; stored: string; page: HTMLElement; moved: boolean } | null = null;
+  /**
+   * The eraser being dragged: each drawing it has touched, as it was, and the
+   * pieces of it still left, on the page as shown. Saved on release.
+   */
+  private erasing: { pointer: number; n: number; page: HTMLElement; base: Map<string, Annotation>; parts: Map<string, Point[][]> } | null = null;
   /** The note editor, while one is open. */
   private notePopover: HTMLElement | null = null;
   /** The click listener that dismisses the note editor, so it can always be
@@ -156,6 +164,7 @@ export class MarkLayer {
     this.tool = tool;
     this.scroller.classList.toggle("mark-tool-draw", tool === "draw" || tool === "highlight");
     this.scroller.classList.toggle("mark-tool-pick", tool === "none");
+    this.scroller.classList.toggle("mark-tool-erase", tool === "erase");
   }
 
   get currentTool(): MarkTool {
@@ -572,6 +581,99 @@ export class MarkLayer {
     this.repaint();
   }
 
+  /**
+   * Rubs out what is under the eraser: each drawing on the page loses the
+   * points within reach, splitting where the eraser went through it. Shown at
+   * once; kept on release.
+   */
+  private eraseAt(x: number, y: number): void {
+    const er = this.erasing!;
+    const at = pointFrom(x, y, er.page);
+    if (!at) return;
+    const box = er.page.getBoundingClientRect();
+    const ry = (ERASER * box.width) / (box.height || 1);
+    const near = (p: Point) => ((p.x - at.x) / ERASER) ** 2 + ((p.y - at.y) / ry) ** 2 <= 1;
+    let changed = false;
+    for (const mark of this.marks) {
+      if (mark.page !== er.n || !isStroke(mark) || mark.id.startsWith("erase:")) continue;
+      const base = er.base.get(mark.id) ?? mark;
+      const parts = er.parts.get(mark.id) ?? [parsePoints(this.shown(base).geometry)];
+      if (!parts.some((part) => part.some(near))) continue;
+      er.base.set(mark.id, base);
+      const next: Point[][] = [];
+      for (const part of parts) {
+        let run: Point[] = [];
+        for (const p of part) {
+          if (near(p)) {
+            if (run.length >= 2) next.push(run);
+            run = [];
+          } else run.push(p);
+        }
+        if (run.length >= 2) next.push(run);
+      }
+      er.parts.set(mark.id, next);
+      changed = true;
+    }
+    if (changed) this.previewErasing();
+  }
+
+  /** The drawings as the eraser has left them, in place of how they were. */
+  private previewErasing(): void {
+    const er = this.erasing!;
+    const touched = new Set(er.base.keys());
+    this.marks = this.marks.filter((m) => !touched.has(m.id) && !(m.id.startsWith("erase:") && touched.has(m.id.split(":")[1])));
+    for (const [id, parts] of er.parts) {
+      const base = er.base.get(id)!;
+      const r = this.turnOf(base.page);
+      parts.forEach((part, i) => {
+        this.marks.push({ ...base, id: i === 0 ? id : `erase:${id}:${i}`, geometry: pointsToJson(part.map((p) => pointFromView(p, r))) });
+      });
+    }
+    this.repaint();
+  }
+
+  /** Keeps what the eraser did: a drawing gone, cut shorter, or in pieces. */
+  private async finishErasing(): Promise<void> {
+    const er = this.erasing!;
+    this.erasing = null;
+    try {
+      if (this.scroller.hasPointerCapture(er.pointer)) this.scroller.releasePointerCapture(er.pointer);
+    } catch {
+      // Already released.
+    }
+    for (const [id, parts] of er.parts) {
+      const base = er.base.get(id)!;
+      try {
+        if (!parts.length) {
+          await api.deleteAnnotation(id);
+          continue;
+        }
+        const first = this.marks.find((m) => m.id === id);
+        if (first) Object.assign(first, await api.moveAnnotation(id, first.geometry));
+        for (let i = 1; i < parts.length; i++) {
+          const piece = this.marks.find((m) => m.id === `erase:${id}:${i}`);
+          if (!piece) continue;
+          const created = await api.addAnnotation(this.patternId, {
+            kind: base.kind,
+            page: base.page,
+            geometry: piece.geometry,
+            quote: "",
+            occurrence: 0,
+            color: base.color,
+            text: "",
+          });
+          Object.assign(piece, created);
+        }
+      } catch {
+        // What could not be kept is shown as it is stored.
+        await this.refresh();
+        return;
+      }
+    }
+    this.onChange?.();
+    this.repaint();
+  }
+
   /** With Select, the pointer says what a press on a mark would do: move it, or size it by its corner. */
   private hoverCursor(e: PointerEvent): void {
     if (this.tool !== "none" || this.drawingPointer !== null) return;
@@ -617,11 +719,13 @@ export class MarkLayer {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (this.grabbed) return this.dragMark(e);
+    if (this.erasing && this.erasing.pointer === e.pointerId) return this.eraseAt(e.clientX, e.clientY);
     this.hoverCursor(e);
     this.pointerMove(e, 0, 0);
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    if (this.erasing && this.erasing.pointer === e.pointerId) return void this.finishErasing();
     const grabbed = this.grabbed;
     if (grabbed && grabbed.pointer === e.pointerId) {
       this.grabbed = null;
@@ -762,6 +866,15 @@ export class MarkLayer {
     } else if (this.tool === "note") {
       e.preventDefault();
       void this.addNoteAt(x, y, n);
+    } else if (this.tool === "erase" && !(page instanceof HTMLIFrameElement)) {
+      e.preventDefault();
+      this.erasing = { pointer: e.pointerId, n, page, base: new Map(), parts: new Map() };
+      try {
+        this.scroller.setPointerCapture(e.pointerId);
+      } catch {
+        // It still rubs out while the pointer stays over the page.
+      }
+      this.eraseAt(x, y);
     }
   }
 

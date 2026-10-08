@@ -1216,6 +1216,7 @@ kbd {
 /* A drawing tool turns off text selection, which would otherwise fight the
    stroke being drawn. */
 .mark-tool-draw { cursor: crosshair; user-select: none; }
+.mark-tool-erase { cursor: cell; user-select: none; }
 .mark-tool-pick .mark { cursor: pointer; }
 
 .epub-frame {
