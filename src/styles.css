@@ -574,6 +574,16 @@ kbd {
   position: relative;
 }
 .layout-split .reader-body { grid-template-columns: 1fr 320px; }
+/* Two patterns side by side: this one, the one beside it, and the side pane when split. */
+.with-beside > .reader-body { grid-template-columns: 1fr 1fr; }
+.layout-split.with-beside > .reader-body { grid-template-columns: 1fr 1fr 320px; }
+.beside-pane { min-width: 0; min-height: 0; display: flex; border-left: 2px solid var(--border); }
+.beside-pane[hidden] { display: none; }
+.beside-pane > .reader { flex: 1; min-width: 0; }
+.beside-pane .reader-bar { flex-wrap: wrap; row-gap: 6px; }
+/* Its own single column: the reader around it may be split, and that must not reach in. */
+.beside-pane .reader .reader-body { grid-template-columns: 1fr; }
+.beside-pane .reader-tools { flex-wrap: wrap; row-gap: 6px; }
 
 .doc-pane {
   min-width: 0;

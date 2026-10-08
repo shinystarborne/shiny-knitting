@@ -46,7 +46,10 @@ function clamp(value: number, min: number, max: number): number {
  * handed in, so counting on either one is counting on both.
  */
 export interface EmbeddedReader {
-  counter: RowCounter;
+  /** The page's counter; with none, there is no line either (a pattern beside another). */
+  counter?: RowCounter;
+  /** Shown beside another pattern: closing it is the other reader's. */
+  beside?: { close(): void };
   /** The project whose page it is on: a pin goes on its board. */
   projectId?: string;
   /** Something was put on the page's board from the pattern. */
@@ -216,8 +219,8 @@ export class ReaderView {
     this.refreshZoomReadout();
 
     // The line goes with the counter, on a project's page: a pattern read on
-    // its own is for reading and marking, not counting.
-    if (this.embedded) {
+    // its own, or beside another, is for reading and marking, not counting.
+    if (this.embedded?.counter) {
       this.settings = await api.getHighlight(this.pattern.id);
       if (this.destroyed) return;
       this.highlight = new HighlightLine(this.settings);
@@ -287,7 +290,7 @@ export class ReaderView {
 
     if (this.embedded) {
       // The page's counter, already loaded.
-      this.counter = this.embedded.counter;
+      this.counter = this.embedded.counter ?? null;
     } else {
       await this.loadLiveProjects();
       if (this.destroyed) return;
@@ -309,6 +312,17 @@ export class ReaderView {
     }
     if (pages) await this.setPageMode(true);
     if (this.destroyed) return;
+    // The pattern that was open beside this one, when it was left so.
+    if (!this.embedded) {
+      let beside: string | null = null;
+      try {
+        beside = localStorage.getItem(this.besideKey());
+      } catch {
+        // Nothing beside, then.
+      }
+      if (beside) await this.openBeside(beside).catch(() => this.closeBeside());
+      if (this.destroyed) return;
+    }
 
     // The toolbar opens on Select, so the common case -- reading, and removing
     // a mark by clicking it -- needs no tool chosen, and a stray drag on the
@@ -358,7 +372,7 @@ export class ReaderView {
           </p>
         </div>
         <div class="reader-tools">
-          ${embedded ? `<span class="row-readout" data-row-readout
+          ${this.embedded?.counter ? `<span class="row-readout" data-row-readout
             title="Which row the highlight line is on. The count keys (J and K unless you chose others) step a row and count it."
             >${this.rowLabel}</span
           >` : ""}
@@ -399,7 +413,9 @@ export class ReaderView {
           ${embedded ? "" : `<button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
           </button>`}
-          ${embedded ? `<button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>` : ""}
+          ${this.embedded?.counter ? `<button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>` : ""}
+          ${embedded ? "" : `<button data-act="beside" class="ghost" title="Open another pattern beside this one: a chart, a size table, a second pattern">Beside…</button>`}
+          ${this.embedded?.beside ? `<button data-act="close-beside" class="ghost icon-btn" aria-label="Close it" title="Close the pattern beside">✕</button>` : ""}
           <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
@@ -410,6 +426,7 @@ export class ReaderView {
           <button class="page-turn prev" data-act="page-prev" aria-label="The page before" title="The page before (←)">‹</button>
           <button class="page-turn next" data-act="page-next" aria-label="The next page" title="The next page (→)">›</button>
         </div>
+        ${embedded ? "" : `<div class="beside-pane" hidden></div>`}
         ${embedded ? "" : this.sidePaneHtml(sidebar)}
       </div>
       <div class="highlight-panel" hidden></div>
@@ -418,6 +435,8 @@ export class ReaderView {
     this.scroller = this.root.querySelector(".doc-scroller")!;
 
     this.root.addEventListener("click", (e) => {
+      // A click in the pattern open beside this one is that reader's own.
+      if (closestEl(e.target, ".reader") !== this.root) return;
       // Marking tools first: they sit in the reader bar, which is also where
       // the other buttons are, and a tool button carries no data-act.
       const tool = closestEl(e.target, "[data-mark]");
@@ -454,6 +473,8 @@ export class ReaderView {
       if (act === "zoom-out") this.doc?.zoomOut?.();
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
       if (act === "page-mode") void this.setPageMode(!this.doc?.isPageMode?.());
+      if (act === "beside") void this.chooseBeside();
+      if (act === "close-beside") this.embedded?.beside?.close();
       if (act === "theme") {
         const light = !this.root.classList.contains("light");
         setReaderTheme(light ? "light" : "dark");
@@ -1043,6 +1064,64 @@ export class ReaderView {
     }, 400);
   }
 
+  /** Another pattern open beside this one, to read the two together. */
+  private beside: ReaderView | null = null;
+
+  private besideKey(): string {
+    return `beside:${this.pattern.id}`;
+  }
+
+  /** Asks which pattern, from the library, and opens it beside this one. */
+  private async chooseBeside(): Promise<void> {
+    const patterns = await api.listPatterns({}).catch(() => [] as Pattern[]);
+    const choices = patterns
+      .filter((p) => p.id !== this.pattern.id)
+      .map((p) => ({ value: p.id, label: p.designer ? `${p.title} — ${p.designer}` : p.title }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    if (!choices.length) return void (await say("There is no other pattern in the library to open beside this one.", "Beside"));
+    const id = await askChoice("Which pattern, beside this one?", choices, { title: "Open beside" });
+    if (id) await this.openBeside(id);
+  }
+
+  private async openBeside(id: string): Promise<void> {
+    const host = this.root.querySelector<HTMLElement>(".beside-pane");
+    if (!host) return;
+    const pattern = await api.getPattern(id);
+    if (pattern.removedAt) throw new Error("That pattern is in the Bin.");
+    this.beside?.destroy();
+    host.innerHTML = "";
+    host.hidden = false;
+    this.root.classList.add("with-beside");
+    try {
+      localStorage.setItem(this.besideKey(), id);
+    } catch {
+      // Beside for this reading only.
+    }
+    // Both PDFs fit their pages to the width they now have.
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    this.beside = new ReaderView(host, pattern, "focus", { beside: { close: () => this.closeBeside() } });
+    await this.beside.mount();
+    // Laid out before its column had its width: fitted again, now that it has.
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  private closeBeside(): void {
+    this.beside?.destroy();
+    this.beside = null;
+    const host = this.root.querySelector<HTMLElement>(".beside-pane");
+    if (host) {
+      host.innerHTML = "";
+      host.hidden = true;
+    }
+    this.root.classList.remove("with-beside");
+    try {
+      localStorage.removeItem(this.besideKey());
+    } catch {
+      // Nothing kept.
+    }
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  }
+
   private pagesKey(): string {
     return `pages:${this.pattern.id}`;
   }
@@ -1251,6 +1330,8 @@ export class ReaderView {
 
   destroy(): void {
     this.destroyed = true;
+    this.beside?.destroy();
+    this.beside = null;
     clearTimeout(this.saveTimer ?? undefined);
     // A note typed within the debounce window has not been written yet; fire
     // the save now rather than losing the text.

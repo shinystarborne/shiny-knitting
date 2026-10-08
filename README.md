@@ -810,6 +810,12 @@ bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
 the width of the window it scrolls sideways as well as down. An EPUB reflows
 to the pane instead, so there is nothing to zoom.
 
+**Two patterns side by side.** **Beside…** in the reader bar opens another
+pattern from the library next to this one — a separate chart, a size table,
+a second pattern — each with its own zoom, scroll and marks; the one beside
+has a ✕ to close it. A pattern opens with the same one beside it until it is
+closed.
+
 **Light reading.** ☀ in the reader bar turns the reader light — pale paper
 colours for the bar, the notes and the space around the pages — for every
 pattern, until ☾ turns it dark again. The rest of the app stays dark.
