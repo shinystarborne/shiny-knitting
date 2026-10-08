@@ -42,6 +42,7 @@ export async function verifyCounterProjects() {
   const pageCounter = () => document.querySelector<HTMLElement>(".project-page .project-counter");
   const pattern = "p1";
   const made: string[] = [];
+  let pinId = "";
 
   const openPage = async (id: string) => {
     tab("patterns");
@@ -77,6 +78,12 @@ export async function verifyCounterProjects() {
     check(results, "…and no highlight line, nor its settings", !document.querySelector(".reader .highlight-line") && !document.querySelector('.reader [data-act="highlight-cfg"]') && !document.querySelector(".reader [data-row-readout]"));
     check(results, "…but its highlighter, pen and the rest stay", !!document.querySelector('.reader [data-mark="highlight"]') && !!document.querySelector('.reader [data-mark="pin"]'));
 
+    // A pin of the pattern, to put on the board from the pattern beside it.
+    const pin = await invoke<{ id: string }>("add_pin", {
+      patternId: pattern,
+      input: { page: 1, geometry: JSON.stringify([{ x: 0.1, y: 0.1, w: 0.6, h: 0.25 }]), quote: "", title: "Gauge", imageBytes: [1, 2, 3], imageMime: "image/jpeg" },
+    });
+    pinId = pin.id;
     // A pin put on its board from the pattern says where it is from.
     await invoke("add_board_item", { boardId: second, input: { kind: "pin", x: 40, y: 40, w: 420, h: 200, data: { patternId: pattern, page: 3, title: "Lace chart" } } });
 
@@ -85,6 +92,12 @@ export async function verifyCounterProjects() {
     await waitFor(() => !!page()!.querySelector(".board-pin-caption"), "the pin on the board");
     const caption = page()!.querySelector(".board-pin-caption")!.textContent ?? "";
     check(results, "a pin on a project's board says which page of which pattern it is from", /📌 p\.3 · Featherweight Lace Sock/.test(caption), caption);
+    const toBoard = () => page()!.querySelector<HTMLElement>(`.pin-card[data-id="${pinId}"] button[title="Put it on the project's board"]`);
+    await waitFor(() => !!toBoard(), "the pin's ⤴ in the pattern beside the board");
+    toBoard()!.click();
+    await waitFor(() => page()!.querySelectorAll(".board-pin-caption").length === 2, "the pin on the board", 20000);
+    const captions = [...page()!.querySelectorAll(".board-pin-caption")].map((c) => c.textContent).join(" | ");
+    check(results, "⤴ on a pin in the pattern beside the board puts it on that board at once", /📌 p\.1 · Featherweight Lace Sock/.test(captions), captions);
     await waitFor(() => !!page()!.querySelector(".project-pattern:not([hidden]) .highlight-line"), "the pattern beside the board, with its line");
     check(results, "a project's page shows its pattern beside the board by default, with the line", true);
     check(results, "the first project on the needles to count takes the pattern's count", total(pageCounter()) === "5", total(pageCounter()));
@@ -107,6 +120,7 @@ export async function verifyCounterProjects() {
       }
     }
     await invoke("set_total_rows", { patternId: pattern, projectId: null, total: 0 }).catch(() => {});
+    if (pinId) await invoke("delete_pin", { id: pinId }).catch(() => {});
     tab("patterns");
   }
 
