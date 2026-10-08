@@ -44,50 +44,6 @@ export class RowCounter {
     this.build();
   }
 
-  /** The project it counts for, now; null for the pattern's own. */
-  get countingFor(): string | null {
-    return this.projectId;
-  }
-
-  /**
-   * Counts for another project of the pattern (or the pattern's own, with
-   * null), and shows its counts. Each project from a pattern counts its own.
-   */
-  async countFor(projectId: string | null): Promise<void> {
-    this.projectId = projectId;
-    this.paintFor();
-    await this.refresh();
-  }
-
-  /** The projects it could count for: with two or more, a choice above the counter. */
-  private choices: { id: string; name: string }[] = [];
-
-  offerProjects(projects: { id: string; name: string }[], onChoose: (id: string) => void): void {
-    this.choices = projects;
-    this.onChoose = onChoose;
-    this.paintFor();
-  }
-
-  private onChoose: (id: string) => void = () => {};
-
-  private paintFor(): void {
-    const host = this.q<HTMLElement>('[data-el="for"]');
-    if (this.choices.length < 2) {
-      host.hidden = true;
-      host.innerHTML = "";
-      return;
-    }
-    host.hidden = false;
-    host.innerHTML = `<span>Counting for</span><select data-el="for-project" aria-label="The project it counts for">${this.choices
-      .map((p) => `<option value="${escapeHtml(p.id)}" ${p.id === this.projectId ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
-      .join("")}</select>`;
-    host.querySelector("select")!.addEventListener("change", (e) => {
-      const id = (e.target as HTMLSelectElement).value;
-      this.onChoose(id);
-      void this.countFor(id);
-    });
-  }
-
   private build(): void {
     // Add to the host's classes rather than replacing them, so the container's
     // own class (e.g. "counter-slot") stays intact.
@@ -99,7 +55,6 @@ export class RowCounter {
         <button class="ghost" data-act="collapse" title="Hide the counter">–</button>
       </div>
       <div class="counter-body">
-        <p class="counter-for" data-el="for" hidden></p>
         <div class="counter-total">
           <label>Project total</label>
           <div class="stepper big">

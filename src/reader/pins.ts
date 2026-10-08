@@ -103,6 +103,12 @@ export class PinLayer {
    */
   onCropEnd: (() => void) | null = null;
 
+  /**
+   * Puts a pin on a project's board, given a sharp picture of it; set by the
+   * reader, which knows the project. Null hides the button.
+   */
+  toBoard: ((pin: Pin, picture: HTMLCanvasElement) => Promise<void>) | null = null;
+
   constructor(scroller: HTMLElement, patternId: string, doc: PinTarget) {
     this.scroller = scroller;
     this.patternId = patternId;
@@ -340,6 +346,7 @@ export class PinLayer {
       label,
       barButton("−", "Zoom out", () => void this.zoomPin(pin, card, 1 / ZOOM_STEP)),
       barButton("+", "Zoom in", () => void this.zoomPin(pin, card, ZOOM_STEP)),
+      ...(this.toBoard ? [barButton("⤴", "Put it on the project's board", () => void this.sendToBoard(pin))] : []),
       barButton("✕", "Hide", () => void this.setHidden(pin, true)),
     );
 
@@ -383,6 +390,15 @@ export class PinLayer {
   }
 
   // ---------- panel actions ----------
+
+  /** A picture of the pin, painted afresh at a good size, for the board. */
+  private async sendToBoard(pin: Pin): Promise<void> {
+    const rect = regionOf(pin);
+    if (!rect || !this.doc.renderRegion || !this.toBoard) return;
+    const canvas = document.createElement("canvas");
+    await this.doc.renderRegion(pin.page, rect, 900, canvas);
+    await this.toBoard(pin, canvas);
+  }
 
   private async zoomPin(pin: Pin, card: HTMLElement, factor: number): Promise<void> {
     pin.width = clamp(pin.width * factor, MIN_WIDTH, MAX_WIDTH);

@@ -1,7 +1,7 @@
 import { ROBOT } from "../ai/describe-run";
-import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Project, type SuggestionResult } from "../api";
+import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Pin, type Project, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
-import { dialogOpen, say } from "../dialogs";
+import { askChoice, dialogOpen, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
@@ -15,7 +15,8 @@ import { isCapturing } from "./keys";
 import { normalRotation } from "./rotation";
 import { savePagesDialog } from "./save-pages-dialog";
 import { scanOne } from "../ai/scan";
-import { extractFromDocument, forgetCover, prepareChosenImage, saveCover } from "../covers";
+import { blobBytes, extractFromDocument, forgetCover, prepareBoardImage, prepareChosenImage, saveCover } from "../covers";
+import { showNotice } from "../notice";
 
 export type Layout = "focus" | "split";
 
@@ -46,6 +47,10 @@ function clamp(value: number, min: number, max: number): number {
  */
 export interface EmbeddedReader {
   counter: RowCounter;
+  /** The project whose page it is on: a pin goes on its board. */
+  projectId?: string;
+  /** Something was put on the page's board from the pattern. */
+  boardChanged?: () => void;
 }
 
 export class ReaderView {
@@ -101,53 +106,53 @@ export class ReaderView {
   /** Re-reads the side pane's project, after one was saved or finished. */
   refreshProject(): void {
     void this.projectPanel?.refresh();
-    // A project started or finished from here: the counter counts for the one being knitted.
-    if (!this.embedded) void this.recountFor();
+    // A project started or finished from here: a pin goes on the board of one being knitted.
+    if (!this.embedded) void this.loadLiveProjects();
   }
-
-  /** The pattern's projects on the needles, the newest started first. */
-  private liveProjects: Project[] = [];
 
   /**
-   * The project the counter counts for: the one being knitted from this
-   * pattern, the one chosen last when there are several, or none -- the
-   * pattern's own counter -- when nothing is on the needles.
+   * Puts a pin's picture on a project's board, below what is there, saying
+   * which pattern and page it is from: the project whose page this is, or the
+   * one being knitted from this pattern -- asked which, when there are several.
    */
-  private async counterProject(): Promise<string | null> {
+  private async pinToBoard(pin: Pin, picture: HTMLCanvasElement): Promise<void> {
+    let projectId = this.embedded?.projectId ?? null;
+    if (!projectId) {
+      if (!this.liveProjects.length) {
+        return void (await say("This pattern is not being knitted, so there is no project board to put it on. Start a project from it first.", "Put on the board"));
+      }
+      projectId =
+        this.liveProjects.length === 1
+          ? this.liveProjects[0].id
+          : await askChoice("Which project's board?", this.liveProjects.map((p) => ({ value: p.id, label: p.name })), { title: "Put on the board" });
+      if (!projectId) return;
+    }
+    try {
+      const png = await new Promise<Blob | null>((r) => picture.toBlob(r, "image/png"));
+      const prepared = png ? await prepareBoardImage(png) : null;
+      if (!prepared) throw new Error("The picture of the pin could not be made.");
+      const items = await api.listBoardItems(projectId).catch(() => []);
+      const y = items.reduce((max, it) => Math.max(max, it.y + it.h), 0) + 40;
+      const w = 420;
+      const h = Math.max(40, Math.round((w * prepared.height) / prepared.width));
+      const item = await api.addBoardItem(projectId, { kind: "pin", x: 40, y, w, h, data: { patternId: this.pattern.id, page: pin.page, title: pin.title || pin.quote || "" } });
+      await api.setBoardImage(item.id, await blobBytes(prepared.blob));
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Put on the board"));
+    }
+    if (this.embedded?.boardChanged) this.embedded.boardChanged();
+    else {
+      const name = this.liveProjects.find((p) => p.id === projectId)?.name ?? "the project";
+      showNotice(`Put on ${name}'s board.`);
+    }
+  }
+
+  /** The pattern's projects on the needles, the newest started first: a pin's boards. */
+  private liveProjects: Project[] = [];
+
+  private async loadLiveProjects(): Promise<void> {
     const projects = await api.listProjects().catch(() => [] as Project[]);
     this.liveProjects = projects.filter((p) => p.patternId === this.pattern.id && isLive(p.status)).sort((a, b) => b.startedAt - a.startedAt);
-    let remembered: string | null = null;
-    try {
-      remembered = localStorage.getItem(this.counterForKey());
-    } catch {
-      // Without storage, the newest started.
-    }
-    return (this.liveProjects.find((p) => p.id === remembered) ?? this.liveProjects[0])?.id ?? null;
-  }
-
-  private counterForKey(): string {
-    return `counter-for:${this.pattern.id}`;
-  }
-
-  private offerCounterProjects(): void {
-    this.counter?.offerProjects(
-      this.liveProjects.map((p) => ({ id: p.id, name: p.name })),
-      (id) => {
-        try {
-          localStorage.setItem(this.counterForKey(), id);
-        } catch {
-          // Remembered for this reading only.
-        }
-      },
-    );
-  }
-
-  private async recountFor(): Promise<void> {
-    if (!this.counter) return;
-    const id = await this.counterProject();
-    if (this.destroyed) return;
-    this.offerCounterProjects();
-    if (id !== this.counter.countingFor) await this.counter.countFor(id);
   }
 
   get patternId(): string {
@@ -202,19 +207,23 @@ export class ReaderView {
     if (this.destroyed) return;
     this.refreshZoomReadout();
 
-    this.settings = await api.getHighlight(this.pattern.id);
-    if (this.destroyed) return;
-    this.highlight = new HighlightLine(this.settings);
-    this.highlight.attach(this.scroller);
-    // The attach resolved the stored fraction to a real position, but the
-    // readout still shows its initial "row 1" until something refreshes it.
-    this.refreshRowReadout();
-    this.highlight.onChange = (s) => {
-      void api.saveHighlight(s);
-      // A drag ends here, so this is where the row readout catches up.
+    // The line goes with the counter, on a project's page: a pattern read on
+    // its own is for reading and marking, not counting.
+    if (this.embedded) {
+      this.settings = await api.getHighlight(this.pattern.id);
+      if (this.destroyed) return;
+      this.highlight = new HighlightLine(this.settings);
+      this.highlight.attach(this.scroller);
+      // The attach resolved the stored fraction to a real position, but the
+      // readout still shows its initial "row 1" until something refreshes it.
       this.refreshRowReadout();
-    };
-    this.highlight.onConfigureRequest = () => this.openHighlightPanel();
+      this.highlight.onChange = (s) => {
+        void api.saveHighlight(s);
+        // A drag ends here, so this is where the row readout catches up.
+        this.refreshRowReadout();
+      };
+      this.highlight.onConfigureRequest = () => this.openHighlightPanel();
+    }
 
     this.marks = new MarkLayer(this.scroller, this.pattern.id, this.doc);
     this.marks.onChange = () => this.refreshMarkTools();
@@ -259,6 +268,8 @@ export class ReaderView {
     // active: a press that begins a crop cannot also leave a note behind.
     this.marks.onPinSelect = (e, page, pageNumber) => this.pins?.beginSelection(e, page, pageNumber);
     this.pins.onChange = () => this.refreshPinTool();
+    // A pin onto a project's board: the page's project, or the one counted for.
+    this.pins.toBoard = (pin, picture) => this.pinToBoard(pin, picture);
     // One crop per press of the Pin button, as in Shelfmind.
     this.pins.onCropEnd = () => this.setMarkTool("none");
     this.pins.setTray(this.root.querySelector<HTMLElement>("[data-pin-chips]"));
@@ -270,13 +281,8 @@ export class ReaderView {
       // The page's counter, already loaded.
       this.counter = this.embedded.counter;
     } else {
-      const slot = this.root.querySelector<HTMLElement>(".counter-slot");
-      if (!slot) return;
-      this.counter = new RowCounter(slot, this.pattern.id, await this.counterProject());
-      await this.counter.refresh();
+      await this.loadLiveProjects();
       if (this.destroyed) return;
-      this.offerCounterProjects();
-
       const projectHost = this.root.querySelector<HTMLElement>("[data-project-panel]");
       if (projectHost) {
         this.projectPanel = new ProjectPanel(projectHost, this.pattern.id);
@@ -297,14 +303,11 @@ export class ReaderView {
     colour?.addEventListener("input", () => this.marks?.setColour(colour.value));
   }
 
-  /** The side pane: the project, the counter, notes and tags. Not shown embedded. */
+  /** The side pane: the project, notes and tags. Not shown embedded. */
   private sidePaneHtml(sidebar: boolean): string {
     return `
         <aside class="side-pane" ${sidebar ? "" : "hidden"}>
-          <!-- First, above the counter: a few lines, and the counter panel is
-               tall enough to push anything after it out of sight. -->
           <div class="side-section" data-project-panel></div>
-          <div class="counter-slot"></div>
           <div class="side-section">
             <h3>Notes</h3>
             <textarea class="notes-area" placeholder="Notes about this pattern...">${escapeHtml(
@@ -339,10 +342,10 @@ export class ReaderView {
           </p>
         </div>
         <div class="reader-tools">
-          <span class="row-readout" data-row-readout
+          ${embedded ? `<span class="row-readout" data-row-readout
             title="Which row the highlight line is on. The count keys (J and K unless you chose others) step a row and count it."
             >${this.rowLabel}</span
-          >
+          >` : ""}
           <div class="mark-tools" role="toolbar" aria-label="Marking">
             <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it">➤</button>
             <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
@@ -378,7 +381,7 @@ export class ReaderView {
           ${embedded ? "" : `<button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
           </button>`}
-          <button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>
+          ${embedded ? `<button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>` : ""}
           <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
@@ -433,14 +436,14 @@ export class ReaderView {
       if (act === "rotate") void this.rotatePageInView(e.shiftKey ? -90 : 90);
     });
 
-    // The side pane is always in the DOM, so the counter keeps its state; the
-    // focus layout just hides it. Show it on demand via the counter button.
+    // The side pane is always in the DOM, so the notes keep their state; the
+    // focus layout just hides it. Show it on demand via the Notes button.
     const sidePane = this.root.querySelector(".side-pane") as HTMLElement;
     if (!sidebar && sidePane) {
       const fab = document.createElement("button");
       fab.className = "counter-fab";
-      fab.textContent = "Counter";
-      fab.title = "Show the row counter";
+      fab.textContent = "Notes";
+      fab.title = "Show the project and the notes";
       fab.addEventListener("click", () => {
         sidePane.hidden = false;
         sidePane.classList.add("peek");

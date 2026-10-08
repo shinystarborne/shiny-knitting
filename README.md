@@ -8,10 +8,11 @@ It does five things:
   the app's own library, so the file never moves or gets lost.
 - **Finds them again.** Filter by status, designer, difficulty, needle size, or
   tags, and search titles, designers, and your notes.
-- **Counts rows.** A project total for the whole piece, plus a per-section
-  counter for working through a repeat like "row 7 of 12".
-- **Gives you a highlight line.** A movable line you can drag, click, or nudge
-  with the keyboard, useful for tracking your place in a chart.
+- **Counts rows.** On a project's page: a project total for the whole piece,
+  plus a per-section counter for working through a repeat like "row 7 of 12".
+- **Gives you a highlight line.** In the pattern beside a project's board, a
+  movable line you can drag, click, or nudge with the keyboard, that steps a row
+  as you count one — up the page for a chart, down it for written instructions.
 - **Adds covers and fills in the details.** Every pattern gets a cover taken
   from its own file, and a language model can read the front of a pattern and
   fill in the designer, difficulty, needle size, yarn, and tags.
@@ -378,26 +379,24 @@ asking. Pasting a web address makes a link and pasting words makes a note. New
 things go into free space near the middle of the view, and the board remembers
 where it was looked at.
 
-**The pattern beside the board.** **📄 Show the pattern here** opens the
-project's pattern in a pane beside its board — the whole reader, with marks,
-pins, zoom and the row line — so it can be followed while the board is in
-view. Drag the pane's left edge to make it wider or narrower; **–** minimises
+**The pattern beside the board.** A project's page opens with its pattern in a
+pane beside its board — the whole reader, with marks, pins, zoom and the row
+line — so it can be followed while the board is in view; **📄 Show the pattern
+here** brings it back once closed. Drag the pane's left edge to make it wider or narrower; **–** minimises
 it to a tab on the right edge, which brings it back where it was; **×** closes
 it, and **Open full ↗** opens it on its own. The page remembers how it was
 left, and how wide.
 
-**Row counter.** A project with a pattern has its own row counter on its page,
-and the pattern counts for it while it is being knitted, so counting in either
-place counts in both. Each project counts its own rows: two pairs of socks from
-one pattern keep their counts apart. A project's counter starts from the
-pattern's counters, their names and targets; the first project on the needles
-to count takes the pattern's counts as they were, and any other starts from
-nothing. With
-two or more projects of a pattern on the needles, the pattern's counter asks
-which it is **Counting for**, and remembers. A pattern read with nothing on the
-needles has its own counter, as before. The count keys (J and K unless you chose others)
-and each counter's own key work on the page as well — in the pattern beside the
-board, or anywhere else on the page except while typing.
+**Row counter.** Counting is done on a project's page: it has its own row
+counter, and the pattern beside the board counts for it with the highlight line.
+A pattern opened from the library is for reading and marking, with no counter
+and no line. Each project counts its own rows: two pairs of socks from one
+pattern keep their counts apart. A project's counter starts from the pattern's
+counters, their names and targets; the first project on the needles to count
+takes the pattern's counts as they were, and any other starts from nothing.
+The count keys (J and K unless you chose others) and each counter's own key
+work anywhere on the page except while typing, in the pattern beside the board
+too.
 
 **Saved as you go.** The name and notes save a moment after typing stops, and
 a note on the board does too, so opening another tab straight away loses
@@ -741,7 +740,8 @@ of that work, so the enabled ones follow it and the disabled ones do not. And
 the line is free to be dragged anywhere; only the keys snap to the band grid, so
 a precise position is still available when you want one.
 
-**The highlight line.** It sits over the reading area and stays put while the
+**The highlight line.** It is in the pattern beside a project's board, where
+the counter is. It sits over the reading area and stays put while the
 pattern scrolls beneath it. It is **off** until you want it: press **Line** and
 tick *Show line*. While it is off the count keys just count, and the page
 stays where it is.
@@ -751,8 +751,9 @@ stays where it is.
 - `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
   pattern under a stationary line.
 - Double-click the line, or press "Line", to open its settings: height on
-  screen, thickness, width, side margin, colour, opacity, and whether movement
-  is smoothly animated.
+  screen, thickness, width, side margin, colour, opacity, whether movement
+  is smoothly animated, and **Rows go up the page (a chart)**: a chart is read
+  from the bottom row up, so counting a row steps the line up rather than down.
 
 Every setting is remembered per pattern, so a wide chart and a text page can
 each keep their own geometry. Turning width to 0 makes the line span the
@@ -855,6 +856,10 @@ panel you can:
 - **drag** by its header, anywhere over the reading pane
 - **zoom** with its − and + buttons
 - **resize** from its bottom-right corner
+- **put on the project's board** with its ⤴ button: a sharp picture of it,
+  saying which page of which pattern it is from. In the pattern beside a
+  board, onto that board; in a pattern opened from the library, onto the board
+  of its project on the needles (asked which, when there are several).
 
 The panel is drawn straight from the PDF, so it stays as sharp as the page at
 any size. Panels stay where you put them — including across closing the

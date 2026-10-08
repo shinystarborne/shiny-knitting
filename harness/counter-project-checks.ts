@@ -1,7 +1,8 @@
 /**
- * Checks for two projects from one pattern, clicked through: each counts its
- * own rows. The reader counts for the pattern's project, and with two on the
- * needles asks which, and remembers; a project's page counts for that project.
+ * Checks for counting, clicked through: a pattern read from the library has
+ * no counter and no line -- it is for reading and marking -- and a project's
+ * page counts its own rows, two projects from one pattern each their own, with
+ * the pattern shown beside the board by default.
  *
  * Run with the harness open:
  *   window.__counterProjectChecks()
@@ -36,12 +37,19 @@ export async function verifyCounterProjects() {
   const results: CheckResult[] = [];
   const store = (window as unknown as { __store: Store }).__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
-  const counter = () => document.querySelector<HTMLElement>(".reader .counter");
-  const forSelect = () => counter()?.querySelector<HTMLSelectElement>('.counter-for select') ?? null;
-  const total = (host: HTMLElement | null) => host?.querySelector('[data-el="total"]')?.textContent ?? "";
+  const total = (host: Element | null) => host?.querySelector('[data-el="total"]')?.textContent ?? "";
+  const page = () => document.querySelector<HTMLElement>(".project-page");
+  const pageCounter = () => document.querySelector<HTMLElement>(".project-page .project-counter");
   const pattern = "p1";
   const made: string[] = [];
-  let second = "";
+
+  const openPage = async (id: string) => {
+    tab("patterns");
+    tab("projects");
+    await waitFor(() => !!document.querySelector(`.projects .project-card[data-open="${id}"]`), "the projects");
+    (document.querySelector(`.projects .project-card[data-open="${id}"]`) as HTMLElement).click();
+    await waitFor(() => !!page() && !!pageCounter()?.querySelector('[data-el="total"]'), "the project's page");
+  };
 
   try {
     // The pattern's own count, from before projects counted their own.
@@ -49,53 +57,56 @@ export async function verifyCounterProjects() {
     const project = async (name: string, startedAt: number) => {
       const p = await invoke<{ id: string }>("add_project", { input: { name, patternId: pattern, notes: "", startedAt, toolIds: [], yarns: [] } });
       made.push(p.id);
+      try {
+        localStorage.removeItem(`project-pattern:${p.id}`);
+      } catch {
+        // A fresh project has nothing kept.
+      }
       return p.id;
     };
     const first = await project("First sock", Date.now() - 86400000);
-    second = await project("Second sock", Date.now());
+    const second = await project("Second sock", Date.now());
 
+    // Read from the library: marks, but no counter and no line.
     tab("patterns");
     await waitFor(() => !!document.querySelector(`.library [data-open="${pattern}"]`), "the library");
     (document.querySelector(`.library [data-open="${pattern}"]`) as HTMLElement).click();
-    await waitFor(() => !!forSelect(), "the counter's choice of project");
-    const options = [...forSelect()!.options].map((o) => o.textContent).join(", ");
-    check(results, "with two projects on the needles, the reader's counter asks which it counts for", /Second sock/.test(options) && /First sock/.test(options), options);
-    check(results, "…the one started last first", forSelect()!.value === second, forSelect()!.value);
-    check(results, "…the first to count takes the pattern's count", total(counter()) === "5", total(counter()));
+    await waitFor(() => !!document.querySelector('.reader [data-mark="highlight"]') && !!document.querySelector(".reader [data-project-panel] h3"), "the pattern");
+    await wait(300);
+    check(results, "a pattern read from the library has no row counter", !document.querySelector(".reader .counter") && !document.querySelector(".reader .counter-fab"));
+    check(results, "…and no highlight line, nor its settings", !document.querySelector(".reader .highlight-line") && !document.querySelector('.reader [data-act="highlight-cfg"]') && !document.querySelector(".reader [data-row-readout]"));
+    check(results, "…but its highlighter, pen and the rest stay", !!document.querySelector('.reader [data-mark="highlight"]') && !!document.querySelector('.reader [data-mark="pin"]'));
 
-    for (let i = 0; i < 3; i++) (counter()!.querySelector('[data-act="total-inc"]') as HTMLElement).click();
-    await waitFor(() => total(counter()) === "8", "three rows counted");
-    check(results, "counting counts for that project", store.progress.get(`${second}|${pattern}`)?.totalRows === 8);
+    // A pin put on its board from the pattern says where it is from.
+    await invoke("add_board_item", { boardId: second, input: { kind: "pin", x: 40, y: 40, w: 420, h: 200, data: { patternId: pattern, page: 3, title: "Lace chart" } } });
 
-    forSelect()!.value = first;
-    forSelect()!.dispatchEvent(new Event("change", { bubbles: true }));
-    await waitFor(() => store.progress.has(`${first}|${pattern}`) && total(counter()) === "0", "the other project's count");
-    check(results, "chosen, the other project counts its own, from nothing", store.progress.get(`${second}|${pattern}`)?.totalRows === 8 && store.progress.get(pattern)?.totalRows === 5);
-    let remembered = "";
-    try {
-      remembered = localStorage.getItem(`counter-for:${pattern}`) ?? "";
-    } catch {
-      remembered = first;
-    }
-    check(results, "…and the choice is remembered for the pattern", remembered === first, remembered);
+    // A project's page counts for it, the pattern beside the board by default.
+    await openPage(second);
+    await waitFor(() => !!page()!.querySelector(".board-pin-caption"), "the pin on the board");
+    const caption = page()!.querySelector(".board-pin-caption")!.textContent ?? "";
+    check(results, "a pin on a project's board says which page of which pattern it is from", /📌 p\.3 · Featherweight Lace Sock/.test(caption), caption);
+    await waitFor(() => !!page()!.querySelector(".project-pattern:not([hidden]) .highlight-line"), "the pattern beside the board, with its line");
+    check(results, "a project's page shows its pattern beside the board by default, with the line", true);
+    check(results, "the first project on the needles to count takes the pattern's count", total(pageCounter()) === "5", total(pageCounter()));
+    for (let i = 0; i < 3; i++) (pageCounter()!.querySelector('[data-act="total-inc"]') as HTMLElement).click();
+    await waitFor(() => total(pageCounter()) === "8", "three rows counted");
+    check(results, "counting on its page counts for that project", store.progress.get(`${second}|${pattern}`)?.totalRows === 8);
 
-    // The project's own page counts for it.
-    tab("projects");
-    await waitFor(() => !!document.querySelector(`.projects [data-open="${second}"]`), "the projects");
-    (document.querySelector(`.projects .project-card[data-open="${second}"]`) as HTMLElement).click();
-    const pageCounter = () => document.querySelector<HTMLElement>(".project-page .project-counter");
-    await waitFor(() => total(pageCounter()) === "8", "the project page's counter");
-    check(results, "a project's page counts its own rows", total(pageCounter()) === "8" && !pageCounter()!.querySelector(".counter-for select"));
+    await openPage(first);
+    await waitFor(() => store.progress.has(`${first}|${pattern}`), "the other project's counter");
+    check(results, "another project from the pattern counts its own, from nothing", total(pageCounter()) === "0" && store.progress.get(`${second}|${pattern}`)?.totalRows === 8 && store.progress.get(pattern)?.totalRows === 5, total(pageCounter()));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
-    for (const id of made) await invoke("delete_project", { id }).catch(() => {});
-    await invoke("set_total_rows", { patternId: pattern, projectId: null, total: 0 }).catch(() => {});
-    try {
-      localStorage.removeItem(`counter-for:${pattern}`);
-    } catch {
-      // Nothing kept.
+    for (const id of made) {
+      await invoke("delete_project", { id }).catch(() => {});
+      try {
+        localStorage.removeItem(`project-pattern:${id}`);
+      } catch {
+        // Nothing kept.
+      }
     }
+    await invoke("set_total_rows", { patternId: pattern, projectId: null, total: 0 }).catch(() => {});
     tab("patterns");
   }
 

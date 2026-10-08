@@ -80,6 +80,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   tool: [230, 110],
   swatch: [150, 180],
   log: [340, 440],
+  pin: [420, 300],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -229,6 +230,12 @@ export class Board {
   }
 
   /** Re-reads what the cards show: a pattern renamed, a yarn's photo changed, the log written in. */
+  /** Re-reads what is on the board, after something was put on it from elsewhere. */
+  async reloadItems(): Promise<void> {
+    this.items = await api.listBoardItems(this.boardId).catch(() => this.items);
+    this.render();
+  }
+
   async refreshLinked(): Promise<void> {
     [this.patterns, this.yarns, this.tools] = await Promise.all([
       api.listPatterns({}).catch(() => this.patterns),
@@ -408,7 +415,7 @@ export class Board {
     } else {
       item.w = Math.max(40, Math.round(d.w + bx));
       // A picture keeps its shape unless Shift is held.
-      item.h = item.kind === "image" && !e.shiftKey ? Math.max(40, Math.round((item.w * d.h) / d.w)) : Math.max(40, Math.round(d.h + by));
+      item.h = (item.kind === "image" || item.kind === "pin") && !e.shiftKey ? Math.max(40, Math.round((item.w * d.h) / d.w)) : Math.max(40, Math.round(d.h + by));
       el.style.width = `${item.w}px`;
       el.style.height = `${item.h}px`;
     }
@@ -758,7 +765,7 @@ export class Board {
   private open(id: string): void {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
-    if (item.kind === "pattern" && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
+    if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
     if (item.kind === "link" && typeof item.data.url === "string") {
       void api.openLink(item.data.url).catch((e) => say(e instanceof Error ? e.message : String(e), "Link"));
     }
@@ -820,6 +827,14 @@ export class Board {
       case "image":
         body = `<div class="board-picture" data-picture="${item.id}"></div>`;
         break;
+      case "pin": {
+        // A pattern's pin: its picture, and where in which pattern it is from.
+        const p = this.patterns.find((x) => x.id === d.patternId);
+        const from = [`p.${Number(d.page) || 1}`, p?.title ?? ""].filter(Boolean).join(" · ");
+        body = `<div class="board-picture" data-picture="${item.id}"></div>
+          <div class="board-pin-caption" title="${esc(String(d.title || ""))}">📌 ${esc(from)}</div>`;
+        break;
+      }
       case "pattern": {
         const p = this.patterns.find((x) => x.id === d.patternId);
         body = p
@@ -921,6 +936,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   tool: "needle",
   swatch: "colour",
   log: "log card",
+  pin: "pin",
 };
 
 /**

@@ -316,6 +316,12 @@ separate step, not asked for yet.
   (and Look up names for shops still named after their address); two rows of
   tags on a card and the rest as +N; opens in the browser; shows how much on
   the wishlist is from it.
+- **Counting is on a project's page** (8 Oct 2026, asked for): the pattern
+  opened from the library has no counter and no line; the pattern beside a
+  board (open by default) has the line, with the page's counter. The line's
+  "Rows go up the page (a chart)" (highlights.reads_up) steps it up for a
+  chart. A pin goes onto a project's board (board kind "pin", with the
+  pattern and page) from its ⤴ button.
 - **The Bin:** Remove is patterns.removed_at, everything kept; Undo for 8
   s, and the library's Bin (restore, delete for good, empty). Deleted for
   good at start after 30 days (commands::purge_bin). Every library query

@@ -1,7 +1,8 @@
 /**
- * Checks for the highlight line's direction, on the live reader: counting a
- * row steps the line down the page for written instructions, and up it for
- * a chart, which is read from the bottom row up.
+ * Checks for the highlight line's direction, on the pattern beside a
+ * project's board, where the line and the counter are: counting a row steps
+ * the line down the page for written instructions, and up it for a chart,
+ * which is read from the bottom row up.
  *
  * Run with the harness open:
  *   window.__chartLineChecks()
@@ -27,31 +28,36 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 15000): Pr
   }
 }
 
+const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
+  (window as unknown as { __TAURI_INTERNALS__: { invoke(c: string, a: unknown): Promise<T> } }).__TAURI_INTERNALS__.invoke(cmd, args);
+
 type Highlight = { enabled: boolean; readsUp?: boolean; thickness: number; offsetY: number; animate: boolean };
 
 export async function verifyChartLine() {
   const results: CheckResult[] = [];
   const store = (window as unknown as { __store: { highlights: Map<string, Highlight> } }).__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
-  const line = () => document.querySelector<HTMLElement>(".reader .highlight-line");
+  const line = () => document.querySelector<HTMLElement>(".project-page .highlight-line");
   const top = () => parseFloat(line()?.style.top || "0");
-  const scroller = () => document.querySelector<HTMLElement>(".reader .doc-scroller")!;
+  const scroller = () => document.querySelector<HTMLElement>(".project-page .doc-scroller")!;
   const press = () => scroller().dispatchEvent(new KeyboardEvent("keydown", { code: "KeyJ", key: "j", bubbles: true, cancelable: true }));
   const pattern = "p1";
   const saved = { ...store.highlights.get(pattern)! };
+  let projectId = "";
 
   const open = async (readsUp: boolean) => {
     // Halfway down, a 20 px row, no animation: one press is one clear step either way.
     store.highlights.set(pattern, { ...saved, enabled: true, readsUp, thickness: 20, offsetY: 0.5, animate: false });
-    tab("projects");
     tab("patterns");
-    await waitFor(() => !!document.querySelector(`.library [data-open="${pattern}"]`), "the library");
-    (document.querySelector(`.library [data-open="${pattern}"]`) as HTMLElement).click();
-    await waitFor(() => !!line() && top() > 0 && !!document.querySelector(".reader .counter"), "the line");
+    tab("projects");
+    await waitFor(() => !!document.querySelector(`.projects .project-card[data-open="${projectId}"]`), "the projects");
+    (document.querySelector(`.projects .project-card[data-open="${projectId}"]`) as HTMLElement).click();
+    await waitFor(() => !!line() && top() > 0 && !!document.querySelector(".project-page .project-counter"), "the line beside the board");
     await wait(300);
   };
 
   try {
+    projectId = (await invoke<{ id: string }>("add_project", { input: { name: "Chart jumper", patternId: pattern, notes: "", startedAt: null, toolIds: [], yarns: [] } })).id;
     await open(false);
     const before = top();
     press();
@@ -63,12 +69,13 @@ export async function verifyChartLine() {
     press();
     await waitFor(() => top() !== start, "the line to move");
     check(results, "for a chart, counting a row steps the line up the page, as a chart is read", top() < start, `${start} → ${top()}`);
-    const panelBox = () => document.querySelector<HTMLInputElement>('.reader [data-f="readsUp"]');
+    const panelBox = () => document.querySelector<HTMLInputElement>('.project-page [data-f="readsUp"]');
     check(results, "the line's settings say so: Rows go up the page (a chart)", !panelBox() || panelBox()!.checked, "the box is unticked");
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
     store.highlights.set(pattern, saved);
+    if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
     tab("patterns");
   }
 

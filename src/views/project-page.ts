@@ -493,10 +493,11 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   private savedPane(): PaneState {
     try {
+      // Open unless it was closed here: the pattern beside the board is how a project is knitted.
       const v = localStorage.getItem(this.paneKey());
-      return v === "open" || v === "minimised" ? v : "closed";
+      return v === "closed" || v === "minimised" ? v : "open";
     } catch {
-      return "closed";
+      return "open";
     }
   }
 
@@ -532,7 +533,12 @@ ${plan ? "" : `      <div class="project-side-dates">
       this.setPane(state);
       const body = this.root.querySelector<HTMLElement>(".project-pattern-body")!;
       body.innerHTML = "";
-      this.reader = new ReaderView(body, pattern, "focus", { counter: this.counter });
+      this.reader = new ReaderView(body, pattern, "focus", {
+        counter: this.counter,
+        projectId: this.projectId,
+        // A pin put on the board from the pattern shows on it at once.
+        boardChanged: () => void this.board?.reloadItems(),
+      });
       await this.reader.mount();
       return;
     }

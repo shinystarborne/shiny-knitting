@@ -1806,7 +1806,7 @@ const handlers = {
     if (!store.projects.some((x) => x.id === boardId) && !store.inspirationBoards.some((b) => b.id === boardId)) {
       throw new Error("That board is no longer there.");
     }
-    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log"];
+    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin"];
     if (input.kind === "log" && !store.projects.some((x) => x.id === boardId)) throw new Error("Only a project's board can show its log.");
     if (!kinds.includes(input.kind)) throw new Error(`A board cannot hold a “${input.kind}”.`);
     const data = input.data ?? {};
