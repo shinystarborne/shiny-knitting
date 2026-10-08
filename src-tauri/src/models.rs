@@ -108,6 +108,9 @@ pub struct Pattern {
     /// fit-width. Put back when it is opened again.
     #[serde(default = "fit_width")]
     pub zoom: f64,
+    /// Its file is not in the library any more: worked out when listed, not stored.
+    #[serde(default)]
+    pub file_missing: bool,
 }
 
 fn fit_width() -> f64 {

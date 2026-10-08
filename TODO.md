@@ -91,7 +91,7 @@ starting; the details are in the sections under the list.
 20. [x] Typed text on the page. Aa: click, type; moved, resized and changed with Select. *0.3.49*
 21. [x] "Open in the default PDF app" (the backend is there; it needs a
     button). Open ↗ in the reader, and in the ⋯ menu. *0.3.50*
-22. [ ] A card for a pattern whose file has gone missing.
+22. [x] A card for a pattern whose file has gone missing. File missing, Find it…. *0.3.51*
 
 **Calculators**
 

@@ -48,6 +48,8 @@ export interface Pattern {
   removedAt?: number | null;
   /** How far it was zoomed when last read, as a multiple of fit-width; 1 is fit-width. */
   zoom?: number;
+  /** Its file is not in the library any more: moved or deleted outside the app. */
+  fileMissing?: boolean;
 }
 
 /** Mirrors `models.rs::Section`. */
@@ -1144,6 +1146,8 @@ export const api = {
   mergeDuplicatePatterns: (keep: string, remove: string[]) => invoke<Pattern>("merge_duplicate_patterns", { keep, remove }),
   /** Deletes for good, file and all; removing is removePattern, to the Bin. */
   deletePattern: (id: string) => invoke<void>("delete_pattern", { id }),
+  /** A pattern whose file went missing, given it again from where it is now: copied into the library. */
+  replacePatternFile: (id: string, sourcePath: string) => invoke<Pattern>("replace_pattern_file", { id, sourcePath }),
   /** Out of the library into the Bin, everything of it kept. */
   removePattern: (id: string) => invoke<Pattern>("remove_pattern", { id }),
   restorePattern: (id: string) => invoke<Pattern>("restore_pattern", { id }),

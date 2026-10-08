@@ -192,12 +192,42 @@ fn scan_dir(dir: &Path, found: &mut Vec<ScannedFile>) {
 
 #[tauri::command]
 pub fn list_patterns(state: State<'_, AppState>, filter: db::Filter) -> CmdResult<Vec<Pattern>> {
-    db::list_patterns(&state.db(), &filter)
+    Ok(db::list_patterns(&state.db(), &filter)?.into_iter().map(with_file_checked).collect())
 }
 
 #[tauri::command]
 pub fn get_pattern(state: State<'_, AppState>, id: String) -> CmdResult<Pattern> {
-    db::get_pattern(&state.db(), &id)
+    Ok(with_file_checked(db::get_pattern(&state.db(), &id)?))
+}
+
+/// Says whether a pattern's file is still where the library keeps it: one
+/// moved or deleted outside the app leaves a pattern that cannot be read.
+fn with_file_checked(mut pattern: Pattern) -> Pattern {
+    pattern.file_missing = !Path::new(&pattern.file_path).is_file();
+    pattern
+}
+
+/// A pattern whose file went missing, given its file again: copied into the
+/// library as when it was added, everything else of it as it was.
+#[tauri::command]
+pub fn replace_pattern_file(state: State<'_, AppState>, id: String, source_path: String) -> CmdResult<Pattern> {
+    replace_pattern_file_in(&state, &id, &source_path)
+}
+
+fn replace_pattern_file_in(state: &AppState, id: &str, source_path: &str) -> CmdResult<Pattern> {
+    let pattern = db::get_pattern(&state.db(), id)?;
+    let source = PathBuf::from(source_path);
+    let ext = source.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if ext != pattern.format {
+        return Err(AppError::Message(format!("That is not a {}: this pattern is one.", pattern.format.to_uppercase())));
+    }
+    let bytes = std::fs::read(&source).map_err(|e| AppError::Message(format!("Could not read {}: {}", source.display(), e)))?;
+    let dir = state.library_dir.join("originals");
+    std::fs::create_dir_all(&dir)?;
+    let dest = dir.join(format!("{id}.{ext}"));
+    std::fs::write(&dest, &bytes)?;
+    db::set_pattern_file(&state.db(), id, &dest.to_string_lossy(), &db::hash_bytes(&bytes))?;
+    Ok(with_file_checked(db::get_pattern(&state.db(), id)?))
 }
 
 #[tauri::command]
@@ -1338,6 +1368,26 @@ mod tests {
             tags: vec![],
             notes: String::new(),
         }
+    }
+
+    #[test]
+    fn a_pattern_whose_file_went_missing_is_said_so_and_can_be_given_it_again() {
+        let (state, dir) = state_in_temp_library();
+        let added = add_pattern_to(&state, dropped("Lost Socks", "lost.pdf", b"%PDF-1.7 lost")).unwrap();
+        assert!(!with_file_checked(db::get_pattern(&state.db(), &added.id).unwrap()).file_missing);
+        std::fs::remove_file(&added.file_path).unwrap();
+        assert!(with_file_checked(db::get_pattern(&state.db(), &added.id).unwrap()).file_missing, "gone from the library: said so");
+
+        let found = dir.join("found.pdf");
+        std::fs::write(&found, b"%PDF-1.7 found again").unwrap();
+        let epub = dir.join("wrong.epub");
+        std::fs::write(&epub, b"PK").unwrap();
+        assert!(replace_pattern_file_in(&state, &added.id, &epub.to_string_lossy()).is_err(), "a PDF's file is a PDF");
+        let back = replace_pattern_file_in(&state, &added.id, &found.to_string_lossy()).unwrap();
+        assert!(!back.file_missing && back.title == "Lost Socks");
+        assert_eq!(std::fs::read(&back.file_path).unwrap(), b"%PDF-1.7 found again");
+        assert!(back.file_path.starts_with(&*state.library_dir.to_string_lossy()), "copied into the library");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -943,6 +943,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
         cover_path: row.get("cover_path")?,
         removed_at: row.get("removed_at")?,
         zoom: row.get("zoom")?,
+        file_missing: false,
     })
 }
 
@@ -1375,6 +1376,15 @@ pub fn removed_before(conn: &Connection, before: i64) -> AppResult<Vec<String>> 
 pub fn delete_pattern(conn: &Connection, id: &str) -> AppResult<()> {
     // Child rows go with it via ON DELETE CASCADE.
     conn.execute("DELETE FROM patterns WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// A pattern's file, given again: where it is in the library now, and what it holds.
+pub fn set_pattern_file(conn: &Connection, id: &str, file_path: &str, hash: &str) -> AppResult<()> {
+    let changed = conn.execute("UPDATE patterns SET file_path = ?2, file_hash = ?3 WHERE id = ?1", params![id, file_path, hash])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That pattern is no longer in the library.".to_string()));
+    }
     Ok(())
 }
 

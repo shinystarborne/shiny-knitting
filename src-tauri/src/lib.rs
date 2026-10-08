@@ -57,6 +57,7 @@ pub fn run() {
             commands::scan_pattern_folder,
             commands::list_patterns,
             commands::remove_pattern,
+            commands::replace_pattern_file,
             commands::restore_pattern,
             commands::list_removed_patterns,
             commands::empty_bin,

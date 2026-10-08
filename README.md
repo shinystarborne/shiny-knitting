@@ -287,6 +287,12 @@ matches is still shown on the card as written. Families you own nothing in are
 dimmed rather than hidden, since they still answer "could I knit this in
 something I have?".
 
+**A file gone missing.** A pattern whose file was moved or deleted outside the
+app says **File missing** on its card, and opening it explains rather than
+showing an empty reader. **Find it…** asks where the file is now and copies
+it back into the library; everything else of the pattern — marks, counters,
+notes, projects — was kept all along.
+
 **Removing a pattern.** Every card has a **Remove** button. It takes the
 pattern out of the library at once, asking nothing, because nothing is lost
 yet: a notice at the foot of the screen has **Undo** for a few seconds, and the

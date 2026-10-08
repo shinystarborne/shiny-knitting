@@ -2320,6 +2320,12 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 
 .card-details { margin: 0; font-size: 12px; color: var(--text-dim); }
 
+/* A pattern whose file is gone: said on its cover, with a way to find it. */
+.card.file-missing .cover-photo, .card.file-missing .cover-fallback { opacity: 0.25; }
+.cover-missing { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; text-align: center; font-size: 12px; color: var(--text-dim); }
+.cover-missing b { font-size: 14px; color: var(--accent); }
+.cover-missing button { padding: 4px 12px; font-size: 12px; }
+
 /* A notice with Undo, at the foot of the screen. */
 .undo-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 16px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); font-size: 13px; }
 .undo-toast button { padding: 4px 12px; }

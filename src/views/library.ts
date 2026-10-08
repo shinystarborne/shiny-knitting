@@ -10,6 +10,7 @@ import {
   type NeedleSizeFormat,
   type Pattern,
 } from "../api";
+import { open } from "@tauri-apps/plugin-dialog";
 import { askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { coverUrl, ensureCover, forgetCover } from "../covers";
@@ -244,6 +245,8 @@ export class LibraryView {
       } else if (act === "cover") {
         const pattern = this.patterns.find((p) => p.id === btn.dataset.id);
         if (pattern && (await changeCover(pattern))) await this.afterCoverChange(pattern.id);
+      } else if (act === "relink") {
+        await this.relink(btn.dataset.id!);
       } else if (act === "undo-ai") {
         await this.undoAi(btn.dataset.id!);
       }
@@ -261,6 +264,15 @@ export class LibraryView {
     }
 
     const card = closestEl(e.target, "[data-open]");
+    const lost = card && this.patterns.find((p) => p.id === card.dataset.open)?.fileMissing;
+    if (card && lost) {
+      // Nothing to read: say so, and offer to find it, rather than open a reader on nothing.
+      const title = this.patterns.find((p) => p.id === card.dataset.open)!.title;
+      if (await askYesNo(`The file of “${title}” is not in the library any more — moved or deleted outside the app. Find it, to read it again? Everything else of it is kept.`, { title: "File missing", okLabel: "Find it…" })) {
+        await this.relink(card.dataset.open!);
+      }
+      return;
+    }
     if (card) {
       this.root.dispatchEvent(
         new CustomEvent("open-pattern", { bubbles: true, detail: card.dataset.open }),
@@ -518,6 +530,22 @@ export class LibraryView {
   }
 
   /** One card brought up to date after the model changed its pattern. */
+  /** Asks where a missing pattern's file is now, and copies it back into the library. */
+  private async relink(patternId: string): Promise<void> {
+    const pattern = this.patterns.find((p) => p.id === patternId);
+    if (!pattern) return;
+    const kind = pattern.format === "epub" ? "EPUB" : "PDF";
+    const picked = await open({ multiple: false, title: `Where is “${pattern.title}”?`, filters: [{ name: kind, extensions: [pattern.format] }] });
+    if (typeof picked !== "string") return;
+    try {
+      await api.replacePatternFile(patternId, picked);
+    } catch (err) {
+      return this.flash(err instanceof Error ? err.message : String(err), true);
+    }
+    await this.refreshCard(patternId);
+    this.flash(`Found: “${pattern.title}” can be read again.`);
+  }
+
   private async refreshCard(patternId: string): Promise<void> {
     const fresh = await api.getPattern(patternId).catch(() => null);
     const i = this.patterns.findIndex((p) => p.id === patternId);
@@ -801,8 +829,9 @@ export class LibraryView {
 
   private cardHtml(p: Pattern): string {
     return `
-      <article class="card" data-open="${p.id}">
+      <article class="card${p.fileMissing ? " file-missing" : ""}" data-open="${p.id}">
         <div class="cover" data-id="${p.id}">
+          ${p.fileMissing ? `<div class="cover-missing"><b>File missing</b><span>Moved or deleted outside the app</span><button data-act="relink" data-id="${p.id}" title="Point the app at the file where it is now">Find it…</button></div>` : ""}
           <div class="cover-photo" data-el="photo"></div>
           <div class="cover-fallback format-${p.format}">
             <span>${p.format.toUpperCase()}</span>

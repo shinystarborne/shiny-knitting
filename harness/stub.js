@@ -1076,7 +1076,8 @@ function findChart(id) {
 
 const handlers = {
   list_patterns: ({ filter }) => {
-    let out = store.patterns.slice();
+    // fileMissing as commands::with_file_checked says it; a test sets store's pattern.fileGone.
+    let out = store.patterns.map((p) => ({ ...p, fileMissing: !!p.fileGone }));
     if (filter?.search) {
       const t = filter.search.toLowerCase();
       out = out.filter(
@@ -1131,7 +1132,7 @@ const handlers = {
     // The backend's NotFound serialises as this string; a missing row is an
     // error there, not a null.
     if (!p) throw new Error(`pattern not found: ${id}`);
-    return clone(p);
+    return clone({ ...p, fileMissing: !!p.fileGone });
   },
   update_pattern: ({ pattern }) => {
     const i = store.patterns.findIndex((p) => p.id === pattern.id);
@@ -1204,6 +1205,15 @@ const handlers = {
   },
   // The Bin, kept apart from store.patterns so every listing leaves it out,
   // as the backend's removed_at IS NULL does.
+  // As commands::replace_pattern_file: a file of the pattern's own kind, copied in.
+  replace_pattern_file: ({ id, sourcePath }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error("That pattern is no longer in the library.");
+    const ext = String(sourcePath).split(".").pop().toLowerCase();
+    if (ext !== p.format) throw new Error(`That is not a ${p.format.toUpperCase()}: this pattern is one.`);
+    p.fileGone = false;
+    return clone({ ...p, fileMissing: false });
+  },
   remove_pattern: ({ id }) => {
     const p = store.patterns.find((x) => x.id === id);
     if (!p) throw new Error(`pattern not found: ${id}`);
