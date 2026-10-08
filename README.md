@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.49](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.49)** —
+  typed text on the page. The one to test.
 - **[v0.3.0-beta.48](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.48)** —
-  an eraser for drawings. The one to test.
+  an eraser for drawings. Superseded by `beta.49`.
 - **[v0.3.0-beta.47](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.47)** —
   marks moved and resized with Select. Superseded by `beta.48`.
 - **[v0.3.0-beta.46](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.46)** —
