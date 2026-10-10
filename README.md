@@ -614,6 +614,28 @@ typed in.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 
+## Cheatsheets
+
+The **Cheatsheets** tab keeps what you look things up in while knitting, listed
+down the side and open beside the list.
+
+- **+ Web page**: a tutorial, a table of yarn weights, a video. Give its address,
+  or paste a site's whole embed code (`<iframe …>`); a YouTube link is kept as
+  its embed page, which plays here. It is shown in a frame, named by its own
+  title unless you name it. Some sites tell every app not to show their pages
+  inside it; the app reads that when the page is added, and offers the page in
+  **a window of its own** beside the app, or in your browser, instead (**Try
+  here anyway** if it is wrong).
+- **Pages from a book**: pages of a PDF in the library, drawn from the book's own
+  file, sharp at any size (− and +), with **In the book ↗** to open it there.
+  **+ Pages from a book…** picks the book (books first) and the pages, and in a
+  book you are reading **Cheatsheet…** keeps the page you are on, or a few.
+- An **EPUB's chapter** is kept from the book with **Cheatsheet…**, as a copy: a
+  reflowing book has no pages to point at.
+
+Each has a name and a note, changed where they show; **↑ ↓** move it in the
+list, and the one open is remembered.
+
 ## Wishlist and shops
 
 The **Wishlist** tab is what you want to get: yarn, needles and hooks,

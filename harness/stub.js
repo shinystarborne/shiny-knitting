@@ -1381,6 +1381,85 @@ const handlers = {
   // ---------- opening outside the app ----------
   //
   // Recorded rather than opened, so a test can see what would have been.
+  // ---------- cheatsheets ----------
+  //
+  // As cheatsheets.rs: an address tidied (an embed code unwrapped, YouTube as
+  // its embed page), and a site's headers deciding whether it is framed; here
+  // an address with "refuses" in it stands for one that says no.
+  list_cheatsheets: () => clone(store.cheatsheets ?? []),
+  add_cheatsheet: ({ input }) => {
+    store.cheatsheets ??= [];
+    const id = `cs${store.nextId++}`;
+    const sheet = { id, title: (input.title ?? "").trim(), kind: input.kind, url: "", framable: true, patternId: "", pageFrom: 0, pageTo: 0, notes: (input.notes ?? "").trim(), position: 0, addedAt: Date.now() };
+    if (input.kind === "web") {
+      let raw = String(input.url ?? "").trim();
+      if (/^<iframe/i.test(raw)) raw = (/src=["']?([^"'\s>]+)/i.exec(raw) ?? [])[1] ?? "";
+      if (!raw) throw new Error("Give the page's address.");
+      if (raw.startsWith("//")) raw = `https:${raw}`;
+      else if (!raw.includes("://")) raw = `https://${raw}`;
+      let url;
+      try {
+        url = new URL(raw.replace(/&amp;/g, "&"));
+      } catch {
+        throw new Error("That is not a web address.");
+      }
+      if (!/^https?:$/.test(url.protocol)) throw new Error("A cheatsheet is a web page: an address starting http:// or https://.");
+      const host = url.host.replace(/^(www|m)\./, "");
+      const yt = host === "youtu.be" ? url.pathname.slice(1) : host === "youtube.com" && url.pathname === "/watch" ? url.searchParams.get("v") : null;
+      sheet.url = yt ? `https://www.youtube.com/embed/${yt}` : url.toString();
+      sheet.framable = !sheet.url.includes("refuses");
+      if (!sheet.title) sheet.title = host;
+    } else {
+      const p = store.patterns.find((x) => x.id === input.patternId);
+      if (!p) throw new Error("That pattern is no longer in the library.");
+      sheet.patternId = p.id;
+      sheet.pageFrom = Math.max(1, input.pageFrom ?? 1);
+      sheet.pageTo = Math.max(sheet.pageFrom, input.pageTo ?? 1);
+      if (!sheet.title) sheet.title = `${p.title}, ${input.kind === "chapter" ? "chapter" : "p."} ${sheet.pageFrom}${sheet.pageTo > sheet.pageFrom ? `–${sheet.pageTo}` : ""}`;
+      if (input.kind === "chapter") {
+        if (!input.html) throw new Error("The chapter could not be read.");
+        (store.cheatsheetCopies ??= new Map()).set(id, input.html);
+      }
+    }
+    const top = Math.min(0, ...store.cheatsheets.map((x) => x.position));
+    sheet.position = top - 1;
+    store.cheatsheets.push(sheet);
+    store.cheatsheets.sort((a, b) => a.position - b.position || b.addedAt - a.addedAt);
+    return clone(sheet);
+  },
+  update_cheatsheet: ({ sheet }) => {
+    const kept = (store.cheatsheets ?? []).find((x) => x.id === sheet.id);
+    if (!kept) throw new Error("That cheatsheet is no longer there.");
+    if (sheet.title.trim()) kept.title = sheet.title.trim();
+    kept.notes = sheet.notes.trim();
+    kept.framable = sheet.framable;
+    if (kept.kind === "pages" && sheet.pageFrom >= 1) {
+      kept.pageFrom = sheet.pageFrom;
+      kept.pageTo = Math.max(sheet.pageFrom, sheet.pageTo);
+    }
+    return clone(kept);
+  },
+  delete_cheatsheet: ({ id }) => {
+    store.cheatsheets = (store.cheatsheets ?? []).filter((x) => x.id !== id);
+    store.cheatsheetCopies?.delete(id);
+  },
+  move_cheatsheet: ({ id, position }) => {
+    const list = store.cheatsheets ?? [];
+    const at = list.findIndex((x) => x.id === id);
+    if (at < 0) throw new Error("That cheatsheet is no longer there.");
+    const [moved] = list.splice(at, 1);
+    list.splice(Math.max(0, Math.min(position, list.length)), 0, moved);
+    list.forEach((x, i) => (x.position = i));
+    return clone(list);
+  },
+  read_cheatsheet_copy: ({ id }) => {
+    const html = store.cheatsheetCopies?.get(id);
+    if (html === undefined) throw new Error("The copy of that chapter is not there any more.");
+    return html;
+  },
+  open_cheatsheet_window: ({ id, url, title }) => {
+    (window.__sheetWindows ??= []).push({ id, url, title });
+  },
   open_link: ({ url }) => {
     const lower = String(url).trim().toLowerCase();
     if (!/^(https?:\/\/|mailto:)/.test(lower)) throw new Error("Only web and email links can be opened.");

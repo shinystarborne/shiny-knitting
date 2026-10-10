@@ -1,7 +1,8 @@
 import { ROBOT } from "../ai/describe-run";
 import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Pin, type Project, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
-import { askChoice, dialogOpen, say } from "../dialogs";
+import { askChoice, askForm, dialogOpen, say } from "../dialogs";
+import { askPages, keepOpen } from "../views/cheatsheets";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
@@ -419,6 +420,7 @@ export class ReaderView {
           ${embedded ? "" : `<button data-act="beside" class="ghost" title="Open another pattern beside this one: a chart, a size table, a second pattern">Beside…</button>`}
           ${this.embedded?.beside ? `<button data-act="close-beside" class="ghost icon-btn" aria-label="Close it" title="Close the pattern beside">✕</button>` : ""}
           <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
+          ${embedded ? "" : `<button data-act="cheatsheet" class="ghost" title="Keep ${this.pattern.format === "epub" ? "this chapter" : "this page, or a few"} in Cheatsheets, to look things up in">Cheatsheet…</button>`}
           <button data-act="open-external" class="ghost" title="Open the file in your ${this.pattern.format === "epub" ? "EPUB" : "PDF"} app: to print it, or to fill in a form">Open ↗</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
@@ -459,7 +461,8 @@ export class ReaderView {
         );
       }
       if (act === "highlight-cfg") this.openHighlightPanel();
-      if (act === "save-pages") void this.savePages();      if (act === "edit") {
+      if (act === "save-pages") void this.savePages();
+      if (act === "cheatsheet") void this.keepAsCheatsheet();      if (act === "edit") {
         this.root.dispatchEvent(
           new CustomEvent("edit-pattern", { bubbles: true, detail: this.pattern }),
         );
@@ -702,6 +705,47 @@ export class ReaderView {
    * The highlight settings panel. Every control writes straight through to
    * the database, so the configuration is remembered per pattern.
    */
+  /** Goes to a page (an EPUB: a chapter), as a cheatsheet opens its book. */
+  goTo(page: number): void {
+    this.doc?.goToPage(Math.max(1, Math.min(page, this.doc.pageCount || page)));
+  }
+
+  /**
+   * Keeps the page in view (and any after it, asked), or an EPUB's chapter,
+   * in Cheatsheets. A chapter is kept as a copy: a reflowing book has no
+   * pages to point at.
+   */
+  private async keepAsCheatsheet(): Promise<void> {
+    const doc = this.doc;
+    if (!doc) return;
+    const page = doc.currentPage();
+    try {
+      let kept;
+      if (doc instanceof EpubView) {
+        const titles = (await doc.outline()).map((o) => o.title);
+        const answer = await askForm(
+          [
+            { label: "Chapter", value: String(page), type: "number" },
+            { label: "Name", placeholder: `Optional: “${this.pattern.title}, chapter ${page}”` },
+          ],
+          { title: "Keep as a cheatsheet", okLabel: "Keep it" },
+        );
+        if (!answer) return;
+        const n = Math.max(1, Math.min(doc.pageCount, Math.round(Number(answer.Chapter) || page)));
+        kept = await api.addCheatsheet({ kind: "chapter", patternId: this.pattern.id, pageFrom: n, pageTo: n, title: answer.Name.trim() || (titles[n - 1] ? `${this.pattern.title}: ${titles[n - 1]}` : ""), html: doc.chapterHtml(n) });
+      } else {
+        const pages = await askPages(this.pattern.title, page, page);
+        if (!pages) return;
+        kept = await api.addCheatsheet({ kind: "pages", patternId: this.pattern.id, pageFrom: pages.from, pageTo: Math.min(pages.to, doc.pageCount || pages.to), title: pages.title });
+      }
+      // The tab opens on it, the next time it is shown.
+      keepOpen(kept.id);
+      showNotice("Kept in Cheatsheets.", { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true })) });
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
+    }
+  }
+
   /** Some of the pattern's pages, or an EPUB's chapters, saved as a PDF. */
   private async savePages(): Promise<void> {
     const doc = this.doc;

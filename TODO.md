@@ -38,8 +38,10 @@ starting; the details are in the sections under the list.
 - [x] **Yarns held together**, a calculator: strands' metres per 100 g in,
   the yarn they make out, as the yarnicalc bot does; from the stash too.
   *0.3.57*
-- [ ] **Cheatsheets**, a tab of its own: online pages kept to read in the app
-  (shown in a frame), and pages from books in the library.
+- [x] **Cheatsheets**, a tab of its own: online pages kept to read in the app
+  (shown in a frame, or a window of its own where a site refuses frames), and
+  pages from books in the library (a PDF's pages, an EPUB's chapter as a
+  copy). *0.3.58*
 
 **Asked for along the way**
 

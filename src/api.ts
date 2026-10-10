@@ -974,6 +974,36 @@ export interface ChartData {
 }
 
 /** Mirrors `models.rs::Chart`. */
+/** Mirrors `models.rs::Cheatsheet`. */
+export interface Cheatsheet {
+  id: string;
+  title: string;
+  /** A page online, pages of a PDF, or an EPUB's chapter kept as a copy. */
+  kind: "web" | "pages" | "chapter";
+  url: string;
+  /** Whether the site lets itself be shown in a frame; one that does not opens in a window of its own. */
+  framable: boolean;
+  patternId: string;
+  /** The first and last page (a chapter: its number), from 1. */
+  pageFrom: number;
+  pageTo: number;
+  notes: string;
+  position: number;
+  addedAt: number;
+}
+
+export interface CheatsheetInput {
+  kind: "web" | "pages" | "chapter";
+  title?: string;
+  url?: string;
+  patternId?: string;
+  pageFrom?: number;
+  pageTo?: number;
+  notes?: string;
+  /** An EPUB chapter's markup, self-contained: the copy kept. */
+  html?: string;
+}
+
 export interface Chart {
   id: string;
   name: string;
@@ -1322,6 +1352,15 @@ export const api = {
   removeSwatchPhoto: (id: string) => invoke<void>("remove_swatch_photo", { id }),
 
   // Colourwork charts. Listed whole, squares and all: the list draws them.
+  listCheatsheets: () => invoke<Cheatsheet[]>("list_cheatsheets"),
+  addCheatsheet: (input: CheatsheetInput) => invoke<Cheatsheet>("add_cheatsheet", { input }),
+  updateCheatsheet: (sheet: Cheatsheet) => invoke<Cheatsheet>("update_cheatsheet", { sheet }),
+  deleteCheatsheet: (id: string) => invoke<void>("delete_cheatsheet", { id }),
+  /** Moves one to a place in the list, from 0; the list as it is then. */
+  moveCheatsheet: (id: string, position: number) => invoke<Cheatsheet[]>("move_cheatsheet", { id, position }),
+  readCheatsheetCopy: (id: string) => invoke<string>("read_cheatsheet_copy", { id }),
+  /** A page that will not be framed, in a window of its own. */
+  openCheatsheetWindow: (id: string, url: string, title: string) => invoke<void>("open_cheatsheet_window", { id, url, title }),
   listCharts: () => invoke<Chart[]>("list_charts"),
   getChart: (id: string) => invoke<Chart>("get_chart", { id }),
   addChart: (name: string, data: ChartData) => invoke<Chart>("add_chart", { input: { name, data } }),

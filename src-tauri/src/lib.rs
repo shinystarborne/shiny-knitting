@@ -2,6 +2,7 @@ mod ai;
 mod annotations;
 mod backup;
 mod charts;
+mod cheatsheets;
 mod commands;
 mod covers;
 mod db;
@@ -174,6 +175,13 @@ pub fn run() {
             charts::delete_chart,
             charts::save_file,
             people::list_people,
+            cheatsheets::list_cheatsheets,
+            cheatsheets::add_cheatsheet,
+            cheatsheets::update_cheatsheet,
+            cheatsheets::delete_cheatsheet,
+            cheatsheets::move_cheatsheet,
+            cheatsheets::read_cheatsheet_copy,
+            cheatsheets::open_cheatsheet_window,
             people::get_person,
             people::add_person,
             people::update_person,

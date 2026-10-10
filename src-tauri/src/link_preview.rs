@@ -116,6 +116,34 @@ pub async fn fetch(url: &str) -> Result<LinkPreview, AppError> {
     Ok(parse_page(&html, &base))
 }
 
+/// What a page says of itself for a cheatsheet: its title, and whether its
+/// headers let another site show it in a frame.
+pub struct FrameLook {
+    pub title: String,
+    pub framable: bool,
+}
+
+/// Looks at a page for a cheatsheet. Only its headers and its head are read.
+pub async fn look_for_frame(url: &str) -> Result<FrameLook, AppError> {
+    let response = client()?
+        .get(url)
+        .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
+        .send()
+        .await
+        .map_err(unreachable)?;
+    let header = |name: &str| response.headers().get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let framable = crate::cheatsheets::frame_allowed(header("x-frame-options").as_deref(), header("content-security-policy").as_deref());
+    let content_type = header("content-type").unwrap_or_default().to_ascii_lowercase();
+    let base = response.url().clone();
+    let title = if response.status().is_success() && (content_type.is_empty() || content_type.contains("html")) {
+        let bytes = body(response, MAX_PAGE, true).await?;
+        parse_page(&decode(&bytes, &content_type), &base).title
+    } else {
+        String::new()
+    };
+    Ok(FrameLook { title, framable })
+}
+
 /// Fetches a picture's bytes, refusing anything that is not a picture.
 pub async fn fetch_image(url: &str) -> Result<Vec<u8>, AppError> {
     let response = client()?

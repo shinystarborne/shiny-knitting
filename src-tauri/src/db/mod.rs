@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput, YarnDetails,
+    Chart, ChartInput, YarnDetails, Cheatsheet,
 };
 
 #[cfg(test)]
@@ -353,6 +353,24 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             added_at      INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_swatches_yarn ON swatches(yarn_id);
+
+        -- Kept to look things up in: a web page, pages of a PDF, or an EPUB's
+        -- chapter (its copy is a file, cheatsheets/<id>.html). `pattern_id`
+        -- is not a reference: a book gone from the library leaves the
+        -- cheatsheet saying so.
+        CREATE TABLE IF NOT EXISTS cheatsheets (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            kind        TEXT NOT NULL,
+            url         TEXT NOT NULL DEFAULT '',
+            framable    INTEGER NOT NULL DEFAULT 1,
+            pattern_id  TEXT NOT NULL DEFAULT '',
+            page_from   INTEGER NOT NULL DEFAULT 0,
+            page_to     INTEGER NOT NULL DEFAULT 0,
+            notes       TEXT NOT NULL DEFAULT '',
+            position    INTEGER NOT NULL DEFAULT 0,
+            added_at    INTEGER NOT NULL
+        );
 
         -- Someone knitted for. `extra` is the names of their own measurements,
         -- beyond the standard ones, as a JSON list.
@@ -4981,4 +4999,75 @@ pub fn yarn_facets(conn: &Connection) -> AppResult<Vec<YarnFamilyFacet>> {
         });
     }
     Ok(out)
+}
+
+// ---------- cheatsheets ----------
+
+fn row_to_cheatsheet(r: &rusqlite::Row) -> rusqlite::Result<Cheatsheet> {
+    Ok(Cheatsheet {
+        id: r.get("id")?,
+        title: r.get("title")?,
+        kind: r.get("kind")?,
+        url: r.get("url")?,
+        framable: r.get::<_, i64>("framable")? != 0,
+        pattern_id: r.get("pattern_id")?,
+        page_from: r.get("page_from")?,
+        page_to: r.get("page_to")?,
+        notes: r.get("notes")?,
+        position: r.get("position")?,
+        added_at: r.get("added_at")?,
+    })
+}
+
+/// In their order: as placed, the newest first among any not moved.
+pub fn list_cheatsheets(conn: &Connection) -> AppResult<Vec<Cheatsheet>> {
+    let mut stmt = conn.prepare("SELECT * FROM cheatsheets ORDER BY position, added_at DESC")?;
+    let rows = stmt.query_map([], row_to_cheatsheet)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_cheatsheet(conn: &Connection, id: &str) -> AppResult<Cheatsheet> {
+    conn.query_row("SELECT * FROM cheatsheets WHERE id = ?1", params![id], row_to_cheatsheet)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That cheatsheet is no longer there.".to_string()))
+}
+
+/// Adds one at the top of the list.
+pub fn insert_cheatsheet(conn: &Connection, sheet: &Cheatsheet) -> AppResult<Cheatsheet> {
+    let top: i64 = conn.query_row("SELECT COALESCE(MIN(position), 0) FROM cheatsheets", [], |r| r.get(0))?;
+    conn.execute(
+        "INSERT INTO cheatsheets (id, title, kind, url, framable, pattern_id, page_from, page_to, notes, position, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![sheet.id, sheet.title, sheet.kind, sheet.url, sheet.framable as i64, sheet.pattern_id, sheet.page_from, sheet.page_to, sheet.notes, top - 1, now_ms()],
+    )?;
+    get_cheatsheet(conn, &sheet.id)
+}
+
+pub fn update_cheatsheet(conn: &Connection, sheet: &Cheatsheet) -> AppResult<()> {
+    conn.execute(
+        "UPDATE cheatsheets SET title = ?2, notes = ?3, framable = ?4, page_from = ?5, page_to = ?6 WHERE id = ?1",
+        params![sheet.id, sheet.title, sheet.notes, sheet.framable as i64, sheet.page_from, sheet.page_to],
+    )?;
+    Ok(())
+}
+
+pub fn delete_cheatsheet(conn: &Connection, id: &str) -> AppResult<()> {
+    conn.execute("DELETE FROM cheatsheets WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Puts one at a place in the list, counted from 0, the others closing up
+/// round it; every place is then written, so the order is the list's.
+pub fn move_cheatsheet(conn: &Connection, id: &str, position: i64) -> AppResult<()> {
+    let mut ids: Vec<String> = list_cheatsheets(conn)?.into_iter().map(|s| s.id).collect();
+    let Some(at) = ids.iter().position(|x| x == id) else {
+        return Err(AppError::NotFound("That cheatsheet is no longer there.".to_string()));
+    };
+    let moved = ids.remove(at);
+    let to = position.clamp(0, ids.len() as i64) as usize;
+    ids.insert(to, moved);
+    for (i, sid) in ids.iter().enumerate() {
+        conn.execute("UPDATE cheatsheets SET position = ?2 WHERE id = ?1", params![sid, i as i64])?;
+    }
+    Ok(())
 }

@@ -3458,3 +3458,32 @@ fn the_epubs_already_there_are_tagged_books_once() {
     migrate(&conn).unwrap();
     assert_eq!(get_pattern(&conn, &book.id).unwrap().tags, vec!["lace"]);
 }
+
+// ---------- cheatsheets ----------
+
+#[test]
+fn cheatsheets_are_added_at_the_top_and_moved_into_place() {
+    let conn = test_db();
+    let add = |id: &str, title: &str| {
+        insert_cheatsheet(&conn, &Cheatsheet { id: id.into(), title: title.into(), kind: "web".into(), url: "https://example.com".into(), framable: true, ..Default::default() }).unwrap()
+    };
+    add("a", "Increases");
+    add("b", "Cast-ons");
+    add("c", "Bind-offs");
+    let order = |conn: &Connection| list_cheatsheets(conn).unwrap().into_iter().map(|s| s.id).collect::<Vec<_>>().join("");
+    assert_eq!(order(&conn), "cba");
+    move_cheatsheet(&conn, "c", 2).unwrap();
+    assert_eq!(order(&conn), "bac");
+    move_cheatsheet(&conn, "a", 0).unwrap();
+    assert_eq!(order(&conn), "abc");
+    let mut b = get_cheatsheet(&conn, "b").unwrap();
+    b.framable = false;
+    b.title = "Cast-ons, all of them".into();
+    update_cheatsheet(&conn, &b).unwrap();
+    let b = get_cheatsheet(&conn, "b").unwrap();
+    assert!(!b.framable);
+    assert_eq!(b.title, "Cast-ons, all of them");
+    delete_cheatsheet(&conn, "b").unwrap();
+    assert_eq!(order(&conn), "ac");
+    assert!(move_cheatsheet(&conn, "b", 0).is_err());
+}

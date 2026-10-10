@@ -766,6 +766,44 @@ impl Default for AiSettings {
     }
 }
 
+/// Something kept to look things up in: a page online, pages of a PDF in the
+/// library, or an EPUB's chapter kept as a copy.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Cheatsheet {
+    pub id: String,
+    pub title: String,
+    /// "web", "pages" (of a PDF) or "chapter" (of an EPUB).
+    pub kind: String,
+    /// A web page's address; empty for the others.
+    pub url: String,
+    /// Whether the site lets itself be shown in a frame, as its headers said
+    /// when it was added; one that does not opens in a window of its own.
+    pub framable: bool,
+    /// The book the pages or chapter are from; empty for a web page.
+    pub pattern_id: String,
+    /// The first and last page (a chapter: its number), counted from 1.
+    pub page_from: i64,
+    pub page_to: i64,
+    pub notes: String,
+    pub position: i64,
+    pub added_at: i64,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CheatsheetInput {
+    pub title: String,
+    pub kind: String,
+    pub url: String,
+    pub pattern_id: String,
+    pub page_from: i64,
+    pub page_to: i64,
+    pub notes: String,
+    /// An EPUB chapter's markup, self-contained, kept as the copy.
+    pub html: Option<String>,
+}
+
 /// The fields the AI is asked to fill in.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]

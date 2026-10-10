@@ -30,6 +30,7 @@ import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearWish
 import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
+import { CheatsheetsView } from "./views/cheatsheets";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
@@ -39,7 +40,7 @@ import { ReaderView, type Layout } from "./reader/reader";
  * The current layout choice is remembered for the session.
  */
 
-type Tab = "patterns" | "projects" | "people" | "calculators" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
+type Tab = "patterns" | "projects" | "people" | "calculators" | "cheatsheets" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
@@ -64,6 +65,7 @@ class App {
   /** The wishlist or shops on screen, so a form saved over them keeps their filters. */
   private activeWishlist: WishlistView | null = null;
   private activeShops: ShopsView | null = null;
+  private activeCheatsheets: CheatsheetsView | null = null;
   private layout: Layout = "split";
 
   /**
@@ -89,6 +91,7 @@ class App {
       <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="people">People</button>
       <button class="tab" data-tab="calculators">Calculators</button>
+      <button class="tab" data-tab="cheatsheets">Cheatsheets</button>
       <button class="tab" data-tab="inspiration">Inspiration</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
@@ -130,6 +133,8 @@ class App {
         void this.showPeople();
       } else if (tab.dataset.tab === "calculators") {
         void this.showCalculators();
+      } else if (tab.dataset.tab === "cheatsheets") {
+        void this.showCheatsheets();
       } else if (tab.dataset.tab === "projects") {
         void this.showProjects();
       } else {
@@ -156,6 +161,12 @@ class App {
     this.screen.addEventListener("add-folder", (e) => void this.addFolder(asBook(e)));
     this.screen.addEventListener("open-pattern", (e) => {
       void this.showReader((e as CustomEvent<string>).detail);
+    });
+    this.screen.addEventListener("show-cheatsheets", () => void this.showCheatsheets());
+    // A cheatsheet's pages, in their book.
+    this.screen.addEventListener("open-pattern-at", (e) => {
+      const { id, page } = (e as CustomEvent<{ id: string; page: number }>).detail;
+      void this.showReader(id).then(() => this.activeReader?.patternId === id && this.activeReader.goTo(page));
     });
     this.screen.addEventListener("edit-pattern", (e) => {
       this.openForm((e as CustomEvent<Pattern>).detail);
@@ -383,6 +394,8 @@ class App {
     this.activePersonPage = null;
     this.activeChartPage?.destroy();
     this.activeChartPage = null;
+    this.activeCheatsheets?.destroy();
+    this.activeCheatsheets = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.activeWishlist = null;
@@ -475,6 +488,15 @@ class App {
     this.clearScreen();
     this.setActiveTab("calculators");
     await new CalculatorsView(this.screen).mount();
+  }
+
+  private async showCheatsheets(): Promise<void> {
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("cheatsheets");
+    const view = new CheatsheetsView(this.screen);
+    this.activeCheatsheets = view;
+    await view.mount();
   }
 
   private async showChartPage(id: string): Promise<void> {
