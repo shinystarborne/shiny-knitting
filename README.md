@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.61](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.61)** —
+  a chart's colours linked to stash yarns, named in the legend. The one to test.
 - **[v0.3.0-beta.60](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.60)** —
-  select, copy and paste a block of squares in a colourwork chart. The one to test.
+  select, copy and paste a block of squares in a colourwork chart. Superseded by `beta.61`.
 - **[v0.3.0-beta.59](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.59)** —
   every count moves the line, and the click is Shelfmind's, with others to choose. Superseded by `beta.60`.
 - **[v0.3.0-beta.58](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.58)** —
