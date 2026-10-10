@@ -724,6 +724,9 @@ export interface Project {
   galleryHidden: boolean;
   /** The photos the gallery leaves out: "cover", or a log entry's id. */
   gallerySkip: string[];
+  /** The colourwork chart knitted from on its page ("" for none), and the project's row its first row is knitted on. */
+  chartId?: string;
+  chartStart?: number;
 }
 
 export interface ProjectYarnInput {
@@ -1335,6 +1338,8 @@ export const api = {
   listGalleryPhotos: () => invoke<GalleryPhoto[]>("list_gallery_photos"),
   /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
   setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
+  /** The chart a project is knitted from ("" for none), and the project's row its first row is knitted on. */
+  setProjectChart: (id: string, chartId: string, start: number) => invoke<Project>("set_project_chart", { id, chartId, start }),
   /** Dated now. */
   addLogEntry: (projectId: string, text: string) => invoke<LogEntry>("add_log_entry", { projectId, text }),
   updateLogEntry: (id: string, text: string, at: number) => invoke<LogEntry>("update_log_entry", { id, text, at }),

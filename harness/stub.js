@@ -760,6 +760,8 @@ function projectOut(pr) {
     planWhen: "",
     planDate: null,
     planOrder: 0,
+    chartId: "",
+    chartStart: 1,
     galleryHidden: false,
     gallerySkip: [],
     ...pr,
@@ -1792,6 +1794,15 @@ const handlers = {
       .sort((a, b) => a.at - b.at || a.seq - b.seq)
       .map((e) => ({ projectId: e.projectId, id: e.id, at: e.at, text: e.text })),
   // As db::set_project_gallery: its own photos, each once.
+  // As db::set_project_chart: a chart that is there, or none; from row 1 on.
+  set_project_chart: ({ id, chartId, start }) => {
+    const p = store.projects.find((x) => x.id === id);
+    if (!p) throw new Error("That project is no longer there.");
+    if (chartId && !store.charts.some((c) => c.id === chartId)) throw new Error("That chart is no longer there.");
+    p.chartId = chartId;
+    p.chartStart = Math.max(1, Math.round(start) || 1);
+    return projectOut(p);
+  },
   set_project_gallery: ({ id, hidden, skip }) => {
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("That project is no longer there.");
@@ -2101,6 +2112,8 @@ const handlers = {
   delete_chart: ({ id }) => {
     findChart(id);
     store.charts = store.charts.filter((x) => x.id !== id);
+    // The projects knitted from it are knitted from none now (db::delete_chart).
+    for (const p of store.projects) if (p.chartId === id) p.chartId = "";
   },
   // The save dialog: the bytes come raw, the kind and name in headers. A test
   // sets window.__nextSavePath (null cancels); the last export is kept.

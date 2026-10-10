@@ -139,6 +139,7 @@ pub fn run() {
             backup::last_backup,
             projects::list_gallery_photos,
             projects::set_project_gallery,
+            projects::set_project_chart,
             projects::delete_project,
             projects::set_project_cover,
             projects::get_project_cover,

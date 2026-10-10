@@ -684,6 +684,26 @@ export function writeOut(g: Grid): WrittenRow[] {
   return lines;
 }
 
+/** Where the next row to knit is in a chart: not reached yet, knitted (a yoke's), or a row of it, in a repeat. */
+export type ChartPlace = { kind: "before"; rowsToGo: number } | { kind: "done" } | { kind: "row"; row: number; repeat: number };
+
+/**
+ * Where the next row to knit is, with `done` of the project's rows knitted
+ * and the chart's first row knitted on the project's row `start` (from 1).
+ * A standard chart repeats up the work; a yoke's is knitted once.
+ */
+export function chartPlace(g: Grid, done: number, start: number): ChartPlace {
+  const next = Math.max(0, done) + 1 - Math.max(1, start);
+  if (next < 0) return { kind: "before", rowsToGo: -next };
+  if (g.kind === "yoke" && next >= g.height) return { kind: "done" };
+  return { kind: "row", row: (next % g.height) + 1, repeat: Math.floor(next / g.height) + 1 };
+}
+
+/** One row of the chart in words (rows from 1), from its written-out lines. */
+export function rowInWords(g: Grid, row: number, lines = writeOut(g)): WrittenRow | undefined {
+  return lines.find((l) => l.from <= row && row <= l.to);
+}
+
 /** How the chart is read, for the top of the words. */
 export function readingNote(g: Grid): string {
   if (g.kind === "yoke") {

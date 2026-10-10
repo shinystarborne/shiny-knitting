@@ -128,8 +128,8 @@ starting; the details are in the sections under the list.
     matched. *0.3.60*
 28. [x] A chart's colours linked to stash yarns, named in the legend.
     *0.3.61*
-29. [ ] Knitting from a chart: on a project's page, the current row marked
-    and counted.
+29. [x] Knitting from a chart: on a project's page, the current row marked
+    and counted. *0.3.62*
 30. [ ] The round yoke calculator and a yoke chart together.
     **Decide first:** fit the chart to the calculator's counts, or the
     calculator to the chart?

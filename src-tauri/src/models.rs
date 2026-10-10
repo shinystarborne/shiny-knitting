@@ -974,6 +974,12 @@ pub struct Project {
     /// The photos the gallery leaves out: "cover", or a log entry's id.
     #[serde(default)]
     pub gallery_skip: Vec<String>,
+    /// The colourwork chart knitted from on its page, and the project's row
+    /// its first row is knitted on (from 1); empty when none.
+    #[serde(default)]
+    pub chart_id: String,
+    #[serde(default)]
+    pub chart_start: i64,
 }
 
 /// A photo in a project's log, for the gallery: its entry, when, and what it says.

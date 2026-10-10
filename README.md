@@ -632,6 +632,12 @@ typed in.
   PDF and the rows in words then name it ("Peat (Jamieson's Spindrift,
   Peat)"), and a colour still called by the palette's name takes the yarn's
   colourway.
+  **Knitting from a chart**: on a project's page, under its row counter,
+  **Chart** picks the chart it is knitted from and the project's row its first
+  row is knitted on (after a rib, say). The chart is drawn there with the row
+  to knit next marked and the rows before it faded, said ("Round 6 of 12 ·
+  repeat 2") and written out, and every row counted moves it on. A standard
+  chart repeats up the work; a yoke's is knitted once.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 

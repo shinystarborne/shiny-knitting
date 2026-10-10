@@ -47,6 +47,12 @@ pub fn list_gallery_photos(state: State<'_, AppState>) -> CmdResult<Vec<crate::m
     db::list_gallery_photos(&state.db())
 }
 
+/// The chart a project is knitted from on its page, and the row it starts on.
+#[tauri::command]
+pub fn set_project_chart(state: State<'_, AppState>, id: String, chart_id: String, start: i64) -> CmdResult<Project> {
+    db::set_project_chart(&state.db(), &id, &chart_id, start)
+}
+
 /// A finished project hidden from the gallery or shown, and the photos it leaves out.
 #[tauri::command]
 pub fn set_project_gallery(state: State<'_, AppState>, id: String, hidden: bool, skip: Vec<String>) -> CmdResult<Project> {

@@ -3487,3 +3487,21 @@ fn cheatsheets_are_added_at_the_top_and_moved_into_place() {
     assert_eq!(order(&conn), "ac");
     assert!(move_cheatsheet(&conn, "b", 0).is_err());
 }
+
+#[test]
+fn a_project_is_knitted_from_a_chart_until_the_chart_goes() {
+    let conn = test_db();
+    let pattern = sample(&conn, "Mittens", "", "", &[]);
+    let project = insert_project(&conn, "pr-chart", &crate::models::ProjectInput { name: "Mittens".into(), pattern_id: Some(pattern.id.clone()), ..Default::default() }).unwrap();
+    assert_eq!((project.chart_id.as_str(), project.chart_start), ("", 1));
+    let chart = insert_chart(&conn, "ch1", &crate::models::ChartInput {
+        name: "Stars".into(),
+        data: crate::models::ChartData { kind: "standard".into(), width: 2, height: 2, cells: "0101".into(), colours: vec![crate::models::ChartColour { name: "W".into(), hex: "#ffffff".into(), ..Default::default() }, crate::models::ChartColour { name: "B".into(), hex: "#000000".into(), ..Default::default() }], repeats: 1, ..Default::default() },
+    }).unwrap();
+    let linked = set_project_chart(&conn, &project.id, &chart.id, 21).unwrap();
+    assert_eq!((linked.chart_id.as_str(), linked.chart_start), (chart.id.as_str(), 21));
+    assert!(set_project_chart(&conn, &project.id, "no-such-chart", 1).is_err());
+    assert_eq!(set_project_chart(&conn, &project.id, &chart.id, -5).unwrap().chart_start, 1);
+    delete_chart(&conn, &chart.id).unwrap();
+    assert_eq!(get_project(&conn, &project.id).unwrap().chart_id, "");
+}

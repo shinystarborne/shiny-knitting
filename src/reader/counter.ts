@@ -416,9 +416,16 @@ export class RowCounter {
     this.render();
   }
 
+  /** The rows counted on the total. */
+  get totalRows(): number {
+    return this.progress?.totalRows ?? 0;
+  }
+
   private render(): void {
     if (!this.progress) return;
     this.totalValue.textContent = String(this.progress.totalRows);
+    // For what follows the count on the page around it: a chart's marked row.
+    this.root.dispatchEvent(new CustomEvent("counter-total", { bubbles: true, detail: this.progress.totalRows }));
     this.q('[data-act="key-up"]').textContent = keyLabel(this.keys.up);
     this.q('[data-act="key-down"]').textContent = keyLabel(this.keys.down);
 

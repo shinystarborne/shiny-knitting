@@ -608,6 +608,13 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarns", "plans")? {
         conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
     }
+    // The chart a project is knitted from, and the row it starts on.
+    if !column_exists(conn, "projects", "chart_id")? {
+        conn.execute_batch(
+            "ALTER TABLE projects ADD COLUMN chart_id TEXT NOT NULL DEFAULT '';
+             ALTER TABLE projects ADD COLUMN chart_start INTEGER NOT NULL DEFAULT 1;",
+        )?;
+    }
     // A finished project in the gallery: hidden from it, and the photos it leaves out.
     if !column_exists(conn, "projects", "gallery_hidden")? {
         conn.execute_batch(
@@ -2545,7 +2552,25 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         plan_order: row.get("plan_order")?,
         gallery_hidden: row.get("gallery_hidden")?,
         gallery_skip: serde_json::from_str(&row.get::<_, String>("gallery_skip")?).unwrap_or_default(),
+        chart_id: row.get("chart_id")?,
+        chart_start: row.get("chart_start")?,
     })
+}
+
+/// The chart a project is knitted from, or none (an empty id), and the
+/// project's row its first row is knitted on.
+pub fn set_project_chart(conn: &Connection, id: &str, chart_id: &str, start: i64) -> AppResult<Project> {
+    if !chart_id.is_empty() {
+        get_chart(conn, chart_id)?;
+    }
+    let changed = conn.execute(
+        "UPDATE projects SET chart_id = ?2, chart_start = ?3 WHERE id = ?1",
+        params![id, chart_id, start.clamp(1, 1_000_000)],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    get_project(conn, id)
 }
 
 const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title, COALESCE(pe.name, '') AS person_name
@@ -3969,6 +3994,8 @@ pub fn delete_chart(conn: &Connection, id: &str) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound("That chart is no longer there.".to_string()));
     }
+    // The projects knitted from it are knitted from none now.
+    conn.execute("UPDATE projects SET chart_id = '' WHERE chart_id = ?1", params![id])?;
     Ok(())
 }
 

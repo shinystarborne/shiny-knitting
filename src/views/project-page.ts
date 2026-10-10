@@ -1,6 +1,7 @@
 import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
+import { ProjectChart } from "./project-chart";
 import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
@@ -64,6 +65,8 @@ export class ProjectPage {
    */
   private counter: RowCounter | null = null;
   private counterHost: HTMLElement | null = null;
+  /** The chart knitted from, under the counter: kept, not rebuilt, as the side is painted again. */
+  private chart: ProjectChart | null = null;
   private counterPattern: string | null = null;
   /** The pattern, read beside the board. */
   private reader: ReaderView | null = null;
@@ -121,7 +124,15 @@ export class ProjectPage {
       </div>`;
     this.screen.appendChild(this.root);
     await this.syncCounter();
+    this.chart = new ProjectChart(
+      () => this.project,
+      (p) => (this.project = p),
+    );
+    // The rows counted move the chart's mark.
+    this.root.addEventListener("counter-total", (e) => this.chart?.setTotal((e as CustomEvent<number>).detail));
     this.renderSide();
+    await this.chart.load();
+    this.chart.setTotal(this.counter?.totalRows ?? 0);
     this.bindPane();
 
     this.board = new Board(this.root.querySelector<HTMLElement>(".project-board")!, this.projectId, {
@@ -259,7 +270,8 @@ export class ProjectPage {
                <button class="ghost" data-act="show-pattern" title="Read the pattern here, beside the board">📄 Show the pattern here</button>
                <button class="link" data-act="open-pattern" title="Open the pattern on its own">Open it full ↗</button>
              </div>
-             <div data-el="counter"></div>`
+             <div data-el="counter"></div>
+             <div data-el="chart"></div>`
           : ""
       }
 
@@ -310,6 +322,8 @@ ${plan ? "" : `      <div class="project-side-dates">
     // The counter's element is moved back in, not rebuilt, so it keeps its state.
     const slot = side.querySelector('[data-el="counter"]');
     if (slot && this.counterHost) slot.replaceWith(this.counterHost);
+    const chartSlot = side.querySelector('[data-el="chart"]');
+    if (chartSlot && this.chart) chartSlot.replaceWith(this.chart.host);
     mountPatternPicker(side.querySelector<HTMLElement>('[data-el="pattern-pick"]')!, this.patterns, p.patternId);
     side.onclick = (e) => void this.onClick(e);
     side.onchange = (e) => void this.onChange(e);

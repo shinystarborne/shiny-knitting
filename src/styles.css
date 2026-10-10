@@ -3733,6 +3733,14 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .chart-colour-edit button { padding: 4px 10px; font-size: 12px; }
 .chart-colour-yarn { max-width: 260px; padding: 4px 8px; font-size: 13px; }
 
+/* A chart knitted from, on a project's page: the row to knit marked. */
+.project-chart-start { display: flex; align-items: flex-end; gap: 10px; }
+.project-chart-start .field { flex: 0 0 120px; }
+.project-chart-pic { max-height: 360px; overflow: auto; border-radius: 6px; margin-top: 8px; background: #fff; }
+.project-chart-pic canvas { display: block; margin: 0 auto; }
+.project-chart-where { margin: 8px 0 2px; font-weight: 600; }
+.project-chart-words { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+
 .chart-work { flex: 1; min-height: 0; display: flex; }
 .chart-scroll { flex: 1; min-width: 0; overflow: auto; padding: 16px; background: #0f1114; }
 .chart-canvas { display: block; margin: 0 auto; border-radius: 4px; touch-action: none; cursor: crosshair; }
