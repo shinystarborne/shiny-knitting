@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.57](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.57)** —
+  yarns held together, a calculator: the strands' metres per 100 g in, the yarn they make out. The one to test.
 - **[v0.3.0-beta.56](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.56)** —
-  books apart from patterns: the library's Books shelf, and Describe telling a book. The one to test.
+  books apart from patterns: the library's Books shelf, and Describe telling a book. Superseded by `beta.57`.
 - **[v0.3.0-beta.55](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.55)** —
   rib repeats that fit the counts: 1x1, 2x2 or any. Superseded by `beta.56`.
 - **[v0.3.0-beta.54](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.54)** —
