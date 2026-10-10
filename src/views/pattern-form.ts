@@ -42,11 +42,11 @@ export class PatternForm {
 
   private onDone: (pattern: Pattern) => void;
 
-  constructor(root: HTMLElement, editing: Pattern | null, onDone: (p: Pattern) => void) {
+  constructor(root: HTMLElement, editing: Pattern | null, onDone: (p: Pattern) => void, startTags: string[] = []) {
     this.root = root;
     this.editing = editing;
     this.onDone = onDone;
-    this.tagList = editing ? [...editing.tags] : [];
+    this.tagList = editing ? [...editing.tags] : [...startTags];
   }
 
   open(): void {

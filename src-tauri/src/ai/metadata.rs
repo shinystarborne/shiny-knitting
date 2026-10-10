@@ -8,6 +8,9 @@ use crate::db;
 use crate::models::{AiSettings, Pattern, Suggestion};
 
 
+/// The tag that makes a pattern a book: shown under Books, not Patterns.
+pub const BOOK_TAG: &str = "book";
+
 /// The fields the AI can write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
@@ -85,6 +88,13 @@ pub fn apply_to(pattern: &Pattern, suggestion: &Suggestion, settings: &AiSetting
         merged.sort();
         merged.dedup();
         next.tags = merged;
+    }
+
+    // A book, or any EPUB (an EPUB is a book's format), is tagged so, which
+    // puts it under Books rather than among the single patterns.
+    if (suggestion.book || pattern.format == "epub") && !next.tags.iter().any(|t| t.eq_ignore_ascii_case(BOOK_TAG)) {
+        next.tags.push(BOOK_TAG.to_string());
+        next.tags.sort();
     }
 
     // The summary becomes the first line of the notes when there is room for
@@ -181,6 +191,7 @@ mod tests {
             yarn: "Shetland wool".to_string(),
             tags: vec!["lace".to_string(), "socks".to_string()],
             summary: "A fine gauge lace sock worked from a chart.".to_string(),
+            book: false,
         }
     }
 
@@ -217,6 +228,29 @@ mod tests {
         p.designer = "My Own Label".to_string();
         let after = apply_to(&p, &suggestion(), &settings);
         assert_eq!(after.designer, "Jess Leslie");
+    }
+
+    #[test]
+    fn a_book_is_tagged_so_and_so_is_every_epub() {
+        let p = pattern();
+        let mut s = suggestion();
+        s.book = true;
+        let after = apply_to(&p, &s, &AiSettings::default());
+        assert!(after.tags.contains(&"book".to_string()));
+
+        let mut epub = pattern();
+        epub.format = "epub".to_string();
+        let after = apply_to(&epub, &suggestion(), &AiSettings::default());
+        assert!(after.tags.contains(&"book".to_string()));
+
+        // Not twice, whatever its casing.
+        let mut tagged = pattern();
+        tagged.tags = vec!["Book".to_string()];
+        let after = apply_to(&tagged, &s, &AiSettings::default());
+        assert_eq!(after.tags.iter().filter(|t| t.eq_ignore_ascii_case("book")).count(), 1);
+
+        // One pattern stays one.
+        assert!(!apply_to(&pattern(), &suggestion(), &AiSettings::default()).tags.contains(&"book".to_string()));
     }
 
     #[test]

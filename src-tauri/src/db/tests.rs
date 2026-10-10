@@ -3400,3 +3400,61 @@ fn a_plan_is_a_project_not_started_until_it_starts() {
     assert_eq!(get_yarn(&conn, &y.id).unwrap().projects, vec!["Yoke for Mum"], "started, its yarn is in use");
     assert!(set_project_status(&conn, "p1", "planned").is_err());
 }
+
+// ---------- books ----------
+
+fn epub(conn: &Connection, title: &str) -> Pattern {
+    let input = PatternInput {
+        title: title.to_string(),
+        designer: String::new(),
+        file_name: format!("{}.epub", title),
+        bytes: Some(vec![]),
+        source_path: None,
+        status: String::new(),
+        difficulty: String::new(),
+        needle_size: String::new(),
+        yarn_weight: String::new(),
+        tags: vec!["shawls".to_string()],
+        notes: String::new(),
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    insert_pattern(conn, &id, &input, &format!("C:/lib/{}.epub", id), "epub", "").expect("insert")
+}
+
+#[test]
+fn an_epub_is_a_book_from_the_start() {
+    let conn = test_db();
+    let book = epub(&conn, "Shawl collection");
+    assert_eq!(book.tags, vec!["shawls", "book"]);
+    assert!(sample(&conn, "One sock", "", "", &[]).tags.is_empty());
+}
+
+#[test]
+fn books_and_single_patterns_are_listed_apart() {
+    let conn = test_db();
+    sample(&conn, "Sock", "", "", &["socks"]);
+    sample(&conn, "Magazine", "", "", &["Book", "hats"]);
+    epub(&conn, "Collection");
+    let titles = |book: Option<bool>| {
+        let mut t: Vec<String> = list_patterns(&conn, &Filter { book, ..Default::default() }).unwrap().into_iter().map(|p| p.title).collect();
+        t.sort();
+        t
+    };
+    assert_eq!(titles(Some(true)), vec!["Collection", "Magazine"]);
+    assert_eq!(titles(Some(false)), vec!["Sock"]);
+    assert_eq!(titles(None).len(), 3);
+}
+
+#[test]
+fn the_epubs_already_there_are_tagged_books_once() {
+    let conn = test_db();
+    let book = epub(&conn, "Old book");
+    // As an EPUB added before books were tagged, and one untagged by hand since.
+    conn.execute("UPDATE patterns SET tags = '[\"lace\"]' WHERE id = ?1", params![book.id]).unwrap();
+    set_setting(&conn, "epubs_tagged_book", &false).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_pattern(&conn, &book.id).unwrap().tags, vec!["book", "lace"]);
+    conn.execute("UPDATE patterns SET tags = '[\"lace\"]' WHERE id = ?1", params![book.id]).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_pattern(&conn, &book.id).unwrap().tags, vec!["lace"]);
+}

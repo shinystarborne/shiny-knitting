@@ -1104,6 +1104,10 @@ const handlers = {
     if (filter?.tags?.length) {
       out = out.filter((p) => filter.tags.every((t) => p.tags.includes(t)));
     }
+    // Books by the tag `book`, in any case, as db::list_patterns matches it.
+    const isBook = (p) => p.tags.some((t) => t.toLowerCase() === "book");
+    if (filter?.book === true) out = out.filter(isBook);
+    if (filter?.book === false) out = out.filter((p) => !isBook(p));
     // The sort keys the library view offers, mirroring the ORDER BY the
     // backend builds (db/mod.rs); anything unrecognised is newest first.
     switch (filter?.sort) {
@@ -2420,7 +2424,7 @@ const handlers = {
       { id: "Qwen3.8-27B", label: "Qwen3.8-27B" },
     ],
   }),
-  suggest_metadata: ({ patternId, excerpt, images }) => {
+  suggest_metadata: ({ patternId, excerpt, images, pages }) => {
     if (!store.aiSettings?.enabled) throw new Error("Describing with a model is switched off in Settings.");
     const p = store.patterns.find((x) => x.id === patternId);
     if (!p) throw new Error("not found");
@@ -2432,6 +2436,7 @@ const handlers = {
       excerptLength: (excerpt || "").trim().length,
       images: (images || []).length,
       imageBytes: (images || []).reduce((n, i) => n + i.length, 0),
+      pages: pages ?? null,
     };
     const before = clone(p);
     const skip = store.aiSettings?.skipExisting !== false;
@@ -2443,6 +2448,8 @@ const handlers = {
       yarn: "Shetland wool",
       tags: ["lace", "socks", "chart"],
       summary: "A fine gauge lace sock worked from a chart.",
+      // The stub's model takes a long file for a book.
+      book: (pages ?? 0) > 30,
     };
     // The merge below mirrors ai::metadata::apply_to exactly: with skipExisting
     // on, a field the user already filled in is left alone; the yarn line and
@@ -2473,6 +2480,10 @@ const handlers = {
       }
       merged.sort();
       after.tags = [...new Set(merged)];
+    }
+    // A book, or any EPUB, is tagged so (ai::metadata::apply_to).
+    if ((suggestion.book || p.format === "epub") && !after.tags.some((t) => t.toLowerCase() === "book")) {
+      after.tags = [...after.tags, "book"].sort();
     }
     // The summary becomes the notes only when there is nothing there yet.
     if (suggestion.summary && !after.notes.includes(suggestion.summary.trim()) &&
@@ -2643,7 +2654,8 @@ const handlers = {
       needleSize: input.needleSize,
       yarnWeight: input.yarnWeight || "",
       yarnWeightFamily: yarnFamily(input.yarnWeight),
-      tags: input.tags,
+      // An EPUB is a book from the start, as db::insert_pattern tags it.
+      tags: ext === "epub" && !input.tags.some((t) => t.toLowerCase() === "book") ? [...input.tags, "book"] : input.tags,
       notes: input.notes,
       addedAt: Date.now(),
       lastOpenedAt: null,

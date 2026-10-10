@@ -13,7 +13,7 @@ import { api, isAlreadyHave, type Pattern, type ScannedFile } from "../api";
 export async function runBulkAdd(
   host: HTMLElement,
   files: ScannedFile[],
-  opts: { onAdded: (p: Pattern) => void; describeHint?: boolean },
+  opts: { onAdded: (p: Pattern) => void; describeHint?: boolean; tags?: string[] },
 ): Promise<{ added: number; skipped: number; failed: number }> {
   host.querySelector(".scan-panel")?.remove();
   const panel = document.createElement("div");
@@ -62,7 +62,7 @@ export async function runBulkAdd(
         status: "",
         difficulty: "",
         needleSize: "",
-        tags: [],
+        tags: opts.tags ?? [],
         notes: "",
       });
       added++;

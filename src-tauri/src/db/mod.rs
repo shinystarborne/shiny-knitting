@@ -689,6 +689,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
     }
 
+    // Books have a tab of their own, found by the tag `book`; the EPUBs
+    // already in the library are books, and are tagged so, once (one untagged
+    // afterwards stays untagged).
+    let epubs_tagged: bool = get_setting(conn, "epubs_tagged_book")?;
+    if !epubs_tagged {
+        tag_epubs_as_books(conn)?;
+        set_setting(conn, "epubs_tagged_book", &true)?;
+    }
+
     // Every pattern used to start as "want to knit", so in a large library the
     // status said nothing. Now a pattern starts with none, and "want to knit"
     // is for the ones actually planned; the ones that only had it by default
@@ -964,6 +973,9 @@ pub struct Filter {
     pub yarn_weight: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
     pub sort: Option<String>,
+    /// Books only (true), or single patterns only (false): by the tag `book`.
+    /// Left out, both.
+    pub book: Option<bool>,
 }
 
 /// Makes user text safe for a LIKE pattern: the wildcards `%` and `_`, and
@@ -974,6 +986,25 @@ fn escape_like(term: &str) -> String {
     term.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
+}
+
+/// Gives every EPUB the tag `book`, keeping the tags it has.
+fn tag_epubs_as_books(conn: &Connection) -> AppResult<()> {
+    let rows: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT id, tags FROM patterns WHERE format = 'epub'")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    for (id, json) in rows {
+        let mut tags: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+        if tags.iter().any(|t| t.eq_ignore_ascii_case("book")) {
+            continue;
+        }
+        tags.push("book".to_string());
+        tags.sort();
+        conn.execute("UPDATE patterns SET tags = ?2 WHERE id = ?1", params![id, serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())])?;
+    }
+    Ok(())
 }
 
 pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Pattern>> {
@@ -1057,6 +1088,13 @@ pub fn list_patterns(conn: &Connection, filter: &Filter) -> AppResult<Vec<Patter
         }
     }
 
+    // Matched on the quoted tag, in any case, as the tag filter does.
+    match filter.book {
+        Some(true) => sql.push_str(" AND LOWER(tags) LIKE '%\"book\"%'"),
+        Some(false) => sql.push_str(" AND LOWER(tags) NOT LIKE '%\"book\"%'"),
+        None => {}
+    }
+
     let order = match filter.sort.as_deref() {
         Some("title") => "title COLLATE NOCASE ASC",
         Some("oldest") => "added_at ASC",
@@ -1100,7 +1138,12 @@ pub fn insert_pattern(
     } else {
         ""
     };
-    let tags_json = serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".to_string());
+    // An EPUB is a book's format: tagged so, it is under Books from the start.
+    let mut tags = input.tags.clone();
+    if format == "epub" && !tags.iter().any(|t| t.eq_ignore_ascii_case("book")) {
+        tags.push("book".to_string());
+    }
+    let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
     let added = now_ms();
 
     conn.execute(

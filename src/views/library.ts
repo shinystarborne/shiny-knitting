@@ -30,6 +30,30 @@ import { sizeLabel } from "./needle-size";
  * job you run over the whole shelf, and because the results are most useful
  * laid out next to the cards they changed.
  */
+/**
+ * Patterns or Books: which the library shows, kept while the app is open and
+ * remembered after. A book is anything tagged `book`: a file the model reads
+ * as several patterns, and every EPUB.
+ */
+const shelf = { books: readBooks() };
+
+function readBooks(): boolean {
+  try {
+    return localStorage.getItem("library:shelf") === "books";
+  } catch {
+    return false;
+  }
+}
+
+function keepBooks(books: boolean): void {
+  shelf.books = books;
+  try {
+    localStorage.setItem("library:shelf", books ? "books" : "patterns");
+  } catch {
+    // Remembered for this run only.
+  }
+}
+
 export class LibraryView {
   /**
    * The screen this view is mounted into.
@@ -41,7 +65,7 @@ export class LibraryView {
    */
   private screen: HTMLElement;
   private root!: HTMLElement;
-  private filter: Filter = { sort: "recent" };
+  private filter: Filter = { sort: "recent", book: shelf.books };
   private facets: FacetValues = { designers: [], designerCounts: [], needleSizes: [], yarnWeights: [], tags: [], tagCounts: [] };
   /**
    * The designers ticked. Kept here rather than read off the boxes, because
@@ -66,7 +90,10 @@ export class LibraryView {
     this.root.className = "library";
     this.root.innerHTML = `
       <header class="lib-bar">
-        <h1>Patterns</h1>
+        <div class="seg lib-shelf" role="tablist" aria-label="Patterns or books">
+          <button data-shelf="patterns" class="${shelf.books ? "" : "on"}" title="Single patterns">Patterns</button>
+          <button data-shelf="books" class="${shelf.books ? "on" : ""}" title="Books, magazines and collections: everything tagged “book”">Books</button>
+        </div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search title, designer, notes..." />
           <select class="sort">
@@ -80,7 +107,7 @@ export class LibraryView {
           <button data-act="bin" class="ghost" hidden title="Patterns removed in the last 30 days, to bring back"></button>
           <button data-act="scan" class="ghost lib-icon" hidden aria-label="Describe patterns with your model"
             title="Describe patterns with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
-          <button data-act="add" class="primary">+ Add pattern</button>
+          <button data-act="add" class="primary">${shelf.books ? "+ Add book" : "+ Add pattern"}</button>
           <button data-act="add-folder" class="ghost" title="Add every PDF and EPUB in a folder">Add folder…</button>
         </div>
       </header>
@@ -202,13 +229,16 @@ export class LibraryView {
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
+    const shelfBtn = closestEl(e.target, "button[data-shelf]");
+    if (shelfBtn) return this.showShelf(shelfBtn.dataset.shelf === "books");
     const btn = closestEl(e.target, "button[data-act]");
     if (btn) {
       const act = btn.dataset.act;
+      // Added under Books, a file is a book.
       if (act === "add") {
-        this.root.dispatchEvent(new CustomEvent("add-pattern", { bubbles: true }));
+        this.root.dispatchEvent(new CustomEvent("add-pattern", { bubbles: true, detail: { book: shelf.books } }));
       } else if (act === "add-folder") {
-        this.root.dispatchEvent(new CustomEvent("add-folder", { bubbles: true }));
+        this.root.dispatchEvent(new CustomEvent("add-folder", { bubbles: true, detail: { book: shelf.books } }));
       } else if (act === "clear") {
         this.clearFilters();
         await this.reload();
@@ -716,7 +746,7 @@ export class LibraryView {
   }
 
   private clearFilters(): void {
-    this.filter = { sort: this.filter.sort };
+    this.filter = { sort: this.filter.sort, book: shelf.books };
     this.designers.clear();
     this.root.querySelectorAll<HTMLInputElement>(".facet-search").forEach((i) => (i.value = ""));
     this.renderDesigners();
@@ -794,12 +824,16 @@ export class LibraryView {
           <h2>${
             this.filter.search || this.filter.status
               ? "Nothing matches those filters"
-              : "No patterns yet"
+              : shelf.books
+                ? "No books yet"
+                : "No patterns yet"
           }</h2>
           <p>${
             this.filter.search || this.filter.status
               ? "Try removing a filter."
-              : "Add a PDF or EPUB to get started."
+              : shelf.books
+                ? "A book is anything tagged “book”: every EPUB, and a PDF of several patterns — Describe tags those, or add the tag yourself."
+                : "Add a PDF or EPUB to get started."
           }</p>
         </div>`;
       return;
@@ -811,6 +845,17 @@ export class LibraryView {
       pictures: ".card",
       paint: (card) => this.fillCard(card),
     });
+  }
+
+  /** Patterns or Books, the filters kept as they are. */
+  private async showShelf(books: boolean): Promise<void> {
+    if (books === shelf.books) return;
+    keepBooks(books);
+    this.filter.book = books;
+    for (const b of this.root.querySelectorAll<HTMLElement>("[data-shelf]")) b.classList.toggle("on", (b.dataset.shelf === "books") === books);
+    this.root.querySelector<HTMLElement>('[data-act="add"]')!.textContent = books ? "+ Add book" : "+ Add pattern";
+    this.results.scrollTop = 0;
+    await this.reload();
   }
 
   private async fillCard(card: HTMLElement): Promise<void> {

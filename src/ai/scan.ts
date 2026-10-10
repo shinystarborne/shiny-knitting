@@ -1,5 +1,5 @@
 import { api, toBytes, type AiSettingsView, type Pattern, type SuggestionResult } from "../api";
-import { excerptImages, extractExcerpt } from "./excerpt";
+import { excerptImages, extractExcerpt, pageCount } from "./excerpt";
 import { forgetCover } from "../covers";
 
 /**
@@ -82,6 +82,8 @@ export class MetadataScanner {
         // Scans and photographs have no text layer at all, so when there is
         // none the pages are rendered and sent as pictures instead.
         excerpt.trim() ? [] : await excerptImages(pattern.format, bytes),
+        // The length says a good deal about whether it is a book.
+        (await pageCount(pattern.format, bytes)) || null,
       );
       if (result.failed) {
         return { ...base, ok: false, error: result.error, changed: [], applied: false };
@@ -134,6 +136,7 @@ export async function scanOne(
     // See the note in the scanner: no text means the pages are sent as
     // pictures for a model that can see them.
     excerpt.trim() ? [] : await excerptImages(pattern.format, bytes),
+    (await pageCount(pattern.format, bytes)) || null,
   );
 }
 

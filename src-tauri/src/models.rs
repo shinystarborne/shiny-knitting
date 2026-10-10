@@ -781,6 +781,10 @@ pub struct Suggestion {
     pub tags: Vec<String>,
     /// One or two sentences on what the pattern is, for the notes field.
     pub summary: String,
+    /// The file holds several patterns: a book, a magazine, a collection.
+    /// Written as the tag `book`, which puts it under Books.
+    #[serde(default)]
+    pub book: bool,
 }
 
 /// A suggestion plus what it would change, so the UI can show the difference

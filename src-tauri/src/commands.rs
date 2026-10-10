@@ -920,6 +920,7 @@ pub async fn suggest_metadata(
     pattern_id: String,
     excerpt: String,
     images: Option<Vec<String>>,
+    pages: Option<u32>,
 ) -> CmdResult<SuggestionResult> {
     let settings = unlocked_ai_settings(&state)?;
     // Switched off means nothing is sent, whatever asks.
@@ -952,7 +953,7 @@ pub async fn suggest_metadata(
     // the pictures instead and told not to guess at what it cannot see.
     let (user, images) = if excerpt.trim().is_empty() {
         (
-            crate::ai::build_vision_prompt(&before.title, &before.file_name, images.len()),
+            crate::ai::build_vision_prompt(&before.title, &before.file_name, images.len(), pages),
             images,
         )
     } else {
@@ -963,6 +964,7 @@ pub async fn suggest_metadata(
                 // Cleaned here rather than in the frontend, so the budget in
                 // settings is the one that actually applies.
                 &crate::ai::clean_excerpt(&excerpt, settings.max_characters),
+                pages,
             ),
             // Text is readable, so the pages are not sent as well.
             Vec::new(),

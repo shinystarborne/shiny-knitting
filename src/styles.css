@@ -3417,6 +3417,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button:hover { color: var(--text); background: transparent; }
 .seg button.on { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+/* Patterns | Books, where the library's heading was. */
+.lib-shelf button { padding: 7px 18px; font-size: 15px; }
 
 .swatch-grid { grid-template-columns: repeat(auto-fill, 230px); align-content: start; }
 .swatch-card {

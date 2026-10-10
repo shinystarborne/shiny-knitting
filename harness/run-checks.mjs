@@ -56,7 +56,7 @@ async function main() {
     await wait(500);
   }
 
-  for (const name of ["__layoutChecks", "__rowChecks", "__annotationChecks", "__bulkAddChecks", "__updateChecks", "__yarnStashChecks", "__toolChecks", "__projectChecks", "__yarnWeightChecks", "__needleSizeChecks", "__shoppingChecks", "__peopleChecks", "__swatchChecks", "__calculatorChecks", "__logChecks", "__chartChecks", "__stashHistoryChecks", "__savePagesChecks", "__planChecks", "__galleryChecks", "__counterProjectChecks", "__backupChecks", "__binChecks", "__uploadChecks", "__chartLineChecks", "__cropChecks", "__pinFrontChecks", "__zoomChecks", "__pageModeChecks", "__themeChecks", "__besideChecks", "__markMoveChecks", "__eraserChecks", "__textMarkChecks", "__openExternalChecks", "__missingFileChecks"]) {
+  for (const name of ["__layoutChecks", "__rowChecks", "__annotationChecks", "__bulkAddChecks", "__updateChecks", "__yarnStashChecks", "__toolChecks", "__projectChecks", "__yarnWeightChecks", "__needleSizeChecks", "__shoppingChecks", "__peopleChecks", "__swatchChecks", "__calculatorChecks", "__logChecks", "__chartChecks", "__stashHistoryChecks", "__savePagesChecks", "__planChecks", "__galleryChecks", "__counterProjectChecks", "__backupChecks", "__binChecks", "__uploadChecks", "__chartLineChecks", "__cropChecks", "__pinFrontChecks", "__zoomChecks", "__pageModeChecks", "__themeChecks", "__besideChecks", "__markMoveChecks", "__eraserChecks", "__textMarkChecks", "__openExternalChecks", "__missingFileChecks", "__booksChecks"]) {
     const exists = await evalJs(`typeof window.${name}`);
     if (exists !== "function") {
       console.log(`${name}: NOT PRESENT (${exists})`);

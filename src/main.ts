@@ -150,8 +150,10 @@ class App {
         void this.showLibrary();
       }
     });
-    this.screen.addEventListener("add-pattern", () => this.openForm(null));
-    this.screen.addEventListener("add-folder", () => void this.addFolder());
+    // From the Books tab, what is added is a book.
+    const asBook = (e: Event) => !!(e as CustomEvent<{ book?: boolean } | null>).detail?.book;
+    this.screen.addEventListener("add-pattern", (e) => this.openForm(null, asBook(e) ? ["book"] : []));
+    this.screen.addEventListener("add-folder", (e) => void this.addFolder(asBook(e)));
     this.screen.addEventListener("open-pattern", (e) => {
       void this.showReader((e as CustomEvent<string>).detail);
     });
@@ -572,7 +574,7 @@ class App {
     await reader.mount();
   }
 
-  private openForm(pattern: Pattern | null): void {
+  private openForm(pattern: Pattern | null, startTags: string[] = []): void {
     const form = new PatternForm(this.freshModal(), pattern, (saved) => {
       if (pattern) {
         // Re-open the reader so metadata edits show immediately.
@@ -583,7 +585,7 @@ class App {
         void this.addCoverInBackground(saved);
         void this.showLibrary();
       }
-    });
+    }, startTags);
     form.open();
   }
 
@@ -746,7 +748,7 @@ class App {
    * one at a time behind a progress panel. Every failure path ends in a
    * message or a quiet return — nothing here throws.
    */
-  private async addFolder(): Promise<void> {
+  private async addFolder(books = false): Promise<void> {
     let path: string | null;
     try {
       path = await open({ directory: true });
@@ -779,6 +781,7 @@ class App {
       await runBulkAdd(host, files, {
         onAdded: (p) => void this.addCoverInBackground(p),
         describeHint: !!ai?.enabled,
+        tags: books ? ["book"] : [],
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

@@ -180,6 +180,8 @@ export interface Filter {
   yarnWeight?: string[];
   tags?: string[];
   sort?: string;
+  /** Books only (true), single patterns only (false), by the tag `book`; left out, both. */
+  book?: boolean;
 }
 
 /** Mirrors `models.rs::Annotation`. */
@@ -1414,8 +1416,8 @@ export const api = {
    * which is the only way to read a scan. Omit it when there is text: sending
    * both wastes the payload and some servers reject a mixed request.
    */
-  suggestMetadata: (patternId: string, excerpt: string, images: string[] = []) =>
-    invoke<SuggestionResult>("suggest_metadata", { patternId, excerpt, images }),
+  suggestMetadata: (patternId: string, excerpt: string, images: string[] = [], pages: number | null = null) =>
+    invoke<SuggestionResult>("suggest_metadata", { patternId, excerpt, images, pages }),
   applySuggestion: (patternId: string, after: Pattern) =>
     invoke<Pattern>("apply_suggestion", { patternId, after }),
   undoLastAiChange: (patternId: string) => invoke<Pattern | null>("undo_last_ai_change", {

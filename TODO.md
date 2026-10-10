@@ -29,6 +29,15 @@ starting; the details are in the sections under the list.
   its weight per ball), or what is left. *0.3.30* A yarn's card says what
   there is now, not what was bought (that is for the Statistics). *0.3.31*
 
+**First, before the rest of the list** (asked for 10 Oct 2026)
+
+- [x] **Books apart from patterns.** Describe tags a file of several patterns
+  (a book, a magazine, a collection) `book`, told its length too; every EPUB
+  is tagged `book`, as it is added and the ones there already, once. The
+  library has two shelves, Patterns and Books, by that tag. *0.3.56*
+- [ ] **Cheatsheets**, a tab of its own: online pages kept to read in the app
+  (shown in a frame), and pages from books in the library.
+
 **Asked for along the way**
 
 - [x] A chart's highlight line steps up the page; counting only on a

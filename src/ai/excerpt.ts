@@ -30,6 +30,23 @@ export async function extractExcerpt(
   return raw.slice(0, Math.max(200, maxChars));
 }
 
+/**
+ * How many pages a PDF has, for the model: a book is told apart from a
+ * pattern as much by its length as by its contents page. 0 when unknown, and
+ * for an EPUB, which has chapters, not pages (and is a book anyway).
+ */
+export async function pageCount(format: "pdf" | "epub", bytes: Uint8Array): Promise<number> {
+  if (format !== "pdf") return 0;
+  try {
+    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const n = doc.numPages;
+    await doc.destroy().catch(() => {});
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
 /** How many pages to render when a file has to be read as pictures. */
 const VISION_PAGES = 3;
 /**

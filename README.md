@@ -243,6 +243,11 @@ app a path and the file is copied on the Rust side; a dropped file has no path,
 so its contents travel across raw, as bytes, and are written off the main
 thread.
 
+**Patterns and Books.** The library has two shelves, switched at its top:
+**Patterns**, the single ones, and **Books**, everything tagged `book`. Adding
+a tag moves a pattern between them, and the shelf you were on is remembered.
+Added from Books, a file is tagged `book` from the start.
+
 **Add folder…** adds a whole folder at once: every PDF and EPUB under it,
 subfolders included, is copied in with its title taken from the file name. A
 progress panel lists each file as it lands and can be stopped partway; anything
@@ -996,6 +1001,11 @@ shows you a before/after table. A run over the library carries on while you use
 the rest of the app: its panel can be minimised to a small bar, or closed, which
 leaves a robot and the count beside the settings gear to bring it back. **Stop**
 ends it after the pattern being read. Cards update one by one as it goes.
+
+It also says whether a file is a **book**: several patterns in one (a book, a
+magazine, a collection). It is told the file's length as well as shown its
+front, and a book is tagged `book`. Every EPUB is tagged `book` too, as it is
+added (and the ones already in the library once, on updating).
 
 The model is configured under **Settings**, and there is no provider list: any
 model serving an OpenAI-compatible API works, which covers Ollama, LM Studio,

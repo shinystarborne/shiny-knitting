@@ -27,7 +27,8 @@ Schema:
   "yarnWeight": string,      // the yarn weight, e.g. "DK", "4-ply worsted", "100 m/100g"
   "yarn": string,            // the yarn or fibre named, empty string if not stated
   "tags": string[],          // 2-6 short lowercase tags describing the object and technique
-  "summary": string          // one sentence on what the pattern makes
+  "summary": string,         // one sentence on what the pattern makes
+  "book": boolean            // true when the file holds several separate patterns: a book, a magazine, a collection
 }
 
 Rules:
@@ -41,12 +42,25 @@ Rules:
   merge several sizes into one phrase.
 - Tags must be single words or short lowercase phrases, no punctuation.
 - difficulty must be one of the four listed words, never blank.
+- book is true for a book, a magazine or a collection of patterns: a contents
+  page listing several designs, several pattern names, or many pages (a single
+  pattern is rarely over 30). It is false for one pattern, even one in several
+  sizes or with several pieces. For a book, the summary says what it collects.
 "#;
 
+/// What the prompt says of the file's length, when it is known.
+fn pages_line(pages: Option<u32>) -> String {
+    match pages {
+        Some(n) if n > 0 => format!("The file has {n} page{}.\n", if n == 1 { "" } else { "s" }),
+        _ => String::new(),
+    }
+}
+
 /// Builds the user message for one pattern.
-pub fn build_user_prompt(title: &str, file_name: &str, excerpt: &str) -> String {
+pub fn build_user_prompt(title: &str, file_name: &str, excerpt: &str, pages: Option<u32>) -> String {
+    let pages = pages_line(pages);
     format!(
-        "Pattern file: {file_name}\nFilename suggests: {title}\n\n\
+        "Pattern file: {file_name}\nFilename suggests: {title}\n{pages}\n\
          --- BEGIN PATTERN ---\n{excerpt}\n--- END PATTERN ---\n\n\
          Produce the JSON object described in the instructions."
     )
@@ -58,14 +72,15 @@ pub fn build_user_prompt(title: &str, file_name: &str, excerpt: &str) -> String 
 /// image and there is no text layer at all. Reading the picture is then the
 /// only way to learn anything, so the pages are sent as images and the model
 /// is asked to describe what it can see.
-pub fn build_vision_prompt(title: &str, file_name: &str, page_count: usize) -> String {
+pub fn build_vision_prompt(title: &str, file_name: &str, page_count: usize, file_pages: Option<u32>) -> String {
+    let length = pages_line(file_pages);
     let pages = if page_count == 1 {
         "1 page image follows".to_string()
     } else {
         format!("{page_count} page images follow, in order")
     };
     format!(
-        "Pattern file: {file_name}\nFilename suggests: {title}\n\n\
+        "Pattern file: {file_name}\nFilename suggests: {title}\n{length}\n\
          This file has no text layer: it is a scan or a photograph, and there is \
          nothing to extract with text search. The {pages}, and you must read the \
          pattern from what you can see in them.\n\n\
@@ -219,7 +234,15 @@ pub fn parse_suggestion(value: &serde_json::Value) -> Suggestion {
     tags.dedup();
     tags.truncate(8);
 
+    // A yes can come back as true, "true" or "yes".
+    let book = match value.get("book") {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::String(s)) => matches!(s.trim().to_lowercase().as_str(), "true" | "yes"),
+        _ => false,
+    };
+
     Suggestion {
+        book,
         designer: text("designer").chars().take(120).collect(),
         difficulty: difficulty.to_string(),
         needle_size: text("needleSize")
@@ -480,6 +503,15 @@ mod tests {
     }
 
     #[test]
+    fn reads_whether_it_is_a_book() {
+        let yes = |json: &str| parse_suggestion(&extract_json_object(json).unwrap()).book;
+        assert!(yes(r#"{"book":true}"#));
+        assert!(yes(r#"{"book":"yes"}"#));
+        assert!(!yes(r#"{"book":false}"#));
+        assert!(!yes(r#"{"designer":"Someone"}"#));
+    }
+
+    #[test]
     fn accepts_tags_as_a_comma_separated_string() {
         let v = extract_json_object(r#"{"tags":"lace, socks ,  colourwork"}"#).unwrap();
         // Tags come back sorted, so a comparison must not depend on the order
@@ -551,7 +583,9 @@ mod tests {
 
     #[test]
     fn the_user_prompt_carries_the_excerpt() {
-        let prompt = build_user_prompt("A Sock", "a-sock.pdf", "Gauge 28 sts");
+        let prompt = build_user_prompt("A Sock", "a-sock.pdf", "Gauge 28 sts", Some(4));
+        assert!(prompt.contains("The file has 4 pages."));
+        assert!(!build_user_prompt("A Sock", "a-sock.pdf", "Gauge 28 sts", None).contains("page"));
         assert!(prompt.contains("a-sock.pdf"));
         assert!(prompt.contains("A Sock"));
         assert!(prompt.contains("Gauge 28 sts"));

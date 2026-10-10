@@ -32,7 +32,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 10000): Pr
 }
 
 interface StubStore {
-  patterns: { id: string; needleSize: string }[];
+  patterns: { id: string; needleSize: string; tags: string[] }[];
   needleSizeDisplay?: string;
 }
 
@@ -117,7 +117,8 @@ export async function verifyNeedleSizes() {
     check(results, "a second ticked size ORs rather than narrows", ored.length >= four.length && ored.includes("p1") && ored.includes("p3"), ored.join(","));
 
     (document.querySelector('.library [data-act="clear"]') as HTMLElement).click();
-    await waitFor(() => cardIds().length === store.patterns.length, "the cleared filters");
+    // Every pattern but the books, which are under Books.
+    await waitFor(() => cardIds().length === store.patterns.filter((p) => !p.tags.some((t) => t.toLowerCase() === "book")).length, "the cleared filters");
 
     // The display setting: saved, the re-mounted library spells every size in
     // metric only.
