@@ -35,6 +35,9 @@ starting; the details are in the sections under the list.
   (a book, a magazine, a collection) `book`, told its length too; every EPUB
   is tagged `book`, as it is added and the ones there already, once. The
   library has two shelves, Patterns and Books, by that tag. *0.3.56*
+- [x] **Yarns held together**, a calculator: strands' metres per 100 g in,
+  the yarn they make out, as the yarnicalc bot does; from the stash too.
+  *0.3.57*
 - [ ] **Cheatsheets**, a tab of its own: online pages kept to read in the app
   (shown in a frame), and pages from books in the library.
 

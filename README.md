@@ -604,6 +604,11 @@ typed in.
   `*K13, M1* 4 times, *K12, M1* 4 times` — with a minus for decreasing.
 - **Re-gauge a pattern**: its counts at your gauge for the same size, and what
   they would measure knitted as written.
+- **Yarns held together**: each strand's metres per 100 g, typed or picked
+  from the stash, and what they make as one yarn (1066 and 1500 m/100 g come
+  to 623) with its weight; how much of every 100 g each strand is, how many
+  grams of each for the metres you need, and whether it is within 10% of the
+  yarn it is to match.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 

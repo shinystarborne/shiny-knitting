@@ -1,12 +1,13 @@
-import { api, isLive, type MeasureUnit, type Person, type Project, type Swatch } from "../api";
+import { api, isLive, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
 import { say } from "../dialogs";
 import { closestEl } from "../dom";
-import { cardigan, cardiganSteps, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
+import { cardigan, cardiganSteps, heldTogether, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
+import { familyByMetres } from "./yarn-weight";
 
-type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "charts";
+type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "held" | "charts";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "raglan", label: "Raglan sweater", hint: "Top-down, bottom-up, or a cardigan" },
@@ -14,6 +15,7 @@ const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
   { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
+  { key: "held", label: "Yarns held together", hint: "Two strands or more, as one yarn" },
   { key: "charts", label: "Colourwork charts", hint: "Standard, or a round yoke's" },
 ];
 
@@ -84,6 +86,8 @@ export class CalculatorsView {
   private people: Person[] = [];
   private swatches: Swatch[] = [];
   private projects: Project[] = [];
+  /** The stash's yarns with metres and grams per ball, to add as strands. */
+  private yarns: Yarn[] = [];
   private unit: MeasureUnit = "cm";
   /** The latest result as text, for Copy and Save. */
   private plan: { title: string; text: string } | null = null;
@@ -93,12 +97,23 @@ export class CalculatorsView {
   }
 
   async mount(): Promise<void> {
-    [this.people, this.swatches, this.projects, this.unit] = await Promise.all([
+    let yarns: Yarn[];
+    [this.people, this.swatches, this.projects, this.unit, yarns] = await Promise.all([
       api.listPeople().catch(() => [] as Person[]),
       api.listSwatches().catch(() => [] as Swatch[]),
       api.listProjects().catch(() => [] as Project[]),
       api.getMeasureUnit().catch(() => "cm" as const),
+      api.listYarns().catch(() => [] as Yarn[]),
     ]);
+    // One of each yarn, by brand and name: its colours are the same thickness.
+    const seen = new Set<string>();
+    this.yarns = yarns
+      .filter((y) => y.metresPerBall > 0 && y.gramsPerBall > 0)
+      .filter((y) => {
+        const k = `${y.brand}|${y.name}`.toLowerCase();
+        return seen.has(k) ? false : (seen.add(k), true);
+      })
+      .sort((a, b) => `${a.brand} ${a.name}`.localeCompare(`${b.brand} ${b.name}`));
     // Remembered lengths and gauges are as typed, in the unit of the time:
     // read in another they would be wrong, so a change of unit starts afresh.
     if (kept.unit && kept.unit !== this.unit) kept.values = {};
@@ -192,6 +207,7 @@ export class CalculatorsView {
     if (calc === "size") this.main.innerHTML = this.sizeForm();
     if (calc === "evenly") this.main.innerHTML = this.evenlyForm();
     if (calc === "regauge") this.main.innerHTML = this.regaugeForm();
+    if (calc === "held") this.main.innerHTML = this.heldForm();
     if (calc === "charts") {
       this.main.innerHTML = "";
       void new ChartList(this.main).mount();
@@ -303,6 +319,74 @@ export class CalculatorsView {
       </div>`;
   }
 
+  private heldForm(): string {
+    return `
+      <div class="calc-grid">
+        <section class="calc-inputs">
+          <h2>Yarns held together</h2>
+          <p class="hint">Knitting two strands or more as one: how thick that yarn is, by its metres per 100 g.</p>
+          <label class="field">
+            <span>Each strand, in metres per 100 g</span>
+            <input data-k="strands" value="${esc(kept.values.strands ?? "")}" placeholder="e.g. 350, 1066, 1500" />
+          </label>
+          ${
+            this.yarns.length
+              ? `<label class="field"><span>Add a strand from the stash</span>
+            <select data-k="fromStash">
+              <option value="">Pick a yarn…</option>
+              ${this.yarns.map((y) => `<option value="${esc(y.id)}">${esc(`${[y.brand, y.name].filter(Boolean).join(" ")}: ${Math.round((y.metresPerBall * 100) / y.gramsPerBall)} m/100 g`)}</option>`).join("")}
+            </select></label>`
+              : ""
+          }
+          <div class="calc-fields">
+            <label class="field calc-field" title="How much of the yarn held together you need, if you know: each strand is needed as long"><span>Metres needed <em class="hint">optional</em></span>
+              <input data-k="heldNeed" inputmode="decimal" value="${esc(kept.values.heldNeed ?? "")}" placeholder="e.g. 800" /></label>
+            <label class="field calc-field" title="The yarn it is to match, as for the rest of the project: within 10% is close enough"><span>Compare with <em class="hint">m/100 g, optional</em></span>
+              <input data-k="heldMatch" inputmode="decimal" value="${esc(kept.values.heldMatch ?? "")}" placeholder="e.g. 200" /></label>
+          </div>
+        </section>
+        <section class="calc-results" data-el="results"></section>
+      </div>`;
+  }
+
+  private heldResult(): string {
+    const strands = (kept.values.strands ?? "")
+      .split(/[,;\s]+/)
+      .map((t) => Number(t.replace(",", ".")))
+      .filter((n) => n > 0);
+    this.need(strands.length > 0, "Give each strand's metres per 100 g: 1066, 1500.");
+    const held = heldTogether(strands)!;
+    const m = Math.round(held.metres);
+    const weight = familyByMetres(held.metres);
+    const need = this.num("heldNeed");
+    const match = this.num("heldMatch");
+    const rows = strands.map((s, i) => [
+      `${s} m/100 g`,
+      `${held.grams[i].toFixed(1)} g`,
+      need > 0 ? `${need} m: ${Math.ceil((need * 100) / s)} g` : "",
+    ]);
+    const diff = match > 0 ? ((held.metres - match) / match) * 100 : null;
+    const compare =
+      diff === null
+        ? ""
+        : `<p class="${Math.abs(diff) <= 10 ? "hint" : "calc-warnings-p"}">${esc(
+            `Against ${match} m/100 g it is ${Math.abs(diff) < 0.5 ? "the same" : `${Math.abs(Math.round(diff))}% ${diff > 0 ? "thinner" : "thicker"}`}: ${
+              Math.abs(diff) <= 10 ? "close enough, within 10%." : "more than 10% apart, so it will knit up differently. Add or take a strand, or change one."
+            }`,
+          )}</p>`;
+    const text = `${strands.length} strands held together (${strands.map((s) => `${s}`).join(", ")} m/100 g) make ${m} m/100 g: ${weight.label}.`;
+    this.plan = {
+      title: "Yarns held together",
+      text: [text, ...strands.map((s, i) => `${s} m/100 g: ${held.grams[i].toFixed(1)} g in every 100 g${need > 0 ? `; for ${need} m, ${Math.ceil((need * 100) / s)} g` : ""}`)].join("\n"),
+    };
+    return `${this.resultHead("Held together")}
+      <p class="calc-big"><b>${m} m/100 g</b> <span class="hint">${esc(`${weight.label} (${weight.aka}), on ${weight.needles} needles`)}</span></p>
+      ${strands.length > 1 ? table(rows.map((r) => (need > 0 ? r : r.slice(0, 2))), need > 0 ? ["Strand", "In 100 g of it", "For what you need"] : ["Strand", "In 100 g of it"]) : `<p class="hint">One strand is itself: add another to hold with it.</p>`}
+      ${compare}
+      <p class="hint">A metre of the yarn held together weighs what a metre of each strand weighs, added up. Knit a swatch: strands held together knit up a little thicker than one yarn of the same weight.</p>
+      ${this.actions()}`;
+  }
+
   private regaugeForm(): string {
     const span = gaugeSpan(this.unit);
     return `
@@ -348,6 +432,7 @@ export class CalculatorsView {
       if (calc === "size") out.innerHTML = this.sizeResult();
       if (calc === "evenly") out.innerHTML = this.evenlyResult();
       if (calc === "regauge") out.innerHTML = this.regaugeResult();
+      if (calc === "held") out.innerHTML = this.heldResult();
     } catch (err) {
       out.innerHTML = `<p class="calc-wait">${esc(err instanceof Error ? err.message : String(err))}</p>`;
     }
@@ -654,6 +739,17 @@ export class CalculatorsView {
       if (fit) this.setField("bodyEase", fit.ease ? showLength(fit.ease, this.unit) : "0");
     }
     if (key === "round" || key === "countsAre") kept.values[key] = el.value;
+    // A yarn from the stash: its metres per 100 g put after the strands there are.
+    if (key === "fromStash") {
+      delete kept.values.fromStash;
+      const yarn = this.yarns.find((y) => y.id === el.value);
+      el.value = "";
+      if (yarn) {
+        const now = (kept.values.strands ?? "").trim();
+        const m = Math.round((yarn.metresPerBall * 100) / yarn.gramsPerBall);
+        this.setField("strands", now ? `${now.replace(/[,;\s]+$/, "")}, ${m}` : `${m}`);
+      }
+    }
     if (key === "direction") {
       const hint = this.main.querySelector<HTMLElement>(".calc-inputs h2 .hint");
       if (hint) hint.textContent = workedHint(el.value);

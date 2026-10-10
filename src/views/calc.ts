@@ -115,6 +115,28 @@ export function spreadEvenly(stitches: number, change: number, inRound: boolean)
   return { to: n + c, text: `${parts.join(", ")}.`, gaps };
 }
 
+// ---------- yarns held together ----------
+
+export interface Held {
+  /** The strands together, in metres per 100 g. */
+  metres: number;
+  /** Grams of each strand in 100 g of the yarn held together, in the order given. */
+  grams: number[];
+}
+
+/**
+ * Strands held together as one yarn: a metre of it weighs what a metre of
+ * each weighs, added up, so its metres per 100 g is one over the sum of one
+ * over each (350, 1066 and 1500 m/100 g come to 214). Each strand's share of
+ * the weight is its own weight per metre over theirs together.
+ */
+export function heldTogether(metresPer100g: number[]): Held | null {
+  const strands = metresPer100g.filter((m) => m > 0);
+  if (!strands.length) return null;
+  const perMetre = strands.reduce((sum, m) => sum + 1 / m, 0);
+  return { metres: 1 / perMetre, grams: strands.map((m) => (100 * (1 / m)) / perMetre) };
+}
+
 // ---------- re-gauging a pattern ----------
 
 /** A pattern's count at its gauge, worked out at mine: the count for the same size, and the size as written. */

@@ -6,7 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
-import { backNeck, cardigan, cardiganSteps, even, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, ribCount, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
+import { backNeck, cardigan, cardiganSteps, even, heldTogether, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, ribCount, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
   name: string;
@@ -101,6 +101,11 @@ function pure(results: CheckResult[]): void {
   check(results, "…its steps: flat, increasing on right-side rows, the bands and neckband picked up", cardSteps[0] === `Cast on ${card.castOn} stitches. Work flat, in rows.` && cardSteps.some((t) => /every right-side row 28 times/.test(t)) && cardSteps.some((t) => /^Buttonhole band/.test(t)) && cardSteps.some((t) => /^Neckband: pick up/.test(t)), cardSteps.join(" | "));
   check(results, "…a band wider than the neck's front is said", "error" in cardigan(ADULT, 30, 6));
   const cmLen = (cm: number) => `${Math.round(cm * 10) / 10} cm`;
+  // As the yarnicalc bot answers them.
+  const heldM = (ms: number[]) => Math.round(heldTogether(ms)!.metres);
+  check(results, "strands held together: 1066 and 1500 m/100 g make 623", heldM([1066, 1500]) === 623 && heldM([350, 1066, 1500, 1000]) === 183 && heldM([326, 1066, 1500]) === 214 && heldM([750, 1066, 1500]) === 340, [heldM([1066, 1500]), heldM([350, 1066, 1500, 1000]), heldM([326, 1066, 1500]), heldM([750, 1066, 1500])].join(" "));
+  const shares = heldTogether([1000, 1000])!.grams;
+  check(results, "…two the same share the weight half and half, and one alone is itself", shares[0] === 50 && shares[1] === 50 && heldM([400]) === 400 && heldTogether([]) === null);
   const LOPI_RIB: RaglanInput = { ...ADULT, gauge: { sts: 18, rows: 24 }, chest: 96, upperArm: 31, wrist: 17, neck: 38, yokeDepth: 23, armLength: 46, bodyLength: 38, bodyEase: 10, wristEase: 3, neckRib: 3, hemRib: 6, cuffRib: 6 };
   check(results, "a rib's count: whole repeats in the round, half a repeat more flat", ribCount(102, 4) === 104 && ribCount(102, 4, true) === 102 && ribCount(104, 4, true) === 106 && ribCount(100, 2, true) === 101 && ribCount(103, 0) === 103 && ribCount(103) === 103);
   // A raglan's neck needs nothing: with the hem a multiple of 4, its halves less the underarms are even, and the lines keep it so.
@@ -197,7 +202,7 @@ export async function verifyCalculators() {
 
     tab("calculators");
     await waitFor(() => !!view()?.querySelector(".calc-inputs"), "the calculators");
-    check(results, "the tab lists the calculators, the raglan first", [...view()!.querySelectorAll<HTMLElement>(".calc-pick")].map((b) => b.dataset.calc).join(",") === "raglan,yoke,size,evenly,regauge,charts" && !!view()!.querySelector('.calc-pick.on[data-calc="raglan"]'));
+    check(results, "the tab lists the calculators, the raglan first", [...view()!.querySelectorAll<HTMLElement>(".calc-pick")].map((b) => b.dataset.calc).join(",") === "raglan,yoke,size,evenly,regauge,held,charts" && !!view()!.querySelector('.calc-pick.on[data-calc="raglan"]'));
     check(results, "with nothing given, it says what it needs first", /Give your gauge/.test(results_()), results_());
 
     // A swatch gives the gauge; typing one over it un-picks the swatch.
@@ -304,6 +309,26 @@ export async function verifyCalculators() {
     type("counts", "100, 120");
     const rows = [...view()!.querySelectorAll(".calc-table tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map((td) => td.textContent).join(" | "));
     check(results, "a pattern's counts at your gauge, and what they make as written", rows[0]?.startsWith("100 sts | 110 sts | 50 cm; as written 45.5 cm") && rows[1]?.startsWith("120 sts | 132 sts"), rows.join(" / "));
+
+    pick("held");
+    type("strands", "1066, 1500");
+    check(results, "Yarns held together: 1066 and 1500 make 623 m/100 g, a weight named", /623 m\/100 g/.test(results_()) && /Lace|Fingering|Sport|DK|Worsted|Aran|Bulky|Chunky/.test(results_()), results_());
+    type("heldNeed", "500");
+    const heldRows = [...view()!.querySelectorAll(".calc-table tbody tr")].map((tr) => tr.textContent ?? "");
+    check(results, "…each strand's share of 100 g, and the grams of it for 500 m", heldRows.length === 2 && /58\.5 g/.test(heldRows[0]) && /500 m: 47 g/.test(heldRows[0]) && /500 m: 34 g/.test(heldRows[1]), heldRows.join(" / "));
+    type("heldMatch", "600");
+    check(results, "…against 600 m/100 g, close enough", /close enough, within 10%/.test(results_()), results_());
+    type("heldMatch", "400");
+    check(results, "…against 400, more than 10% apart", /more than 10% apart/.test(results_()), results_());
+    const fromStash = field("fromStash") as unknown as HTMLSelectElement | null;
+    const option = fromStash ? [...fromStash.options].find((o) => o.value) : null;
+    if (fromStash && option) {
+      const m = /(\d+) m\/100 g$/.exec(option.textContent ?? "")![1];
+      type("fromStash", option.value);
+      check(results, "…a yarn from the stash adds its metres per 100 g as a strand", field("strands")!.value === `1066, 1500, ${m}` && fromStash.value === "", field("strands")!.value);
+    } else {
+      check(results, "…the stash's yarns are offered as strands", false, "no yarn with metres and grams per ball");
+    }
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
