@@ -3731,6 +3731,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .chart-colour-edit input[type="color"] { width: 40px; height: 30px; flex: none; cursor: pointer; }
 .chart-colour-edit input[data-f="colour-name"] { width: 170px; padding: 4px 8px; }
 .chart-colour-edit button { padding: 4px 10px; font-size: 12px; }
+.chart-colour-yarn { max-width: 260px; padding: 4px 8px; font-size: 13px; }
 
 .chart-work { flex: 1; min-height: 0; display: flex; }
 .chart-scroll { flex: 1; min-width: 0; overflow: auto; padding: 16px; background: #0f1114; }

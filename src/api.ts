@@ -930,6 +930,9 @@ export interface ChartColour {
   name: string;
   /** "#rrggbb". */
   hex: string;
+  /** The stash yarn knitted in this colour, and what it was called when chosen: the legend names it. */
+  yarnId?: string;
+  yarn?: string;
 }
 
 /**

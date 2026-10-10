@@ -126,7 +126,8 @@ starting; the details are in the sections under the list.
 27. [x] Select, copy and paste a block of squares. Select (S), Copy, Cut,
     Paste as often as clicked, flipped; into another chart too, its colours
     matched. *0.3.60*
-28. [ ] A chart's colours linked to stash yarns, named in the legend.
+28. [x] A chart's colours linked to stash yarns, named in the legend.
+    *0.3.61*
 29. [ ] Knitting from a chart: on a project's page, the current row marked
     and counted.
 30. [ ] The round yoke calculator and a yoke chart together.

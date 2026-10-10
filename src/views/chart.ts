@@ -694,6 +694,11 @@ export function readingNote(g: Grid): string {
     : "Worked in the round: every round is knitted and read from the right.";
 }
 
+/** A colour as the legend names it: with its yarn, when one is chosen. */
+export function colourLabel(c: ChartColour): string {
+  return c.yarn ? `${c.name} (${c.yarn})` : c.name;
+}
+
 /** The chart in words, as one text: a heading, how to read it, the colours, the rows. */
 export function writtenText(name: string, g: Grid): string {
   const counts = usage(g);
@@ -701,7 +706,7 @@ export function writtenText(name: string, g: Grid): string {
     name,
     describe(g),
     readingNote(g),
-    `Colours: ${g.colours.map((c, i) => `${c.name} (${counts[i]} sts)`).join(", ")}.`,
+    `Colours: ${g.colours.map((c, i) => `${colourLabel(c)}: ${counts[i]} sts`).join("; ")}.`,
     "",
     ...writeOut(g).map((r) => `${r.label}: ${r.text}`),
     ...(g.notes.trim() ? ["", g.notes.trim()] : []),

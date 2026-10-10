@@ -79,6 +79,13 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
         if c.name.is_empty() {
             c.name = format!("Colour {}", i + 1);
         }
+        c.yarn = line(&c.yarn, 120);
+        c.yarn_id = line(&c.yarn_id, 60);
+        // A yarn's name without the yarn, or the yarn without a name, is not a link.
+        if c.yarn.is_empty() || c.yarn_id.is_empty() {
+            c.yarn.clear();
+            c.yarn_id.clear();
+        }
     }
 
     let squares = (d.width * d.height) as usize;
@@ -254,7 +261,7 @@ mod tests {
     use crate::models::{ChartColour, ChartData, ChartSection};
 
     fn colours(n: usize) -> Vec<ChartColour> {
-        (0..n).map(|i| ChartColour { name: format!("C{i}"), hex: "#AABBCC".into() }).collect()
+        (0..n).map(|i| ChartColour { name: format!("C{i}"), hex: "#AABBCC".into(), ..Default::default() }).collect()
     }
 
     fn standard(w: i64, h: i64) -> ChartInput {
@@ -293,6 +300,21 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+
+    #[test]
+    fn a_colour_keeps_its_yarn_whole_or_not_at_all() {
+        let mut input = standard(4, 3);
+        input.data.colours[1].yarn_id = "y1".into();
+        input.data.colours[1].yarn = "  Jamieson's   Spindrift, Peat ".into();
+        input.data.colours[0].yarn = "A name with no yarn".into();
+        let c = clean(input).unwrap();
+        assert_eq!(c.data.colours[1].yarn, "Jamieson's Spindrift, Peat");
+        assert_eq!(c.data.colours[1].yarn_id, "y1");
+        assert!(c.data.colours[0].yarn.is_empty() && c.data.colours[0].yarn_id.is_empty());
+        // Not written at all when there is none, so older charts read the same.
+        let json = serde_json::to_string(&c.data.colours[0]).unwrap();
+        assert!(!json.contains("yarn"), "{json}");
     }
 
     #[test]

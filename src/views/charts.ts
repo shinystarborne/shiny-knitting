@@ -1,10 +1,11 @@
-import { api, isLive, type Chart, type MeasureUnit, type Project, type Swatch } from "../api";
+import { api, isLive, type Chart, type MeasureUnit, type Project, type Swatch, type Yarn } from "../api";
 import { askForm, askYesNo, customDialog, dialogOpen, say } from "../dialogs";
 import { blobBytes, prepareBoardImage } from "../covers";
 import { closestEl } from "../dom";
 import {
   clearRect,
   clone,
+  colourLabel,
   copyBlock,
   decode,
   describe,
@@ -21,6 +22,7 @@ import {
   newGrid,
   nextColour,
   normalize,
+  PALETTE,
   pasteBlock,
   readingNote,
   rectBetween,
@@ -289,6 +291,8 @@ export class ChartPage {
   private hover: [number, number] | null = null;
   private swatches: Swatch[] = [];
   private projects: Project[] = [];
+  /** The stash's yarns, to say which a colour is knitted in. */
+  private yarns: Yarn[] = [];
   private unit: MeasureUnit = "cm";
   private onKey = (e: KeyboardEvent) => this.key(e);
   /** Removed: there is nothing to save any more. */
@@ -307,11 +311,12 @@ export class ChartPage {
   async mount(): Promise<void> {
     let chart: Chart;
     try {
-      [chart, this.swatches, this.projects, this.unit] = await Promise.all([
+      [chart, this.swatches, this.projects, this.unit, this.yarns] = await Promise.all([
         api.getChart(this.chartId),
         api.listSwatches().catch(() => [] as Swatch[]),
         api.listProjects().catch(() => [] as Project[]),
         api.getMeasureUnit().catch(() => "cm" as const),
+        api.listYarns().catch(() => [] as Yarn[]),
       ]);
     } catch {
       await say("That chart is no longer there.");
@@ -495,6 +500,8 @@ export class ChartPage {
         return this.change(() => (this.g.colours[this.colour].hex = value.toLowerCase()));
       case "colour-name":
         return this.change(() => (this.g.colours[this.colour].name = value || `Colour ${this.colour + 1}`));
+      case "colour-yarn":
+        return this.change(() => this.linkYarn(this.colour, value));
       case "flat":
         return this.change(() => (this.g.flat = value === "flat"), true);
       case "repeats":
@@ -976,7 +983,7 @@ export class ChartPage {
       <div class="chart-chips">
         ${this.g.colours
           .map(
-            (col, i) => `<button class="chart-chip${i === this.colour ? " on" : ""}" data-colour="${i}" title="${esc(`${col.name}: ${counts[i]} sts${i < 10 ? ` (key ${i === 9 ? 0 : i + 1})` : ""}${i ? "" : ". The background: right-click draws in it"}`)}">
+            (col, i) => `<button class="chart-chip${i === this.colour ? " on" : ""}" data-colour="${i}" title="${esc(`${colourLabel(col)}: ${counts[i]} sts${i < 10 ? ` (key ${i === 9 ? 0 : i + 1})` : ""}${i ? "" : ". The background: right-click draws in it"}`)}">
               <span class="chart-chip-sw" style="background:${esc(col.hex)}"></span><span class="chart-chip-name">${esc(col.name)}</span></button>`,
           )
           .join("")}
@@ -985,8 +992,36 @@ export class ChartPage {
       <div class="chart-colour-edit">
         <input type="color" data-f="colour-hex" value="${esc(c.hex)}" aria-label="The colour" />
         <input data-f="colour-name" value="${esc(c.name)}" aria-label="Its name" maxlength="40" />
+        ${
+          this.yarns.length || c.yarnId
+            ? `<select data-f="colour-yarn" class="chart-colour-yarn" aria-label="The yarn knitted in it" title="The stash yarn knitted in this colour: the legend names it">
+            <option value="">No yarn chosen</option>
+            ${c.yarnId && !this.yarns.some((y) => y.id === c.yarnId) ? `<option value="${esc(c.yarnId)}" selected>${esc(c.yarn ?? "")} (no longer in the stash)</option>` : ""}
+            ${this.yarns.map((y) => `<option value="${esc(y.id)}" ${y.id === c.yarnId ? "selected" : ""}>${esc(yarnLabel(y))}</option>`).join("")}
+          </select>`
+            : ""
+        }
         ${this.colour ? `<button class="ghost danger-text" data-act="remove-colour" title="Its squares go to the background colour">Remove</button>` : `<span class="hint">Background</span>`}
       </div>`;
+  }
+
+  /**
+   * Says which stash yarn a colour is knitted in, or none. A colour still
+   * called as the palette or "Colour 3" calls it takes the yarn's colourway
+   * for its name; one named already keeps its name.
+   */
+  private linkYarn(i: number, yarnId: string): void {
+    const c = this.g.colours[i];
+    const yarn = this.yarns.find((y) => y.id === yarnId);
+    if (!yarn) {
+      delete c.yarnId;
+      delete c.yarn;
+      return;
+    }
+    c.yarnId = yarn.id;
+    c.yarn = yarnLabel(yarn);
+    const unnamed = PALETTE.some((p) => p.name === c.name) || /^Colour \d+$/.test(c.name);
+    if (unnamed && (yarn.colourway || yarn.name)) c.name = (yarn.colourway || yarn.name).slice(0, 40);
   }
 
   private addColour(): void {
@@ -1086,7 +1121,7 @@ export class ChartPage {
     return `
       ${rows.length ? `<table class="calc-table">${rows.map((r) => `<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join("")}</table>` : ""}
       <h3>Stitches in each colour</h3>
-      <ul class="chart-usage">${g.colours.map((c, i) => `<li><span class="chart-chip-sw" style="background:${esc(c.hex)}"></span>${esc(c.name)}<b>${counts[i]}</b></li>`).join("")}</ul>
+      <ul class="chart-usage">${g.colours.map((c, i) => `<li><span class="chart-chip-sw" style="background:${esc(c.hex)}"></span>${esc(colourLabel(c))}<b>${counts[i]}</b></li>`).join("")}</ul>
       ${
         this.floats.length
           ? `<p class="calc-warnings-p">Long floats on ${this.g.flat ? "rows" : "rounds"} ${esc(listRows(this.floats.map((f) => f.row + 1)))}: catch them every few stitches, or break the run up.</p>`
@@ -1426,6 +1461,12 @@ export class ChartPage {
       dialog.show(field("project"));
     });
   }
+}
+
+/** A stash yarn, as a colour's legend names it: "Jamieson's Spindrift, Peat". */
+function yarnLabel(y: Yarn): string {
+  const name = [y.brand, y.name].filter(Boolean).join(" ");
+  return [name, y.colourway].filter(Boolean).join(", ") || "A yarn";
 }
 
 /** "3, 5–7, 12": row numbers, runs joined. */

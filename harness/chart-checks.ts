@@ -11,6 +11,7 @@ import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
   clearRect,
+  colourLabel,
   copyBlock,
   decode,
   encode,
@@ -60,7 +61,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 10000): Pr
   }
 }
 
-type StoredChart = { id: string; name: string; data: { kind: string; cells: string; width: number; height: number; repeats: number; topDown: boolean; sections: { row: number; sts: number; cols: number[] }[] } };
+type StoredChart = { id: string; name: string; data: { kind: string; colours: { name: string; hex: string; yarn?: string; yarnId?: string }[]; cells: string; width: number; height: number; repeats: number; topDown: boolean; sections: { row: number; sts: number; cols: number[] }[] } };
 type Store = {
   charts: StoredChart[];
   boardItems: { id: string; boardId: string; kind: string; data: { text?: string } }[];
@@ -98,6 +99,8 @@ function tally(text: string): { takes: number; makes: number } {
 }
 
 function pure(results: CheckResult[]): void {
+  check(results, "a colour's legend names its yarn, and only when it has one", colourLabel({ name: "Peat", hex: "#333333", yarnId: "y1", yarn: "Jamieson's Spindrift, Peat" }) === "Peat (Jamieson's Spindrift, Peat)" && colourLabel({ name: "Red", hex: "#aa0000" }) === "Red");
+
   // ---------- a block: copied, flipped, pasted ----------
   const src = grid("standard", ["0120", "0310"]);
   src.colours.push({ name: "Red", hex: "#a8322d" }, { name: "Odd", hex: "#ff0000" });
@@ -337,6 +340,19 @@ export async function verifyCharts() {
     click(page(), '[data-tool="draw"]');
     click(page(), '[data-act="add-colour"]');
     check(results, "+ Colour adds the next colour and picks it", page()!.querySelectorAll(".chart-chip").length === 3 && !!page()!.querySelector('.chart-chip.on[data-colour="2"]'));
+
+    // ---------- a colour's yarn ----------
+    const yarnPick = () => page()!.querySelector<HTMLSelectElement>('[data-f="colour-yarn"]')!;
+    const stashYarn = (window as unknown as { __store: { yarns: { id: string; brand: string; name: string; colourway: string }[] } }).__store.yarns.find((y) => y.colourway)!;
+    set(yarnPick(), stashYarn.id);
+    await saved();
+    const linked = stored().data.colours[2] as { name: string; yarn?: string; yarnId?: string };
+    check(results, "a colour linked to a stash yarn: kept with the chart, named by its colourway", linked.yarnId === stashYarn.id && linked.yarn === `${stashYarn.brand} ${stashYarn.name}, ${stashYarn.colourway}` && linked.name === stashYarn.colourway, JSON.stringify(linked));
+    check(results, "…the legend beside it names the yarn", (page()!.querySelector(".chart-usage")?.textContent ?? "").includes(`(${linked.yarn})`), page()!.querySelector(".chart-usage")?.textContent ?? "");
+    set(yarnPick(), "");
+    await saved();
+    const unlinked = stored().data.colours[2] as { name: string; yarn?: string; yarnId?: string };
+    check(results, "…No yarn chosen takes it off, the name kept", !unlinked.yarnId && !unlinked.yarn && unlinked.name === stashYarn.colourway, JSON.stringify(unlinked));
 
     // ---------- a block: selected, copied, pasted ----------
     const canvasEl = () => page()!.querySelector<HTMLCanvasElement>(".chart-canvas")!;

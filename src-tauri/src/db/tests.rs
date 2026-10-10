@@ -3235,7 +3235,7 @@ fn a_chart_is_stored_whole_and_listed_newest_first() {
             width: 2,
             height: 2,
             cells: cells.into(),
-            colours: vec![ChartColour { name: "White".into(), hex: "#ffffff".into() }, ChartColour { name: "Red".into(), hex: "#cc0000".into() }],
+            colours: vec![ChartColour { name: "White".into(), hex: "#ffffff".into(), ..Default::default() }, ChartColour { name: "Red".into(), hex: "#cc0000".into(), ..Default::default() }],
             repeats: 1,
             ..Default::default()
         },

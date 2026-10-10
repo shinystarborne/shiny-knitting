@@ -6,7 +6,7 @@
  * and a yoke seen from above -- are for the screen only, and draw on a
  * canvas directly.
  */
-import { inkOn, range, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
+import { colourLabel, inkOn, range, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
 
 /** Draws in a box whose origin is top left, y going down, in whatever unit the painter uses. */
 export interface Painter {
@@ -195,7 +195,8 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
   let cx = x;
   let cy = y;
   g.colours.forEach((c, i) => {
-    const label = `${c.name}  ${counts[i] ?? 0} sts`;
+    const name = colourLabel(c);
+    const label = `${name}  ${counts[i] ?? 0} sts`;
     const itemW = box + gap + p.measure(label, size) + size * 2;
     if (cx > x && cx + itemW > x + width) {
       cx = x;
@@ -204,8 +205,8 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
     p.rect(cx, cy, box, box, c.hex);
     p.poly([[cx, cy], [cx + box, cy], [cx + box, cy + box], [cx, cy + box]], HEAVY, false, Math.max(0.5, size / 14));
     if (g.symbols && i) drawSymbol(p, i, cx + box / 2, cy + box / 2, box, inkOn(c.hex));
-    p.text(cx + box + gap, cy + box / 2, c.name, size, "#1a1a1a", "left");
-    p.text(cx + box + gap + p.measure(`${c.name}  `, size), cy + box / 2, `${counts[i] ?? 0} sts`, size * 0.9, NUMBERS, "left");
+    p.text(cx + box + gap, cy + box / 2, name, size, "#1a1a1a", "left");
+    p.text(cx + box + gap + p.measure(`${name}  `, size), cy + box / 2, `${counts[i] ?? 0} sts`, size * 0.9, NUMBERS, "left");
     cx += itemW;
   });
   if (g.kind === "yoke" && g.sections.length > 1) {

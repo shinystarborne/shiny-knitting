@@ -1515,6 +1515,12 @@ pub struct ChartColour {
     pub name: String,
     /// "#rrggbb".
     pub hex: String,
+    /// The stash yarn knitted in this colour, if one is chosen, and what it
+    /// was called then: the legend names it without the stash to hand.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub yarn_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub yarn: String,
 }
 
 /// A round yoke's stretch of rounds with the same stitches in each repeat.

@@ -625,7 +625,11 @@ typed in.
   **Paste** (Ctrl+V) floats it under the pointer to put down as many times as
   you click, flipped ↔ or ↕ if you like, until Esc. A block copied pastes into
   another chart too, its colours with it: the chart's own where it has them,
-  added where it has room, else the nearest.
+  added where it has room, else the nearest. Each colour can say which
+  **stash yarn** it is knitted in, picked beside its name: the legend, the
+  PDF and the rows in words then name it ("Peat (Jamieson's Spindrift,
+  Peat)"), and a colour still called by the palette's name takes the yarn's
+  colourway.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 

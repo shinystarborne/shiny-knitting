@@ -1046,6 +1046,13 @@ function cleanChart({ name, data }) {
     if (!/^#[0-9a-f]{6}$/i.test(c.hex.trim())) fail(`“${c.hex}” is not a colour.`);
     c.hex = c.hex.trim().toLowerCase();
     c.name = c.name.split(/\s+/).filter(Boolean).join(" ").slice(0, 40) || `Colour ${i + 1}`;
+    // A yarn chosen, as charts.rs keeps it: both its id and its name, or neither.
+    c.yarn = String(c.yarn ?? "").trim().slice(0, 120);
+    c.yarnId = String(c.yarnId ?? "").trim();
+    if (!c.yarn || !c.yarnId) {
+      delete c.yarn;
+      delete c.yarnId;
+    }
   });
   if (d.cells.length !== d.width * d.height) fail("The chart's squares do not match its size.");
   if (![...d.cells].every((ch) => /^[0-9a-f]$/.test(ch) && parseInt(ch, 16) < d.colours.length)) fail("A square is in a colour the chart does not have.");
