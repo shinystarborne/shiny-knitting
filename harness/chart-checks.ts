@@ -10,13 +10,20 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import {
+  clearRect,
+  copyBlock,
   decode,
   encode,
   fillArea,
   flipped,
+  flippedBlock,
   longFloats,
+  MAX_COLOURS,
   newGrid,
+  nextColour,
   normalize,
+  pasteBlock,
+  rectBetween,
   removeColour,
   resized,
   shifted,
@@ -91,6 +98,35 @@ function tally(text: string): { takes: number; makes: number } {
 }
 
 function pure(results: CheckResult[]): void {
+  // ---------- a block: copied, flipped, pasted ----------
+  const src = grid("standard", ["0120", "0310"]);
+  src.colours.push({ name: "Red", hex: "#a8322d" }, { name: "Odd", hex: "#ff0000" });
+  const box = rectBetween(src, [2, 1], [1, 0]);
+  check(results, "a box between two squares, whichever corners", box.x0 === 1 && box.x1 === 2 && box.y0 === 0 && box.y1 === 1);
+  const block = copyBlock(src, stitchMask(src), box);
+  check(results, "a block copied: its squares row by row from the bottom, its colours with it", [...block.cells].join() === "1,2,3,1" && block.width === 2 && block.colours.length === 4);
+  check(results, "…flipped ↔ and ↕", [...flippedBlock(block, "x").cells].join() === "2,1,1,3" && [...flippedBlock(block, "y").cells].join() === "3,1,1,2");
+  const into = newGrid({ kind: "standard", width: 4, height: 3 });
+  const changed = pasteBlock(into, stitchMask(into), block, 2, 2);
+  const row = (g: Grid, y: number) => [...g.cells.slice(y * g.width, (y + 1) * g.width)].join("");
+  check(results, "pasted into another chart, top-left where asked, its colours added there", row(into, 1) === "0012" && row(into, 2) === "0031" && into.colours[2].hex === "#a8322d" && into.colours[3].hex === "#ff0000" && changed.length === 4, `${row(into, 2)}/${row(into, 1)}`);
+  const edge = newGrid({ kind: "standard", width: 4, height: 3 });
+  pasteBlock(edge, stitchMask(edge), block, 3, 0);
+  check(results, "…what falls off the chart is left off", row(edge, 0) === "0003" && row(edge, 1) === "0000", `${row(edge, 1)}/${row(edge, 0)}`);
+  const full = newGrid({ kind: "standard", width: 4, height: 3 });
+  while (full.colours.length < MAX_COLOURS) full.colours.push(nextColour(full));
+  full.colours = full.colours.filter((c) => c.hex !== "#a8322d").concat({ name: "Brick", hex: "#b0302a" });
+  while (full.colours.length < MAX_COLOURS) full.colours.push({ name: "x", hex: "#00ff00" });
+  pasteBlock(full, stitchMask(full), copyBlock(src, stitchMask(src), rectBetween(src, [2, 0], [2, 0])), 0, 0);
+  check(results, "…into a chart with no room for more colours, the nearest it has", full.colours.length === MAX_COLOURS && full.colours[full.cells[0]].hex === "#b0302a", full.colours[full.cells[0]]?.hex);
+  const holes = newGrid({ kind: "standard", width: 4, height: 3 });
+  const mask = stitchMask(holes);
+  mask[0] = 0;
+  pasteBlock(holes, mask, block, 0, 1);
+  check(results, "…a square with no stitch is not painted", holes.cells[0] === 0 && holes.cells[1] === 2);
+  const cleared = clearRect(src, stitchMask(src), box);
+  check(results, "a box cleared to the background", cleared.length === 4 && row(src, 0) === "0000" && row(src, 1) === "0000");
+
   // ---------- the grid ----------
   const g = grid("standard", ["0011", "1000"], { flat: true });
   check(results, "a chart survives being stored and read back", encode(decode(encode(g))).cells === "00111000" && encode(g).cells === "00111000");
@@ -301,6 +337,52 @@ export async function verifyCharts() {
     click(page(), '[data-tool="draw"]');
     click(page(), '[data-act="add-colour"]');
     check(results, "+ Colour adds the next colour and picks it", page()!.querySelectorAll(".chart-chip").length === 3 && !!page()!.querySelector('.chart-chip.on[data-colour="2"]'));
+
+    // ---------- a block: selected, copied, pasted ----------
+    const canvasEl = () => page()!.querySelector<HTMLCanvasElement>(".chart-canvas")!;
+    const key = (k: string, o: KeyboardEventInit = {}) => document.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
+    click(page(), '.chart-chip[data-colour="1"]');
+    press(2, 8);
+    press(3, 9);
+    await saved();
+    click(page(), '[data-tool="select"]');
+    check(results, "Select: nothing selected yet, so nothing to copy", page()!.querySelector<HTMLButtonElement>('[data-act="copy"]')!.disabled);
+    press(3, 9, { to: [2, 8] });
+    check(results, "…dragged corner to corner, the box selected, Copy offered", canvasEl().dataset.selection === "2,8,3,9" && !page()!.querySelector<HTMLButtonElement>('[data-act="copy"]')!.disabled, canvasEl().dataset.selection);
+    click(page(), '[data-act="copy"]');
+    click(page(), '[data-act="paste"]');
+    check(results, "Paste: the block follows the pointer, to be put down", canvasEl().dataset.pasting !== "" && !page()!.querySelector<HTMLElement>('[data-el="paste-tools"]')!.hidden);
+    press(6, 12);
+    await saved();
+    check(results, "…a click puts it down, its top left there", square(6, 11) === "1" && square(7, 11) === "0" && square(6, 12) === "0" && square(7, 12) === "1");
+    press(8, 12);
+    await saved();
+    check(results, "…and again, as many times as you click", square(8, 11) === "1" && square(9, 12) === "1" && canvasEl().dataset.pasting !== "");
+    click(page(), '[data-act="block-flip-x"]');
+    press(2, 16);
+    await saved();
+    check(results, "…Flip ↔ mirrors the block before it goes down", square(2, 16) === "1" && square(3, 15) === "1" && square(2, 15) === "0");
+    key("Escape");
+    check(results, "Esc stops pasting", canvasEl().dataset.pasting === "" && page()!.querySelector<HTMLElement>('[data-el="paste-tools"]')!.hidden);
+    click(page(), '[data-act="undo"]');
+    await saved();
+    check(results, "Undo takes back one paste", square(2, 16) === "0" && square(3, 15) === "0" && square(8, 11) === "1");
+    press(6, 11, { to: [7, 12] });
+    key("x", { ctrlKey: true });
+    await saved();
+    check(results, "Ctrl+X cuts: the squares go to the background", square(6, 11) === "0" && square(7, 12) === "0");
+    press(8, 11, { to: [9, 12] });
+    key("Delete");
+    await saved();
+    check(results, "Delete clears the squares selected", square(8, 11) === "0" && square(9, 12) === "0");
+    key("a", { ctrlKey: true });
+    check(results, "Ctrl+A selects the whole chart", canvasEl().dataset.selection === `0,0,${stored().data.width - 1},${stored().data.height - 1}`, canvasEl().dataset.selection);
+    key("Escape");
+    check(results, "…Esc lets it go", canvasEl().dataset.selection === "");
+    press(2, 8, { to: [3, 9] });
+    key("Delete");
+    await saved();
+    click(page(), '[data-tool="draw"]');
 
     // ---------- in words ----------
     click(page(), '[data-side="words"]');

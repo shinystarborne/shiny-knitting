@@ -3718,7 +3718,9 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .chart-toolbar > button { padding: 5px 12px; font-size: 13px; }
 .chart-toolbar button.toggle.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 .chart-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
-.chart-status { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+/* One line, of a set width: its words change as the pointer moves, and must
+   never wrap the bar and shift the grid under a drag. */
+.chart-status { margin-left: auto; flex: 1 1 220px; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-variant-numeric: tabular-nums; }
 .chart-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
 .chart-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; font-size: 12px; border-radius: 999px; }
 .chart-chip.on { border-color: var(--accent); background: var(--accent-soft); }
@@ -3735,6 +3737,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .chart-canvas { display: block; margin: 0 auto; border-radius: 4px; touch-action: none; cursor: crosshair; }
 .chart-canvas[data-tool="fill"] { cursor: cell; }
 .chart-canvas[data-tool="pick"] { cursor: copy; }
+.chart-canvas[data-tool="paste"] { cursor: copy; }
+.chart-paste-tools { display: inline-flex; gap: 4px; }
 .chart-side { width: 360px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg-raised); min-height: 0; }
 .chart-tabs { margin: 10px 14px 0; align-self: flex-start; }
 .chart-side-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 12px; }

@@ -615,6 +615,15 @@ typed in.
   to 623) with its weight; how much of every 100 g each strand is, how many
   grams of each for the metres you need, and whether it is within 10% of the
   yarn it is to match.
+- **Colourwork charts**: a standard chart, or a round yoke's repeat with its
+  shaping, drawn square by square (Draw, Fill, Line, Box, Pick, Mirror), seen
+  knitted up, written out row by row, and printed at the real size. **Select**
+  (S) takes a block of squares: drag corner to corner, or Ctrl+A for all.
+  **Copy** and **Cut** (Ctrl+C, Ctrl+X) take it, Delete clears it, and
+  **Paste** (Ctrl+V) floats it under the pointer to put down as many times as
+  you click, flipped ↔ or ↕ if you like, until Esc. A block copied pastes into
+  another chart too, its colours with it: the chart's own where it has them,
+  added where it has room, else the nearest.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 

@@ -387,6 +387,145 @@ export function turnedRound(g: Grid): void {
   normalize(g);
 }
 
+// ---------- a block of squares: selected, copied, pasted ----------
+
+/** Squares from column `x0` to `x1` and row `y0` to `y1`, both ends in, rows counted from the first knitted. */
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * Squares copied out of a chart: their colours, kept with them so they paste
+ * into another chart as the same colours. A square with no stitch (a yoke's
+ * grey) is -1, and pastes as nothing.
+ */
+export interface Block {
+  width: number;
+  height: number;
+  /** Row by row from the bottom, as a chart's squares are. */
+  cells: Int16Array;
+  colours: ChartColour[];
+}
+
+/** The box between two squares, whichever corners they are, kept within the chart. */
+export function rectBetween(g: Grid, a: [number, number], b: [number, number]): Rect {
+  const clampX = (v: number) => Math.max(0, Math.min(g.width - 1, v));
+  const clampY = (v: number) => Math.max(0, Math.min(g.height - 1, v));
+  return {
+    x0: clampX(Math.min(a[0], b[0])),
+    x1: clampX(Math.max(a[0], b[0])),
+    y0: clampY(Math.min(a[1], b[1])),
+    y1: clampY(Math.max(a[1], b[1])),
+  };
+}
+
+/** The squares in a box, as a block to paste. */
+export function copyBlock(g: Grid, mask: Uint8Array, r: Rect): Block {
+  const width = r.x1 - r.x0 + 1;
+  const height = r.y1 - r.y0 + 1;
+  const cells = new Int16Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (r.y0 + y) * g.width + r.x0 + x;
+      cells[y * width + x] = mask[i] ? g.cells[i] : -1;
+    }
+  }
+  return { width, height, cells, colours: g.colours.map((c) => ({ ...c })) };
+}
+
+/** Fills a box with the background colour, stitches only; returns the squares changed. */
+export function clearRect(g: Grid, mask: Uint8Array, r: Rect): number[] {
+  const changed: number[] = [];
+  for (let y = r.y0; y <= r.y1; y++) {
+    for (let x = r.x0; x <= r.x1; x++) {
+      const i = y * g.width + x;
+      if (mask[i] && g.cells[i] !== 0) {
+        g.cells[i] = 0;
+        changed.push(i);
+      }
+    }
+  }
+  return changed;
+}
+
+/** A block mirrored left to right, or top to bottom: the other half of a motif. */
+export function flippedBlock(b: Block, across: "x" | "y"): Block {
+  const cells = new Int16Array(b.cells.length);
+  for (let y = 0; y < b.height; y++) {
+    for (let x = 0; x < b.width; x++) {
+      const [sx, sy] = across === "x" ? [b.width - 1 - x, y] : [x, b.height - 1 - y];
+      cells[y * b.width + x] = b.cells[sy * b.width + sx];
+    }
+  }
+  return { ...b, cells };
+}
+
+/**
+ * Which of the chart's colours each of a block's is: the same colour if the
+ * chart has it, else added (as the chart can take more), else the nearest it
+ * has. Adds what it needs to the chart.
+ */
+export function blockColours(g: Grid, b: Block): number[] {
+  const used = new Set<number>();
+  for (const c of b.cells) if (c >= 0) used.add(c);
+  return b.colours.map((colour, i) => {
+    if (!used.has(i)) return 0;
+    const same = g.colours.findIndex((c) => c.hex.toLowerCase() === colour.hex.toLowerCase());
+    if (same >= 0) return same;
+    if (g.colours.length < MAX_COLOURS) {
+      g.colours.push({ ...colour });
+      return g.colours.length - 1;
+    }
+    return nearestColour(g, colour.hex);
+  });
+}
+
+function nearestColour(g: Grid, hex: string): number {
+  const rgb = (h: string) => {
+    const n = parseInt(h.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const [r, gr, b] = rgb(hex);
+  let best = 0;
+  let bestD = Infinity;
+  g.colours.forEach((c, i) => {
+    const [r2, g2, b2] = rgb(c.hex);
+    const d = (r - r2) ** 2 + (gr - g2) ** 2 + (b - b2) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/**
+ * Pastes a block with its top-left square at column `left`, row `top` (the
+ * highest row it covers): stitches only, nothing off the chart, nothing where
+ * the block had no stitch. Returns the squares changed.
+ */
+export function pasteBlock(g: Grid, mask: Uint8Array, b: Block, left: number, top: number): number[] {
+  const map = blockColours(g, b);
+  const bottom = top - b.height + 1;
+  const changed: number[] = [];
+  for (let y = 0; y < b.height; y++) {
+    for (let x = 0; x < b.width; x++) {
+      const c = b.cells[y * b.width + x];
+      const gx = left + x;
+      const gy = bottom + y;
+      if (c < 0 || gx < 0 || gx >= g.width || gy < 0 || gy >= g.height) continue;
+      const i = gy * g.width + gx;
+      if (!mask[i] || g.cells[i] === map[c]) continue;
+      g.cells[i] = map[c];
+      changed.push(i);
+    }
+  }
+  return changed;
+}
+
 // ---------- reading it ----------
 
 /** Stitches in each colour, all the way round for a yoke. */

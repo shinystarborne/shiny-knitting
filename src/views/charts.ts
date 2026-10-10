@@ -3,12 +3,15 @@ import { askForm, askYesNo, customDialog, dialogOpen, say } from "../dialogs";
 import { blobBytes, prepareBoardImage } from "../covers";
 import { closestEl } from "../dom";
 import {
+  clearRect,
   clone,
+  copyBlock,
   decode,
   describe,
   encode,
   fillArea,
   flipped,
+  flippedBlock,
   knittedSize,
   linePoints,
   longFloats,
@@ -18,7 +21,9 @@ import {
   newGrid,
   nextColour,
   normalize,
+  pasteBlock,
   readingNote,
+  rectBetween,
   rectPoints,
   removeColour,
   resized,
@@ -30,8 +35,10 @@ import {
   usualShaping,
   writeOut,
   writtenText,
+  type Block,
   type Float,
   type Grid,
+  type Rect,
 } from "./chart";
 import { CanvasPainter, chartPng, drawChart, drawRing, drawThumbnail, drawTiles, knittedAspect, margins, PAPER, sizeCanvas } from "./chart-draw";
 import { chartPdf, PAPERS, type Paper } from "./chart-pdf";
@@ -222,7 +229,7 @@ function newChartDialog(): Promise<{ name: string; grid: Grid } | null> {
 
 // ---------- one chart ----------
 
-type Tool = "draw" | "fill" | "line" | "rect" | "pick";
+type Tool = "draw" | "fill" | "line" | "rect" | "pick" | "select";
 type Side = "preview" | "chart" | "words";
 
 const TOOLS: { key: Tool; label: string; key1: string; hint: string }[] = [
@@ -231,10 +238,14 @@ const TOOLS: { key: Tool; label: string; key1: string; hint: string }[] = [
   { key: "line", label: "Line", key1: "L", hint: "A straight line: drag from end to end" },
   { key: "rect", label: "Box", key1: "B", hint: "A box: drag from corner to corner; with Shift, filled" },
   { key: "pick", label: "Pick", key1: "I", hint: "Pick up a square's colour (or Alt+click with any tool)" },
+  { key: "select", label: "Select", key1: "S", hint: "Select a block of squares, to copy, cut, paste or clear: drag from corner to corner" },
 ];
 
-/** What the page keeps while the app is open: the tool, the side panel, squares as knitted. */
-const kept: { tool: Tool; side: Side; knitted: boolean } = { tool: "draw", side: "preview", knitted: false };
+/**
+ * What the page keeps while the app is open: the tool, the side panel,
+ * squares as knitted, and the block copied last, which pastes into any chart.
+ */
+const kept: { tool: Tool; side: Side; knitted: boolean; clip: Block | null } = { tool: "draw", side: "preview", knitted: false, clip: null };
 
 const UNDO_LIMIT = 100;
 
@@ -270,6 +281,12 @@ export class ChartPage {
   private ctx!: CanvasRenderingContext2D;
   private layout = { x: 0, y: 0, cw: 18, ch: 18 };
   private drag: { tool: Tool; colour: number; start: [number, number]; last: [number, number]; before: Uint8Array; filled: boolean } | null = null;
+  /** The block selected, with the Select tool. */
+  private selection: Rect | null = null;
+  /** A block being pasted: it follows the pointer, and each click puts it down; `at` is its top-left square. */
+  private pasting: { block: Block; at: [number, number] } | null = null;
+  /** The square under the pointer, for where a paste starts. */
+  private hover: [number, number] | null = null;
   private swatches: Swatch[] = [];
   private projects: Project[] = [];
   private unit: MeasureUnit = "cm";
@@ -323,6 +340,15 @@ export class ChartPage {
           ${TOOLS.map((t) => `<button class="ghost" data-tool="${t.key}" title="${esc(`${t.hint} (${t.key1})`)}">${t.label}</button>`).join("")}
         </div>
         <button class="ghost toggle" data-act="mirror" title="Draw both halves at once, mirrored across the middle (M)">Mirror</button>
+        <span class="chart-sep"></span>
+        <button class="ghost" data-act="copy" title="Copy the squares selected (Ctrl+C)">Copy</button>
+        <button class="ghost" data-act="cut" title="Copy them, and fill them with the background (Ctrl+X)">Cut</button>
+        <button class="ghost" data-act="paste" title="Put the squares copied down, as many times as you click; Esc when done (Ctrl+V)">Paste</button>
+        <span class="chart-paste-tools" data-el="paste-tools" hidden>
+          <button class="ghost" data-act="block-flip-x" title="Mirror the block left to right">Flip ↔</button>
+          <button class="ghost" data-act="block-flip-y" title="Mirror the block top to bottom">Flip ↕</button>
+          <button class="ghost" data-act="paste-done" title="Stop pasting (Esc)">Done</button>
+        </span>
         <span class="chart-sep"></span>
         <button class="ghost" data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
         <button class="ghost" data-act="redo" title="Redo (Ctrl+Y)">Redo</button>
@@ -395,6 +421,12 @@ export class ChartPage {
   private async onClick(e: MouseEvent): Promise<void> {
     const tool = closestEl(e.target, "[data-tool]")?.dataset.tool as Tool | undefined;
     if (tool) return this.setTool(tool);
+    const blockAct = closestEl(e.target, "button[data-act]")?.dataset.act;
+    if (blockAct === "copy") return this.copySelection(false);
+    if (blockAct === "cut") return this.copySelection(true);
+    if (blockAct === "paste") return this.startPaste();
+    if (blockAct === "paste-done") return this.stopPaste();
+    if (blockAct === "block-flip-x" || blockAct === "block-flip-y") return this.flipPaste(blockAct === "block-flip-x" ? "x" : "y");
     const side = closestEl(e.target, "[data-side]")?.dataset.side as Side | undefined;
     if (side) {
       kept.side = side;
@@ -605,6 +637,8 @@ export class ChartPage {
   /** Draws everything again after a change, and saves. */
   private refresh(side = true): void {
     normalize(this.g);
+    // A selection the chart no longer reaches (made smaller, or undone) goes.
+    if (this.selection && (this.selection.x1 >= this.g.width || this.selection.y1 >= this.g.height)) this.selection = null;
     this.mask = stitchMask(this.g);
     this.floats = longFloats(this.g, this.g.floatLimit, this.mask);
     this.paintGrid();
@@ -631,6 +665,99 @@ export class ChartPage {
     this.ctx.fillRect(0, 0, w, h);
     drawChart(new CanvasPainter(this.ctx), this.g, { ...this.layout, numbers: true, mask: this.mask, floats: this.floats });
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-act="knitted"]')) b.classList.toggle("on", kept.knitted);
+    this.paintOverlay();
+  }
+
+  /** Where a box of squares is on the canvas. */
+  private boxOf(r: Rect): { x: number; y: number; w: number; h: number } {
+    const { x, y, cw, ch } = this.layout;
+    return { x: x + r.x0 * cw, y: y + (this.g.height - 1 - r.y1) * ch, w: (r.x1 - r.x0 + 1) * cw, h: (r.y1 - r.y0 + 1) * ch };
+  }
+
+  /** The selection's dashed box, and a block being pasted where it would go. */
+  private paintOverlay(): void {
+    const ctx = this.ctx;
+    // Where they are, for anything driving the page from outside (the harness).
+    this.canvas.dataset.selection = this.selection ? [this.selection.x0, this.selection.y0, this.selection.x1, this.selection.y1].join(",") : "";
+    this.canvas.dataset.pasting = this.pasting ? this.pasting.at.join(",") : "";
+    if (this.pasting) {
+      const { block, at } = this.pasting;
+      const { cw, ch } = this.layout;
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      for (let y = 0; y < block.height; y++) {
+        for (let x = 0; x < block.width; x++) {
+          const c = block.cells[y * block.width + x];
+          const gx = at[0] + x;
+          const gy = at[1] - block.height + 1 + y;
+          if (c < 0 || gx < 0 || gx >= this.g.width || gy < 0 || gy >= this.g.height) continue;
+          ctx.fillStyle = block.colours[c]?.hex ?? "#888888";
+          ctx.fillRect(this.layout.x + gx * cw, this.layout.y + (this.g.height - 1 - gy) * ch, cw, ch);
+        }
+      }
+      ctx.restore();
+      this.dashedBox(this.boxOf({ x0: at[0], x1: at[0] + block.width - 1, y0: at[1] - block.height + 1, y1: at[1] }));
+    } else if (this.selection) {
+      this.dashedBox(this.boxOf(this.selection));
+    }
+  }
+
+  /** A box in black and white dashes, to be seen on any colour. */
+  private dashedBox(b: { x: number; y: number; w: number; h: number }): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = "#ffffff";
+    ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+    ctx.lineDashOffset = 4.5;
+    ctx.strokeStyle = "#111111";
+    ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+    ctx.restore();
+  }
+
+  // ---------- a block: selected, copied, pasted ----------
+
+  private copySelection(cut: boolean): void {
+    if (!this.selection) return void this.note("Select some squares first: the Select tool (S), then drag across them.");
+    kept.clip = copyBlock(this.g, this.mask, this.selection);
+    const { width, height } = kept.clip;
+    if (cut) this.change(() => clearRect(this.g, this.mask, this.selection!));
+    else this.paintToolbar();
+    this.note(`${cut ? "Cut" : "Copied"}: ${width} × ${height} squares. Paste (Ctrl+V) puts them down, here or in another chart.`);
+  }
+
+  private startPaste(): void {
+    if (!kept.clip) return void this.note("Nothing copied yet: select some squares and Copy them first.");
+    const b = kept.clip;
+    // Where the pointer is, else where the selection was, else the top left.
+    const at: [number, number] = this.hover ?? (this.selection ? [this.selection.x0, this.selection.y1] : [0, Math.min(this.g.height - 1, b.height - 1)]);
+    this.pasting = { block: b, at };
+    this.paintToolbar();
+    this.paintGrid();
+    this.status();
+  }
+
+  private stopPaste(): void {
+    if (!this.pasting) return;
+    this.pasting = null;
+    this.paintToolbar();
+    this.paintGrid();
+    this.status();
+  }
+
+  private flipPaste(across: "x" | "y"): void {
+    if (!this.pasting) return;
+    this.pasting.block = flippedBlock(this.pasting.block, across);
+    this.paintGrid();
+  }
+
+  private selectAll(): void {
+    kept.tool = "select";
+    this.selection = { x0: 0, y0: 0, x1: this.g.width - 1, y1: this.g.height - 1 };
+    this.paintToolbar();
+    this.paintGrid();
+    this.status();
   }
 
   /** Redraws a few squares as they are drawn, quicker than the whole chart. */
@@ -672,7 +799,27 @@ export class ChartPage {
     const at = this.squareAt(e);
     if (!at) return;
     const i = at[1] * this.g.width + at[0];
+    // A block being pasted goes down where it is shown; it stays to go down again.
+    if (this.pasting && e.button === 0) {
+      this.pasting.at = at;
+      const block = this.pasting.block;
+      this.change(() => pasteBlock(this.g, this.mask, block, at[0], at[1]));
+      return;
+    }
+    if (this.pasting) return this.stopPaste();
     const tool: Tool = e.altKey ? "pick" : kept.tool;
+    if (tool === "select") {
+      try {
+        this.canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // See below: selecting still works.
+      }
+      this.selection = rectBetween(this.g, at, at);
+      this.drag = { tool, colour: 0, start: at, last: at, before: this.g.cells, filled: false };
+      this.paintGrid();
+      this.status();
+      return;
+    }
     if (tool === "pick") {
       if (this.mask[i]) {
         this.colour = this.g.cells[i];
@@ -702,11 +849,20 @@ export class ChartPage {
 
   private move(e: PointerEvent): void {
     const at = this.squareAt(e);
+    if (at) this.hover = at;
+    if (this.pasting && at && (at[0] !== this.pasting.at[0] || at[1] !== this.pasting.at[1])) {
+      this.pasting.at = at;
+      this.paintGrid();
+    }
     this.status(at);
     const d = this.drag;
     if (!d || !at || (at[0] === d.last[0] && at[1] === d.last[1])) return;
     if (d.tool === "draw") this.paintSquares(this.paint(linePoints(d.last[0], d.last[1], at[0], at[1]), d.colour));
     else if (d.tool === "line" || d.tool === "rect") this.paintShape(at);
+    else if (d.tool === "select") {
+      this.selection = rectBetween(this.g, d.start, at);
+      this.paintGrid();
+    }
     d.last = at;
   }
 
@@ -725,6 +881,10 @@ export class ChartPage {
     if (!d) return;
     this.drag = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    if (d.tool === "select") {
+      this.paintToolbar();
+      return this.status();
+    }
     const same = d.before.every((v, i) => v === this.g.cells[i]);
     if (same) {
       this.undoStack.pop();
@@ -735,7 +895,11 @@ export class ChartPage {
 
   private setTool(tool: Tool): void {
     kept.tool = tool;
+    this.pasting = null;
+    if (tool !== "select") this.selection = null;
     this.paintToolbar();
+    this.paintGrid();
+    this.status();
   }
 
   private toggleMirror(): void {
@@ -755,6 +919,23 @@ export class ChartPage {
     if ((e.ctrlKey || e.metaKey) && k === "y") {
       e.preventDefault();
       return this.redo();
+    }
+    if ((e.ctrlKey || e.metaKey) && (k === "c" || k === "x" || k === "v" || k === "a")) {
+      e.preventDefault();
+      if (k === "a") return this.selectAll();
+      return k === "v" ? this.startPaste() : this.copySelection(k === "x");
+    }
+    if (e.key === "Escape" && (this.pasting || this.selection)) {
+      e.preventDefault();
+      if (this.pasting) return this.stopPaste();
+      this.selection = null;
+      this.paintGrid();
+      return this.status();
+    }
+    if ((e.key === "Delete" || e.key === "Backspace") && this.selection && !this.pasting) {
+      e.preventDefault();
+      const r = this.selection;
+      return this.change(() => clearRect(this.g, this.mask, r));
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const tool = TOOLS.find((x) => x.key1.toLowerCase() === k);
@@ -779,7 +960,12 @@ export class ChartPage {
     this.root.querySelector('[data-act="mirror"]')?.classList.toggle("on", this.mirror);
     this.root.querySelector<HTMLButtonElement>('[data-act="undo"]')!.disabled = !this.undoStack.length;
     this.root.querySelector<HTMLButtonElement>('[data-act="redo"]')!.disabled = !this.redoStack.length;
-    this.canvas.dataset.tool = kept.tool;
+    this.root.querySelector<HTMLButtonElement>('[data-act="copy"]')!.disabled = !this.selection;
+    this.root.querySelector<HTMLButtonElement>('[data-act="cut"]')!.disabled = !this.selection;
+    this.root.querySelector<HTMLButtonElement>('[data-act="paste"]')!.disabled = !kept.clip;
+    this.root.querySelector<HTMLButtonElement>('[data-act="paste"]')!.classList.toggle("on", !!this.pasting);
+    this.root.querySelector<HTMLElement>('[data-el="paste-tools"]')!.hidden = !this.pasting;
+    this.canvas.dataset.tool = this.pasting ? "paste" : kept.tool;
   }
 
   private paintPalette(): void {
@@ -824,13 +1010,22 @@ export class ChartPage {
     const el = this.root.querySelector<HTMLElement>('[data-el="status"]');
     if (!el) return;
     const word = this.g.flat ? "row" : "round";
+    if (this.pasting) {
+      el.title = el.textContent = `Pasting ${this.pasting.block.width} × ${this.pasting.block.height}: click to put it down, as often as you like; Esc when done`;
+      return;
+    }
+    if (this.selection && !at) {
+      const r = this.selection;
+      el.title = el.textContent = `Selected ${r.x1 - r.x0 + 1} × ${r.y1 - r.y0 + 1}: Copy or Cut it (Ctrl+C, Ctrl+X), Delete clears it`;
+      return;
+    }
     if (at) {
       const i = at[1] * this.g.width + at[0];
       const what = this.mask[i] ? this.g.colours[this.g.cells[i]].name : "no stitch";
-      el.textContent = `Stitch ${this.g.width - at[0]}, ${word} ${at[1] + 1}: ${what}`;
+      el.title = el.textContent = `Stitch ${this.g.width - at[0]}, ${word} ${at[1] + 1}: ${what}`;
       return;
     }
-    el.textContent = this.floats.length
+    el.title = el.textContent = this.floats.length
       ? `${this.floats.length} float${this.floats.length === 1 ? "" : "s"} over ${this.g.floatLimit} stitches, underlined`
       : describe(this.g);
   }
