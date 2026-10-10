@@ -10,8 +10,9 @@ import type { HighlightSettings } from "../api";
  *
  * Supported interactions:
  *  - Arrow keys / Page keys scroll the content under a stationary line
- *  - Dragging the line body moves it vertically
- *  - Clicking anywhere in the content snaps the line to that spot
+ *  - Dragging the line by its grip moves it vertically
+ *  - Clicking the grip readies the line, and the next click in the content
+ *    puts it there; a click in the content is otherwise the content's own
  *  - Movement can be smooth-animated or instant
  *  - All geometry is configurable and saved per pattern
  */
@@ -25,6 +26,13 @@ export class HighlightLine {
   /** Set while a drag is in progress, to avoid fighting the scroll handler. */
   private dragging = false;
   private dragOffsetY = 0;
+  /** Where a press on the grip began, to tell a click from a drag. */
+  private pressY = 0;
+  private moved = false;
+  /** Readied by a click on the grip: the next click in the content puts the line there. */
+  private ready = false;
+  /** Where a smooth scroll still under way is going, so steps taken during it add up. */
+  private scrollGoal: number | null = null;
 
   /** Cancels an in-flight smooth scroll when a new movement starts. */
   private animToken = 0;
@@ -94,6 +102,7 @@ export class HighlightLine {
   /** Cancels an in-flight smooth scroll, so a direct write wins. */
   private cancelAnimation = (): void => {
     this.animToken++;
+    this.scrollGoal = null;
   };
 
   /** Re-resolves the stored fraction when the reading area resizes. */
@@ -151,6 +160,8 @@ export class HighlightLine {
     this.grip.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       this.dragging = true;
+      this.pressY = e.clientY;
+      this.moved = false;
       const rect = this.el.getBoundingClientRect();
       // Grab offset so the line does not jump to centre under the cursor.
       this.dragOffsetY = e.clientY - rect.top;
@@ -160,6 +171,8 @@ export class HighlightLine {
 
     this.grip.addEventListener("pointermove", (e) => {
       if (!this.dragging || !this.scroller) return;
+      if (Math.abs(e.clientY - this.pressY) < 3 && !this.moved) return;
+      this.moved = true;
       const rect = this.scroller.getBoundingClientRect();
       const top = e.clientY - rect.top - this.dragOffsetY;
       this.commitTop(top);
@@ -172,6 +185,10 @@ export class HighlightLine {
         this.grip.releasePointerCapture(e.pointerId);
       }
       document.body.classList.remove("dragging-highlight");
+      // A press that did not move is a click: it readies the line to be put
+      // somewhere, or lets it go again.
+      if (!this.moved) return this.setReady(!this.ready);
+      this.setReady(false);
       // Persist once the drag is over rather than on every pointermove, which
       // would write to the database hundreds of times per second.
       this.flush();
@@ -205,6 +222,26 @@ export class HighlightLine {
     return clamped;
   }
 
+  /** Whether a click in the content puts the line there: once its grip has been clicked. */
+  get isReady(): boolean {
+    return this.ready;
+  }
+
+  setReady(on: boolean): void {
+    this.ready = on;
+    this.el.classList.toggle("ready", on);
+    this.grip.title = on ? "Click in the pattern to put the line there (Esc: not now)" : "Drag to move; click, then click in the pattern, to put it there; double-click to configure";
+  }
+
+  /** Puts the line where the content was clicked, if it was readied for it. Returns whether it moved. */
+  placeAt(top: number): boolean {
+    if (!this.ready) return false;
+    this.commitTop(top);
+    this.setReady(false);
+    this.flush();
+    return true;
+  }
+
   /** The line's current top, in pixels from the top of the reading area. */
   get top(): number {
     return parseFloat(this.el.style.top || "0") || 0;
@@ -226,20 +263,47 @@ export class HighlightLine {
   }
 
   /**
-   * Moves the line to the next or previous band, exactly one row.
-   *
-   * The bands are a grid of `thickness`-tall slices anchored at the top of the
-   * reading area, which is what makes the line usable over a schematic: set
-   * the thickness to the on-screen height of one chart row and each press
-   * lands on the next row rather than an arbitrary number of pixels down.
+   * Moves the line exactly one row along the pattern: its own height, so with
+   * the line the height of a chart row each step lands on the next row from
+   * wherever it was put. Within the middle of the pane the line moves; near
+   * its top or bottom the pattern moves instead, by the same row, so the line
+   * stays on the chart's rows rather than drifting off them. Only at the very
+   * start or end of the pattern, which cannot scroll further, does the line
+   * go on to the pane's edge.
    */
   stepRow(direction: 1 | -1, smooth: boolean): number {
-    if (!this.scroller) return this.row;
-    const height = this.scroller.clientHeight || 1;
-    const target = stepTop(this.top, this.bandHeight, height, direction);
-    this.commitTop(target, 0);
-    this.keepInView(target, smooth);
+    const scroller = this.scroller;
+    if (!scroller) return this.row;
+    const height = scroller.clientHeight || 1;
+    const row = this.bandHeight;
+    const want = this.top + direction * row;
+    const low = Math.min(height * 0.1, Math.max(0, height - row));
+    const high = Math.max(low, height * 0.85 - row);
+    if (want >= low && want <= high) {
+      this.commitTop(want, 0);
+      return this.row;
+    }
+    // The pattern moves under the line, as far as it can; the line takes the rest.
+    const base = this.scrollGoal ?? scroller.scrollTop;
+    const max = Math.max(0, scroller.scrollHeight - height);
+    const goal = Math.min(max, Math.max(0, base + direction * row));
+    const scrolled = goal - base;
+    const rest = direction * row - scrolled;
+    if (rest) this.commitTop(Math.min(Math.max(this.top + rest, 0), Math.max(0, height - row)), 0);
+    if (scrolled) this.scrollTo(goal, smooth);
     return this.row;
+  }
+
+  /** Scrolls the content to a place, easing if asked; steps taken meanwhile go on from where it is going. */
+  private scrollTo(target: number, smooth: boolean): void {
+    if (!this.scroller) return;
+    if (this.settings.animate && smooth) {
+      this.smoothScrollTo(target);
+    } else {
+      this.animToken++;
+      this.scrollGoal = null;
+      this.scroller.scrollTop = target;
+    }
   }
 
   /**
@@ -269,6 +333,7 @@ export class HighlightLine {
       // without bumping the token the animation keeps overwriting the
       // position for up to a second afterwards.
       this.animToken++;
+      this.scrollGoal = null;
       this.scroller.scrollTop = target;
     }
   }
@@ -289,7 +354,12 @@ export class HighlightLine {
     const token = ++this.animToken;
     const start = scroller.scrollTop;
     const distance = target - start;
-    if (Math.abs(distance) < 1) return;
+    this.scrollGoal = target;
+    if (Math.abs(distance) < 1) {
+      scroller.scrollTop = target;
+      this.scrollGoal = null;
+      return;
+    }
 
     const duration = Math.min(Math.max(this.settings.animationMs, 80), 1200);
     const startTime = performance.now();
@@ -303,6 +373,7 @@ export class HighlightLine {
       const eased = 1 - Math.pow(1 - t, 3);
       scroller.scrollTop = start + distance * eased;
       if (t < 1) requestAnimationFrame(step);
+      else this.scrollGoal = null;
     };
     requestAnimationFrame(step);
   }
@@ -332,41 +403,4 @@ function resolveTop(s: HighlightSettings, scroller: HTMLElement | null): number 
   const height = scroller.clientHeight || 1;
   const raw = s.offsetY * height;
   return Math.min(Math.max(raw, 0), Math.max(0, height - 1));
-}
-
-/**
- * The top of the band one step away from where the line is now.
- *
- * The reading area is divided into bands of `thickness` pixels anchored at its
- * top edge, so with a 5px line the bands start at 0, 5, 10, 15 and so on. A
- * line covering 0-5 moves to 5-10, then to 10-15: each press lands on exactly
- * the next band, which is what makes this work against a schematic.
- *
- * Both directions move to the *adjacent* band rather than to the nearest
- * boundary. A line dragged off the grid — which dragging allows, since a
- * precise free position is useful too — steps into the next band from the one
- * it is currently over rather than snapping back to where it roughly was.
- *
- * Returns 0 at the top and the last fully-fitting band at the bottom, so row 1
- * is always reachable and no step can push the line off screen.
- */
-export function stepTop(
-  currentTop: number,
-  thickness: number,
-  height: number,
-  direction: 1 | -1,
-): number {
-  const step = Math.max(1, Math.round(thickness));
-  if (direction > 0) {
-    const next = (Math.floor(currentTop / step) + 1) * step;
-    return Math.min(next, lastBandTop(step, height));
-  }
-  const previous = (Math.ceil(currentTop / step) - 1) * step;
-  return Math.max(previous, 0);
-}
-
-/** The last band whose full height still fits inside the reading area. */
-function lastBandTop(step: number, height: number): number {
-  if (height <= step) return 0;
-  return Math.floor((height - step) / step) * step;
 }

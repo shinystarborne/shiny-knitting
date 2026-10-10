@@ -103,6 +103,33 @@ export async function verifyChartLine() {
     await wait(150);
     check(results, "…Alt with it moves it without counting", total() === count, `${count} → ${total()}`);
 
+    // A click in the pattern is the pattern's: the line stays on its row.
+    at = top();
+    const sr = scroller().getBoundingClientRect();
+    scroller().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: sr.left + 50, clientY: sr.top + 30 }));
+    await wait(100);
+    check(results, "a click in the pattern leaves the line where it is", top() === at, `${at} → ${top()}`);
+    // The grip, clicked, readies it: then a click puts it there.
+    const grip = document.querySelector<HTMLElement>(".project-page .highlight-grip")!;
+    grip.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 9, clientY: 10 }));
+    grip.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 9, clientY: 10 }));
+    check(results, "…a click on its grip readies it", !!document.querySelector(".project-page .highlight-line.ready"));
+    scroller().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: sr.left + 50, clientY: sr.top + 30 }));
+    await wait(100);
+    check(results, "…and the next click in the pattern puts it there, once", Math.abs(top() - 30) <= 1 && !document.querySelector(".project-page .highlight-line.ready"), `${top()}`);
+
+    // Put away and shown again, the pattern is where the knitting is: the same spot under the line.
+    for (let i = 0; i < 12; i++) counterBtn("total-inc").click();
+    await wait(600);
+    const spot = scroller().scrollTop + top();
+    document.querySelector<HTMLElement>('.project-page [data-pane="close"]')!.click();
+    await waitFor(() => !document.querySelector(".project-page .doc-scroller"), "the pattern put away");
+    document.querySelector<HTMLElement>('.project-page [data-act="show-pattern"]')!.click();
+    await waitFor(() => !!line() && !!document.querySelector(".project-page .doc-scroller"), "the pattern again");
+    await wait(1200);
+    const back = scroller().scrollTop + top();
+    check(results, "hidden and shown again, the pattern is back where the line was on it", Math.abs(back - spot) <= 3, `${spot} → ${back}`);
+
     // The sound: a few to choose from, the choice kept.
     const pick = document.querySelector<HTMLSelectElement>('.project-page .project-counter [data-el="sound-pick"]')!;
     const options = [...pick.options].map((o) => o.value).join(",");

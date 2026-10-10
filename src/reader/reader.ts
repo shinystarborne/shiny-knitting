@@ -233,6 +233,7 @@ export class ReaderView {
         void api.saveHighlight(s);
         // A drag ends here, so this is where the row readout catches up.
         this.refreshRowReadout();
+        this.savePlace();
       };
       this.highlight.onConfigureRequest = () => this.openHighlightPanel();
       // Every row counted moves the line, whatever counted it: the counter's
@@ -923,6 +924,13 @@ export class ReaderView {
   private stepLine = (rows: number): void => {
     const line = this.highlight;
     if (!line || !line.enabled || this.destroyed || !rows) return;
+    this.placeTouched = true;
+    // Counted while the pattern is put away (minimised): the line catches up
+    // when it is shown, rather than stepping over a pane with no height.
+    if (!this.scroller.clientHeight) {
+      this.pendingRows += rows;
+      return;
+    }
     const way = (Math.sign(rows) * (line.current.readsUp ? -1 : 1)) as 1 | -1;
     const n = Math.min(Math.abs(rows), 100);
     for (let i = 0; i < n; i++) line.stepRow(way, n === 1);
@@ -1319,21 +1327,24 @@ export class ReaderView {
       }
     });
 
-    // Clicking the document parks the line at that spot, which is handy when
-    // you are counting down a specific chart row.
+    // A click in the pattern puts the line there only when it was readied
+    // for it, by a click on its grip: otherwise a click is for the pattern
+    // (a mark, a pin, a word), and the line stays on the row being knitted.
     this.scroller.addEventListener("click", (e) => {
       const line = this.highlight;
-      if (!line || e.defaultPrevented) return;
+      if (!line || e.defaultPrevented || !line.isReady) return;
       const target = e.target as HTMLElement;
       if (target.closest(".highlight-line")) return;
-      // The release of a text selection also arrives as a click, and parking
-      // the line there would move it to wherever the reader just finished
-      // selecting words to highlight -- not somewhere they asked it to go.
-      if (window.getSelection()?.toString()) return;
       const rect = this.scroller.getBoundingClientRect();
-      line.commitTop(e.clientY - rect.top);
-      line.flush();
+      line.placeAt(e.clientY - rect.top);
       this.refreshRowReadout();
+    });
+    // Esc: not now.
+    this.root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.highlight?.isReady) {
+        e.preventDefault();
+        this.highlight.setReady(false);
+      }
     });
 
     // Ctrl/Cmd + wheel zooms, the same combination every other document
@@ -1358,9 +1369,68 @@ export class ReaderView {
     window.addEventListener("beforeunload", this.savePosition);
   }
 
+  /** Rows counted while the pattern was put away, for the line to catch up. */
+  private pendingRows = 0;
+  /** Moved by hand since the place was put back, so it is not put back over that. */
+  private placeTouched = false;
+
+  /** Where a project's pattern is kept: the project's own place in it, not the pattern's. */
+  private placeKey(): string | null {
+    const id = this.embedded?.projectId;
+    return id ? `project-pattern-place:${id}` : null;
+  }
+
+  /**
+   * Keeps where the project's knitting is in its pattern: the spot under the
+   * line (or the top of the pane, with no line), as a page and how far down
+   * it, so it comes back under the line whatever the pane's size then.
+   */
+  private savePlace = (): void => {
+    const key = this.placeKey();
+    const doc = this.doc;
+    // A pane put away has no height, and nothing in it is where it was.
+    if (!key || !doc || !this.scroller.clientHeight) return;
+    const lineTop = this.highlight?.enabled ? this.highlight.top : 0;
+    const y = this.scroller.scrollTop + lineTop;
+    let page = 1;
+    let frac = 0;
+    for (let n = 1; n <= doc.pageCount; n++) {
+      const el = doc.pageElement(n);
+      if (!el) continue;
+      if (el.offsetTop > y) break;
+      page = n;
+      frac = el.offsetHeight ? (y - el.offsetTop) / el.offsetHeight : 0;
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify({ page, frac }));
+    } catch {
+      // Kept for as long as the pane is open, then.
+    }
+  };
+
+  /** Puts the project's place back under the line; false when there is none kept. */
+  private restorePlace(): boolean {
+    const key = this.placeKey();
+    if (!key || !this.doc) return false;
+    let place: { page: number; frac: number } | null = null;
+    try {
+      place = JSON.parse(localStorage.getItem(key) ?? "null");
+    } catch {
+      place = null;
+    }
+    const el = place ? this.doc.pageElement(place.page) : null;
+    if (!place || !el) return false;
+    const lineTop = this.highlight?.enabled ? this.highlight.top : 0;
+    this.scroller.scrollTop = Math.max(0, el.offsetTop + place.frac * el.offsetHeight - lineTop);
+    return true;
+  }
+
   /** Writes the reading position back to the database. */
   private savePosition = (): void => {
     if (!this.doc || this.destroyed) return;
+    // A project's pattern keeps the project's place, and leaves the
+    // pattern's own (as read on its own) alone.
+    if (this.placeKey()) return this.savePlace();
     const page = this.doc.currentPage();
     const el = this.doc.pageElement(page);
     // The offset is saved relative to the page, not absolutely: goToPage()
@@ -1372,6 +1442,29 @@ export class ReaderView {
 
   private restorePosition(): void {
     if (!this.doc) return;
+    if (this.placeKey()) {
+      // Rows counted while it was put away, once it is shown again.
+      new ResizeObserver(() => {
+        if (this.scroller.clientHeight && this.pendingRows && !this.destroyed) {
+          const rows = this.pendingRows;
+          this.pendingRows = 0;
+          this.stepLine(rows);
+        }
+      }).observe(this.scroller);
+    }
+    if (this.restorePlace()) {
+      // Moved by hand from here on, it is the reader's; until then, put back
+      // again as the pages settle at the pane's width.
+      const mark = () => (this.placeTouched = true);
+      this.scroller.addEventListener("wheel", mark, { passive: true, once: true });
+      this.scroller.addEventListener("pointerdown", mark, { once: true });
+      for (const ms of [300, 900]) {
+        window.setTimeout(() => {
+          if (!this.destroyed && !this.placeTouched) this.restorePlace();
+        }, ms);
+      }
+      return;
+    }
     const { lastPage, lastScroll } = this.pattern;
     if (lastPage > 1) {
       this.doc.goToPage(lastPage, lastScroll);
@@ -1393,6 +1486,8 @@ export class ReaderView {
   }
 
   destroy(): void {
+    // Where the project's knitting is, kept as the pane is put away.
+    this.savePlace();
     this.destroyed = true;
     if (this.embedded?.counter?.onRowsCounted === this.stepLine) this.embedded.counter.onRowsCounted = null;
     this.beside?.destroy();

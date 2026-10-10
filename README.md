@@ -872,8 +872,8 @@ Two deliberate choices: the **project total** is the counter that moves, not any
 one named counter, because the line tracks a position in the document and the
 total counts rows worked — the same kind of quantity. A counter is a named part
 of that work, so the enabled ones follow it and the disabled ones do not. And
-the line is free to be dragged anywhere; only the keys snap to the band grid, so
-a precise position is still available when you want one.
+the line is free to be put anywhere, and each count moves it exactly its own
+height on from there, so a line the height of a chart row goes row by row.
 
 **The highlight line.** It is in the pattern beside a project's board, where
 the counter is. It sits over the reading area and stays put while the
@@ -881,8 +881,9 @@ pattern scrolls beneath it. It is **off** until you want it: press **Line** and
 tick *Show line*. While it is off the count keys just count, and the page
 stays where it is.
 
-- Drag it to move it; drag the round handle for a precise grab.
-- Click anywhere in the pattern to park it there.
+- Drag its round handle to move it. Click the handle, and it glows: the next
+  click in the pattern puts it there (`Esc`: not now). Otherwise a click in
+  the pattern is the pattern's, and the line stays on the row being knitted.
 - `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
   pattern under a stationary line.
 - Double-click the line, or press "Line", to open its settings: height on
@@ -891,7 +892,13 @@ stays where it is.
   from the bottom row up, so counting a row steps the line up rather than down.
 - Every count of the row moves the line, whatever counted it: the counter's
   `+` and `−`, its arrow and `+`/`−` keys, or the count keys; a counter's own
-  buttons are a nudge, and leave it.
+  buttons are a nudge, and leave it. Each count moves it exactly one row:
+  its own height. Near the top or bottom of the pane the pattern moves under
+  it instead, by that row, so the line stays on the chart's rows.
+- Hide the pattern and show it again, or leave the project and come back, and
+  it is where the knitting is: the same spot of the pattern under the line,
+  kept for each project. Rows counted while the pattern is minimised move the
+  line when it is shown again.
 
 Every setting is remembered per pattern, so a wide chart and a text page can
 each keep their own geometry. Turning width to 0 makes the line span the

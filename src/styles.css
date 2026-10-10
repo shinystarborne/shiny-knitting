@@ -1287,6 +1287,10 @@ kbd {
   pointer-events: none;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
+/* Readied by a click on its grip: the next click in the pattern puts it there. */
+.highlight-line.ready { box-shadow: 0 0 0 2px #fff, 0 0 12px 3px rgba(255, 255, 255, 0.6); }
+.highlight-line.ready .highlight-grip { transform: translateY(-50%) scale(1.3); }
+.reader:has(.highlight-line.ready) .doc-scroller { cursor: crosshair; }
 .highlight-line:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 3px;
