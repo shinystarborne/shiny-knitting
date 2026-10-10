@@ -47,6 +47,11 @@ starting; the details are in the sections under the list.
 
 **Asked for along the way**
 
+- [x] The log card on the board takes photos: 📷, pasted while writing in
+  it, or dropped on it. Cropping on the board easier to find: ✂ Crop said
+  in words, C with a picture selected, and on the log card's photos.
+  *0.3.63*
+
 - [x] The line did not always move with a count: only the count keys moved
   it, not the counter's + and − or its arrow keys. Now every count does. The
   click is Shelfmind's, with a soft tap, a wood block and a tick to choose
@@ -130,9 +135,9 @@ starting; the details are in the sections under the list.
     *0.3.61*
 29. [x] Knitting from a chart: on a project's page, the current row marked
     and counted. *0.3.62*
-30. [ ] The round yoke calculator and a yoke chart together.
-    **Decide first:** fit the chart to the calculator's counts, or the
-    calculator to the chart?
+30. [ ] The round yoke calculator and a yoke chart together. **Decided
+    (10 Oct 2026):** the chart fits the calculator's counts, and the yoke
+    chart lives in the round yoke calculator itself.
 
 ### Finished gallery
 
@@ -164,7 +169,8 @@ The designer is built (see Already built). Left over:
 - **Select, copy and paste** a block of squares, to repeat a motif or move it.
 - **Colours from the stash:** a chart colour linked to a yarn, so the legend
   says which yarn and colourway.
-- **The round yoke calculator and a yoke chart together:** the calculator fits
+- **The round yoke calculator and a yoke chart together** (decided: the
+  chart fits the calculator, and is drawn in it): the calculator fits
   its counts to a repeat, but a lopapeysa chart keeps its repeats and narrows
   each one; the two work the other way round from each other. Open question:
   fit the chart to the calculator's counts, or the calculator to the chart?

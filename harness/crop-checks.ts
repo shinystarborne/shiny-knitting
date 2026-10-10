@@ -6,6 +6,7 @@
  * Run with the harness open:
  *   window.__cropChecks()
  */
+import { forgetLogPhoto } from "../src/covers";
 
 interface CheckResult {
   name: string;
@@ -85,7 +86,7 @@ export async function verifyCrop() {
     (document.querySelector(`.projects .project-card[data-open="${projectId}"]`) as HTMLElement).click();
     const scissors = () => page()?.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"] [data-act="crop"]`);
     await waitFor(() => !!scissors(), "the picture's ✂ on the board");
-    check(results, "a picture on the board has ✂ to crop it", scissors()!.title === "Crop the picture");
+    check(results, "a picture on the board has ✂ Crop, said in words", /Crop/.test(scissors()!.textContent ?? "") && /Crop the picture/.test(scissors()!.title));
     scissors()!.click();
     await waitFor(() => !!crop(), "the crop dialog");
     check(results, "…which opens it to crop, Crop waiting for a box", (crop()!.querySelector('[data-act="crop"]') as HTMLButtonElement).disabled);
@@ -97,6 +98,33 @@ export async function verifyCrop() {
     check(results, "what was in the box replaces the picture, at its own resolution", Math.abs(w - 200) <= 2 && Math.abs(h - 200) <= 2, `${w} × ${h}`);
     const stored = store.boardItems.find((i) => i.id === item.id)!;
     check(results, "…and the item takes its shape at the same width", stored.w === 400 && Math.abs(stored.h - 400) <= 4, `${stored.w} × ${stored.h}`);
+
+    // C, with the picture selected.
+    page()!.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"]`)!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 4, clientX: 0, clientY: 0 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 4 }));
+    page()!.querySelector<HTMLElement>(".board")!.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 4 }));
+    await wait(100);
+    page()!.querySelector<HTMLElement>(".board")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true, cancelable: true }));
+    await waitFor(() => !!crop(), "C to open the crop");
+    check(results, "C crops the picture selected", true);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await waitFor(() => !crop(), "the crop put away");
+
+    // A photo in the log, from the log card on the board.
+    (page()!.querySelector('[data-add="log"]') as HTMLElement).click();
+    const cardCrop = () => page()?.querySelector<HTMLElement>(`.board-item.kind-log [data-act="log-crop"][data-entry="${entry.id}"]`);
+    await waitFor(() => !!cardCrop(), "the log card's photo");
+    const cardBefore = store.covers.get(`log:${entry.id}`)!.length;
+    cardCrop()!.click();
+    await waitFor(() => !!crop(), "the crop dialog, from the card");
+    await dragBox([0, 0], [0.5, 1]);
+    (crop()!.querySelector('[data-act="crop"]') as HTMLButtonElement).click();
+    await waitFor(() => !crop() && store.covers.get(`log:${entry.id}`)!.length !== cardBefore, "the card's photo cropped");
+    const [cw2, ch2] = await sizeOf(store.covers.get(`log:${entry.id}`)!);
+    check(results, "a photo in the log card is cropped there, without going to the log", Math.abs(cw2 - 200) <= 2 && Math.abs(ch2 - 200) <= 2, `${cw2} × ${ch2}`);
+    // Back to the whole picture, for the log's own crop below.
+    await invoke("set_log_photo", { id: entry.id, bytes: await picture("image/jpeg") });
+    forgetLogPhoto(entry.id);
 
     // The log's photo.
     (page()!.querySelector('[data-view="log"]') as HTMLElement).click();

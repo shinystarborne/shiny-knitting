@@ -1,6 +1,6 @@
 import { api, type BoardItem, type BoardKind, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
-import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, logPhotoUrl, prepareBoardImage, yarnPhotoUrl } from "../covers";
+import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
 import { cropImage } from "./crop-dialog";
 
@@ -139,6 +139,14 @@ export class Board {
   private tools: Tool[] = [];
   /** The project's log, for a log card; empty on an inspiration board. */
   private logEntries: LogEntry[] = [];
+  /**
+   * What is being written in the log card, and the photo waiting to go with
+   * it (downscaled, shown as a thumbnail): kept here, so the card drawn
+   * again loses neither.
+   */
+  private logDraft = "";
+  private logPhoto: Blob | null = null;
+  private logPhotoUrl: string | null = null;
   /** A press in progress: panning the board, or moving or sizing an item. */
   private drag:
     | { mode: "pan"; pointer: number; sx: number; sy: number; vx: number; vy: number }
@@ -215,6 +223,8 @@ export class Board {
 
   /** A note's words are saved a moment after the typing stops, as well as when it is left. */
   private onType(e: Event): void {
+    // The log card's words, kept for when the card is drawn again.
+    if ((e.target as HTMLElement).dataset?.f === "log-text") this.logDraft = (e.target as HTMLInputElement).value;
     const area = e.target;
     if (!(area instanceof HTMLTextAreaElement)) return;
     const id = this.itemEl(area)?.dataset.id;
@@ -252,18 +262,56 @@ export class Board {
     this.render();
   }
 
-  /** Adds what is typed in a log card to the project's log, dated now. */
+  /** Adds what is typed in a log card, and the photo waiting, to the project's log, dated now. */
   private async addToLog(id: string): Promise<void> {
     const input = this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${id}"] input[data-f="log-text"]`);
-    const text = input?.value.trim();
-    if (!input || !text) return void input?.focus();
+    const text = input?.value.trim() ?? "";
+    const photo = this.logPhoto;
+    if (!input || (!text && !photo)) return void input?.focus();
     try {
-      await api.addLogEntry(this.boardId, text);
+      const entry = await api.addLogEntry(this.boardId, text);
+      if (photo) await api.setLogPhoto(entry.id, await blobBytes(photo));
     } catch (err) {
       return void (await say(err instanceof Error ? err.message : String(err), "Log"));
     }
+    this.logDraft = "";
+    this.setLogPhoto(null);
     await this.refreshLog();
     this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${id}"] input[data-f="log-text"]`)?.focus();
+  }
+
+  /** A photo to go with the next entry, or none; shown on the card as it waits. */
+  private setLogPhoto(blob: Blob | null): void {
+    if (this.logPhotoUrl) URL.revokeObjectURL(this.logPhotoUrl);
+    this.logPhoto = blob;
+    this.logPhotoUrl = blob ? URL.createObjectURL(blob) : null;
+    const slot = this.world.querySelector<HTMLElement>('.board-item[data-kind="log"] [data-el="log-pending"]');
+    if (slot) slot.outerHTML = this.logPendingHtml();
+  }
+
+  private logPendingHtml(): string {
+    return this.logPhotoUrl
+      ? `<div class="board-log-pending" data-el="log-pending"><img src="${this.logPhotoUrl}" alt="The photo to add" /><span>Goes with the entry: Add, or Enter</span><button data-act="log-photo-clear" title="Not this photo" aria-label="Not this photo">×</button></div>`
+      : `<div data-el="log-pending" hidden></div>`;
+  }
+
+  /** A picture for the log card's next entry: downscaled as the log's photos are. */
+  private async takeLogPhoto(file: Blob): Promise<void> {
+    const blob = await prepareChosenImage(file);
+    if (!blob) return void (await say("That could not be read as a picture.", "Log"));
+    this.setLogPhoto(blob);
+    this.world.querySelector<HTMLInputElement>('.board-item[data-kind="log"] input[data-f="log-text"]')?.focus();
+  }
+
+  private chooseLogPhoto(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      if (file) void this.takeLogPhoto(file);
+    });
+    input.click();
   }
 
   // ---------- the view ----------
@@ -468,6 +516,9 @@ export class Board {
     if (act === "open") this.open(id);
     if (act === "edit-link") await this.editLink(id);
     if (act === "log-add") await this.addToLog(id);
+    if (act === "log-photo") this.chooseLogPhoto();
+    if (act === "log-crop" && btn.dataset.entry) await this.cropLogPhoto(btn.dataset.entry);
+    if (act === "log-photo-clear") this.setLogPhoto(null);
     if (act === "open-log") this.hooks.openLog?.();
     if (act === "note-colour") {
       const item = this.items.find((i) => i.id === id)!;
@@ -522,6 +573,13 @@ export class Board {
       e.preventDefault();
       await this.remove(this.selected);
     }
+    if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey && this.selected) {
+      const item = this.items.find((i) => i.id === this.selected);
+      if (item?.hasImage && (item.kind === "image" || item.kind === "pin")) {
+        e.preventDefault();
+        await this.crop(item.id);
+      }
+    }
     if (e.key === "Enter" && this.selected) {
       const item = this.items.find((i) => i.id === this.selected);
       if (item && (item.kind === "note" || item.kind === "text")) {
@@ -571,6 +629,16 @@ export class Board {
     if (dialogOpen() || document.querySelector(".modal-backdrop:not(.hidden) .modal")) return;
     const target = e.target as HTMLElement;
     const focused = document.activeElement as HTMLElement | null;
+    // A picture pasted while writing in the log card goes with the entry.
+    const logField = [target, focused].find((el) => el?.dataset?.f === "log-text" && this.root.contains(el));
+    if (logField) {
+      const picture = [...(e.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
+      if (picture) {
+        e.preventDefault();
+        await this.takeLogPhoto(picture);
+      }
+      return;
+    }
     if (target.closest?.("input, textarea, select, [data-cover]") || focused?.closest?.("input, textarea, select, [data-cover]")) return;
     // Not while the board is hidden behind the project's log.
     if (!this.root.isConnected || this.root.closest("[hidden]")) return;
@@ -594,6 +662,18 @@ export class Board {
     const box = this.root.getBoundingClientRect();
     const at = toBoard(this.view, e.clientX - box.left, e.clientY - box.top);
     const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    // Pictures dropped on the log card go into the log: one waits for words
+    // to go with it; several are an entry each, at once.
+    if (files.length && (e.target as HTMLElement | null)?.closest?.('.board-item[data-kind="log"]')) {
+      if (files.length === 1) return void (await this.takeLogPhoto(files[0]));
+      for (const f of files) {
+        const blob = await prepareChosenImage(f);
+        if (!blob) continue;
+        const entry = await api.addLogEntry(this.boardId, "");
+        await api.setLogPhoto(entry.id, await blobBytes(blob));
+      }
+      return void (await this.refreshLog());
+    }
     if (files.length) {
       for (const [i, f] of files.entries()) await this.addImage(f, { x: Math.round(at.x + i * 30), y: Math.round(at.y + i * 30) });
       return;
@@ -720,6 +800,21 @@ export class Board {
     this.render();
   }
 
+  /** Crops a photo in the log, from the log card; the cropped one replaces it. */
+  private async cropLogPhoto(entryId: string): Promise<void> {
+    const url = await logPhotoUrl(entryId);
+    if (!url) return;
+    const cropped = await cropImage(url, "Crop the photo", "image/jpeg");
+    if (!cropped) return;
+    try {
+      await api.setLogPhoto(entryId, await blobBytes(cropped));
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Crop"));
+    }
+    forgetLogPhoto(entryId);
+    await this.refreshLog();
+  }
+
   private async save(id: string, patch: Parameters<typeof api.updateBoardItem>[1]): Promise<void> {
     try {
       const stored = await api.updateBoardItem(id, patch);
@@ -821,7 +916,8 @@ export class Board {
     const style = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z}`;
     const cls = `board-item kind-${item.kind}${item.id === this.selected ? " selected" : ""}`;
     // A picture, or a pin, can be cropped: ✂ beside the ✕.
-    const crop = item.hasImage && (item.kind === "image" || item.kind === "pin") ? `<button class="board-x board-crop" data-act="crop" title="Crop the picture">✂</button>` : "";
+    // A picture, or a pin, can be cropped: a labelled button as it is pointed at or selected, or C.
+    const crop = item.hasImage && (item.kind === "image" || item.kind === "pin") ? `<button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button>` : "";
     const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
     let body = "";
@@ -910,7 +1006,7 @@ export class Board {
         <div class="board-log-entry${e.milestone ? " milestone" : ""}">
           <span class="board-log-when">${esc(when(e.at))}</span>
           ${e.text ? (e.milestone ? `<b>${esc(e.text)}</b>` : `<p>${esc(e.text)}</p>`) : ""}
-          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"></div>` : ""}
+          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button></div>` : ""}
         </div>`,
       )
       .join("");
@@ -921,9 +1017,11 @@ export class Board {
           <button data-act="open-log" title="The whole log, to change or remove entries and add photos">Open ↗</button>
         </div>
         <div class="board-log-compose">
-          <input data-f="log-text" placeholder="What happened? Enter adds it" />
+          <input data-f="log-text" value="${esc(this.logDraft)}" placeholder="What happened? Enter adds it" />
+          <button data-act="log-photo" title="A photo to go with it: or paste one here with Ctrl+V, or drop one on the card" aria-label="Add a photo">📷</button>
           <button data-act="log-add">Add</button>
         </div>
+        ${this.logPendingHtml()}
         <div class="board-log-list">${entries || `<p class="board-log-empty">Nothing in the log yet.</p>`}</div>
       </div>`;
   }

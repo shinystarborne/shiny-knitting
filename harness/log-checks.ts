@@ -155,6 +155,7 @@ export async function verifyLog() {
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     await waitFor(() => cardTexts()[0] === "Written on the board.", "the card's entry");
     check(results, "Enter in the card adds to the log", mine(project.id).some((e) => e.text === "Written on the board." && !e.milestone));
+
     (board().querySelector('[data-add="log"]') as HTMLElement).click();
     await wait(150);
     check(results, "one log card is enough: the toolbar picks the one there", logCards().length === 1 && logCards()[0].classList.contains("selected"));
@@ -178,6 +179,48 @@ export async function verifyLog() {
     check(results, "the page comes back showing the log", !log()!.hidden && !!page()!.querySelector('[data-view="log"].on'));
     view("board");
     check(results, "the board comes back", !page()!.querySelector<HTMLElement>(".project-board")!.hidden && log()!.hidden);
+
+    // Photos, without going to the log: pasted while writing, dropped, chosen.
+    const makePicture = async (colour: string) => {
+      const c = document.createElement("canvas");
+      c.width = 64;
+      c.height = 48;
+      const x = c.getContext("2d")!;
+      x.fillStyle = colour;
+      x.fillRect(0, 0, 64, 48);
+      return new File([await new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/png"))], "photo.png", { type: "image/png" });
+    };
+    const pending = () => logCards()[0].querySelector<HTMLImageElement>(".board-log-pending img");
+    const cardField = () => logCards()[0].querySelector<HTMLInputElement>('[data-f="log-text"]')!;
+    cardField().focus();
+    cardField().value = "Blocked the swatch.";
+    cardField().dispatchEvent(new Event("input", { bubbles: true }));
+    const pasted = new DataTransfer();
+    pasted.items.add(await makePicture("#c94c6d"));
+    cardField().dispatchEvent(new ClipboardEvent("paste", { clipboardData: pasted, bubbles: true, cancelable: true }));
+    await waitFor(() => !!pending(), "the photo waiting").catch(() => {
+      const a = document.activeElement as HTMLElement | null;
+      throw new Error(`no photo waiting: focus ${a?.tagName}.${a?.dataset?.f ?? ""}, dialog ${!!document.querySelector(".dialog-card")}, modal ${!!document.querySelector(".modal-backdrop:not(.hidden) .modal")}, cards ${logCards().length}, board hidden ${!!board().closest("[hidden]")}`);
+    });
+    const imagesBefore = page()!.querySelectorAll(".board-item.kind-image").length;
+    check(results, "a picture pasted while writing in the log card waits to go with the entry, not on the board", cardField().value === "Blocked the swatch." && page()!.querySelectorAll(".board-item.kind-image").length === imagesBefore);
+    (logCards()[0].querySelector('[data-act="log-add"]') as HTMLElement).click();
+    await waitFor(() => mine(project.id).some((e) => e.text === "Blocked the swatch." && !!e.photoPath), "the entry with its photo");
+    await waitFor(() => !pending(), "the photo gone with it");
+    check(results, "…Add puts it in the log with the words, and the card shows it", !!logCards()[0].querySelector(".board-log-entry [data-log-photo]") && cardField().value === "");
+    const before2 = mine(project.id).length;
+    const dropped = new DataTransfer();
+    dropped.items.add(await makePicture("#2f5283"));
+    dropped.items.add(await makePicture("#6a7a39"));
+    logCards()[0].querySelector(".board-log-list")!.dispatchEvent(new DragEvent("drop", { dataTransfer: dropped, bubbles: true, cancelable: true }));
+    await waitFor(() => mine(project.id).length === before2 + 2, "two entries from the drop");
+    check(results, "two pictures dropped on the log card are an entry each, with its photo", mine(project.id).slice(-2).every((e) => !!e.photoPath) || mine(project.id).filter((e) => e.photoPath).length >= 3);
+    const one = new DataTransfer();
+    one.items.add(await makePicture("#c9982c"));
+    logCards()[0].dispatchEvent(new DragEvent("drop", { dataTransfer: one, bubbles: true, cancelable: true }));
+    await waitFor(() => !!pending(), "one dropped, waiting");
+    (logCards()[0].querySelector('[data-act="log-photo-clear"]') as HTMLElement).click();
+    check(results, "…one dropped waits for words, and × lets it go", !pending() && mine(project.id).length === before2 + 2);
 
     // An inspiration board has no project, so no log to show.
     const ideas = await invoke<{ id: string }>("add_inspiration_board", { name: "Ideas for the log check" });

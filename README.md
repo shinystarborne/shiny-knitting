@@ -424,9 +424,10 @@ what it is made of and what it should look like, as on a Miro board:
 - **Note** — a sticky note, in five colours; double-click to write
 - **Text** — words on the board itself, for headings
 - **Link** — a web address, opened in your browser
-- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder; its
-  ✂ crops it (drag a box over the part to keep), and the picture takes the
-  new shape. A pin from the pattern crops the same way.
+- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder;
+  **✂ Crop**, on it as it is pointed at or selected (or `C`), crops it: drag
+  a box over the part to keep, and the picture takes the new shape. A pin
+  from the pattern crops the same way.
 - **Pattern**, **Yarn**, **Needle** — cards for things already in the app,
   this project's own listed first; a pattern's card opens it
 - **Colour** — a swatch, with a name; double-click to change the colour
@@ -503,7 +504,10 @@ removed, and a photo cropped with **Crop**. A finished project keeps its log as 
 
 The log can be on the board too: **📓 Log** in the board's toolbar adds a card
 that shows it, the newest first with its photos, and keeps up with it. Write in
-the card's field and Enter adds to the log; its entries scroll inside the card,
+the card's field and Enter adds to the log, with a photo if you like: 📷
+chooses one, `Ctrl`+`V` while writing pastes one, or drop one on the card (it
+waits, as a thumbnail, for the words to go with it; several dropped are an
+entry each). Each photo on the card has its own **✂ Crop**. Its entries scroll inside the card,
 which moves by its header; **Open ↗** (or a double-click) shows the whole log.
 One card is enough, and only a project's board has one.
 
