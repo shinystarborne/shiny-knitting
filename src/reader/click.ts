@@ -6,21 +6,22 @@
  * needles. Long-distance knitters rely on it, and a silent button gives nothing
  * back.
  *
- * It is synthesised rather than played from a file. That keeps a binary out of
- * the installer, avoids shipping someone else's recording of a click, and makes
- * the sound a couple of lines rather than an asset to load and cache.
- *
- * The shape is a mechanical one: a very short bright transient for the tick of
- * the pawl, over a fast-decaying body. It has to be short -- a click that
- * rings is a click that becomes grating after an evening of counting.
+ * It is synthesised rather than played from a file: no binary in the
+ * installer, nobody else's recording, and no latency. A few to choose from,
+ * each a few milliseconds of shaped noise or tone -- short, because a click
+ * that rings becomes grating after an evening of counting. Counting down
+ * plays each a little lower, so a correction sounds like one.
  */
 
-/** How long the body rings for. Long enough to read as a click, not a beep. */
-const BODY_MS = 45;
-/** The pitch of the tick, in Hz. High and dry, like a small plastic counter. */
-const TICK_HZ = 2100;
-/** Peak level. Deliberately quiet: this fires on every row. */
-const PEAK = 0.22;
+export type ClickSound = "clicker" | "soft" | "wood" | "tick";
+
+/** The sounds offered, in order: the first is the one a new install has. */
+export const CLICK_SOUNDS: { key: ClickSound; label: string }[] = [
+  { key: "clicker", label: "Clicker" },
+  { key: "soft", label: "Soft tap" },
+  { key: "wood", label: "Wood block" },
+  { key: "tick", label: "Tick" },
+];
 
 /**
  * Rapid presses are throttled to this, so holding a key down does not turn the
@@ -30,78 +31,136 @@ const PEAK = 0.22;
 const MIN_GAP_MS = 35;
 
 const MUTE_KEY = "shiny.knitting.counterSound";
+const SOUND_KEY = "shiny.knitting.counterSoundKind";
 
 let context: AudioContext | null = null;
 let lastPlayed = 0;
 
 /**
- * Whether the click is on.
- *
- * A preference rather than pattern data, so it lives in local storage and
- * applies everywhere. Read once at startup and cached, because it is consulted
- * on every press and local storage is not free.
+ * Whether the click is on, and which it is: preferences rather than pattern
+ * data, so they live in local storage and apply everywhere. Read once and
+ * cached, as they are consulted on every press.
  */
-let muted = readMuted();
+let muted = read(MUTE_KEY) === "off";
+let sound: ClickSound = CLICK_SOUNDS.some((s) => s.key === read(SOUND_KEY)) ? (read(SOUND_KEY) as ClickSound) : "clicker";
 
-function readMuted(): boolean {
+function read(key: string): string | null {
   try {
-    return window.localStorage.getItem(MUTE_KEY) === "off";
+    return window.localStorage.getItem(key);
   } catch {
     // Storage can be unavailable, which is not a reason to fail a count.
-    return false;
+    return null;
+  }
+}
+
+function write(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // A count must not fail because a preference could not be saved.
   }
 }
 
 /** Turns the click on or off, and remembers the choice. */
 export function setClickMuted(value: boolean): void {
   muted = value;
-  try {
-    window.localStorage.setItem(MUTE_KEY, value ? "off" : "on");
-  } catch {
-    // See above: a count must not fail because a preference could not be saved.
-  }
+  write(MUTE_KEY, value ? "off" : "on");
 }
 
 export function isClickMuted(): boolean {
   return muted;
 }
 
+export function clickSound(): ClickSound {
+  return sound;
+}
+
+/** Chooses the sound, and remembers it. */
+export function setClickSound(value: ClickSound): void {
+  if (!CLICK_SOUNDS.some((s) => s.key === value)) return;
+  sound = value;
+  write(SOUND_KEY, value);
+}
+
 /**
- * Plays the click, if it is on and not too soon after the last one.
+ * Plays the click, if it is on and not too soon after the last one; `down`
+ * a little lower, for a row taken back.
  *
  * Safe to call on every count: a browser that will not give us an audio
  * context, or a user who has muted it, simply produces nothing.
  */
-export function playClick(): void {
+export function playClick(down = false): void {
   if (muted) return;
   const now = performance.now();
   if (now - lastPlayed < MIN_GAP_MS) return;
   lastPlayed = now;
-
   try {
     const ctx = audioContext();
     if (!ctx) return;
     // Autoplay policy suspends the context until a gesture; the first click is
     // itself a gesture, so this is the moment it becomes usable.
     if (ctx.state === "suspended") void ctx.resume();
-
-    const start = ctx.currentTime;
-    const body = ctx.createOscillator();
-    const bodyGain = ctx.createGain();
-    body.type = "triangle";
-    body.frequency.setValueAtTime(TICK_HZ, start);
-    // A real counter's pitch drops as the pawl settles, which is what makes it
-    // read as a mechanism rather than a beep.
-    body.frequency.exponentialRampToValueAtTime(TICK_HZ * 0.55, start + BODY_MS / 1000);
-    bodyGain.gain.setValueAtTime(PEAK, start);
-    bodyGain.gain.exponentialRampToValueAtTime(0.0001, start + BODY_MS / 1000);
-    body.connect(bodyGain).connect(ctx.destination);
-    body.start(start);
-    body.stop(start + BODY_MS / 1000 + 0.01);
+    SOUNDS[sound](ctx, down);
   } catch {
     // No audio available. A silent counter still counts.
   }
 }
+
+/** A burst of noise fading to nothing over `ms`: the snap of a mechanism. */
+function noise(ctx: AudioContext, ms: number): AudioBufferSourceNode {
+  const buf = ctx.createBuffer(1, Math.ceil((ctx.sampleRate * ms) / 1000), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+/** A gain falling from `peak` to silence over `ms`, from now. */
+function fade(ctx: AudioContext, peak: number, ms: number): GainNode {
+  const gain = ctx.createGain();
+  const t = ctx.currentTime;
+  gain.gain.setValueAtTime(peak, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + ms / 1000);
+  return gain;
+}
+
+/** Filtered noise: what most of these are. */
+function filtered(ctx: AudioContext, ms: number, type: BiquadFilterType, hz: number, q: number, peak: number): void {
+  const src = noise(ctx, ms);
+  const filter = ctx.createBiquadFilter();
+  filter.type = type;
+  filter.frequency.value = hz;
+  filter.Q.value = q;
+  src.connect(filter).connect(fade(ctx, peak, ms)).connect(ctx.destination);
+  src.start();
+}
+
+/** A short tone dropping in pitch as it fades: the knock of something hollow. */
+function knock(ctx: AudioContext, hz: number, ms: number, peak: number): void {
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(hz, t);
+  osc.frequency.exponentialRampToValueAtTime(hz * 0.7, t + ms / 1000);
+  osc.connect(fade(ctx, peak, ms)).connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + ms / 1000 + 0.01);
+}
+
+const SOUNDS: Record<ClickSound, (ctx: AudioContext, down: boolean) => void> = {
+  // Shelfmind's: a dry mechanical click, a hand tally counter's.
+  clicker: (ctx, down) => filtered(ctx, 30, "bandpass", down ? 1700 : 3400, 1.1, 0.5),
+  // Muffled, as a click through a cloth: for counting next to someone.
+  soft: (ctx, down) => filtered(ctx, 25, "lowpass", down ? 700 : 1100, 0.7, 0.45),
+  // A wooden knock, with the snap of its strike on top.
+  wood: (ctx, down) => {
+    knock(ctx, down ? 620 : 880, 70, 0.35);
+    filtered(ctx, 8, "highpass", 2500, 0.7, 0.15);
+  },
+  // A tiny, high, quiet tick: a watch's.
+  tick: (ctx, down) => filtered(ctx, 12, "bandpass", down ? 3000 : 5200, 3, 0.35),
+};
 
 /**
  * The shared audio context, created on first use.

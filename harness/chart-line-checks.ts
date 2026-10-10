@@ -71,6 +71,47 @@ export async function verifyChartLine() {
     check(results, "for a chart, counting a row steps the line up the page, as a chart is read", top() < start, `${start} → ${top()}`);
     const panelBox = () => document.querySelector<HTMLInputElement>('.project-page [data-f="readsUp"]');
     check(results, "the line's settings say so: Rows go up the page (a chart)", !panelBox() || panelBox()!.checked, "the box is unticked");
+
+    // Every count moves it, whatever counted: the counter's own + and −, its keys.
+    const counterBtn = (act: string) => document.querySelector<HTMLElement>(`.project-page .project-counter [data-act="${act}"]`)!;
+    const total = () => document.querySelector(".project-page .project-counter [data-el=\"total\"]")?.textContent ?? "";
+    await open(false);
+    let at = top();
+    let count = total();
+    counterBtn("total-inc").click();
+    await waitFor(() => top() !== at, "the line to move with +");
+    check(results, "the counter's + moves the line a row, as the count key does", top() > at && total() !== count, `${at} → ${top()}`);
+    at = top();
+    counterBtn("total-dec").click();
+    await waitFor(() => top() !== at, "the line to move back with −");
+    check(results, "…its − moves it back", top() < at, `${at} → ${top()}`);
+    at = top();
+    count = total();
+    scroller().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true, cancelable: true }));
+    await waitFor(() => total() !== count, "the arrow to count");
+    await wait(100);
+    check(results, "…the arrow key that counts moves it too", top() > at, `${at} → ${top()}`);
+    at = top();
+    count = total();
+    scroller().dispatchEvent(new KeyboardEvent("keydown", { code: "KeyJ", key: "J", shiftKey: true, bubbles: true, cancelable: true }));
+    await waitFor(() => total() !== count, "Shift+J to count");
+    await wait(150);
+    check(results, "…Shift with the count key counts without moving it", top() === at, `${at} → ${top()}`);
+    count = total();
+    scroller().dispatchEvent(new KeyboardEvent("keydown", { code: "KeyJ", key: "j", altKey: true, bubbles: true, cancelable: true }));
+    await waitFor(() => top() !== at, "Alt+J to move the line");
+    await wait(150);
+    check(results, "…Alt with it moves it without counting", total() === count, `${count} → ${total()}`);
+
+    // The sound: a few to choose from, the choice kept.
+    const pick = document.querySelector<HTMLSelectElement>('.project-page .project-counter [data-el="sound-pick"]')!;
+    const options = [...pick.options].map((o) => o.value).join(",");
+    const soundBefore = localStorage.getItem("shiny.knitting.counterSoundKind");
+    pick.value = "wood";
+    pick.dispatchEvent(new Event("change", { bubbles: true }));
+    check(results, "the counter's sounds: Shelfmind's clicker first, and others to choose, the choice kept", options === "clicker,soft,wood,tick" && localStorage.getItem("shiny.knitting.counterSoundKind") === "wood", options);
+    if (soundBefore === null) localStorage.removeItem("shiny.knitting.counterSoundKind");
+    else localStorage.setItem("shiny.knitting.counterSoundKind", soundBefore);
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

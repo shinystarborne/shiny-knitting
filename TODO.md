@@ -42,8 +42,15 @@ starting; the details are in the sections under the list.
   (shown in a frame, or a window of its own where a site refuses frames), and
   pages from books in the library (a PDF's pages, an EPUB's chapter as a
   copy). *0.3.58*
+- [ ] **A cheatsheet from part of a page**: a box drawn round the table or
+  chart wanted, as a pin is, kept rather than the whole page.
 
 **Asked for along the way**
+
+- [x] The line did not always move with a count: only the count keys moved
+  it, not the counter's + and − or its arrow keys. Now every count does. The
+  click is Shelfmind's, with a soft tap, a wood block and a tick to choose
+  from. *0.3.59*
 
 - [x] A chart's highlight line steps up the page; counting only on a
   project's page; pins onto its board; the pattern beside the board by

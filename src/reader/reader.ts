@@ -235,6 +235,9 @@ export class ReaderView {
         this.refreshRowReadout();
       };
       this.highlight.onConfigureRequest = () => this.openHighlightPanel();
+      // Every row counted moves the line, whatever counted it: the counter's
+      // buttons, its keys, or the row keys.
+      this.embedded.counter.onRowsCounted = this.stepLine;
     }
 
     this.marks = new MarkLayer(this.scroller, this.pattern.id, this.doc);
@@ -913,6 +916,21 @@ export class ReaderView {
   }
 
   /**
+   * Steps the line by rows counted: on to the next row, down the page for
+   * text and up it for a chart. A line switched off is not moved: it would
+   * step out of sight and scroll the page for no visible reason.
+   */
+  private stepLine = (rows: number): void => {
+    const line = this.highlight;
+    if (!line || !line.enabled || this.destroyed || !rows) return;
+    const way = (Math.sign(rows) * (line.current.readsUp ? -1 : 1)) as 1 | -1;
+    const n = Math.min(Math.abs(rows), 100);
+    for (let i = 0; i < n; i++) line.stepRow(way, n === 1);
+    line.flush();
+    this.refreshRowReadout();
+  };
+
+  /**
    * The synchronised row keys.
    *
    * The count keys (`J` and `K` unless the reader chose others) step the highlight line down or up by exactly one band and
@@ -949,19 +967,15 @@ export class ReaderView {
     e.preventDefault();
     const direction: 1 | -1 = e.code === keys.up ? 1 : -1;
 
-    if (!e.altKey) {
+    if (e.altKey) {
+      // The line alone, for re-aligning it.
+      this.stepLine(direction);
+    } else {
       // The counter owns the arithmetic: one action moves the project total
-      // and every enabled counter, so the numbers cannot drift apart.
-      void this.counter?.countRows(direction);
+      // and every enabled counter, so the numbers cannot drift apart. It
+      // steps the line too, as every count does, unless Shift says not to.
+      void this.counter?.countRows(direction, !e.shiftKey);
     }
-    // A line that is switched off is not moved: it would step out of sight
-    // and scroll the page under the reader for no visible reason.
-    if (!e.shiftKey && line.enabled) {
-      // On to the next row: down for text, up for a chart.
-      line.stepRow(this.highlight?.current.readsUp ? (-direction as 1 | -1) : direction, true);
-      line.flush();
-    }
-    this.refreshRowReadout();
     return true;
   }
 
@@ -1380,6 +1394,7 @@ export class ReaderView {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.embedded?.counter?.onRowsCounted === this.stepLine) this.embedded.counter.onRowsCounted = null;
     this.beside?.destroy();
     this.beside = null;
     clearTimeout(this.saveTimer ?? undefined);

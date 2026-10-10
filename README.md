@@ -795,8 +795,11 @@ cast-on or a setup row.
 
 There is a **click** on every count, like a mechanical counter, because the
 sound tells you the press registered without looking away from the needles. The
-`♪` button beside the counter's title turns it off; the choice is remembered.
-It is synthesised, so there is no sound file in the installer.
+`♪` button beside the counter's title turns it off, and **Sound** under its
+keys chooses it: **Clicker** (a hand tally counter's, as Shelfmind's), **Soft
+tap**, **Wood block** or **Tick**, each heard as it is picked, and a little
+lower when counting down. The choices are remembered. They are synthesised, so
+there is no sound file in the installer.
 
 Everything is saved as you go and survives closing the app.
 
@@ -853,6 +856,9 @@ stays where it is.
   screen, thickness, width, side margin, colour, opacity, whether movement
   is smoothly animated, and **Rows go up the page (a chart)**: a chart is read
   from the bottom row up, so counting a row steps the line up rather than down.
+- Every count of the row moves the line, whatever counted it: the counter's
+  `+` and `−`, its arrow and `+`/`−` keys, or the count keys; a counter's own
+  buttons are a nudge, and leave it.
 
 Every setting is remembered per pattern, so a wide chart and a text page can
 each keep their own geometry. Turning width to 0 makes the line span the

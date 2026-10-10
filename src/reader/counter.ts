@@ -1,7 +1,7 @@
 import { api, type Counter, type CountKeys, type CountOutcome, type Progress } from "../api";
 import { askForm, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { isClickMuted, playClick, setClickMuted } from "./click";
+import { CLICK_SOUNDS, clickSound, isClickMuted, playClick, setClickMuted, setClickSound, type ClickSound } from "./click";
 import { captureKey, isPlainPress, keyLabel } from "./keys";
 
 /**
@@ -36,6 +36,12 @@ export class RowCounter {
   private totalValue!: HTMLElement;
   private counterList!: HTMLElement;
   private soundButton!: HTMLButtonElement;
+  /**
+   * Told of every row counted on the total -- by its buttons, the arrow and
+   * +/- keys, or the row keys -- so the reader beside it steps its line by as
+   * many rows. A counter's own buttons are a nudge, and do not tell it.
+   */
+  onRowsCounted: ((delta: number) => void) | null = null;
 
   constructor(root: HTMLElement, patternId: string, projectId: string | null = null) {
     this.root = root;
@@ -92,6 +98,12 @@ export class RowCounter {
             <span>Count down</span>
             <button class="key-chip" data-act="key-down" title="Choose the key that takes a row back"></button>
           </div>
+          <div class="key-row">
+            <span>Sound</span>
+            <select class="counter-sound-pick" data-el="sound-pick" title="The sound a count makes: picking one plays it">
+              ${CLICK_SOUNDS.map((s) => `<option value="${s.key}" ${s.key === clickSound() ? "selected" : ""}>${s.label}</option>`).join("")}
+            </select>
+          </div>
           <p class="hint">
             These count the total and every counter that is on, and step the row
             line. Shift counts without moving the line; Alt moves it without
@@ -109,6 +121,15 @@ export class RowCounter {
     this.paintSoundButton();
 
     this.root.addEventListener("click", (e) => this.onClick(e));
+    // A sound picked is heard at once, and switched on if it was off.
+    this.q<HTMLSelectElement>('[data-el="sound-pick"]').addEventListener("change", (e) => {
+      setClickSound((e.target as HTMLSelectElement).value as ClickSound);
+      if (isClickMuted()) {
+        setClickMuted(false);
+        this.paintSoundButton();
+      }
+      playClick();
+    });
   }
 
   private q<T extends HTMLElement>(sel: string): T {
@@ -226,15 +247,16 @@ export class RowCounter {
    * The click is played here rather than on the keypress so that it follows
    * the count actually landing, and only when one did.
    */
-  private async count(delta: number): Promise<void> {
+  private async count(delta: number, moveLine = true): Promise<void> {
     const outcome = await api.countRows(this.patternId, this.projectId, delta);
-    playClick();
+    playClick(delta < 0);
     this.apply(outcome);
+    if (moveLine) this.onRowsCounted?.(delta);
   }
 
   private async countOne(id: string, delta: number): Promise<void> {
     const outcome = await api.countCounter(id, delta);
-    playClick();
+    playClick(delta < 0);
     this.apply(outcome);
   }
 
@@ -253,9 +275,9 @@ export class RowCounter {
    * through here keeps the on-screen numbers, the database and the saved
    * progress from ever disagreeing.
    */
-  async countRows(delta: number): Promise<void> {
+  async countRows(delta: number, moveLine = true): Promise<void> {
     try {
-      await this.count(delta);
+      await this.count(delta, moveLine);
     } catch (err) {
       // Called fire-and-forget from the row keys, so a rejection here would
       // otherwise be an unhandled promise rejection.
