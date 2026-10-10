@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.59](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.59)** —
+  every count moves the line, and the click is Shelfmind's, with others to choose. The one to test.
 - **[v0.3.0-beta.58](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.58)** —
-  Cheatsheets, a tab of their own: web pages, and pages from books. The one to test.
+  Cheatsheets, a tab of their own: web pages, and pages from books. Superseded by `beta.59`.
 - **[v0.3.0-beta.57](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.57)** —
   yarns held together, a calculator: the strands' metres per 100 g in, the yarn they make out. Superseded by `beta.58`.
 - **[v0.3.0-beta.56](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.56)** —
