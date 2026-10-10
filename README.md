@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.63](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.63)** —
+  photos in the board's log card, and cropping on the board easier to find. The one to test.
 - **[v0.3.0-beta.62](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.62)** —
-  knitting from a chart on a project's page, the row to knit marked as rows are counted. The one to test.
+  knitting from a chart on a project's page, the row to knit marked as rows are counted. Superseded by `beta.63`.
 - **[v0.3.0-beta.61](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.61)** —
   a chart's colours linked to stash yarns, named in the legend. Superseded by `beta.62`.
 - **[v0.3.0-beta.60](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.60)** —
