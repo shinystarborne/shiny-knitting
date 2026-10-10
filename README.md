@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.64](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.64)** —
+  the line stays on the row being knitted: clicks leave it, counts move it its own height, its place kept. The one to test.
 - **[v0.3.0-beta.63](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.63)** —
-  photos in the board's log card, and cropping on the board easier to find. The one to test.
+  photos in the board's log card, and cropping on the board easier to find. Superseded by `beta.64`.
 - **[v0.3.0-beta.62](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.62)** —
   knitting from a chart on a project's page, the row to knit marked as rows are counted. Superseded by `beta.63`.
 - **[v0.3.0-beta.61](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.61)** —
