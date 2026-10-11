@@ -1425,6 +1425,35 @@ export class ReaderView {
     return true;
   }
 
+  /**
+   * Puts the place back now and again as the pages settle at the pane's
+   * width (a PDF fits its pages to it a moment later), unless it is moved by
+   * hand meanwhile; then steps the rows counted while it was put away.
+   */
+  private settlePlace(): void {
+    this.placeTouched = false;
+    requestAnimationFrame(() => {
+      if (!this.destroyed && !this.placeTouched) this.restorePlace();
+    });
+    for (const ms of [300, 900]) {
+      window.setTimeout(() => {
+        if (this.destroyed) return;
+        if (!this.placeTouched) this.restorePlace();
+        if (ms === 300 && this.pendingRows) {
+          const rows = this.pendingRows;
+          this.pendingRows = 0;
+          this.stepLine(rows);
+        }
+      }, ms);
+    }
+  }
+
+  /** Keeps where the project's knitting is now: before the pane is put away. */
+  keepPlace(): void {
+    clearTimeout(this.saveTimer ?? undefined);
+    this.savePlace();
+  }
+
   /** Writes the reading position back to the database. */
   private savePosition = (): void => {
     if (!this.doc || this.destroyed) return;
@@ -1443,26 +1472,27 @@ export class ReaderView {
   private restorePosition(): void {
     if (!this.doc) return;
     if (this.placeKey()) {
-      // Rows counted while it was put away, once it is shown again.
+      // Scrolled or clicked by hand, the place is the reader's: not put back over that.
+      const mark = () => (this.placeTouched = true);
+      this.scroller.addEventListener("wheel", mark, { passive: true });
+      this.scroller.addEventListener("pointerdown", mark);
+      // Minimised, the pane has no height and the browser forgets how far it
+      // was scrolled; shown again, the place is put back, and the rows
+      // counted meanwhile stepped on from it.
+      let hidden = false;
       new ResizeObserver(() => {
-        if (this.scroller.clientHeight && this.pendingRows && !this.destroyed) {
-          const rows = this.pendingRows;
-          this.pendingRows = 0;
-          this.stepLine(rows);
+        if (this.destroyed) return;
+        if (!this.scroller.clientHeight) {
+          hidden = true;
+          return;
         }
+        if (!hidden) return;
+        hidden = false;
+        this.settlePlace();
       }).observe(this.scroller);
     }
     if (this.restorePlace()) {
-      // Moved by hand from here on, it is the reader's; until then, put back
-      // again as the pages settle at the pane's width.
-      const mark = () => (this.placeTouched = true);
-      this.scroller.addEventListener("wheel", mark, { passive: true, once: true });
-      this.scroller.addEventListener("pointerdown", mark, { once: true });
-      for (const ms of [300, 900]) {
-        window.setTimeout(() => {
-          if (!this.destroyed && !this.placeTouched) this.restorePlace();
-        }, ms);
-      }
+      this.settlePlace();
       return;
     }
     const { lastPage, lastScroll } = this.pattern;

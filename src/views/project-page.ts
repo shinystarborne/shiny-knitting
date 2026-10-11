@@ -517,6 +517,8 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   private setPane(state: PaneState): void {
     const section = this.root.querySelector<HTMLElement>(".project-pattern")!;
+    // Kept before it is hidden: hidden, it no longer knows where it was.
+    if (state !== "open" && !section.hidden) this.reader?.keepPlace();
     section.hidden = state !== "open";
     this.root.querySelector<HTMLElement>(".project-pattern-tab")!.hidden = state !== "minimised";
     this.root.classList.toggle("pattern-open", state === "open");

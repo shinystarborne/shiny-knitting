@@ -130,6 +130,20 @@ export async function verifyChartLine() {
     const back = scroller().scrollTop + top();
     check(results, "hidden and shown again, the pattern is back where the line was on it", Math.abs(back - spot) <= 3, `${spot} → ${back}`);
 
+    // Minimised and shown again: the same, and rows counted meanwhile moved on from there.
+    const spot2 = scroller().scrollTop + top();
+    document.querySelector<HTMLElement>('.project-page [data-pane="min"]')!.click();
+    await waitFor(() => !scroller().clientHeight, "the pattern minimised");
+    counterBtn("total-inc").click();
+    counterBtn("total-inc").click();
+    await wait(300);
+    document.querySelector<HTMLElement>('.project-page [data-pane="restore"]')!.click();
+    await waitFor(() => !!scroller().clientHeight, "the pattern shown again");
+    await wait(1300);
+    const back2 = scroller().scrollTop + top();
+    const rowPx = 20;
+    check(results, "minimised and shown again, it is where it was, and the two rows counted meanwhile moved it on", Math.abs(back2 - (spot2 + 2 * rowPx)) <= 3, `${spot2} → ${back2}`);
+
     // The sound: a few to choose from, the choice kept.
     const pick = document.querySelector<HTMLSelectElement>('.project-page .project-counter [data-el="sound-pick"]')!;
     const options = [...pick.options].map((o) => o.value).join(",");

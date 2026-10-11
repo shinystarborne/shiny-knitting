@@ -50,7 +50,8 @@ starting; the details are in the sections under the list.
 - [x] The line: a click in the pattern no longer moves it (its grip
   readies it, then a click puts it there); each count moves it exactly its
   own height, the pattern scrolling by a row near the edges; hidden and shown
-  again, the pattern is where the line was on it. *0.3.64*
+  again, the pattern is where the line was on it. *0.3.64* Minimised and
+  shown again too. *0.3.65*
 
 - [x] The log card on the board takes photos: 📷, pasted while writing in
   it, or dropped on it. Cropping on the board easier to find: ✂ Crop said

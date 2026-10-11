@@ -897,7 +897,7 @@ stays where it is.
   buttons are a nudge, and leave it. Each count moves it exactly one row:
   its own height. Near the top or bottom of the pane the pattern moves under
   it instead, by that row, so the line stays on the chart's rows.
-- Hide the pattern and show it again, or leave the project and come back, and
+- Hide or minimise the pattern and show it again, or leave the project and come back, and
   it is where the knitting is: the same spot of the pattern under the line,
   kept for each project. Rows counted while the pattern is minimised move the
   line when it is shown again.
