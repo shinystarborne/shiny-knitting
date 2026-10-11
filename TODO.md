@@ -47,6 +47,10 @@ starting; the details are in the sections under the list.
 
 **Asked for along the way**
 
+- [x] The pattern's details ran over the tools beside a project's board: the
+  title and details a row of their own there, the tools wrapping under them;
+  a needle size as written ("5 mm", not "5 Mm"). *0.3.66*
+
 - [x] The line: a click in the pattern no longer moves it (its grip
   readies it, then a click puts it there); each count moves it exactly its
   own height, the pattern scrolling by a row near the edges; hidden and shown

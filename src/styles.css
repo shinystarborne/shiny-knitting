@@ -540,7 +540,14 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   align-items: center;
   color: var(--text-dim);
   font-size: 12px;
+  /* Never over the tools beside it: what does not fit is cut at the edge. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
+.reader-title p .pill { flex-shrink: 0; }
+/* A needle size as it is written: "5 mm", not "5 Mm". */
+.pill.needle { text-transform: none; }
 /* Which row the highlight line is on, kept next to the tools that move it. */
 .row-readout {
   font-size: 11px;
@@ -3016,6 +3023,9 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .project-pattern-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* The reader inside: its bar wraps rather than pushing the pane wider. */
 .reader.embedded .reader-bar { flex-wrap: wrap; row-gap: 6px; }
+/* Narrow beside a board: the title and its details a row of their own, the tools under them. */
+.reader.embedded .reader-title { flex: 1 1 100%; }
+.reader.embedded .reader-tools { flex-wrap: wrap; row-gap: 6px; min-width: 0; }
 .reader.embedded .reader-title h2 { font-size: 14px; }
 .project-pattern-grip {
   position: absolute;

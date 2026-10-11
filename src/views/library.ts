@@ -892,7 +892,7 @@ export class LibraryView {
           <div class="card-meta">
             ${statusPill(p.status)}
             ${p.difficulty ? `<span class="pill">${escapeHtml(p.difficulty)}</span>` : ""}
-            ${p.needleSize ? `<span class="pill">${escapeHtml(p.needleSize)}</span>` : ""}
+            ${p.needleSize ? `<span class="pill needle">${escapeHtml(p.needleSize)}</span>` : ""}
             ${yarnPill(p)}
           </div>
           ${p.tags.length ? `<div class="card-tags">${p.tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
