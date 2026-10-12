@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.67](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.67)** —
+  the highlight line on the page: it scrolls with the pattern, keeps its row, moves and sizes freely. The one to test.
 - **[v0.3.0-beta.66](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.66)** —
-  the pattern's details no longer run over its tools beside a project's board. The one to test.
+  the pattern's details no longer run over its tools beside a project's board. Superseded by `beta.67`.
 - **[v0.3.0-beta.65](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.65)** —
   the pattern beside a project's board keeps its place when minimised and shown again. Superseded by `beta.66`.
 - **[v0.3.0-beta.64](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.64)** —
