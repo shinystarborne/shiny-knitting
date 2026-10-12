@@ -966,6 +966,11 @@ closed.
 colours for the bar, the notes and the space around the pages — for every
 pattern, until ☾ turns it dark again. The rest of the app stays dark.
 
+**Which page.** A PDF's bar says which page is in view, of how many
+("15 / 19"), following the reading; click it to go to another page. Resized
+(the window, another display, the pane beside a board dragged wider), the
+pages are fitted again with the spot being read kept where it was in the pane.
+
 **A page at a time.** **Pages** in the reader bar shows a PDF one page at a
 time, each fitted whole to the pane: `→`/`←` and `PageDown`/`PageUp`, the
 **‹ ›** at the sides, or a sideways swipe (two fingers on a trackpad, or a

@@ -161,17 +161,28 @@ export class PdfView implements RenderedDoc {
     this.container.className = "pdf-pages";
     scroller.appendChild(this.container);
 
-    // A resize or column-width change needs a re-layout. Debounced: dragging
-    // the window border fires a resize per mouse step, and each one is a full
-    // re-render of every page.
-    this.onResize = () => {
+    // A change of the pane's width needs a re-layout: the window resized,
+    // the app moved to another display, or the pane beside a project's board
+    // dragged wider. Watched on the pane itself, so all of them count; its
+    // height alone changing (minimised, shown again) does not. Debounced:
+    // dragging fires a change per mouse step, and each is a full re-render.
+    this.widthSeen = scroller.clientWidth;
+    this.resizeObserver = new ResizeObserver(() => {
+      const width = this.scroller.clientWidth;
+      if (!width || width === this.widthSeen) return;
+      this.widthSeen = width;
+      // Before the document is in, there is nothing laid out to fit again:
+      // it is laid out at this width when it comes.
+      if (!this.task || !this.pages.length) return;
       clearTimeout(this.resizeTimer ?? undefined);
       this.resizeTimer = window.setTimeout(() => void this.handleResize(), 200);
-    };
-    window.addEventListener("resize", this.onResize);
+    });
+    this.resizeObserver.observe(scroller);
   }
 
-  private onResize: () => void;
+  private resizeObserver: ResizeObserver;
+  /** The pane's width the pages were last laid out at. */
+  private widthSeen = 0;
   private onScroll: (() => void) | null = null;
   /** Throttles scroll-driven renders. */
   private scrollTimer: number | null = null;
@@ -865,11 +876,42 @@ export class PdfView implements RenderedDoc {
     this.pages.forEach((p) => this.observer?.observe(p));
   }
 
+  /**
+   * Where the reader is: the page at a third of the way down the pane (where
+   * a line is brought to, and where the eye rests), and how far down that
+   * page, as a share of it.
+   */
+  private anchor(): { page: number; share: number } | null {
+    const at = this.scroller.scrollTop + this.scroller.clientHeight * 0.35;
+    const top = this.scroller.getBoundingClientRect().top - this.scroller.clientTop;
+    for (let n = 1; n <= this.pages.length; n++) {
+      const r = this.pages[n - 1].getBoundingClientRect();
+      const pageTop = r.top - top + this.scroller.scrollTop;
+      if (at < pageTop + r.height || n === this.pages.length) {
+        return { page: n, share: r.height ? Math.max(0, (at - pageTop) / r.height) : 0 };
+      }
+    }
+    return null;
+  }
+
+  /** Puts that spot of that page back at a third of the way down the pane. */
+  private toAnchor(a: { page: number; share: number }): void {
+    const el = this.pages[a.page - 1];
+    if (!el) return;
+    const top = this.scroller.getBoundingClientRect().top - this.scroller.clientTop;
+    const r = el.getBoundingClientRect();
+    const pageTop = r.top - top + this.scroller.scrollTop;
+    this.scroller.scrollTop = Math.max(0, pageTop + a.share * r.height - this.scroller.clientHeight * 0.35);
+  }
+
   private async handleResize(): Promise<void> {
     if (!this.task) return;
     // Canvas CSS sizes and page heights both depend on width, so a resize
-    // means discarding the rendered bitmaps and starting over.
+    // means discarding the rendered bitmaps and starting over -- keeping the
+    // spot being read where it is in the pane, rather than the old scroll
+    // distance, which lands somewhere else once every page is a new height.
     const page = this.pageMode ? this.currentPage() : 0;
+    const spot = page ? null : this.anchor();
     // A page fitted whole stays fitted whole in a window of another size.
     if (this.pageMode) this.zoom = await this.fitPageZoom();
     this.rendered.clear();
@@ -879,8 +921,12 @@ export class PdfView implements RenderedDoc {
     // Re-establish placeholders at the new width before painting, so the
     // scroll height stays roughly right throughout the re-render.
     await this.reserveHeights();
+    if (spot) this.toAnchor(spot);
+    // Scrolled while the pages were painted, the reader's own scroll stands.
+    const placed = this.scroller.scrollTop;
     await this.render();
     if (page) this.goToPage(page);
+    else if (spot && Math.abs(this.scroller.scrollTop - placed) < 2) this.toAnchor(spot);
     // Every page just repainted at a different pixel size -- a window
     // resize is a fit-width zoom in every way that matters to a mark's
     // position, it just was not asked for. Without this, a mark stays
@@ -921,7 +967,7 @@ export class PdfView implements RenderedDoc {
   destroy(): void {
     clearTimeout(this.resizeTimer ?? undefined);
     clearTimeout(this.scrollTimer ?? undefined);
-    window.removeEventListener("resize", this.onResize);
+    this.resizeObserver.disconnect();
     if (this.onScroll) this.scroller.removeEventListener("scroll", this.onScroll);
     this.observer?.disconnect();
     this.task?.destroy();

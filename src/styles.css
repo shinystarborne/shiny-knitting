@@ -526,7 +526,11 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   border-bottom: 1px solid var(--border);
   background: var(--bg-raised);
 }
-.reader-title { flex: 1; min-width: 0; }
+/* The title keeps room to be read; when the tools do not fit beside it,
+   they wrap onto a row of their own rather than squeezing it to nothing. */
+.reader-bar { flex-wrap: wrap; row-gap: 6px; }
+.reader-title { flex: 1 1 220px; min-width: 180px; }
+.reader-bar button { white-space: nowrap; }
 .reader-title h2 {
   font-size: 15px;
   white-space: nowrap;
@@ -559,7 +563,7 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   white-space: nowrap;
 }
 
-.reader-tools { display: flex; gap: 6px; align-items: center; }
+.reader-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
 
 /* Key names inside the settings panel's help text. */
 kbd {
@@ -734,6 +738,8 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 999px;
 }
+/* "15 / 19": the page in view, of all of them; a click goes to another. */
+.zoom-tools .page-readout { min-width: 52px; padding: 2px 8px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text); border-radius: 999px; }
 .zoom-pct {
   min-width: 34px;
   text-align: center;

@@ -1,7 +1,7 @@
 import { ROBOT } from "../ai/describe-run";
 import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Pin, type Project, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
-import { askChoice, askForm, dialogOpen, say } from "../dialogs";
+import { askChoice, askForm, askText, dialogOpen, say } from "../dialogs";
 import { askPages, keepOpen } from "../views/cheatsheets";
 import { closestEl } from "../dom";
 import { HighlightLine } from "./highlight";
@@ -187,6 +187,7 @@ export class ReaderView {
     this.doc.onReflow = () => {
       this.marks?.repaint();
       this.highlight?.layout();
+      this.refreshPageReadout();
       this.refreshZoomReadout();
       this.rememberZoom();
     };
@@ -380,6 +381,7 @@ export class ReaderView {
           ${
             this.pattern.format === "pdf"
               ? `<div class="zoom-tools" role="toolbar" aria-label="Zoom">
+                  <button data-act="go-page" class="ghost page-readout" data-page-readout title="The page in view, of all of them: click to go to another">1 / 1</button>
                   <button data-act="search" class="ghost icon-btn" aria-label="Search" title="Search in this PDF (Ctrl+F)" data-search-tool>🔎</button>
                   <button data-act="zoom-out" class="ghost icon-btn" aria-label="Zoom out" title="Zoom out (Ctrl+-)">−</button>
                   <span class="zoom-pct" data-zoom-pct>100%</span>
@@ -457,6 +459,7 @@ export class ReaderView {
       if (act === "search") this.search?.toggle();
       if (act === "bookmark-page") void this.bookmarkPage(btn as HTMLButtonElement);
       if (act === "zoom-in") this.doc?.zoomIn?.();
+      if (act === "go-page") void this.askGoToPage();
       if (act === "zoom-out") this.doc?.zoomOut?.();
       if (act === "zoom-fit") this.doc?.zoomToFit?.();
       if (act === "page-mode") void this.setPageMode(!this.doc?.isPageMode?.());
@@ -1149,6 +1152,25 @@ export class ReaderView {
     });
   }
 
+  /** "15 / 19": the page taking up most of the pane, of all of them. */
+  private refreshPageReadout = (): void => {
+    const pdf = this.doc instanceof PdfView ? this.doc : null;
+    const el = this.root.querySelector<HTMLElement>("[data-page-readout]");
+    if (!pdf || !el || !pdf.pageCount) return;
+    el.textContent = `${pdf.pageInView()} / ${pdf.pageCount}`;
+  };
+
+  private async askGoToPage(): Promise<void> {
+    const pdf = this.doc instanceof PdfView ? this.doc : null;
+    if (!pdf) return;
+    const answer = await askText(`Go to which page? 1 to ${pdf.pageCount}.`, { title: "Go to page", okLabel: "Go", value: String(pdf.pageInView()) });
+    if (answer === null) return;
+    const n = Math.round(Number(answer.trim()));
+    if (!Number.isFinite(n) || n < 1 || n > pdf.pageCount) return void (await say(`This PDF has pages 1 to ${pdf.pageCount}.`, "Go to page"));
+    pdf.goToPage(n);
+    this.refreshPageReadout();
+  }
+
   private refreshZoomReadout(): void {
     const pct = this.doc?.zoomPercent?.();
     if (pct === undefined) return;
@@ -1262,6 +1284,17 @@ export class ReaderView {
   }
 
   private bindPositionSaving(): void {
+    // The page readout follows the reading, a frame at a time.
+    let pending = false;
+    this.scroller.addEventListener("scroll", () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        this.refreshPageReadout();
+      });
+    }, { passive: true });
+    this.refreshPageReadout();
     this.scroller.addEventListener("scroll", () => {
       clearTimeout(this.saveTimer ?? undefined);
       this.saveTimer = window.setTimeout(this.savePosition, 400);

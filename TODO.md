@@ -47,6 +47,10 @@ starting; the details are in the sections under the list.
 
 **Asked for along the way**
 
+- [x] A PDF's page number in the bar ("15 / 19"), a click to go to a page;
+  resized (the pane dragged, another display), the pages keep the spot
+  being read where it was. *0.3.68*
+
 - [x] The line on the page: kept as its page and its box there, so it
   scrolls with the pattern and keeps its row whatever the display, the
   pane's width or the zoom; moved anywhere by its ●, sized by its corner ◢
