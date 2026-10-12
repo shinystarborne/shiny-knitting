@@ -3505,3 +3505,25 @@ fn a_project_is_knitted_from_a_chart_until_the_chart_goes() {
     delete_chart(&conn, &chart.id).unwrap();
     assert_eq!(get_project(&conn, &project.id).unwrap().chart_id, "");
 }
+
+#[test]
+fn the_line_keeps_its_place_on_the_page() {
+    let conn = test_db();
+    let p = sample(&conn, "Chart", "", "", &[]);
+    let mut h = get_highlight(&conn, &p.id).unwrap();
+    assert_eq!(h.page, 0, "not placed until it is first shown");
+    h.page = 3;
+    h.box_x = 0.12;
+    h.box_y = 0.4;
+    h.box_w = 0.38;
+    h.box_h = 0.015;
+    save_highlight(&conn, &h).unwrap();
+    let back = get_highlight(&conn, &p.id).unwrap();
+    assert_eq!((back.page, back.box_x, back.box_y, back.box_w, back.box_h), (3, 0.12, 0.4, 0.38, 0.015));
+    // Shares of the page, kept within it.
+    h.box_y = 1.7;
+    h.box_x = -0.2;
+    save_highlight(&conn, &h).unwrap();
+    let kept = get_highlight(&conn, &p.id).unwrap();
+    assert_eq!((kept.box_x, kept.box_y), (0.0, 1.0));
+}

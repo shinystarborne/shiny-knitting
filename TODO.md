@@ -47,6 +47,11 @@ starting; the details are in the sections under the list.
 
 **Asked for along the way**
 
+- [x] The line on the page: kept as its page and its box there, so it
+  scrolls with the pattern and keeps its row whatever the display, the
+  pane's width or the zoom; moved anywhere by its ●, sized by its corner ◢
+  (over just the chart). *0.3.67*
+
 - [x] The pattern's details ran over the tools beside a project's board: the
   title and details a row of their own there, the tools wrapping under them;
   a needle size as written ("5 mm", not "5 Mm"). *0.3.66*

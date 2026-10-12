@@ -269,6 +269,20 @@ pub struct HighlightSettings {
     /// steps the line up. Off, as written instructions are, it steps down.
     #[serde(default)]
     pub reads_up: bool,
+    /// Where the line is on the pattern: the page it is on (from 1; 0 until it
+    /// is first placed), and its box there, as shares of the page's width and
+    /// height. On the page, it stays on its row whatever the window, the
+    /// pane's width or the zoom, and scrolls with the pattern.
+    #[serde(default)]
+    pub page: i64,
+    #[serde(default)]
+    pub box_x: f64,
+    #[serde(default)]
+    pub box_y: f64,
+    #[serde(default)]
+    pub box_w: f64,
+    #[serde(default)]
+    pub box_h: f64,
 }
 
 impl HighlightSettings {
@@ -286,6 +300,11 @@ impl HighlightSettings {
             animate: true,
             animation_ms: 260,
             reads_up: false,
+            page: 0,
+            box_x: 0.0,
+            box_y: 0.0,
+            box_w: 0.0,
+            box_h: 0.0,
         }
     }
 }

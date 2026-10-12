@@ -882,40 +882,43 @@ the line is free to be put anywhere, and each count moves it exactly its own
 height on from there, so a line the height of a chart row goes row by row.
 
 **The highlight line.** It is in the pattern beside a project's board, where
-the counter is. It sits over the reading area and stays put while the
-pattern scrolls beneath it. It is **off** until you want it: press **Line** and
-tick *Show line*. While it is off the count keys just count, and the page
-stays where it is.
+the counter is, and it is **on the page**: kept as the page it is on and its
+place there, so it scrolls with the pattern. Scroll away to check something
+and it is still on its row; move the app to another display, make the pane
+wider, or zoom, and it is on the same row of the chart. It is **off** until
+you want it: press **Line** and tick *Show line*. While it is off the count
+keys just count, and the page stays where it is.
 
-- Drag its round handle to move it. Click the handle, and it glows: the next
-  click in the pattern puts it there (`Esc`: not now). Otherwise a click in
-  the pattern is the pattern's, and the line stays on the row being knitted.
-- `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
-  pattern under a stationary line.
-- Double-click the line, or press "Line", to open its settings: height on
-  screen, thickness, width, side margin, colour, opacity, whether movement
-  is smoothly animated, and **Rows go up the page (a chart)**: a chart is read
-  from the bottom row up, so counting a row steps the line up rather than down.
+- Drag its round **●** to move it anywhere on the page, across as well as up
+  and down, or onto another page. Drag its corner **◢** to make it wider,
+  narrower, taller or shorter: over just the chart when the chart does not
+  fill the page, and as tall as one of its rows. **Full width of the page**
+  in its settings puts it across the page again.
+- Click the **●**, and it glows: the next click in the pattern puts it there
+  (`Esc`: not now). Otherwise a click in the pattern is the pattern's, and
+  the line stays on the row being knitted.
 - Every count of the row moves the line, whatever counted it: the counter's
   `+` and `−`, its arrow and `+`/`−` keys, or the count keys; a counter's own
-  buttons are a nudge, and leave it. Each count moves it exactly one row:
-  its own height. Near the top or bottom of the pane the pattern moves under
-  it instead, by that row, so the line stays on the chart's rows.
-- Hide or minimise the pattern and show it again, or leave the project and come back, and
-  it is where the knitting is: the same spot of the pattern under the line,
-  kept for each project. Rows counted while the pattern is minimised move the
-  line when it is shown again.
+  buttons are a nudge, and leave it. Each count moves it its own height along
+  the page, on to the next page past the end of one. Near the top or bottom
+  of the pane the pattern scrolls with it; scrolled away, the next count
+  brings it back into view.
+- `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
+  pattern.
+- Double-click the **●**, or press "Line", for its settings: show it,
+  **Full width of the page**, **Bring it into view**, colour, opacity,
+  smooth movement, and **Rows go up the page (a chart)**: a chart is read
+  from the bottom row up, so counting a row steps the line up rather than down.
+- The pattern opens, and comes back from being hidden or minimised, with the
+  line in view; rows counted while it was minimised have moved it on.
 
-Every setting is remembered per pattern, so a wide chart and a text page can
-each keep their own geometry. Turning width to 0 makes the line span the
-column.
+The line is kept per pattern. A line kept before it belonged to a page is
+given one the first time it is shown: on the page in view, where it sat in
+the window, as tall as it was.
 
 The line starts at 30% opacity, which is faint enough to read the pattern
-straight through it. Thickness goes from 1px to 600px, and the number box beside
-the slider takes an exact value: a highlight is often meant to mask a block of
-chart legend or a run of instructions, not just mark off a single row. That
-thickness is also the height of one row for the count keys, which is what ties
-the line to the counter. Existing patterns still on the old 90% default are moved
+straight through it. Its height is also the height of one row for the count
+keys, which is what ties the line to the counter. Existing patterns still on the old 90% default are moved
 over on first launch, and any opacity you have set deliberately is left alone.
 Likewise, a line that was only ever on because it used to start on is switched
 off once on first launch; one you have adjusted in any way is left showing.

@@ -22,20 +22,6 @@ import { showNotice } from "../notice";
 export type Layout = "focus" | "split";
 
 /**
- * The thickest highlight line the settings panel will produce, in px.
- *
- * A highlight is often used to mask a block of chart legend or a run of
- * instructions, not just to draw a hairline under the current row, so the
- * range has to reach well past a line of text. The number field beside the
- * slider accepts the same range for an exact value.
- */
-const HIGHLIGHT_THICKNESS_MAX = 600;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/**
  * The reading screen: document on one side, tools on the other, with a layout
  * toggle because a chart wants more document width and a text page benefits
  * from the notes being visible at the same time.
@@ -200,6 +186,7 @@ export class ReaderView {
     // catch up to whatever the new scale actually is.
     this.doc.onReflow = () => {
       this.marks?.repaint();
+      this.highlight?.layout();
       this.refreshZoomReadout();
       this.rememberZoom();
     };
@@ -225,16 +212,10 @@ export class ReaderView {
       this.settings = await api.getHighlight(this.pattern.id);
       if (this.destroyed) return;
       this.highlight = new HighlightLine(this.settings);
-      this.highlight.attach(this.scroller);
-      // The attach resolved the stored fraction to a real position, but the
-      // readout still shows its initial "row 1" until something refreshes it.
-      this.refreshRowReadout();
-      this.highlight.onChange = (s) => {
-        void api.saveHighlight(s);
-        // A drag ends here, so this is where the row readout catches up.
-        this.refreshRowReadout();
-        this.savePlace();
-      };
+      // On the pattern's pages: it scrolls with them, and keeps to its row
+      // whatever the window, the pane's width or the zoom.
+      this.highlight.attach(this.scroller, this.doc);
+      this.highlight.onChange = (s) => void api.saveHighlight(s);
       this.highlight.onConfigureRequest = () => this.openHighlightPanel();
       // Every row counted moves the line, whatever counted it: the counter's
       // buttons, its keys, or the row keys.
@@ -377,10 +358,6 @@ export class ReaderView {
           </p>
         </div>
         <div class="reader-tools">
-          ${this.embedded?.counter ? `<span class="row-readout" data-row-readout
-            title="Which row the highlight line is on. The count keys (J and K unless you chose others) step a row and count it."
-            >${this.rowLabel}</span
-          >` : ""}
           <div class="mark-tools" role="toolbar" aria-label="Marking">
             <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it, drag it to move it">➤</button>
             <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
@@ -778,41 +755,10 @@ export class ReaderView {
         <span>Show line</span>
         <input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} />
       </label>
-      <label class="row">
-        <span>Height on screen <em data-row-readout>${this.rowLabel}</em></span>
-        <input type="range" data-f="offsetY" min="0" max="1" step="0.001" value="${s.offsetY}" />
-      </label>
-      <label class="row">
-        <span>Thickness <em data-out="thickness">${s.thickness}px</em></span>
-        <span class="thickness-controls">
-          <input
-            type="range"
-            data-f="thickness"
-            min="1"
-            max="${HIGHLIGHT_THICKNESS_MAX}"
-            step="1"
-            value="${Math.min(s.thickness, HIGHLIGHT_THICKNESS_MAX)}"
-          />
-          <input
-            class="px-field"
-            type="number"
-            data-f="thickness-number"
-            min="1"
-            max="${HIGHLIGHT_THICKNESS_MAX}"
-            step="1"
-            value="${s.thickness}"
-            aria-label="Highlight line thickness in pixels"
-          />
-        </span>
-      </label>
-      <label class="row">
-        <span>Width <em>${s.width > 0 ? s.width + "px" : "full width"}</em></span>
-        <input type="range" data-f="width" min="0" max="1600" step="10" value="${s.width}" />
-      </label>
-      <label class="row">
-        <span>Side margin <em>${s.insetX}px</em></span>
-        <input type="range" data-f="insetX" min="0" max="200" step="2" value="${s.insetX}" />
-      </label>
+      <div class="row panel-buttons">
+        <button class="ghost" data-act="line-full" title="Across the whole width of its page">Full width of the page</button>
+        <button class="ghost" data-act="line-show" title="Scroll to where the line is">Bring it into view</button>
+      </div>
       <label class="row">
         <span>Colour</span>
         <input type="color" data-f="color" value="${s.color}" />
@@ -834,11 +780,13 @@ export class ReaderView {
         <input type="range" data-f="animationMs" min="80" max="800" step="20" value="${s.animationMs}" />
       </label>
       <p class="hint">
-        Set the thickness to the on-screen height of one chart row and
-        <kbd>J</kbd>/<kbd>K</kbd> steps the line a whole row and counts it.
-        <kbd>Shift</kbd> to count without moving, <kbd>Alt</kbd> to move
-        without counting. Drag the line to place it freely,
-        double-click it to reopen this panel.
+        The line is on the page: it scrolls with the pattern and stays on its
+        row. Drag its <b>●</b> to move it anywhere, its <b>◢</b> to make it
+        wider, narrower, taller or shorter: as wide as the chart and as tall
+        as one of its rows, each count moves it a row.
+        <kbd>Shift</kbd> with the count key counts without moving it,
+        <kbd>Alt</kbd> moves it without counting. Double-click the <b>●</b>
+        to reopen this panel.
       </p>
     `;
 
@@ -847,51 +795,34 @@ export class ReaderView {
     panel.querySelector('[data-act="close-panel"]')?.addEventListener("click", () => {
       panel.setAttribute("hidden", "");
     });
-
-    // The number field next to the thickness slider is a second control for
-    // the same setting, not a setting of its own, so it is wired separately
-    // and kept in step with the slider.
-    const thicknessNumber = panel.querySelector<HTMLInputElement>('[data-f="thickness-number"]');
-    const thicknessRange = panel.querySelector<HTMLInputElement>('[data-f="thickness"]');
-    const setThickness = (raw: string) => {
-      const parsed = Math.round(parseFloat(raw));
-      if (!Number.isFinite(parsed)) return;
-      const value = clamp(parsed, 1, HIGHLIGHT_THICKNESS_MAX);
-      const current = this.highlight!.current;
-      current.thickness = value;
-      // Both boxes are written back, including the one being typed into: a
-      // value outside the range is clamped, and the field has to show what was
-      // actually stored rather than what was typed.
-      if (thicknessRange) thicknessRange.value = String(value);
-      if (thicknessNumber) thicknessNumber.value = String(value);
-      this.highlight!.update(current);
-      void api.saveHighlight(current);
-      this.updatePanelReadout(panel, current);
-      // The band grid is the thickness, so changing it changes which row the
-      // line is on even though the line itself has not moved.
-      this.refreshRowReadout();
-    };
-    thicknessNumber?.addEventListener("input", () => setThickness(thicknessNumber.value));
-    thicknessNumber?.addEventListener("change", () => setThickness(thicknessNumber.value));
+    panel.querySelector('[data-act="line-full"]')?.addEventListener("click", () => {
+      const line = this.highlight!;
+      if (!line.placed) line.placeIfNew();
+      line.fullWidth();
+      line.flush();
+    });
+    panel.querySelector('[data-act="line-show"]')?.addEventListener("click", () => {
+      const line = this.highlight!;
+      if (line.placeIfNew()) line.flush();
+      line.show(true);
+    });
 
     panel.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
-      const name = input.dataset.f ?? "";
-      if (name === "thickness-number") return; // handled above
-      const field = name as keyof HighlightSettings;
+      const field = (input.dataset.f ?? "") as keyof HighlightSettings;
       const handler = () => {
-        const current = this.highlight!.current;
+        const line = this.highlight!;
+        const current = line.current;
         let value: unknown;
         if (input.type === "checkbox") value = input.checked;
         else if (input.type === "range") value = parseFloat(input.value);
         else value = input.value;
         // The field comes from a fixed list of input data-f attributes.
         (current as unknown as Record<string, unknown>)[field] = value;
-        this.highlight!.update(current);
-        void api.saveHighlight(current);
-        this.updatePanelReadout(panel, current);
-        if (field === "thickness" && thicknessNumber) {
-          thicknessNumber.value = String(current.thickness);
-        }
+        line.update(current);
+        // Shown for the first time, it is given a place on the page in view.
+        if (field === "enabled" && value && line.placeIfNew()) line.show();
+        void api.saveHighlight(line.current);
+        this.updatePanelReadout(panel, line.current);
       };
       input.addEventListener("input", handler);
       input.addEventListener("change", handler);
@@ -906,12 +837,6 @@ export class ReaderView {
       const em = row?.querySelector("em");
       if (em) em.textContent = text;
     };
-    // Computed live rather than read from the cached label, so dragging the
-    // height slider reports the row it actually landed on.
-    set("Height on screen", this.highlight ? `row ${this.highlight.row}` : this.rowLabel);
-    set("Thickness", `${s.thickness}px`);
-    set("Width", s.width > 0 ? `${s.width}px` : "full width");
-    set("Side margin", `${s.insetX}px`);
     set("Opacity", `${Math.round(s.opacity * 100)}%`);
     set("Animation speed", `${s.animationMs}ms`);
   }
@@ -924,18 +849,13 @@ export class ReaderView {
   private stepLine = (rows: number): void => {
     const line = this.highlight;
     if (!line || !line.enabled || this.destroyed || !rows) return;
-    this.placeTouched = true;
-    // Counted while the pattern is put away (minimised): the line catches up
-    // when it is shown, rather than stepping over a pane with no height.
-    if (!this.scroller.clientHeight) {
-      this.pendingRows += rows;
-      return;
-    }
+    this.lineTouched = true;
+    if (line.placeIfNew()) line.flush();
+    // On its page, so it moves whether the pattern is shown or put away.
     const way = (Math.sign(rows) * (line.current.readsUp ? -1 : 1)) as 1 | -1;
     const n = Math.min(Math.abs(rows), 100);
     for (let i = 0; i < n; i++) line.stepRow(way, n === 1);
     line.flush();
-    this.refreshRowReadout();
   };
 
   /**
@@ -987,23 +907,6 @@ export class ReaderView {
     return true;
   }
 
-  /**
-   * Updates the "row N" readout wherever it appears.
-   *
-   * There are two: a badge in the reader bar and the panel's own row, and both
-   * have to move together or the number lies about where the line is.
-   */
-  private refreshRowReadout(): void {
-    const line = this.highlight;
-    if (!line) return;
-    this.rowLabel = `row ${line.row}`;
-    this.root
-      .querySelectorAll("[data-row-readout]")
-      .forEach((el) => (el.textContent = this.rowLabel));
-  }
-
-  /** The row the line is on, shown in the reader bar and the settings panel. */
-  private rowLabel = "row 1";
 
   /** Switches the marking tool, and paints the toolbar to show which is on. */
   private setMarkTool(tool: MarkTool): void {
@@ -1310,7 +1213,6 @@ export class ReaderView {
         e.preventDefault();
         this.highlight?.moveLineBy(e.key === "ArrowDown" ? 40 : -40, true);
         this.highlight?.flush();
-        this.refreshRowReadout();
         return;
       }
       if (e.key === "PageDown" || e.key === "PageUp") {
@@ -1335,9 +1237,7 @@ export class ReaderView {
       if (!line || e.defaultPrevented || !line.isReady) return;
       const target = e.target as HTMLElement;
       if (target.closest(".highlight-line")) return;
-      const rect = this.scroller.getBoundingClientRect();
-      line.placeAt(e.clientY - rect.top);
-      this.refreshRowReadout();
+      line.placeAt(e.clientY);
     });
     // Esc: not now.
     this.root.addEventListener("keydown", (e) => {
@@ -1369,97 +1269,35 @@ export class ReaderView {
     window.addEventListener("beforeunload", this.savePosition);
   }
 
-  /** Rows counted while the pattern was put away, for the line to catch up. */
-  private pendingRows = 0;
-  /** Moved by hand since the place was put back, so it is not put back over that. */
-  private placeTouched = false;
-
-  /** Where a project's pattern is kept: the project's own place in it, not the pattern's. */
-  private placeKey(): string | null {
-    const id = this.embedded?.projectId;
-    return id ? `project-pattern-place:${id}` : null;
-  }
+  /** Scrolled or clicked by hand since the line was brought into view: left as it is. */
+  private lineTouched = false;
 
   /**
-   * Keeps where the project's knitting is in its pattern: the spot under the
-   * line (or the top of the pane, with no line), as a page and how far down
-   * it, so it comes back under the line whatever the pane's size then.
+   * Brings the project's line into view, where the knitting is: as the
+   * pattern opens, and again as its pages settle at the pane's width (a PDF
+   * fits them a moment later), unless it is scrolled by hand meanwhile. A
+   * line with no place on a page yet is given one first.
    */
-  private savePlace = (): void => {
-    const key = this.placeKey();
-    const doc = this.doc;
-    // A pane put away has no height, and nothing in it is where it was.
-    if (!key || !doc || !this.scroller.clientHeight) return;
-    const lineTop = this.highlight?.enabled ? this.highlight.top : 0;
-    const y = this.scroller.scrollTop + lineTop;
-    let page = 1;
-    let frac = 0;
-    for (let n = 1; n <= doc.pageCount; n++) {
-      const el = doc.pageElement(n);
-      if (!el) continue;
-      if (el.offsetTop > y) break;
-      page = n;
-      frac = el.offsetHeight ? (y - el.offsetTop) / el.offsetHeight : 0;
-    }
-    try {
-      localStorage.setItem(key, JSON.stringify({ page, frac }));
-    } catch {
-      // Kept for as long as the pane is open, then.
-    }
-  };
-
-  /** Puts the project's place back under the line; false when there is none kept. */
-  private restorePlace(): boolean {
-    const key = this.placeKey();
-    if (!key || !this.doc) return false;
-    let place: { page: number; frac: number } | null = null;
-    try {
-      place = JSON.parse(localStorage.getItem(key) ?? "null");
-    } catch {
-      place = null;
-    }
-    const el = place ? this.doc.pageElement(place.page) : null;
-    if (!place || !el) return false;
-    const lineTop = this.highlight?.enabled ? this.highlight.top : 0;
-    this.scroller.scrollTop = Math.max(0, el.offsetTop + place.frac * el.offsetHeight - lineTop);
-    return true;
-  }
-
-  /**
-   * Puts the place back now and again as the pages settle at the pane's
-   * width (a PDF fits its pages to it a moment later), unless it is moved by
-   * hand meanwhile; then steps the rows counted while it was put away.
-   */
-  private settlePlace(): void {
-    this.placeTouched = false;
-    requestAnimationFrame(() => {
-      if (!this.destroyed && !this.placeTouched) this.restorePlace();
-    });
-    for (const ms of [300, 900]) {
-      window.setTimeout(() => {
-        if (this.destroyed) return;
-        if (!this.placeTouched) this.restorePlace();
-        if (ms === 300 && this.pendingRows) {
-          const rows = this.pendingRows;
-          this.pendingRows = 0;
-          this.stepLine(rows);
-        }
-      }, ms);
-    }
-  }
-
-  /** Keeps where the project's knitting is now: before the pane is put away. */
-  keepPlace(): void {
-    clearTimeout(this.saveTimer ?? undefined);
-    this.savePlace();
+  private settleLine(): void {
+    const line = this.highlight;
+    if (!line) return;
+    this.lineTouched = false;
+    const go = () => {
+      if (this.destroyed || this.lineTouched || !line.enabled) return;
+      if (line.placeIfNew()) line.flush();
+      line.show();
+    };
+    requestAnimationFrame(go);
+    window.setTimeout(go, 300);
+    window.setTimeout(go, 900);
   }
 
   /** Writes the reading position back to the database. */
   private savePosition = (): void => {
     if (!this.doc || this.destroyed) return;
-    // A project's pattern keeps the project's place, and leaves the
-    // pattern's own (as read on its own) alone.
-    if (this.placeKey()) return this.savePlace();
+    // A project's pattern, with its line, is where the line is: the
+    // pattern's own place (as read on its own) is left alone.
+    if (this.embedded?.counter && this.highlight?.enabled) return;
     const page = this.doc.currentPage();
     const el = this.doc.pageElement(page);
     // The offset is saved relative to the page, not absolutely: goToPage()
@@ -1471,14 +1309,13 @@ export class ReaderView {
 
   private restorePosition(): void {
     if (!this.doc) return;
-    if (this.placeKey()) {
-      // Scrolled or clicked by hand, the place is the reader's: not put back over that.
-      const mark = () => (this.placeTouched = true);
+    if (this.highlight) {
+      // Scrolled or clicked by hand, the place is the reader's.
+      const mark = () => (this.lineTouched = true);
       this.scroller.addEventListener("wheel", mark, { passive: true });
       this.scroller.addEventListener("pointerdown", mark);
-      // Minimised, the pane has no height and the browser forgets how far it
-      // was scrolled; shown again, the place is put back, and the rows
-      // counted meanwhile stepped on from it.
+      // Minimised, the pane has no height and forgets how far it was
+      // scrolled; shown again, the line is brought back into view.
       let hidden = false;
       new ResizeObserver(() => {
         if (this.destroyed) return;
@@ -1488,12 +1325,12 @@ export class ReaderView {
         }
         if (!hidden) return;
         hidden = false;
-        this.settlePlace();
+        this.settleLine();
       }).observe(this.scroller);
-    }
-    if (this.restorePlace()) {
-      this.settlePlace();
-      return;
+      if (this.highlight.enabled) {
+        this.settleLine();
+        if (this.highlight.placed) return;
+      }
     }
     const { lastPage, lastScroll } = this.pattern;
     if (lastPage > 1) {
@@ -1516,8 +1353,6 @@ export class ReaderView {
   }
 
   destroy(): void {
-    // Where the project's knitting is, kept as the pane is put away.
-    this.savePlace();
     this.destroyed = true;
     if (this.embedded?.counter?.onRowsCounted === this.stepLine) this.embedded.counter.onRowsCounted = null;
     this.beside?.destroy();

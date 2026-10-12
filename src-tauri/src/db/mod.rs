@@ -651,6 +651,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "highlights", "reads_up")? {
         conn.execute("ALTER TABLE highlights ADD COLUMN reads_up INTEGER NOT NULL DEFAULT 0", [])?;
     }
+    // The line on the page: which page, and its box there as shares of it.
+    if !column_exists(conn, "highlights", "page")? {
+        conn.execute_batch(
+            "ALTER TABLE highlights ADD COLUMN page INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE highlights ADD COLUMN box_x REAL NOT NULL DEFAULT 0;
+             ALTER TABLE highlights ADD COLUMN box_y REAL NOT NULL DEFAULT 0;
+             ALTER TABLE highlights ADD COLUMN box_w REAL NOT NULL DEFAULT 0;
+             ALTER TABLE highlights ADD COLUMN box_h REAL NOT NULL DEFAULT 0;",
+        )?;
+    }
     // A lot that is what a finished project left over.
     if !column_exists(conn, "yarn_lots", "leftover")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
@@ -2095,7 +2105,8 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
     let found = conn
         .query_row(
             "SELECT pattern_id, enabled, offset_y, thickness, width, inset_x,
-                    color, opacity, animate, animation_ms, reads_up
+                    color, opacity, animate, animation_ms, reads_up,
+                    page, box_x, box_y, box_w, box_h
              FROM highlights WHERE pattern_id = ?1",
             params![pattern_id],
             |r| {
@@ -2111,6 +2122,11 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
                     animate: r.get::<_, i64>(8)? != 0,
                     animation_ms: r.get(9)?,
                     reads_up: r.get::<_, i64>(10)? != 0,
+                    page: r.get(11)?,
+                    box_x: r.get(12)?,
+                    box_y: r.get(13)?,
+                    box_w: r.get(14)?,
+                    box_h: r.get(15)?,
                 })
             },
         )
@@ -2122,14 +2138,17 @@ pub fn get_highlight(conn: &Connection, pattern_id: &str) -> AppResult<Highlight
 pub fn save_highlight(conn: &Connection, h: &HighlightSettings) -> AppResult<()> {
     conn.execute(
         "INSERT INTO highlights
-           (pattern_id, enabled, offset_y, thickness, width, inset_x, color, opacity, animate, animation_ms, reads_up)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+           (pattern_id, enabled, offset_y, thickness, width, inset_x, color, opacity, animate, animation_ms, reads_up,
+            page, box_x, box_y, box_w, box_h)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
          ON CONFLICT(pattern_id) DO UPDATE SET
            enabled=excluded.enabled, offset_y=excluded.offset_y,
            thickness=excluded.thickness, width=excluded.width,
            inset_x=excluded.inset_x, color=excluded.color,
            opacity=excluded.opacity, animate=excluded.animate,
-           animation_ms=excluded.animation_ms, reads_up=excluded.reads_up",
+           animation_ms=excluded.animation_ms, reads_up=excluded.reads_up,
+           page=excluded.page, box_x=excluded.box_x, box_y=excluded.box_y,
+           box_w=excluded.box_w, box_h=excluded.box_h",
         params![
             h.pattern_id,
             h.enabled as i64,
@@ -2141,7 +2160,12 @@ pub fn save_highlight(conn: &Connection, h: &HighlightSettings) -> AppResult<()>
             h.opacity,
             h.animate as i64,
             h.animation_ms,
-            h.reads_up as i64
+            h.reads_up as i64,
+            h.page.max(0),
+            h.box_x.clamp(0.0, 1.0),
+            h.box_y.clamp(0.0, 1.0),
+            h.box_w.clamp(0.0, 1.0),
+            h.box_h.clamp(0.0, 1.0)
         ],
     )?;
     Ok(())

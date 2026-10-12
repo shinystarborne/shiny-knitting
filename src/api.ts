@@ -126,6 +126,15 @@ export interface HighlightSettings {
   animationMs: number;
   /** Rows go up the page, as a chart is read: counting a row steps the line up. */
   readsUp?: boolean;
+  /**
+   * Where the line is on the pattern: its page (from 1; 0 until first
+   * placed), and its box there as shares of the page's width and height.
+   */
+  page: number;
+  boxX: number;
+  boxY: number;
+  boxW: number;
+  boxH: number;
 }
 
 /** One row of the yarn weight filter, from the standard weight table. */
