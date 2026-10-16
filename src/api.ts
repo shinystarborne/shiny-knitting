@@ -1005,6 +1005,16 @@ export interface Cheatsheet {
   notes: string;
   position: number;
   addedAt: number;
+  /** Pages of a PDF: the part of the one page kept, upright; null for all of it. */
+  region: SheetRegion | null;
+}
+
+/** A box on a page, in fractions of the page from its top left. */
+export interface SheetRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface CheatsheetInput {
@@ -1017,6 +1027,8 @@ export interface CheatsheetInput {
   notes?: string;
   /** An EPUB chapter's markup, self-contained: the copy kept. */
   html?: string;
+  /** Part of the page (pages of a PDF, one page). */
+  region?: SheetRegion | null;
 }
 
 export interface Chart {

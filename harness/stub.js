@@ -65,6 +65,16 @@ const store = {
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
+/** As cheatsheets.rs's tidy_region: cut to the page; a sliver or all of it is none. */
+function tidyRegion(r) {
+  if (!r || ![r.x, r.y, r.w, r.h].every(Number.isFinite)) return null;
+  const c = (v) => Math.max(0, Math.min(1, v));
+  const round = (v) => Math.round(v * 10000) / 10000;
+  const x0 = c(r.x), y0 = c(r.y), w = c(r.x + r.w) - x0, h = c(r.y + r.h) - y0;
+  if (w < 0.01 || h < 0.01 || (w > 0.999 && h > 0.999)) return null;
+  return { x: round(x0), y: round(y0), w: round(w), h: round(h) };
+}
+
 /** annotations.rs::clean_title. */
 const bookmarkTitle = (raw) => (String(raw ?? "").trim() || "Untitled").slice(0, 120);
 
@@ -1394,12 +1404,13 @@ const handlers = {
   //
   // As cheatsheets.rs: an address tidied (an embed code unwrapped, YouTube as
   // its embed page), and a site's headers deciding whether it is framed; here
-  // an address with "refuses" in it stands for one that says no.
+  // an address with "refuses" in it stands for one that says no. A box kept of
+  // a page is cut to the page, and is of one page.
   list_cheatsheets: () => clone(store.cheatsheets ?? []),
   add_cheatsheet: ({ input }) => {
     store.cheatsheets ??= [];
     const id = `cs${store.nextId++}`;
-    const sheet = { id, title: (input.title ?? "").trim(), kind: input.kind, url: "", framable: true, patternId: "", pageFrom: 0, pageTo: 0, notes: (input.notes ?? "").trim(), position: 0, addedAt: Date.now() };
+    const sheet = { id, title: (input.title ?? "").trim(), kind: input.kind, url: "", framable: true, patternId: "", pageFrom: 0, pageTo: 0, notes: (input.notes ?? "").trim(), position: 0, addedAt: Date.now(), region: null };
     if (input.kind === "web") {
       let raw = String(input.url ?? "").trim();
       if (/^<iframe/i.test(raw)) raw = (/src=["']?([^"'\s>]+)/i.exec(raw) ?? [])[1] ?? "";
@@ -1424,7 +1435,9 @@ const handlers = {
       sheet.patternId = p.id;
       sheet.pageFrom = Math.max(1, input.pageFrom ?? 1);
       sheet.pageTo = Math.max(sheet.pageFrom, input.pageTo ?? 1);
-      if (!sheet.title) sheet.title = `${p.title}, ${input.kind === "chapter" ? "chapter" : "p."} ${sheet.pageFrom}${sheet.pageTo > sheet.pageFrom ? `–${sheet.pageTo}` : ""}`;
+      if (input.kind === "pages") sheet.region = tidyRegion(input.region);
+      if (sheet.region) sheet.pageTo = sheet.pageFrom;
+      if (!sheet.title) sheet.title = `${p.title}, ${input.kind === "chapter" ? "chapter" : sheet.region ? "part of p." : "p."} ${sheet.pageFrom}${sheet.pageTo > sheet.pageFrom ? `–${sheet.pageTo}` : ""}`;
       if (input.kind === "chapter") {
         if (!input.html) throw new Error("The chapter could not be read.");
         (store.cheatsheetCopies ??= new Map()).set(id, input.html);
@@ -1445,6 +1458,7 @@ const handlers = {
     if (kept.kind === "pages" && sheet.pageFrom >= 1) {
       kept.pageFrom = sheet.pageFrom;
       kept.pageTo = Math.max(sheet.pageFrom, sheet.pageTo);
+      kept.region = kept.pageTo === kept.pageFrom ? tidyRegion(sheet.region) : null;
     }
     return clone(kept);
   },

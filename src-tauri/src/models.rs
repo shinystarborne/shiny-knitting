@@ -807,6 +807,18 @@ pub struct Cheatsheet {
     pub notes: String,
     pub position: i64,
     pub added_at: i64,
+    /// Pages of a PDF: the part of the page kept, when it is one page and
+    /// not all of it. Upright, as a pin's box is.
+    pub region: Option<SheetRegion>,
+}
+
+/// A box on a page, in fractions of the page from its top left.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq)]
+pub struct SheetRegion {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -821,6 +833,8 @@ pub struct CheatsheetInput {
     pub notes: String,
     /// An EPUB chapter's markup, self-contained, kept as the copy.
     pub html: Option<String>,
+    /// Part of the page, for pages of a PDF.
+    pub region: Option<SheetRegion>,
 }
 
 /// The fields the AI is asked to fill in.

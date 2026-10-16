@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
 use crate::db;
-use crate::models::{AppError, Cheatsheet, CheatsheetInput};
+use crate::models::{AppError, Cheatsheet, CheatsheetInput, SheetRegion};
 
 use super::state::AppState;
 
@@ -108,6 +108,24 @@ pub fn frame_allowed(x_frame_options: Option<&str>, csp: Option<&str>) -> bool {
     true
 }
 
+/// A box kept of a page, made to lie on it: cut to the page's edges, and
+/// none at all when what is left is a sliver (or nothing a number), which
+/// is the whole page.
+pub fn tidy_region(region: Option<SheetRegion>) -> Option<SheetRegion> {
+    let r = region?;
+    if ![r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    let (x0, y0) = (r.x.clamp(0.0, 1.0), r.y.clamp(0.0, 1.0));
+    let (x1, y1) = ((r.x + r.w).clamp(0.0, 1.0), (r.y + r.h).clamp(0.0, 1.0));
+    let round = |v: f64| (v * 10_000.0).round() / 10_000.0;
+    let (w, h) = (x1 - x0, y1 - y0);
+    if w < 0.01 || h < 0.01 || (w > 0.999 && h > 0.999) {
+        return None;
+    }
+    Some(SheetRegion { x: round(x0), y: round(y0), w: round(w), h: round(h) })
+}
+
 /// Where an EPUB chapter's copy is kept.
 fn copy_path(state: &AppState, id: &str) -> PathBuf {
     state.library_dir.join("cheatsheets").join(format!("{id}.html"))
@@ -151,8 +169,19 @@ pub async fn add_cheatsheet(state: State<'_, AppState>, input: CheatsheetInput) 
             sheet.pattern_id = pattern.id.clone();
             sheet.page_from = from;
             sheet.page_to = input.page_to.max(from);
+            // Part of a page is of one page.
+            if input.kind == "pages" {
+                sheet.region = tidy_region(input.region);
+                if sheet.region.is_some() {
+                    sheet.page_to = from;
+                }
+            }
             if sheet.title.is_empty() {
-                let word = if input.kind == "chapter" { "chapter" } else { "p." };
+                let word = match (input.kind.as_str(), sheet.region.is_some()) {
+                    ("chapter", _) => "chapter",
+                    (_, true) => "part of p.",
+                    _ => "p.",
+                };
                 let span = if sheet.page_to > from { format!("{from}–{}", sheet.page_to) } else { from.to_string() };
                 sheet.title = format!("{}, {word} {span}", pattern.title);
             }
@@ -168,7 +197,8 @@ pub async fn add_cheatsheet(state: State<'_, AppState>, input: CheatsheetInput) 
     db::insert_cheatsheet(&state.db(), &sheet)
 }
 
-/// Its title, notes, pages, or whether it is shown in a frame; the rest stays.
+/// Its title, notes, pages (and the part of one kept), or whether it is
+/// shown in a frame; the rest stays.
 #[tauri::command]
 pub fn update_cheatsheet(state: State<'_, AppState>, sheet: Cheatsheet) -> CmdResult<Cheatsheet> {
     let conn = state.db();
@@ -182,6 +212,8 @@ pub fn update_cheatsheet(state: State<'_, AppState>, sheet: Cheatsheet) -> CmdRe
     if kept.kind == "pages" && sheet.page_from >= 1 {
         kept.page_from = sheet.page_from;
         kept.page_to = sheet.page_to.max(sheet.page_from);
+        // A box is of one page: more pages are the whole of each.
+        kept.region = if kept.page_to == kept.page_from { tidy_region(sheet.region) } else { None };
     }
     db::update_cheatsheet(&conn, &kept)?;
     Ok(kept)
@@ -254,6 +286,20 @@ mod tests {
             assert_eq!(web_address(link).unwrap(), "https://www.youtube.com/embed/dQw4w9WgXcQ", "{link}");
         }
         assert_eq!(web_address("https://www.youtube.com/@channel").unwrap(), "https://www.youtube.com/@channel");
+    }
+
+    #[test]
+    fn a_box_kept_of_a_page_lies_on_it() {
+        let r = |x, y, w, h| Some(SheetRegion { x, y, w, h });
+        assert_eq!(tidy_region(r(0.1, 0.2, 0.5, 0.3)), r(0.1, 0.2, 0.5, 0.3));
+        // Cut to the page's edges.
+        assert_eq!(tidy_region(r(-0.1, 0.9, 0.5, 0.3)), r(0.0, 0.9, 0.4, 0.1));
+        assert_eq!(tidy_region(r(0.123456, 0.0, 0.5, 0.5)), r(0.1235, 0.0, 0.5, 0.5));
+        // A sliver, all of the page, or nothing a number: the whole page.
+        assert_eq!(tidy_region(r(0.5, 0.5, 0.001, 0.4)), None);
+        assert_eq!(tidy_region(r(0.0, 0.0, 1.0, 1.0)), None);
+        assert_eq!(tidy_region(r(f64::NAN, 0.0, 0.5, 0.5)), None);
+        assert_eq!(tidy_region(None), None);
     }
 
     #[test]

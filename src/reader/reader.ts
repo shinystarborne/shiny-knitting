@@ -1,9 +1,9 @@
 import { ROBOT } from "../ai/describe-run";
 import { api, isLive, toBytes, STATUSES, type AiSettingsView, type HighlightSettings, type Pattern, type Pin, type Project, type SuggestionResult } from "../api";
 import { EpubView } from "./epub";
-import { askChoice, askForm, askText, dialogOpen, say } from "../dialogs";
+import { askChoice, askForm, askText, customDialog, dialogOpen, say } from "../dialogs";
 import { askPages, keepOpen } from "../views/cheatsheets";
-import { closestEl } from "../dom";
+import { closestEl, dom } from "../dom";
 import { HighlightLine } from "./highlight";
 import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
 import { PinLayer } from "./pins";
@@ -718,13 +718,42 @@ export class ReaderView {
         const n = Math.max(1, Math.min(doc.pageCount, Math.round(Number(answer.Chapter) || page)));
         kept = await api.addCheatsheet({ kind: "chapter", patternId: this.pattern.id, pageFrom: n, pageTo: n, title: answer.Name.trim() || (titles[n - 1] ? `${this.pattern.title}: ${titles[n - 1]}` : ""), html: doc.chapterHtml(n) });
       } else {
+        const what = await askWholeOrPart();
+        if (what === "part") return this.armSheetCrop();
+        if (what !== "pages") return;
         const pages = await askPages(this.pattern.title, page, page);
         if (!pages) return;
         kept = await api.addCheatsheet({ kind: "pages", patternId: this.pattern.id, pageFrom: pages.from, pageTo: Math.min(pages.to, doc.pageCount || pages.to), title: pages.title });
       }
-      // The tab opens on it, the next time it is shown.
-      keepOpen(kept.id);
-      showNotice("Kept in Cheatsheets.", { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true })) });
+      this.keptAsCheatsheet(kept.id);
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
+    }
+  }
+
+  /** The tab opens on it, the next time it is shown; a notice offers it now. */
+  private keptAsCheatsheet(id: string): void {
+    keepOpen(id);
+    showNotice("Kept in Cheatsheets.", { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true })) });
+  }
+
+  /**
+   * A box drawn round part of a page, as a pin is, kept as a cheatsheet: the
+   * Pin tool armed for one crop, which comes here instead of making a pin.
+   */
+  private armSheetCrop(): void {
+    const pins = this.pins;
+    if (!pins) return;
+    pins.cropForSheet = (page, rect) => void this.keepPart(page, rect);
+    this.setMarkTool("pin");
+  }
+
+  private async keepPart(page: number, rect: { x: number; y: number; w: number; h: number }): Promise<void> {
+    const answer = await askForm([{ label: "Name", placeholder: `Optional: “${this.pattern.title}, part of p. ${page}”` }], { title: "Keep as a cheatsheet", okLabel: "Keep it" });
+    if (!answer) return;
+    try {
+      const kept = await api.addCheatsheet({ kind: "pages", patternId: this.pattern.id, pageFrom: page, pageTo: page, region: rect, title: answer.Name.trim() });
+      this.keptAsCheatsheet(kept.id);
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
     }
@@ -917,7 +946,9 @@ export class ReaderView {
     // A tool that cannot work right now is not chosen: pressing Pin on an
     // EPUB, or on a pattern already holding five, falls back to Select rather
     // than arming a drag that would refuse at the end of it.
-    if (tool === "pin") {
+    // A box for a cheatsheet is not a pin: the pins' limit is nothing to it.
+    if (tool !== "pin" && this.pins) this.pins.cropForSheet = null;
+    if (tool === "pin" && !this.pins?.cropForSheet) {
       const room = this.pins?.availability();
       if (room && !room.ok) {
         void say(room.reason, "Pin");
@@ -933,12 +964,14 @@ export class ReaderView {
     // Says what to do while Pin is armed, since dragging over the page means
     // something different then.
     let hint = this.root.querySelector<HTMLElement>(".pin-hint");
-    if (tool === "pin" && !hint) {
-      hint = document.createElement("div");
-      hint.className = "pin-hint";
-      hint.textContent = "Drag a rectangle around the area you want to pin";
-      this.root.querySelector(".doc-pane")?.appendChild(hint);
-    } else if (tool !== "pin") {
+    if (tool === "pin") {
+      if (!hint) {
+        hint = document.createElement("div");
+        hint.className = "pin-hint";
+        this.root.querySelector(".doc-pane")?.appendChild(hint);
+      }
+      hint.textContent = this.pins?.cropForSheet ? "Drag a box around the part to keep as a cheatsheet" : "Drag a rectangle around the area you want to pin";
+    } else {
       hint?.remove();
     }
   }
@@ -1478,4 +1511,31 @@ function setReaderTheme(theme: "light" | "dark"): void {
   } catch {
     // Light for this reading only.
   }
+}
+
+/**
+ * Keeping a PDF as a cheatsheet: whole pages, or a box drawn round part of
+ * one. Resolves "pages", "part", or null when cancelled.
+ */
+function askWholeOrPart(): Promise<"pages" | "part" | null> {
+  return new Promise((resolve) => {
+    const finish = (answer: "pages" | "part" | null) => {
+      dialog.close();
+      resolve(answer);
+    };
+    const dialog = customDialog("Keep as a cheatsheet", () => finish(null));
+    const choice = (label: string, kind: string, answer: "pages" | "part") => {
+      const b = dom("button", { class: kind, type: "button", "data-keep": answer }, [label]);
+      b.addEventListener("click", () => finish(answer));
+      return b;
+    };
+    const part = choice("Part of a page…", "primary", "part");
+    const cancel = dom("button", { class: "ghost", type: "button" }, ["Cancel"]);
+    cancel.addEventListener("click", () => finish(null));
+    dialog.card.append(
+      dom("p", { class: "dialog-message" }, ["The whole page (or a few), or only the table or chart wanted: a box drawn round it, as a pin is."]),
+      dom("div", { class: "dialog-actions" }, [cancel, choice("Whole pages…", "ghost", "pages"), part]),
+    );
+    dialog.show(part);
+  });
 }

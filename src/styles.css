@@ -3487,6 +3487,10 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .sheet-frame-note { margin: 6px 0 0; }
 .sheet-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0 24px; }
 .sheet-page { box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35); border-radius: 2px; }
+/* The page shown whole, for a box to be drawn round part of it, as a pin is. */
+.sheet-crop { position: relative; line-height: 0; cursor: crosshair; user-select: none; touch-action: none; }
+.sheet-crop .sheet-page { display: block; }
+.sheet-crop-hint { align-self: center; color: var(--accent); }
 .sheet-refused-actions { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 
 /* Patterns | Books, where the library's heading was. */

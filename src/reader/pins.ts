@@ -109,6 +109,13 @@ export class PinLayer {
    */
   toBoard: ((pin: Pin, picture: HTMLCanvasElement) => Promise<void>) | null = null;
 
+  /**
+   * Set while the box being drawn is for a cheatsheet rather than a pin: the
+   * next crop is handed here, upright, instead of being made a pin. The
+   * reader sets it as it arms the tool, and clears it with any other tool.
+   */
+  cropForSheet: ((page: number, rect: RegionRect) => void) | null = null;
+
   constructor(scroller: HTMLElement, patternId: string, doc: PinTarget) {
     this.scroller = scroller;
     this.patternId = patternId;
@@ -168,7 +175,9 @@ export class PinLayer {
     if (this.band) return;
     const start = this.normalised(e.clientX, e.clientY, page);
     if (!start) return;
-    const shot = this.snapshot(page);
+    // Taken now: the crop ending puts the reader back to Select, which clears it.
+    const forSheet = this.cropForSheet;
+    const shot = forSheet ? null : this.snapshot(page);
 
     const band = document.createElement("div");
     band.className = "pin-band";
@@ -205,6 +214,7 @@ export class PinLayer {
       const box = page.getBoundingClientRect();
       // A click, or a slip of the hand, is not a crop.
       if (rect.w * box.width < MIN_CROP_PX || rect.h * box.height < MIN_CROP_PX) return;
+      if (forSheet) return forSheet(startPage, round4(boxFromView(rect, this.doc.rotationOf?.(startPage) ?? 0)));
       await this.save(page, rect, shot, startPage);
     };
 

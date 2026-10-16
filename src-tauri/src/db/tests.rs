@@ -3489,6 +3489,24 @@ fn cheatsheets_are_added_at_the_top_and_moved_into_place() {
 }
 
 #[test]
+fn a_cheatsheet_keeps_the_part_of_its_page() {
+    use crate::models::SheetRegion;
+    let conn = test_db();
+    let part = SheetRegion { x: 0.1, y: 0.25, w: 0.5, h: 0.2 };
+    insert_cheatsheet(&conn, &Cheatsheet { id: "p".into(), title: "Cast-ons".into(), kind: "pages".into(), pattern_id: "book".into(), page_from: 12, page_to: 12, region: Some(part), ..Default::default() }).unwrap();
+    insert_cheatsheet(&conn, &Cheatsheet { id: "w".into(), title: "Whole".into(), kind: "pages".into(), pattern_id: "book".into(), page_from: 3, page_to: 4, ..Default::default() }).unwrap();
+    assert_eq!(get_cheatsheet(&conn, "p").unwrap().region, Some(part));
+    assert_eq!(get_cheatsheet(&conn, "w").unwrap().region, None);
+    let mut p = get_cheatsheet(&conn, "p").unwrap();
+    p.region = None;
+    update_cheatsheet(&conn, &p).unwrap();
+    assert_eq!(get_cheatsheet(&conn, "p").unwrap().region, None);
+    // Written by hand, or by an older version: the whole page.
+    conn.execute("UPDATE cheatsheets SET region = 'nonsense' WHERE id = 'w'", []).unwrap();
+    assert_eq!(get_cheatsheet(&conn, "w").unwrap().region, None);
+}
+
+#[test]
 fn a_project_is_knitted_from_a_chart_until_the_chart_goes() {
     let conn = test_db();
     let pattern = sample(&conn, "Mittens", "", "", &[]);

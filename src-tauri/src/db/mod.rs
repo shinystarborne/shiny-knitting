@@ -369,7 +369,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             page_to     INTEGER NOT NULL DEFAULT 0,
             notes       TEXT NOT NULL DEFAULT '',
             position    INTEGER NOT NULL DEFAULT 0,
-            added_at    INTEGER NOT NULL
+            added_at    INTEGER NOT NULL,
+            region      TEXT NOT NULL DEFAULT ''
         );
 
         -- Someone knitted for. `extra` is the names of their own measurements,
@@ -722,6 +723,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // A project's cover picture.
     if !column_exists(conn, "projects", "cover_path")? {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // A cheatsheet of part of a page: the box kept, as JSON; empty for all of it.
+    if !column_exists(conn, "cheatsheets", "region")? {
+        conn.execute("ALTER TABLE cheatsheets ADD COLUMN region TEXT NOT NULL DEFAULT ''", [])?;
     }
 
     // Books have a tab of their own, found by the tag `book`; the EPUBs
@@ -5067,7 +5072,14 @@ fn row_to_cheatsheet(r: &rusqlite::Row) -> rusqlite::Result<Cheatsheet> {
         notes: r.get("notes")?,
         position: r.get("position")?,
         added_at: r.get("added_at")?,
+        // Unreadable is the whole page, which is what there is to show.
+        region: serde_json::from_str(&r.get::<_, String>("region")?).ok(),
     })
+}
+
+/// A cheatsheet's box as stored: JSON, or empty for the whole page.
+fn region_json(sheet: &Cheatsheet) -> String {
+    sheet.region.as_ref().and_then(|r| serde_json::to_string(r).ok()).unwrap_or_default()
 }
 
 /// In their order: as placed, the newest first among any not moved.
@@ -5087,17 +5099,17 @@ pub fn get_cheatsheet(conn: &Connection, id: &str) -> AppResult<Cheatsheet> {
 pub fn insert_cheatsheet(conn: &Connection, sheet: &Cheatsheet) -> AppResult<Cheatsheet> {
     let top: i64 = conn.query_row("SELECT COALESCE(MIN(position), 0) FROM cheatsheets", [], |r| r.get(0))?;
     conn.execute(
-        "INSERT INTO cheatsheets (id, title, kind, url, framable, pattern_id, page_from, page_to, notes, position, added_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![sheet.id, sheet.title, sheet.kind, sheet.url, sheet.framable as i64, sheet.pattern_id, sheet.page_from, sheet.page_to, sheet.notes, top - 1, now_ms()],
+        "INSERT INTO cheatsheets (id, title, kind, url, framable, pattern_id, page_from, page_to, notes, position, added_at, region)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![sheet.id, sheet.title, sheet.kind, sheet.url, sheet.framable as i64, sheet.pattern_id, sheet.page_from, sheet.page_to, sheet.notes, top - 1, now_ms(), region_json(sheet)],
     )?;
     get_cheatsheet(conn, &sheet.id)
 }
 
 pub fn update_cheatsheet(conn: &Connection, sheet: &Cheatsheet) -> AppResult<()> {
     conn.execute(
-        "UPDATE cheatsheets SET title = ?2, notes = ?3, framable = ?4, page_from = ?5, page_to = ?6 WHERE id = ?1",
-        params![sheet.id, sheet.title, sheet.notes, sheet.framable as i64, sheet.page_from, sheet.page_to],
+        "UPDATE cheatsheets SET title = ?2, notes = ?3, framable = ?4, page_from = ?5, page_to = ?6, region = ?7 WHERE id = ?1",
+        params![sheet.id, sheet.title, sheet.notes, sheet.framable as i64, sheet.page_from, sheet.page_to, region_json(sheet)],
     )?;
     Ok(())
 }

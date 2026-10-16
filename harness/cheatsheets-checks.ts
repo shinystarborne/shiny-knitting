@@ -2,7 +2,8 @@
  * Checks for the Cheatsheets tab, clicked through: a web page kept and shown
  * in a frame, an embed code and a YouTube link tidied, a site that refuses
  * frames offered a window of its own, pages of a PDF drawn from the book,
- * a page kept from the reader, and renaming, moving and removing.
+ * part of a page (a box drawn round it, in the tab or in the reader), a page
+ * kept from the reader, and renaming, moving and removing.
  *
  * Run with the harness open:
  *   window.__cheatsheetsChecks()
@@ -28,11 +29,23 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 15000): Pr
   }
 }
 
-type Sheet = { id: string; title: string; kind: string; url: string; framable: boolean; patternId: string; pageFrom: number; pageTo: number };
+type Sheet = { id: string; title: string; kind: string; url: string; framable: boolean; patternId: string; pageFrom: number; pageTo: number; region: { x: number; y: number; w: number; h: number } | null };
+
+/** A drag from one point to another, in fractions of an element's box, as a pointer makes it. */
+function drag(down: HTMLElement, moves: HTMLElement, from: [number, number], to: [number, number]): void {
+  const r = down.getBoundingClientRect();
+  const at = ([fx, fy]: [number, number]) => ({ clientX: r.left + fx * r.width, clientY: r.top + fy * r.height, bubbles: true, button: 0, pointerId: 7 });
+  down.dispatchEvent(new PointerEvent("pointerdown", at(from)));
+  moves.dispatchEvent(new PointerEvent("pointermove", at([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2])));
+  moves.dispatchEvent(new PointerEvent("pointermove", at(to)));
+  moves.dispatchEvent(new PointerEvent("pointerup", at(to)));
+}
+
+const near = (a: number, b: number, by = 0.02) => Math.abs(a - b) <= by;
 
 export async function verifyCheatsheets() {
   const results: CheckResult[] = [];
-  const w = window as unknown as { __store: { cheatsheets?: Sheet[]; patterns: { id: string; title: string; format: string; fileName: string }[] }; __sheetWindows?: { url: string }[]; __opened?: string[] };
+  const w = window as unknown as { __store: { pins?: { patternId: string }[]; cheatsheets?: Sheet[]; patterns: { id: string; title: string; format: string; fileName: string }[] }; __sheetWindows?: { url: string }[]; __opened?: string[] };
   const store = w.__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const view = () => document.querySelector<HTMLElement>(".cheatsheets");
@@ -108,6 +121,32 @@ export async function verifyCheatsheets() {
     await waitFor(() => (view()!.querySelector<HTMLCanvasElement>("canvas.sheet-page")?.getBoundingClientRect().width ?? 0) > width + 10, "bigger");
     check(results, "…+ draws it bigger", true);
 
+    // Part of the page: a box drawn round it in the tab.
+    const gauge = () => store.cheatsheets!.find((s) => s.title === "Gauge table")!;
+    const pageWidth = view()!.querySelector<HTMLCanvasElement>("canvas.sheet-page")!.getBoundingClientRect().width;
+    act("crop")!.click();
+    await waitFor(() => !!view()!.querySelector(".sheet-crop canvas.sheet-page") && !!act("crop-cancel"), "the page to draw a box on");
+    check(results, "Crop… shows the page whole, saying to draw a box, with Cancel", /Drag a box around the part to keep/.test(view()!.textContent ?? "") && !act("crop"));
+    const cropFrame = () => view()!.querySelector<HTMLElement>(".sheet-crop")!;
+    drag(cropFrame(), cropFrame(), [0.3, 0.3], [0.302, 0.301]);
+    await wait(150);
+    check(results, "…a click, or a slip of the hand, is not a box", gauge().region === null && !!cropFrame());
+    drag(cropFrame(), cropFrame(), [0.6, 0.5], [0.1, 0.2]);
+    await waitFor(() => !!gauge().region && !!view()!.querySelector("canvas.sheet-part"), "the part kept");
+    const box = gauge().region!;
+    check(results, "…a box drawn round part of the page keeps that part, whichever way it was drawn", near(box.x, 0.1) && near(box.y, 0.2) && near(box.w, 0.5) && near(box.h, 0.3), JSON.stringify(box));
+    const part = view()!.querySelector<HTMLCanvasElement>("canvas.sheet-part")!;
+    check(results, "…and only it is drawn, at the size it was on the page", near(part.getBoundingClientRect().width, pageWidth * box.w, 3) && part.height < part.width * 3, `${part.getBoundingClientRect().width} of ${pageWidth}`);
+    check(results, "…the list saying it is part of the page; Crop again… and Whole page offered", /part of page 1/.test(items()[0].textContent ?? "") && /Crop again/.test(act("crop")?.textContent ?? "") && !!act("whole"));
+    act("whole")!.click();
+    await waitFor(() => gauge().region === null && !view()!.querySelector("canvas.sheet-part") && !!view()!.querySelector("canvas.sheet-page"), "the whole page again");
+    check(results, "Whole page shows all of it again", /page 1/.test(items()[0].textContent ?? "") && !/part of/.test(items()[0].textContent ?? ""));
+    act("crop")!.click();
+    await waitFor(() => !!act("crop-cancel"), "cropping");
+    act("crop-cancel")!.click();
+    await waitFor(() => !view()!.querySelector(".sheet-crop") && !!act("crop"), "cancelled");
+    check(results, "…Cancel leaves it as it was", gauge().region === null);
+
     // Renamed, moved, removed.
     const title = view()!.querySelector<HTMLInputElement>('[data-f="title"]')!;
     title.value = "Gauge, all sizes";
@@ -130,26 +169,49 @@ export async function verifyCheatsheets() {
     document.querySelector<HTMLElement>(`.library .card[data-open="${pdf.id}"] h3`)!.click();
     await waitFor(() => !!document.querySelector('.reader [data-act="cheatsheet"]'), "the reader");
     await wait(500);
-    document.querySelector<HTMLElement>('.reader [data-act="cheatsheet"]')!.click();
+    const keep = async (what: "pages" | "part") => {
+      document.querySelector<HTMLElement>('.reader [data-act="cheatsheet"]')!.click();
+      await waitFor(() => !!dialog()?.querySelector(`[data-keep="${what}"]`), "whole pages or part");
+      dialog()!.querySelector<HTMLElement>(`[data-keep="${what}"]`)!.click();
+    };
+    await keep("pages");
     await answer(["1", "2", ""]);
     await waitFor(() => (store.cheatsheets ?? []).length === 5, "the page kept");
     const kept = store.cheatsheets!.find((s) => s.patternId === pdf.id && s.pageTo === 2)!;
     check(results, "Cheatsheet… in the reader keeps the pages, named by the book", !!kept && kept.kind === "pages" && kept.title === `${pdf.title}, p. 1–2`, JSON.stringify(kept));
 
+    // Part of a page, from the reader: a box drawn round it, as a pin is.
+    const pinsBefore = (store.pins ?? []).length;
+    await keep("part");
+    await waitFor(() => /keep as a cheatsheet/.test(document.querySelector(".reader .pin-hint")?.textContent ?? ""), "the box to draw");
+    check(results, "Part of a page… readies a box to draw, saying it is for a cheatsheet", document.querySelector('.reader [data-mark="pin"]')!.classList.contains("on"));
+    const page = document.querySelector<HTMLElement>(".reader .pdf-page")!;
+    page.scrollIntoView({ block: "start" });
+    await wait(150);
+    drag(page, document.querySelector<HTMLElement>(".reader .doc-scroller")!, [0.2, 0.1], [0.7, 0.3]);
+    await waitFor(() => !!dialog(), "the name to give");
+    await answer(["Needle chart"]);
+    await waitFor(() => (store.cheatsheets ?? []).length === 6, "the part kept");
+    const partKept = store.cheatsheets!.find((s) => s.title === "Needle chart")!;
+    check(results, "…the box drawn is kept as a cheatsheet of that part of the page", partKept.kind === "pages" && partKept.pageFrom === 1 && partKept.pageTo === 1 && !!partKept.region && near(partKept.region.x, 0.2) && near(partKept.region.w, 0.5) && near(partKept.region.y, 0.1) && near(partKept.region.h, 0.2), JSON.stringify(partKept));
+    check(results, "…no pin made, and the tool put back", (store.pins ?? []).length === pinsBefore && !document.querySelector(".reader .pin-hint") && !document.querySelector('.reader [data-mark="pin"]')!.classList.contains("on"));
+
     tab("cheatsheets");
-    await waitFor(() => !!view() && items().length === 5, "the tab again");
+    await waitFor(() => !!view() && items().length === 6, "the tab again");
     items()[0].click();
+    await waitFor(() => !!view()!.querySelector("canvas.sheet-part"), "the part drawn");
+    check(results, "…shown in the tab as only that part", /Needle chart/.test(items()[0].textContent ?? "") && /part of page 1/.test(items()[0].textContent ?? ""));
     await waitFor(() => !!act("open-book"), "the kept pages");
     act("open-book")!.click();
     await waitFor(() => !!document.querySelector(".reader") && !view(), "the book");
     check(results, "In the book ↗ opens the book", document.querySelector(".tab-bar .tab.active")?.getAttribute("data-tab") === "patterns");
 
     tab("cheatsheets");
-    await waitFor(() => !!view() && items().length === 5, "the tab again");
+    await waitFor(() => !!view() && items().length === 6, "the tab again");
     act("remove")!.click();
     await waitFor(() => !!dialog(), "the question");
     dialog()!.querySelector<HTMLElement>("button.primary, button.danger")!.click();
-    await waitFor(() => items().length === 4, "one fewer");
+    await waitFor(() => items().length === 5, "one fewer");
     check(results, "Remove takes it out, the next one open", !!view()!.querySelector(".sheet-item.on"));
 
     // An EPUB's chapter, kept as a copy.

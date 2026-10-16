@@ -1,6 +1,6 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { api, toBytes, type Cheatsheet, type Pattern } from "../api";
+import { api, toBytes, type Cheatsheet, type Pattern, type SheetRegion } from "../api";
 import { askChoice, askForm, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 
@@ -26,6 +26,9 @@ export function keepOpen(id: string): void {
 /** How big pages are drawn, as a share of the pane's width. */
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
 
+/** How small a box may be, in pixels on screen, before it counts as a slip. */
+const MIN_BOX_PX = 12;
+
 /**
  * The Cheatsheets tab: what is kept to look things up in, listed down the
  * side and open beside the list. A page online is shown in a frame where the
@@ -42,6 +45,8 @@ export class CheatsheetsView {
   private zoom = 3;
   /** Drawing the pages of a PDF, so one started for another sheet stops. */
   private drawToken = 0;
+  /** Drawing a box round the part of the page to keep: the whole page shown for it. */
+  private cropping = false;
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -95,6 +100,7 @@ export class CheatsheetsView {
     }
     const book = this.book(s)?.title ?? "A book no longer in the library";
     if (s.kind === "chapter") return `${book}, chapter ${s.pageFrom}`;
+    if (s.region) return `${book}, part of page ${s.pageFrom}`;
     return `${book}, ${s.pageTo > s.pageFrom ? `pages ${s.pageFrom}–${s.pageTo}` : `page ${s.pageFrom}`}`;
   }
 
@@ -144,7 +150,10 @@ export class CheatsheetsView {
                  <button class="ghost" data-act="browser" title="In your web browser">Browser ↗</button>`
               : `${s.kind === "pages" ? `<button class="ghost icon-btn" data-act="zoom-out" title="Smaller" aria-label="Smaller">−</button><button class="ghost icon-btn" data-act="zoom-in" title="Bigger" aria-label="Bigger">+</button>` : ""}
                  ${book ? `<button class="ghost" data-act="open-book" title="Open the book at ${s.kind === "chapter" ? "this chapter" : "these pages"}">In the book ↗</button>` : ""}
-                 ${s.kind === "pages" ? `<button class="ghost" data-act="pages" title="Which pages it shows">Pages…</button>` : ""}`
+                 ${s.kind === "pages" ? `<button class="ghost" data-act="pages" title="Which pages it shows">Pages…</button>` : ""}
+                 ${s.kind === "pages" && s.pageTo === s.pageFrom && !this.cropping ? `<button class="ghost" data-act="crop" title="Keep only part of the page: a box drawn round the table or chart">${s.region ? "Crop again…" : "Crop…"}</button>` : ""}
+                 ${s.region && !this.cropping ? `<button class="ghost" data-act="whole" title="Show all of the page again">Whole page</button>` : ""}
+                 ${this.cropping ? `<span class="hint sheet-crop-hint">Drag a box around the part to keep</span><button class="ghost" data-act="crop-cancel">Cancel</button>` : ""}`
           }
           <button class="ghost icon-btn" data-act="up" title="Up the list" aria-label="Up the list" ${at === 0 ? "disabled" : ""}>↑</button>
           <button class="ghost icon-btn" data-act="down" title="Down the list" aria-label="Down the list" ${at === this.sheets.length - 1 ? "disabled" : ""}>↓</button>
@@ -201,7 +210,11 @@ export class CheatsheetsView {
     body.replaceChildren(frame);
   }
 
-  /** The pages, drawn from the book's file at the pane's width, as zoomed. */
+  /**
+   * The pages, drawn from the book's file at the pane's width, as zoomed. A
+   * part of a page is drawn as it is on the page at that size, and only it:
+   * the page is shifted so the box lands at the canvas's corner.
+   */
   private async paintPages(s: Cheatsheet, book: Pattern, body: HTMLElement): Promise<void> {
     const token = this.drawToken;
     body.innerHTML = `<p class="calc-wait">Drawing the pages…</p>`;
@@ -223,23 +236,33 @@ export class CheatsheetsView {
         body.innerHTML = `<p class="calc-wait">The book has ${doc.numPages} pages: Pages… to choose others.</p>`;
         return;
       }
+      const region = this.cropping ? null : s.region;
       for (let n = s.pageFrom; n <= last; n++) {
         const page = await doc.getPage(n);
         if (token !== this.drawToken) return;
         const base = page.getViewport({ scale: 1 });
         const ratio = window.devicePixelRatio || 1;
         const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+        const box = region ?? { x: 0, y: 0, w: 1, h: 1 };
         const canvas = document.createElement("canvas");
-        canvas.className = "sheet-page";
+        canvas.className = region ? "sheet-page sheet-part" : "sheet-page";
         canvas.dataset.page = String(n);
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-        canvas.style.width = `${Math.floor(width)}px`;
+        canvas.width = Math.max(1, Math.floor(viewport.width * box.w));
+        canvas.height = Math.max(1, Math.floor(viewport.height * box.h));
+        canvas.style.width = `${Math.floor(width * box.w)}px`;
         const ctx = canvas.getContext("2d")!;
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        pages.appendChild(canvas);
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (this.cropping) {
+          const frame = document.createElement("div");
+          frame.className = "sheet-crop";
+          frame.appendChild(canvas);
+          pages.appendChild(frame);
+          this.cropOn(s, frame);
+        } else {
+          pages.appendChild(canvas);
+        }
+        await page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -box.x * viewport.width, -box.y * viewport.height] }).promise;
         page.cleanup();
       }
     } finally {
@@ -252,6 +275,7 @@ export class CheatsheetsView {
   private async onClick(e: MouseEvent): Promise<void> {
     const item = closestEl(e.target, "[data-sheet]");
     if (item) {
+      this.cropping = false;
       this.openId = item.dataset.sheet!;
       keepOpen(this.openId);
       this.paintList();
@@ -279,6 +303,15 @@ export class CheatsheetsView {
       }
       if (act === "open-book") this.root.dispatchEvent(new CustomEvent("open-pattern-at", { bubbles: true, detail: { id: s.patternId, page: s.pageFrom } }));
       if (act === "pages") await this.choosePages(s);
+      if (act === "crop" || act === "crop-cancel") {
+        this.cropping = act === "crop";
+        await this.paintView();
+      }
+      if (act === "whole") {
+        await this.save({ ...s, region: null });
+        this.paintList();
+        await this.paintView();
+      }
       if (act === "up" || act === "down") {
         const at = this.sheets.indexOf(s);
         this.sheets = await api.moveCheatsheet(s.id, at + (act === "up" ? -1 : 1));
@@ -366,10 +399,68 @@ export class CheatsheetsView {
     }
   }
 
+  /**
+   * Draws a box on the page shown whole: the part kept, saved as soon as the
+   * pointer lets go. A click, or a slip of the hand, is not a box.
+   */
+  private cropOn(s: Cheatsheet, frame: HTMLElement): void {
+    const at = (e: PointerEvent) => {
+      const r = frame.getBoundingClientRect();
+      return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+    };
+    frame.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = at(e);
+      const band = document.createElement("div");
+      band.className = "pin-band";
+      frame.appendChild(band);
+      let box: SheetRegion = { x: start.x, y: start.y, w: 0, h: 0 };
+      const move = (ev: PointerEvent) => {
+        const here = at(ev);
+        box = { x: Math.min(start.x, here.x), y: Math.min(start.y, here.y), w: Math.abs(here.x - start.x), h: Math.abs(here.y - start.y) };
+        Object.assign(band.style, { left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%` });
+      };
+      const stop = () => {
+        frame.removeEventListener("pointermove", move);
+        frame.removeEventListener("pointerup", up);
+        frame.removeEventListener("pointercancel", stop);
+        band.remove();
+      };
+      const up = () => {
+        stop();
+        const r = frame.getBoundingClientRect();
+        if (box.w * r.width < MIN_BOX_PX || box.h * r.height < MIN_BOX_PX) return;
+        void this.keepBox(s, box);
+      };
+      try {
+        frame.setPointerCapture(e.pointerId);
+      } catch {
+        // It still draws while the pointer stays over the page.
+      }
+      frame.addEventListener("pointermove", move);
+      frame.addEventListener("pointerup", up);
+      frame.addEventListener("pointercancel", stop);
+    });
+  }
+
+  private async keepBox(s: Cheatsheet, box: SheetRegion): Promise<void> {
+    try {
+      await this.save({ ...s, region: box });
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
+    }
+    this.cropping = false;
+    this.paintList();
+    await this.paintView();
+  }
+
   private async choosePages(s: Cheatsheet): Promise<void> {
     const pages = await askPages(s.title, s.pageFrom, s.pageTo, false);
     if (!pages) return;
-    await this.save({ ...s, pageFrom: pages.from, pageTo: pages.to });
+    // The box was drawn on the page it was of.
+    const same = pages.from === s.pageFrom && pages.to === s.pageTo;
+    await this.save({ ...s, pageFrom: pages.from, pageTo: pages.to, region: same ? s.region : null });
     this.paintList();
     await this.paintView();
   }
