@@ -40,9 +40,6 @@ under the list.
   totals for the stash, the tools and per project. See below.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
-
-**Asked for 17 Oct 2026**
-
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
   from a person's foot and a swatch. **Decide first:** which heels. See
   below.
