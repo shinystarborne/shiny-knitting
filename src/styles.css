@@ -3629,6 +3629,9 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .calc-actions select { width: auto; max-width: 240px; }
 /* A round yoke's chart: picked under the yoke's choices, and in the results the yoke from above. */
 .calc-field[hidden] { display: none; }
+/* Whose measurements fill the form, and keeping them in People. */
+.calc-person-note { margin: -4px 0 0; }
+.calc-person-save { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .calc-yoke-chart { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .calc-yoke-chart .field { flex: 1 1 220px; }
 .calc-chart { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }

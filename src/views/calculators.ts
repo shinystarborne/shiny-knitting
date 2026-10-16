@@ -1,5 +1,5 @@
-import { api, isLive, type Chart, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
-import { askForm, askYesNo, say } from "../dialogs";
+import { api, isLive, MEASUREMENTS, type Chart, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
+import { askChoice, askForm, askText, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { cardigan, cardiganSteps, heldTogether, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult, type RoundYokeResult } from "./calc";
 import { decode, encode, fitLoses, fitsYoke, fittedToYoke, MAX_SIDE, newGrid, normalize, type YokeFit } from "./chart";
@@ -277,16 +277,21 @@ export class CalculatorsView {
               <input data-k="buttons" inputmode="numeric" value="${esc(kept.values.buttons ?? "6")}" /></label>
           </div>`
           }
-          <label class="field">
+          <label class="field" title="Someone in People: their latest measurements fill the ones below">
             <span>For</span>
             <select data-k="person">
               <option value="">Measurements typed in</option>
               ${this.people.map((p) => `<option value="${esc(p.id)}" ${kept.values.person === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
             </select>
           </label>
+          <p class="hint calc-person-note" data-el="person-note">${esc(this.personNote())}</p>
           ${this.gaugeBlock()}
           <h3>Measurements</h3>
           <div class="calc-fields">${fields.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+          <div class="calc-person-save">
+            <button class="ghost" data-act="save-measurements" title="Keep these measurements in People, dated today: for the person chosen, or someone new">Save to People…</button>
+            <span class="hint" data-el="people-saved"></span>
+          </div>
           ${
             yoke
               ? `<h3>Yoke</h3>
@@ -809,6 +814,7 @@ export class CalculatorsView {
     }
     if (act === "save" && this.plan) await this.saveToBoard();
     if (act === "fit-chart") await this.fitChart();
+    if (act === "save-measurements") await this.saveMeasurements();
     if (act === "new-yoke-chart") await this.newYokeChart();
     if (act === "open-yoke-chart" && kept.values.chart) {
       chartFrom = "yoke";
@@ -870,11 +876,15 @@ export class CalculatorsView {
     if (key === "person") {
       const person = this.people.find((p) => p.id === el.value);
       for (const f of RAGLAN_FIELDS) {
-        const v = person && f.from ? latestValue(person, f.from) : null;
+        if (!person || !f.from) continue;
+        const v = latestValue(person, f.from);
         // A round yoke reaches a little higher than the armhole: it covers the shoulders.
         const extra = kept.calc === "yoke" && f.key === "yokeDepth" ? YOKE_OVER_ARMHOLE : 0;
-        if (v) this.setField(f.key, showLength(v.cm + extra, this.unit));
+        // One they were never measured for is theirs to type, not the last person's.
+        this.setField(f.key, v ? showLength(v.cm + extra, this.unit) : "");
       }
+      const note = this.main.querySelector<HTMLElement>('[data-el="person-note"]');
+      if (note) note.textContent = this.personNote();
     }
     if (key === "fit") {
       const fit = FITS.find((f) => f.key === el.value);
@@ -904,6 +914,118 @@ export class CalculatorsView {
       if (extra) extra.hidden = el.value !== "flat";
     }
     this.calculate();
+  }
+
+  /**
+   * Under For: whose measurements filled the form, from when, and which they
+   * have not been measured for yet.
+   */
+  private personNote(): string {
+    const person = this.people.find((p) => p.id === kept.values.person);
+    if (!person) return this.people.length ? "Pick someone from People to fill in their measurements." : "Add the people you knit for in People, to fill in their measurements here.";
+    const from = RAGLAN_FIELDS.filter((f) => f.from);
+    const had = from.filter((f) => latestValue(person, f.from!));
+    const lacking = from.filter((f) => !latestValue(person, f.from!));
+    const newest = Math.max(0, ...had.map((f) => latestValue(person, f.from!)!.at));
+    const name = (f: (typeof from)[number]) => (kept.calc === "yoke" && f.key === "yokeDepth" ? "armhole depth" : f.label.toLowerCase());
+    const parts = [
+      had.length ? `From ${person.name}'s measurements${newest ? ` of ${longDate(newest)}` : ""}: ${had.map(name).join(", ")}.` : `${person.name} has no measurements for this yet.`,
+      lacking.length ? `Not measured yet: ${lacking.map(name).join(", ")}. Type ${lacking.length > 1 ? "them" : "it"} in, and Save to People keeps ${lacking.length > 1 ? "them" : "it"}.` : "",
+    ];
+    return parts.filter(Boolean).join(" ");
+  }
+
+  /**
+   * The measurements typed, as People keeps them: in cm by their keys. The
+   * round yoke's depth is the armhole's and the 2 cm it covers of the
+   * shoulders, so the armhole's is that less 2. Body length is the
+   * sweater's, not the person's, and stays here.
+   */
+  private measurementsTyped(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const f of RAGLAN_FIELDS) {
+      if (!f.from) continue;
+      let cm = this.num(f.key);
+      if (kept.calc === "yoke" && f.key === "yokeDepth") cm -= YOKE_OVER_ARMHOLE;
+      if (Number.isFinite(cm) && cm > 0) out[f.from] = Math.round(cm * 10) / 10;
+    }
+    return out;
+  }
+
+  /**
+   * Keeps the measurements in People, dated today: the person chosen under
+   * For, or one picked, or someone new. Only what differs from what they
+   * have is kept; measured today already, that set takes them.
+   */
+  private async saveMeasurements(): Promise<void> {
+    const typed = this.measurementsTyped();
+    const keys = Object.keys(typed);
+    if (!keys.length) return say("Type a measurement or two first: the chest, the neck…", "Save to People");
+    let person = this.people.find((p) => p.id === kept.values.person);
+    if (!person) {
+      const NEW = "+new";
+      const pick = await askChoice("Whose measurements are they?", [{ value: NEW, label: "Someone new…" }, ...this.people.map((p) => ({ value: p.id, label: p.name, group: "People" }))], { title: "Save to People", okLabel: "Next" });
+      if (!pick) return;
+      if (pick === NEW) {
+        const name = (await askText("Their name", { title: "Someone new", okLabel: "Add them", placeholder: "e.g. Anna" }))?.trim();
+        if (!name) return;
+        try {
+          person = await api.addPerson({ name, notes: "", extra: [] });
+        } catch (err) {
+          return say(err instanceof Error ? err.message : String(err), "Save to People");
+        }
+        this.people = [...this.people, person].sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        person = this.people.find((p) => p.id === pick);
+      }
+    }
+    if (!person) return;
+    const label = (k: string) => (MEASUREMENTS.find((m) => m.key === k)?.label ?? k).toLowerCase();
+    // Alike as shown is alike: a measurement kept in inches comes back a hair off in cm.
+    const shown = (cm: number | undefined) => showLength(cm, this.unit);
+    const changed = keys.filter((k) => shown(latestValue(person!, k)?.cm) !== shown(typed[k]));
+    if (!changed.length) {
+      this.markPeople(`${person.name}'s measurements already say this.`);
+      return this.choosePerson(person);
+    }
+    const said = changed.map((k) => {
+      const was = latestValue(person!, k);
+      return `${label(k)} ${this.len(typed[k])}${was ? ` (was ${this.len(was.cm)})` : ""}`;
+    });
+    // Someone just added is asked nothing more: it is what they are for.
+    if (person.sets.some((x) => Object.keys(x.values).length) || person.sets.length > 1) {
+      const ok = await askYesNo(`Keep in ${person.name}'s measurements, dated today: ${said.join(", ")}?`, { title: "Save to People", okLabel: "Save" });
+      if (!ok) return;
+    }
+    const values = Object.fromEntries(changed.map((k) => [k, typed[k]]));
+    const today = person.sets.find((x) => new Date(x.measuredAt).toDateString() === new Date().toDateString());
+    try {
+      const saved = today
+        ? await api.updateMeasurementSet(today.id, { measuredAt: today.measuredAt, shoeSize: today.shoeSize, values: { ...today.values, ...values } })
+        : await api.addMeasurementSet(person.id, { measuredAt: Date.now(), shoeSize: "", values });
+      this.people = this.people.map((p) => (p.id === saved.id ? saved : p));
+      this.markPeople(`Saved to ${saved.name}'s measurements.`);
+      this.choosePerson(saved);
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Save to People");
+    }
+  }
+
+  /** Makes them the one the form is for, in the list, without filling anything over what is typed. */
+  private choosePerson(person: Person): void {
+    kept.values.person = person.id;
+    const select = this.main.querySelector<HTMLSelectElement>('[data-k="person"]');
+    if (select) {
+      if (![...select.options].some((o) => o.value === person.id)) select.add(new Option(person.name, person.id));
+      select.value = person.id;
+    }
+    const note = this.main.querySelector<HTMLElement>('[data-el="person-note"]');
+    if (note) note.textContent = this.personNote();
+  }
+
+  private markPeople(text: string): void {
+    const el = this.main.querySelector<HTMLElement>('[data-el="people-saved"]');
+    if (el) el.textContent = text;
   }
 
   /** Fills a field, and remembers it, as if typed. */
