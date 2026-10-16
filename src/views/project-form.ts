@@ -19,6 +19,8 @@ export interface ProjectPreset {
   planned?: boolean;
   yarnId?: string;
   name?: string;
+  /** Started from a masterclass: knitted along with it. */
+  masterclassId?: string;
 }
 
 /**
@@ -252,9 +254,11 @@ export class ProjectForm {
     const buttons = [...this.root.querySelectorAll<HTMLButtonElement>(".modal-actions button")];
     buttons.forEach((b) => (b.disabled = true));
     try {
-      const saved = this.editing
+      let saved = this.editing
         ? await api.updateProject(this.editing.id, this.input())
         : await api.addProject(this.input());
+      // Started from a masterclass, it is knitted along with it.
+      if (!this.editing && this.preset.masterclassId) saved = await api.setProjectMasterclass(saved.id, this.preset.masterclassId);
       this.close();
       this.hooks.onDone(saved);
       return saved;

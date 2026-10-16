@@ -3528,10 +3528,11 @@ fn a_cheatsheet_keeps_the_part_of_its_page() {
 
 #[test]
 fn a_project_is_knitted_along_with_a_masterclass_until_it_goes() {
-    use crate::models::Masterclass;
+    use crate::models::{Masterclass, MasterclassPart};
     let conn = test_db();
-    let m = insert_masterclass(&conn, &Masterclass { id: "mc".into(), title: "Italian cast-on".into(), url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into(), video_id: "dQw4w9WgXcQ".into(), channel: "Very Pink".into(), has_thumb: true, ..Default::default() }).unwrap();
-    assert_eq!((m.project_count, m.has_thumb, m.channel.as_str()), (0, true, "Very Pink"));
+    let part = |id: &str, title: &str| MasterclassPart { id: id.into(), title: title.into(), url: format!("https://www.youtube.com/watch?v={id}xxxxxx"), video_id: format!("{id}xxxxxx"), channel: "Very Pink".into(), has_thumb: true, ..Default::default() };
+    let m = insert_masterclass(&conn, &Masterclass { id: "mc".into(), title: "Italian cast-on".into(), ..Default::default() }, &part("p1", "Italian cast-on")).unwrap();
+    assert_eq!((m.project_count, m.parts.len(), m.channel.as_str()), (0, 1, "Very Pink"));
     insert_project(&conn, "pr-mc", &crate::models::ProjectInput { name: "Brioche hat".into(), ..Default::default() }).unwrap();
     let p = set_project_masterclass(&conn, "pr-mc", "mc").unwrap();
     assert_eq!((p.masterclass_id.as_str(), p.masterclass_title.as_str()), ("mc", "Italian cast-on"));
@@ -3545,6 +3546,58 @@ fn a_project_is_knitted_along_with_a_masterclass_until_it_goes() {
     let p = get_project(&conn, "pr-mc").unwrap();
     assert_eq!((p.masterclass_id.as_str(), p.masterclass_title.as_str()), ("", ""), "the project goes on without it");
     assert!(list_masterclasses(&conn).unwrap().is_empty());
+}
+
+#[test]
+fn a_masterclass_is_its_videos_in_order_bundled_and_split() {
+    use crate::models::{Masterclass, MasterclassPart};
+    let conn = test_db();
+    let part = |id: &str| MasterclassPart { id: id.into(), title: format!("Part {id}"), url: format!("https://youtu.be/{id}"), ..Default::default() };
+    let class = |id: &str, notes: &str| Masterclass { id: id.into(), title: format!("Class {id}"), notes: notes.into(), ..Default::default() };
+    insert_masterclass(&conn, &class("a", "Cast on loosely."), &part("a1")).unwrap();
+    insert_masterclass(&conn, &class("b", ""), &part("b1")).unwrap();
+    insert_part(&conn, "b", &part("b2")).unwrap();
+    insert_masterclass(&conn, &class("c", "Block hard."), &part("c1")).unwrap();
+    insert_project(&conn, "pr", &crate::models::ProjectInput { name: "Sweater".into(), ..Default::default() }).unwrap();
+    set_project_masterclass(&conn, "pr", "c").unwrap();
+    let order = |m: &Masterclass| m.parts.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(" ");
+
+    // Bundled: the first takes the others' videos after its own, their notes and their projects.
+    let m = bundle_masterclasses(&conn, &["a".into(), "b".into(), "c".into()], "The sweater course").unwrap();
+    assert_eq!((m.title.as_str(), order(&m).as_str()), ("The sweater course", "a1 b1 b2 c1"));
+    assert_eq!(m.notes, "Cast on loosely.\n\nBlock hard.");
+    assert_eq!(get_project(&conn, "pr").unwrap().masterclass_id, "a", "its projects come with it");
+    assert_eq!(list_masterclasses(&conn).unwrap().len(), 1);
+
+    // Moved, watched, taken out, split off.
+    assert_eq!(order(&move_masterclass_part(&conn, "c1", 0).unwrap()), "c1 a1 b1 b2");
+    let mut watched = get_masterclass_part(&conn, "a1").unwrap();
+    watched.watched = true;
+    update_masterclass_part(&conn, &watched).unwrap();
+    assert!(get_masterclass(&conn, "a").unwrap().parts[1].watched);
+    assert_eq!(order(&delete_masterclass_part(&conn, "b1").unwrap()), "c1 a1 b2");
+    let own = split_masterclass_part(&conn, "b2", "d").unwrap();
+    assert_eq!((own.title.as_str(), order(&own).as_str()), ("Part b2", "b2"));
+    assert_eq!(order(&get_masterclass(&conn, "a").unwrap()), "c1 a1");
+    assert!(split_masterclass_part(&conn, "b2", "e").is_err(), "an only video is its own already");
+    assert!(delete_masterclass_part(&conn, "b2").is_err(), "the last video is the masterclass");
+}
+
+#[test]
+fn a_masterclass_kept_as_one_video_is_that_video() {
+    let conn = test_db();
+    // As it was kept before there were several: the video on the masterclass itself.
+    conn.execute(
+        "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at) VALUES ('old', 'Steeking', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ', 'Very Pink', '', 1, 1)",
+        [],
+    )
+    .unwrap();
+    migrate(&conn).unwrap();
+    migrate(&conn).unwrap();
+    let m = get_masterclass(&conn, "old").unwrap();
+    assert_eq!(m.parts.len(), 1, "once");
+    let p = &m.parts[0];
+    assert_eq!((p.id.as_str(), p.video_id.as_str(), p.title.as_str(), p.has_thumb, m.channel.as_str()), ("old", "dQw4w9WgXcQ", "Steeking", true, "Very Pink"), "its picture is still its own");
 }
 
 #[test]

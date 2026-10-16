@@ -168,6 +168,11 @@ class App {
       void this.showReader((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("show-cheatsheets", () => void this.showCheatsheets());
+    // A project started from a masterclass: named after it, knitted along with it.
+    this.screen.addEventListener("start-project-from-masterclass", (e) => {
+      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
+      void this.openProjectForm(null, null, { name: title, masterclassId: id });
+    });
     // A cheatsheet's pages, in their book.
     this.screen.addEventListener("open-pattern-at", (e) => {
       const { id, page } = (e as CustomEvent<{ id: string; page: number }>).detail;
@@ -688,7 +693,7 @@ class App {
         }
         // A project started from the Projects tab opens on its own page,
         // ready for its board; one started from a pattern stays with it.
-        if (!project && saved && this.currentTab === "projects" && !this.activeProjectPage) void this.showProjectPage(saved.id);
+        if (!project && saved && (this.currentTab === "projects" || preset.masterclassId) && !this.activeProjectPage) void this.showProjectPage(saved.id);
         else this.afterProjectChange();
         // A project started from a card puts that pattern in progress; its card says so.
         if (saved?.patternId) void this.activeLibrary?.refreshPattern(saved.patternId);

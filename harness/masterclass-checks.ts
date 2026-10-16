@@ -2,8 +2,10 @@
  * Checks for the Masterclasses tab and a project knitted along with one,
  * clicked through: a YouTube link kept as its video (its picture, played
  * here, or in the browser or a window), another site's kept as it is,
- * searched, renamed and noted; chosen on a project's page and watched there;
- * removed, the project going on without it.
+ * searched, renamed and noted; a course in several videos (one added, the
+ * ones there bundled, ticked as watched, put in order, one taken out); a
+ * project started from one, or chosen on a project's page and watched
+ * there; removed, the project going on without it.
  *
  * Run with the harness open:
  *   window.__masterclassChecks()
@@ -35,7 +37,7 @@ const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
 
 export async function verifyMasterclasses() {
   const results: CheckResult[] = [];
-  const w = window as unknown as { __store: { masterclasses: Masterclass[]; projects: Project[] }; __opened?: string[]; __sheetWindows?: { url: string }[] };
+  const w = window as unknown as { __store: { masterclasses: (Masterclass & { parts: { id: string; videoId: string; url: string; watched: boolean }[] })[]; projects: Project[] }; __opened?: string[]; __sheetWindows?: { url: string }[] };
   const store = w.__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const view = () => document.querySelector<HTMLElement>(".masterclasses");
@@ -54,11 +56,15 @@ export async function verifyMasterclasses() {
   };
   const before = JSON.stringify(store.masterclasses);
   let projectId = "";
-  try {
-    localStorage.removeItem("masterclasses:open");
-  } catch {
-    // Nothing remembered.
-  }
+  /** What the tab remembers: the one open, and which video of each was watched where. */
+  const forget = () => {
+    try {
+      for (const key of Object.keys(localStorage)) if (key === "masterclasses:open" || key.startsWith("masterclass-part:")) localStorage.removeItem(key);
+    } catch {
+      // Nothing remembered.
+    }
+  };
+  forget();
   store.masterclasses = [];
 
   try {
@@ -71,7 +77,7 @@ export async function verifyMasterclasses() {
     await answer(["youtu.be/dQw4w9WgXcQ?si=shared", ""]);
     await waitFor(() => items().length === 1 && !!view()!.querySelector("iframe.mc-player"), "the video kept");
     const kept = store.masterclasses[0];
-    check(results, "a YouTube link is kept as its video, its address made whole", kept.videoId === "dQw4w9WgXcQ" && kept.url === "https://www.youtube.com/watch?v=dQw4w9WgXcQ", JSON.stringify(kept));
+    check(results, "a YouTube link is kept as its video, its address made whole", kept.parts.length === 1 && kept.parts[0].videoId === "dQw4w9WgXcQ" && kept.parts[0].url === "https://www.youtube.com/watch?v=dQw4w9WgXcQ", JSON.stringify(kept));
     check(results, "…named and listed with its channel", /A video, dQw4w9WgXcQ/.test(items()[0].textContent ?? "") && /A channel/.test(items()[0].textContent ?? ""));
     await waitFor(() => !!items()[0].querySelector<HTMLElement>(".mc-thumb")!.style.backgroundImage, "its picture");
     check(results, "…with its picture", true);
@@ -109,36 +115,98 @@ export async function verifyMasterclasses() {
     await waitFor(() => items().some((i) => /Italian cast-on/.test(i.textContent ?? "")), "the list renamed");
     check(results, "renamed and noted where it shows, the list too", true);
 
+    // A course in several videos: one added to it.
+    act("add-part")!.click();
+    await answer(["https://www.youtube.com/watch?v=aaaaaaaaaaa", "Part two: the rib"]);
+    await waitFor(() => view()!.querySelectorAll(".mc-part").length === 2, "the second video");
+    const italian = () => store.masterclasses.find((m) => m.title === "Italian cast-on")!;
+    check(results, "+ Add a video to it puts another video after the first, named as given", italian().parts.length === 2 && /Part two: the rib/.test(view()!.querySelectorAll(".mc-part")[1].textContent + (view()!.querySelectorAll<HTMLInputElement>(".mc-part-title")[1].value ?? "")) && /2 videos/.test(items().find((i) => /Italian/.test(i.textContent ?? ""))!.textContent ?? ""));
+    // Watched, and played.
+    const watched = view()!.querySelectorAll<HTMLInputElement>('.mc-part [data-f="watched"]')[0];
+    watched.checked = true;
+    watched.dispatchEvent(new Event("change", { bubbles: true }));
+    await waitFor(() => italian().parts[0].watched && /1 watched/.test(items().find((i) => /Italian/.test(i.textContent ?? ""))!.textContent ?? ""), "ticked");
+    check(results, "a video ticked as watched is kept so, the list saying how many", true);
+    view()!.querySelectorAll<HTMLElement>('.mc-part [data-act="play"]')[1].click();
+    await waitFor(() => view()!.querySelector("iframe.mc-player")!.getAttribute("src")!.includes("aaaaaaaaaaa"), "the second playing");
+    check(results, "▶ on a video plays it, saying which of how many", /2 of 2:/.test(view()!.querySelector(".mc-now")!.textContent ?? ""));
+    // Put in order.
+    view()!.querySelectorAll<HTMLElement>('.mc-part [data-act="part-up"]')[1].click();
+    await waitFor(() => italian().parts[0].videoId === "aaaaaaaaaaa" && view()!.querySelectorAll<HTMLInputElement>(".mc-part-title")[0]?.value === "Part two: the rib", "moved up");
+    check(results, "↑ puts a video earlier", true);
+
+    // Bundled: the steeking video comes into it.
+    act("bundle")!.click();
+    await waitFor(() => !!dialog()?.querySelector("[data-bundle]"), "the bundle dialog");
+    check(results, "Bundle with… offers the others, and waits for one to be ticked", dialog()!.querySelectorAll("[data-bundle]").length === 1 && dialog()!.querySelector<HTMLButtonElement>('[data-act="make"]')!.disabled);
+    const box = dialog()!.querySelector<HTMLInputElement>("[data-bundle]")!;
+    box.checked = true;
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+    dialog()!.querySelector<HTMLInputElement>('[data-f="bundle-name"]')!.value = "The cast-on course";
+    dialog()!.querySelector<HTMLElement>('[data-act="make"]')!.click();
+    await waitFor(() => !dialog() && items().length === 1, "bundled");
+    const course = store.masterclasses[0];
+    check(results, "…bundled, one masterclass of their videos in order, named as given", store.masterclasses.length === 1 && course.title === "The cast-on course" && course.parts.length === 3 && /3 videos/.test(items()[0].textContent ?? ""), JSON.stringify(course.parts.map((p) => p.url)));
+    // One taken out again, to be its own.
+    const steek = [...view()!.querySelectorAll<HTMLElement>(".mc-part")].findIndex((li) => /Steeking/.test(li.querySelector<HTMLInputElement>(".mc-part-title")!.value));
+    view()!.querySelectorAll<HTMLElement>('.mc-part [data-act="part-split"]')[steek].click();
+    await waitFor(() => items().length === 2, "taken out");
+    check(results, "Its own takes a video out, to be a masterclass of its own, the course still open", store.masterclasses.find((m) => m.title === "The cast-on course")!.parts.length === 2 && items().some((i) => /Steeking/.test(i.textContent ?? "")) && view()!.querySelectorAll(".mc-part").length === 2);
+    items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.click();
+    await waitFor(() => /The cast-on course/.test(view()!.querySelector<HTMLInputElement>('[data-f="title"]')!.value), "the course again");
+
+    // A project started from it.
+    act("start")!.click();
+    await waitFor(() => !!document.querySelector(".modal.project-form"), "the new project's form");
+    const name = document.querySelector<HTMLInputElement>('.modal.project-form [data-f="name"]')!;
+    check(results, "Start a project… opens a new project, named after the masterclass", name.value === "The cast-on course", name.value);
+    name.value = "Cast-on swatches";
+    document.querySelector<HTMLElement>('.modal.project-form [data-act="save"]')!.click();
+    await waitFor(() => !!page() && store.projects.some((p) => p.name === "Cast-on swatches"), "the project's page");
+    const started = store.projects.find((p) => p.name === "Cast-on swatches")!;
+    check(results, "…saved, knitted along with it, its page opened", started.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-watch"]'));
+    const partPick = page()!.querySelector<HTMLSelectElement>('[data-f="mc-part"]');
+    check(results, "…its videos to choose from there, the first not watched first", !!partPick && partPick.options.length === 2 && partPick.selectedIndex === 0 && /Part two/.test(partPick.options[0].textContent ?? ""), [...(partPick?.options ?? [])].map((o) => o.textContent).join(" | "));
+    partPick!.value = partPick!.options[1].value;
+    partPick!.dispatchEvent(new Event("change", { bubbles: true }));
+    page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
+    await waitFor(() => !!page()!.querySelector("iframe.project-mc-player"), "the chosen video playing");
+    check(results, "…the one chosen played there", page()!.querySelector("iframe.project-mc-player")!.getAttribute("src")!.includes("dQw4w9WgXcQ"));
+    await invoke("delete_project", { id: started.id });
+    tab("masterclasses");
+    await waitFor(() => items().length === 2, "the tab again");
+    items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.click();
+
     // A project knitted along with it.
     const project = await invoke<Project>("add_project", { input: { name: "Cast-on practice", patternId: null, notes: "", startedAt: null, toolIds: [], yarns: [] } });
     projectId = project.id;
     view()!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: projectId }));
     await waitFor(() => !!page()?.querySelector('[data-f="masterclass"]'), "the project's page");
     const select = page()!.querySelector<HTMLSelectElement>('[data-f="masterclass"]')!;
-    check(results, "a project's page offers the masterclasses", [...select.options].some((o) => /Italian cast-on \(A channel\)/.test(o.textContent ?? "")));
+    check(results, "a project's page offers the masterclasses", [...select.options].some((o) => /The cast-on course \(A channel\)/.test(o.textContent ?? "")));
     select.value = kept.id;
     select.dispatchEvent(new Event("change", { bubbles: true }));
     await waitFor(() => store.projects.find((p) => p.id === projectId)?.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-watch"]'), "chosen");
     check(results, "…chosen, it is kept on the project, with ▶ Watch here and Open it ↗", !!page()!.querySelector('[data-act="mc-open"]'));
     page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
     await waitFor(() => !!page()!.querySelector("iframe.project-mc-player"), "the video on the page");
-    check(results, "▶ Watch here plays it on the project's page", page()!.querySelector("iframe.project-mc-player")!.getAttribute("src")!.includes("dQw4w9WgXcQ"));
+    check(results, "▶ Watch here plays it on the project's page, the first not watched", page()!.querySelector("iframe.project-mc-player")!.getAttribute("src")!.includes("aaaaaaaaaaa"));
     page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
     await waitFor(() => !page()!.querySelector("iframe.project-mc-player"), "the video put away");
     check(results, "…and again hides it", true);
     page()!.querySelector<HTMLElement>('[data-act="mc-open"]')!.click();
     await wait(100);
-    check(results, "Open it ↗ opens it in the browser", (w.__opened ?? []).at(-1) === kept.url);
+    check(results, "Open it ↗ opens it in the browser", (w.__opened ?? []).at(-1) === kept.parts[0].url);
 
     // Back in the tab: the project with it, and removed.
     tab("masterclasses");
     await waitFor(() => items().length === 2, "the tab again");
-    items().find((i) => /Italian/.test(i.textContent ?? ""))!.click();
+    items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.click();
     await waitFor(() => !!view()!.querySelector("[data-project]"), "its project");
-    check(results, "the masterclass lists the projects knitted along with it, and counts them", /Cast-on practice/.test(view()!.querySelector("[data-project]")!.textContent ?? "") && /1 project/.test(items().find((i) => /Italian/.test(i.textContent ?? ""))!.textContent ?? ""));
+    check(results, "the masterclass lists the projects knitted along with it, and counts them", /Cast-on practice/.test(view()!.querySelector("[data-project]")!.textContent ?? "") && /1 project/.test(items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.textContent ?? ""));
     act("remove")!.click();
     await waitFor(() => !!dialog(), "the question");
-    check(results, "removing it says the project keeps going", /The project knitted along with it keeps going without it/.test(dialog()!.textContent ?? ""));
+    check(results, "removing it says its videos go, and the project keeps going", /All its 2 videos go with it\. The project knitted along with it keeps going without it/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
     dialog()!.querySelector<HTMLElement>("button.danger, button.primary")!.click();
     await waitFor(() => items().length === 1, "one fewer");
     check(results, "…and it goes; the project has none", store.projects.find((p) => p.id === projectId)?.masterclassId === "");
@@ -148,11 +216,7 @@ export async function verifyMasterclasses() {
     for (let i = 0; i < 3 && dialog(); i++) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
     store.masterclasses = JSON.parse(before);
-    try {
-      localStorage.removeItem("masterclasses:open");
-    } catch {
-      // Nothing to clear.
-    }
+    forget();
     tab("patterns");
   }
 

@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput, YarnDetails, Cheatsheet, Masterclass,
+    Chart, ChartInput, YarnDetails, Cheatsheet, Masterclass, MasterclassPart,
 };
 
 #[cfg(test)]
@@ -366,6 +366,22 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             has_thumb   INTEGER NOT NULL DEFAULT 0,
             added_at    INTEGER NOT NULL
         );
+
+        -- A masterclass's videos, in order. One kept before there were several
+        -- is its own first video, with the masterclass's id.
+        CREATE TABLE IF NOT EXISTS masterclass_videos (
+            id              TEXT PRIMARY KEY,
+            masterclass_id  TEXT NOT NULL,
+            position        INTEGER NOT NULL DEFAULT 0,
+            title           TEXT NOT NULL,
+            url             TEXT NOT NULL,
+            video_id        TEXT NOT NULL DEFAULT '',
+            channel         TEXT NOT NULL DEFAULT '',
+            has_thumb       INTEGER NOT NULL DEFAULT 0,
+            watched         INTEGER NOT NULL DEFAULT 0,
+            added_at        INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_masterclass_videos ON masterclass_videos(masterclass_id, position);
 
         -- Kept to look things up in: a web page, pages of a PDF, or an EPUB's
         -- chapter (its copy is a file, cheatsheets/<id>.html). `pattern_id`
@@ -756,6 +772,15 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "tools", "adapter_to")? {
         conn.execute("ALTER TABLE tools ADD COLUMN adapter_to TEXT NOT NULL DEFAULT ''", [])?;
     }
+    // A masterclass kept as one video is that video, as its first part: its
+    // picture's file is named by the masterclass's id, which the part takes.
+    // A masterclass always has a part, so this only ever finds the old ones.
+    conn.execute(
+        "INSERT INTO masterclass_videos (id, masterclass_id, position, title, url, video_id, channel, has_thumb, watched, added_at)
+         SELECT m.id, m.id, 0, m.title, m.url, m.video_id, m.channel, m.has_thumb, 0, m.added_at FROM masterclasses m
+         WHERE NOT EXISTS (SELECT 1 FROM masterclass_videos v WHERE v.masterclass_id = m.id)",
+        [],
+    )?;
     // The masterclass a project is knitted along with.
     if !column_exists(conn, "projects", "masterclass_id")? {
         conn.execute("ALTER TABLE projects ADD COLUMN masterclass_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -5120,41 +5145,76 @@ pub fn yarn_facets(conn: &Connection) -> AppResult<Vec<YarnFamilyFacet>> {
 
 // ---------- masterclasses ----------
 
-fn row_to_masterclass(r: &rusqlite::Row) -> rusqlite::Result<Masterclass> {
-    Ok(Masterclass {
+fn row_to_part(r: &rusqlite::Row) -> rusqlite::Result<MasterclassPart> {
+    Ok(MasterclassPart {
         id: r.get("id")?,
+        masterclass_id: r.get("masterclass_id")?,
+        position: r.get("position")?,
         title: r.get("title")?,
         url: r.get("url")?,
         video_id: r.get("video_id")?,
         channel: r.get("channel")?,
-        notes: r.get("notes")?,
         has_thumb: r.get::<_, i64>("has_thumb")? != 0,
-        project_count: r.get("project_count")?,
+        watched: r.get::<_, i64>("watched")? != 0,
         added_at: r.get("added_at")?,
     })
 }
 
-const MASTERCLASS_SELECT: &str = "SELECT m.*, (SELECT COUNT(*) FROM projects pr WHERE pr.masterclass_id = m.id) AS project_count FROM masterclasses m";
-
-/// Every one, the newest first.
-pub fn list_masterclasses(conn: &Connection) -> AppResult<Vec<Masterclass>> {
-    let mut stmt = conn.prepare(&format!("{MASTERCLASS_SELECT} ORDER BY m.added_at DESC, m.rowid DESC"))?;
-    let rows = stmt.query_map([], row_to_masterclass)?;
+fn parts_of(conn: &Connection, id: &str) -> AppResult<Vec<MasterclassPart>> {
+    let mut stmt = conn.prepare("SELECT * FROM masterclass_videos WHERE masterclass_id = ?1 ORDER BY position, added_at")?;
+    let rows = stmt.query_map(params![id], row_to_part)?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
-pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
-    conn.query_row(&format!("{MASTERCLASS_SELECT} WHERE m.id = ?1"), params![id], row_to_masterclass)
-        .optional()?
-        .ok_or_else(|| AppError::NotFound("That masterclass is no longer there.".to_string()))
+/// Every one, the newest first, each with its videos.
+pub fn list_masterclasses(conn: &Connection) -> AppResult<Vec<Masterclass>> {
+    let ids: Vec<String> = conn
+        .prepare("SELECT id FROM masterclasses ORDER BY added_at DESC, rowid DESC")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    ids.iter().map(|id| get_masterclass(conn, id)).collect()
 }
 
-pub fn insert_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<Masterclass> {
-    conn.execute(
+pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
+    let mut m = conn
+        .query_row(
+            "SELECT m.id, m.title, m.notes, m.added_at, (SELECT COUNT(*) FROM projects pr WHERE pr.masterclass_id = m.id) AS project_count FROM masterclasses m WHERE m.id = ?1",
+            params![id],
+            |r| Ok(Masterclass { id: r.get(0)?, title: r.get(1)?, notes: r.get(2)?, added_at: r.get(3)?, project_count: r.get(4)?, ..Default::default() }),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That masterclass is no longer there.".to_string()))?;
+    m.parts = parts_of(conn, id)?;
+    m.channel = m.parts.iter().map(|p| p.channel.clone()).find(|c| !c.is_empty()).unwrap_or_default();
+    Ok(m)
+}
+
+pub fn get_masterclass_part(conn: &Connection, id: &str) -> AppResult<MasterclassPart> {
+    conn.query_row("SELECT * FROM masterclass_videos WHERE id = ?1", params![id], row_to_part)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That video is no longer there.".to_string()))
+}
+
+/// A new masterclass, with its first video.
+pub fn insert_masterclass(conn: &Connection, m: &Masterclass, first: &MasterclassPart) -> AppResult<Masterclass> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
         "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![m.id, m.title, m.url, m.video_id, m.channel, m.notes, m.has_thumb as i64, now_ms()],
+        params![m.id, m.title, first.url, first.video_id, first.channel, m.notes, first.has_thumb as i64, now_ms()],
     )?;
+    insert_part(&tx, &m.id, first)?;
+    tx.commit()?;
     get_masterclass(conn, &m.id)
+}
+
+/// A video put at the end of a masterclass's.
+pub fn insert_part(conn: &Connection, masterclass_id: &str, p: &MasterclassPart) -> AppResult<()> {
+    let next: i64 = conn.query_row("SELECT COALESCE(MAX(position) + 1, 0) FROM masterclass_videos WHERE masterclass_id = ?1", params![masterclass_id], |r| r.get(0))?;
+    conn.execute(
+        "INSERT INTO masterclass_videos (id, masterclass_id, position, title, url, video_id, channel, has_thumb, watched, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)",
+        params![p.id, masterclass_id, next, p.title, p.url, p.video_id, p.channel, p.has_thumb as i64, now_ms()],
+    )?;
+    Ok(())
 }
 
 pub fn update_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<()> {
@@ -5162,9 +5222,100 @@ pub fn update_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<()> {
     Ok(())
 }
 
-/// Removes it; the projects it was for keep going without it.
+/// A video's name, and whether it is watched.
+pub fn update_masterclass_part(conn: &Connection, p: &MasterclassPart) -> AppResult<()> {
+    conn.execute("UPDATE masterclass_videos SET title = ?2, watched = ?3 WHERE id = ?1", params![p.id, p.title, p.watched as i64])?;
+    Ok(())
+}
+
+/// Numbers a masterclass's videos 0, 1, 2… in the order given.
+fn renumber(conn: &Connection, ids: &[String]) -> AppResult<()> {
+    for (i, id) in ids.iter().enumerate() {
+        conn.execute("UPDATE masterclass_videos SET position = ?2 WHERE id = ?1", params![id, i as i64])?;
+    }
+    Ok(())
+}
+
+/// Moves a video to a place among its masterclass's, counted from 0.
+pub fn move_masterclass_part(conn: &Connection, id: &str, position: i64) -> AppResult<Masterclass> {
+    let part = get_masterclass_part(conn, id)?;
+    let mut ids: Vec<String> = parts_of(conn, &part.masterclass_id)?.into_iter().map(|p| p.id).collect();
+    ids.retain(|x| x != id);
+    ids.insert((position.max(0) as usize).min(ids.len()), id.to_string());
+    renumber(conn, &ids)?;
+    get_masterclass(conn, &part.masterclass_id)
+}
+
+/// Takes a video out of its masterclass; the last one is not, a masterclass
+/// being its videos: that is removing the masterclass.
+pub fn delete_masterclass_part(conn: &Connection, id: &str) -> AppResult<Masterclass> {
+    let part = get_masterclass_part(conn, id)?;
+    let ids: Vec<String> = parts_of(conn, &part.masterclass_id)?.into_iter().map(|p| p.id).filter(|x| x != id).collect();
+    if ids.is_empty() {
+        return Err(AppError::Message("It is the masterclass's only video: remove the masterclass instead.".into()));
+    }
+    conn.execute("DELETE FROM masterclass_videos WHERE id = ?1", params![id])?;
+    renumber(conn, &ids)?;
+    get_masterclass(conn, &part.masterclass_id)
+}
+
+/// A video taken out of its masterclass to be one of its own, named as it is.
+pub fn split_masterclass_part(conn: &Connection, id: &str, new_id: &str) -> AppResult<Masterclass> {
+    let part = get_masterclass_part(conn, id)?;
+    let rest: Vec<String> = parts_of(conn, &part.masterclass_id)?.into_iter().map(|p| p.id).filter(|x| x != id).collect();
+    if rest.is_empty() {
+        return Err(AppError::Message("It is the masterclass's only video already.".into()));
+    }
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at) VALUES (?1, ?2, ?3, ?4, ?5, '', ?6, ?7)",
+        params![new_id, part.title, part.url, part.video_id, part.channel, part.has_thumb as i64, now_ms()],
+    )?;
+    tx.execute("UPDATE masterclass_videos SET masterclass_id = ?2, position = 0 WHERE id = ?1", params![id, new_id])?;
+    renumber(&tx, &rest)?;
+    tx.commit()?;
+    get_masterclass(conn, new_id)
+}
+
+/// Masterclasses made one, in the order given: the first takes the others'
+/// videos after its own, their notes after its, and their projects; they go.
+pub fn bundle_masterclasses(conn: &Connection, ids: &[String], title: &str) -> AppResult<Masterclass> {
+    let mut seen: Vec<&String> = Vec::new();
+    for id in ids {
+        if !seen.contains(&id) {
+            seen.push(id);
+        }
+    }
+    let Some((first, others)) = seen.split_first() else {
+        return Err(AppError::Message("Choose the masterclasses to bundle.".into()));
+    };
+    let mut kept = get_masterclass(conn, first)?;
+    let tx = conn.unchecked_transaction()?;
+    let mut order: Vec<String> = kept.parts.iter().map(|p| p.id.clone()).collect();
+    let mut notes = vec![kept.notes.clone()];
+    for id in others {
+        let m = get_masterclass(&tx, id)?;
+        order.extend(m.parts.iter().map(|p| p.id.clone()));
+        notes.push(m.notes.clone());
+        tx.execute("UPDATE masterclass_videos SET masterclass_id = ?2 WHERE masterclass_id = ?1", params![id, first])?;
+        tx.execute("UPDATE projects SET masterclass_id = ?2 WHERE masterclass_id = ?1", params![id, first])?;
+        tx.execute("DELETE FROM masterclasses WHERE id = ?1", params![id])?;
+    }
+    renumber(&tx, &order)?;
+    let title = title.trim();
+    if !title.is_empty() {
+        kept.title = title.chars().take(200).collect();
+    }
+    kept.notes = notes.into_iter().filter(|n| !n.trim().is_empty()).collect::<Vec<_>>().join("\n\n").chars().take(4000).collect();
+    update_masterclass(&tx, &kept)?;
+    tx.commit()?;
+    get_masterclass(conn, first)
+}
+
+/// Removes it and its videos; the projects it was for keep going without it.
 pub fn delete_masterclass(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("UPDATE projects SET masterclass_id = '' WHERE masterclass_id = ?1", params![id])?;
+    conn.execute("DELETE FROM masterclass_videos WHERE masterclass_id = ?1", params![id])?;
     conn.execute("DELETE FROM masterclasses WHERE id = ?1", params![id])?;
     Ok(())
 }

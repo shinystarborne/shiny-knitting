@@ -7,7 +7,7 @@ import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } fro
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
-import { playerHtml } from "./masterclasses";
+import { partShown, playerHtml, showPart } from "./masterclasses";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -384,16 +384,26 @@ ${plan ? "" : `      <div class="project-side-dates">
           <option value="">None</option>
           ${this.masterclasses.map((x) => `<option value="${esc(x.id)}" ${x.id === p.masterclassId ? "selected" : ""}>${esc(x.title)}${x.channel ? ` (${esc(x.channel)})` : ""}</option>`).join("")}
         </select>
-        ${
-          m
-            ? `<div class="project-pattern-links">
-                 ${m.videoId ? `<button class="ghost" data-act="mc-watch" title="Play it here, under its name">${this.watching ? "▾ Hide the video" : "▶ Watch here"}</button>` : ""}
-                 <button class="link" data-act="mc-open" title="Open it in your browser">Open it ↗</button>
-               </div>
-               ${this.watching && m.videoId ? playerHtml(m, "mc-player project-mc-player") : ""}`
-            : ""
-        }
+        ${m ? this.masterclassPartHtml(m) : ""}
       </div>`;
+  }
+
+  /** The masterclass's video watched here: one of its videos, chosen when it has several. */
+  private masterclassPartHtml(m: Masterclass): string {
+    const part = partShown(m, `project:${this.projectId}`);
+    return `
+      ${
+        m.parts.length > 1
+          ? `<select data-f="mc-part" aria-label="Which of its videos" title="Which of its videos">${m.parts
+              .map((x, i) => `<option value="${esc(x.id)}" ${x.id === part.id ? "selected" : ""}>${i + 1}. ${esc(x.title)}${x.watched ? " ✓" : ""}</option>`)
+              .join("")}</select>`
+          : ""
+      }
+      <div class="project-pattern-links">
+        ${part.videoId ? `<button class="ghost" data-act="mc-watch" title="Play it here, under its name">${this.watching ? "▾ Hide the video" : "▶ Watch here"}</button>` : ""}
+        <button class="link" data-act="mc-open" title="Open it in your browser">Open it ↗</button>
+      </div>
+      ${this.watching && part.videoId ? playerHtml(part, "mc-player project-mc-player") : ""}`;
   }
 
   private personMeasures(): string {
@@ -476,7 +486,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     }
     if (act === "mc-open") {
       const m = this.masterclasses.find((x) => x.id === this.project.masterclassId);
-      if (m) await api.openLink(m.url).catch((err) => say(err instanceof Error ? err.message : String(err), "Masterclass"));
+      if (m) await api.openLink(partShown(m, `project:${this.projectId}`).url).catch((err) => say(err instanceof Error ? err.message : String(err), "Masterclass"));
     }
     if (act === "card") {
       await openProjectCard(this.project, {
@@ -512,6 +522,11 @@ ${plan ? "" : `      <div class="project-side-dates">
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
     if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));
+    // Another of the masterclass's videos, to watch here.
+    if (f === "mc-part") {
+      showPart(`project:${this.projectId}`, (e.target as HTMLSelectElement).value);
+      return this.renderSide();
+    }
     // The masterclass is saved on its own, as who it is for is.
     if (f === "masterclass") {
       try {

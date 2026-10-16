@@ -3966,3 +3966,21 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .mc-elsewhere { flex: none; }
 .project-masterclass select { width: 100%; }
 .project-mc-player { margin-top: 6px; border-radius: 6px; }
+/* A masterclass's videos, in order: a row each. */
+.mc-thumb { position: relative; }
+.mc-count { position: absolute; right: 3px; bottom: 3px; font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 2px 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.7); color: #fff; }
+.mc-now { margin: 0; font-size: 13px; }
+.mc-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mc-part { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 1px solid transparent; border-radius: 8px; }
+.mc-part.on { border-color: var(--accent); background: var(--accent-soft); }
+.mc-part-thumb { width: 64px; height: 36px; padding: 0; border: 0; cursor: pointer; }
+.mc-part-n { flex: none; width: 18px; text-align: right; color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.mc-part-title { flex: 1 1 auto; min-width: 0; font-size: 13px; padding: 4px 6px; background: transparent; border: 1px solid transparent; color: var(--text); }
+.mc-part-title:hover, .mc-part-title:focus { border-color: var(--border); }
+.mc-part.watched .mc-part-title { color: var(--text-dim); }
+.mc-watched { flex: none; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.mc-part-tools { flex: none; display: flex; gap: 4px; }
+.mc-part-tools .ghost { padding: 3px 8px; font-size: 12px; }
+.mc-part-add { margin-top: 6px; }
+.mc-bundle-list { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.mc-order { color: var(--accent); }

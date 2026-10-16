@@ -760,18 +760,32 @@ export interface Project {
   masterclassTitle: string;
 }
 
-/** A video kept to learn from. Mirrors `models.rs::Masterclass`. */
+/** Something kept to learn from, as its videos in order. Mirrors `models.rs::Masterclass`. */
 export interface Masterclass {
   id: string;
+  title: string;
+  notes: string;
+  /** The first video's channel. */
+  channel: string;
+  /** Its videos, in order; never none. */
+  parts: MasterclassPart[];
+  projectCount: number;
+  addedAt: number;
+}
+
+/** One video of a masterclass. Mirrors `models.rs::MasterclassPart`. */
+export interface MasterclassPart {
+  id: string;
+  masterclassId: string;
+  position: number;
   title: string;
   /** A YouTube video's as youtube.com/watch?v=; anything else as typed. */
   url: string;
   /** The YouTube video, for showing it embedded; "" for another site. */
   videoId: string;
   channel: string;
-  notes: string;
   hasThumb: boolean;
-  projectCount: number;
+  watched: boolean;
   addedAt: number;
 }
 
@@ -1402,7 +1416,18 @@ export const api = {
   /** A YouTube link asks YouTube for its title, channel and picture; any other is kept as it is. */
   addMasterclass: (input: { url: string; title?: string; notes?: string }) => invoke<Masterclass>("add_masterclass", { input }),
   updateMasterclass: (masterclass: Masterclass) => invoke<Masterclass>("update_masterclass", { masterclass }),
+  /** Another video for a masterclass, after its others. */
+  addMasterclassPart: (masterclassId: string, input: { url: string; title?: string }) => invoke<Masterclass>("add_masterclass_part", { masterclassId, input }),
+  /** A video's name, and whether it is watched. */
+  updateMasterclassPart: (part: MasterclassPart) => invoke<Masterclass>("update_masterclass_part", { part }),
+  moveMasterclassPart: (id: string, position: number) => invoke<Masterclass>("move_masterclass_part", { id, position }),
+  removeMasterclassPart: (id: string) => invoke<Masterclass>("remove_masterclass_part", { id }),
+  /** A video taken out to be a masterclass of its own; resolves that one. */
+  splitMasterclassPart: (id: string) => invoke<Masterclass>("split_masterclass_part", { id }),
+  /** Masterclasses made one, in the order given: the first takes the others. */
+  bundleMasterclasses: (ids: string[], title: string) => invoke<Masterclass>("bundle_masterclasses", { ids, title }),
   deleteMasterclass: (id: string) => invoke<void>("delete_masterclass", { id }),
+  /** By the video's id. */
   getMasterclassThumb: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_masterclass_thumb", { id }),
   /** The chart a project is knitted from ("" for none), and the project's row its first row is knitted on. */
   setProjectChart: (id: string, chartId: string, start: number) => invoke<Project>("set_project_chart", { id, chartId, start }),

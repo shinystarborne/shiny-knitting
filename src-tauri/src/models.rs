@@ -837,23 +837,39 @@ pub struct CheatsheetInput {
     pub region: Option<SheetRegion>,
 }
 
-/// A video kept to learn from: a technique, a course, a knit-along.
+/// Something kept to learn from -- a technique, a course, a knit-along --
+/// as its videos, one or several, in order.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Masterclass {
     pub id: String,
     pub title: String,
+    pub notes: String,
+    /// The first video's channel, as YouTube says.
+    pub channel: String,
+    /// Its videos, in order; never none.
+    pub parts: Vec<MasterclassPart>,
+    /// The projects knitted along with it.
+    pub project_count: i64,
+    pub added_at: i64,
+}
+
+/// One video of a masterclass.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MasterclassPart {
+    pub id: String,
+    pub masterclass_id: String,
+    pub position: i64,
+    pub title: String,
     /// Its address: a YouTube video's as youtube.com/watch?v=, anything else as typed.
     pub url: String,
     /// The YouTube video it is, for showing it embedded; empty for another site.
     pub video_id: String,
-    /// The YouTube channel, as YouTube says.
     pub channel: String,
-    pub notes: String,
-    /// Whether its picture is kept (`masterclasses/<id>.jpg`).
+    /// Whether its picture is kept (`masterclasses/<part id>.jpg`).
     pub has_thumb: bool,
-    /// The projects it is on.
-    pub project_count: i64,
+    pub watched: bool,
     pub added_at: i64,
 }
 

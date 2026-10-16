@@ -790,6 +790,58 @@ function planWhen(text) {
   return String(text ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 80);
 }
 
+/** As masterclasses.rs: a link made whole, a YouTube one known by its video. */
+function stubVideo(typedUrl, typedTitle) {
+  const typed = String(typedUrl ?? "").trim();
+  if (!typed) throw new Error("Give the video's link: a YouTube address.");
+  let url;
+  try {
+    url = new URL(typed.includes("://") ? typed : `https://${typed}`);
+  } catch {
+    throw new Error("That is not a web address.");
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new Error("A masterclass is a web page: an address starting http:// or https://.");
+  const host = url.host.replace(/^(www|m|music)\./, "");
+  const seg = url.pathname.split("/").filter(Boolean);
+  let video = host === "youtu.be" ? seg[0] : host === "youtube.com" ? (seg[0] === "watch" ? url.searchParams.get("v") : ["shorts", "live", "embed"].includes(seg[0]) ? seg[1] : null) : null;
+  if (video && !/^[\w-]{6,20}$/.test(video)) video = null;
+  const id = `mv${store.nextId++}`;
+  if (video) {
+    const c = document.createElement("canvas");
+    c.width = 48;
+    c.height = 27;
+    const x = c.getContext("2d");
+    x.fillStyle = "#c33";
+    x.fillRect(0, 0, 48, 27);
+    const b64 = c.toDataURL("image/png").split(",")[1];
+    store.covers.set(`masterclass:${id}`, Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
+  }
+  return {
+    id,
+    masterclassId: "",
+    position: 0,
+    title: String(typedTitle ?? "").trim() || (video ? `A video, ${video}` : host),
+    url: video ? `https://www.youtube.com/watch?v=${video}` : url.toString(),
+    videoId: video ?? "",
+    channel: video ? "A channel" : "",
+    hasThumb: !!video,
+    watched: false,
+    addedAt: Date.now(),
+  };
+}
+function findMasterclass(id) {
+  const m = store.masterclasses.find((x) => x.id === id);
+  if (!m) throw new Error("That masterclass is no longer there.");
+  return m;
+}
+function masterclassOut(m) {
+  return clone({
+    ...m,
+    parts: m.parts.map((p, i) => ({ ...p, position: i })),
+    channel: m.parts.map((p) => p.channel).find(Boolean) ?? "",
+    projectCount: store.projects.filter((pr) => pr.masterclassId === m.id).length,
+  });
+}
 function projectOut(pr) {
   const pattern = pr.patternId ? store.patterns.find((x) => x.id === pr.patternId) : null;
   return clone({
@@ -1433,60 +1485,85 @@ const handlers = {
   //
   // As masterclasses.rs, without asking YouTube: a YouTube link is named
   // "A video, <id>" and channel "A channel" unless a name is given, and
-  // gets a picture drawn here.
-  list_masterclasses: () =>
-    [...store.masterclasses]
-      .sort((a, b) => b.addedAt - a.addedAt)
-      .map((m) => clone({ ...m, projectCount: store.projects.filter((pr) => pr.masterclassId === m.id).length })),
+  // gets a picture drawn here. A masterclass is its videos, in order.
+  list_masterclasses: () => [...store.masterclasses].sort((a, b) => b.addedAt - a.addedAt).map(masterclassOut),
   add_masterclass: ({ input }) => {
-    const typed = String(input.url ?? "").trim();
-    if (!typed) throw new Error("Give the video's link: a YouTube address.");
-    let url;
-    try {
-      url = new URL(typed.includes("://") ? typed : `https://${typed}`);
-    } catch {
-      throw new Error("That is not a web address.");
-    }
-    if (!/^https?:$/.test(url.protocol)) throw new Error("A masterclass is a web page: an address starting http:// or https://.");
-    const host = url.host.replace(/^(www|m|music)\./, "");
-    const seg = url.pathname.split("/").filter(Boolean);
-    let video = host === "youtu.be" ? seg[0] : host === "youtube.com" ? (seg[0] === "watch" ? url.searchParams.get("v") : ["shorts", "live", "embed"].includes(seg[0]) ? seg[1] : null) : null;
-    if (video && !/^[\w-]{6,20}$/.test(video)) video = null;
-    const id = `mc${store.nextId++}`;
-    const m = {
-      id,
-      title: String(input.title ?? "").trim() || (video ? `A video, ${video}` : host),
-      url: video ? `https://www.youtube.com/watch?v=${video}` : url.toString(),
-      videoId: video ?? "",
-      channel: video ? "A channel" : "",
-      notes: String(input.notes ?? "").trim(),
-      hasThumb: !!video,
-      addedAt: Date.now() + store.nextId,
-    };
-    if (video) {
-      const c = document.createElement("canvas");
-      c.width = 48;
-      c.height = 27;
-      const x = c.getContext("2d");
-      x.fillStyle = "#c33";
-      x.fillRect(0, 0, 48, 27);
-      const b64 = c.toDataURL("image/png").split(",")[1];
-      store.covers.set(`masterclass:${id}`, Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
-    }
+    const first = stubVideo(input.url, input.title);
+    const m = { id: `mc${store.nextId++}`, title: String(input.title ?? "").trim() || first.title, notes: String(input.notes ?? "").trim(), parts: [first], addedAt: Date.now() + store.nextId };
+    first.masterclassId = m.id;
     store.masterclasses.push(m);
-    return clone({ ...m, projectCount: 0 });
+    return masterclassOut(m);
+  },
+  add_masterclass_part: ({ masterclassId, input }) => {
+    const m = findMasterclass(masterclassId);
+    const part = stubVideo(input.url, input.title);
+    part.masterclassId = m.id;
+    m.parts.push(part);
+    return masterclassOut(m);
   },
   update_masterclass: ({ masterclass }) => {
-    const kept = store.masterclasses.find((m) => m.id === masterclass.id);
-    if (!kept) throw new Error("That masterclass is no longer there.");
+    const kept = findMasterclass(masterclass.id);
     if (masterclass.title.trim()) kept.title = masterclass.title.trim().slice(0, 200);
     kept.notes = masterclass.notes.trim().slice(0, 4000);
-    return clone({ ...kept, projectCount: store.projects.filter((pr) => pr.masterclassId === kept.id).length });
+    return masterclassOut(kept);
+  },
+  update_masterclass_part: ({ part }) => {
+    const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === part.id));
+    if (!m) throw new Error("That video is no longer there.");
+    const kept = m.parts.find((p) => p.id === part.id);
+    if (part.title.trim()) kept.title = part.title.trim().slice(0, 200);
+    kept.watched = !!part.watched;
+    return masterclassOut(m);
+  },
+  move_masterclass_part: ({ id, position }) => {
+    const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
+    if (!m) throw new Error("That video is no longer there.");
+    const [part] = m.parts.splice(m.parts.findIndex((p) => p.id === id), 1);
+    m.parts.splice(Math.max(0, Math.min(position, m.parts.length)), 0, part);
+    return masterclassOut(m);
+  },
+  remove_masterclass_part: ({ id }) => {
+    const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
+    if (!m) throw new Error("That video is no longer there.");
+    if (m.parts.length < 2) throw new Error("It is the masterclass's only video: remove the masterclass instead.");
+    m.parts = m.parts.filter((p) => p.id !== id);
+    store.covers.delete(`masterclass:${id}`);
+    return masterclassOut(m);
+  },
+  split_masterclass_part: ({ id }) => {
+    const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
+    if (!m) throw new Error("That video is no longer there.");
+    if (m.parts.length < 2) throw new Error("It is the masterclass's only video already.");
+    const part = m.parts.find((p) => p.id === id);
+    m.parts = m.parts.filter((p) => p.id !== id);
+    const own = { id: `mc${store.nextId++}`, title: part.title, notes: "", parts: [part], addedAt: Date.now() + store.nextId };
+    part.masterclassId = own.id;
+    store.masterclasses.push(own);
+    return masterclassOut(own);
+  },
+  bundle_masterclasses: ({ ids, title }) => {
+    const unique = [...new Set(ids)];
+    if (unique.length < 2) throw new Error("Choose at least one other masterclass to bundle it with.");
+    const [first, ...others] = unique.map(findMasterclass);
+    const notes = [first.notes];
+    for (const m of others) {
+      for (const p of m.parts) {
+        p.masterclassId = first.id;
+        first.parts.push(p);
+      }
+      notes.push(m.notes);
+      for (const pr of store.projects) if (pr.masterclassId === m.id) pr.masterclassId = first.id;
+      store.masterclasses = store.masterclasses.filter((x) => x.id !== m.id);
+    }
+    if (String(title ?? "").trim()) first.title = String(title).trim().slice(0, 200);
+    first.notes = notes.filter((n) => n.trim()).join("\n\n");
+    return masterclassOut(first);
   },
   delete_masterclass: ({ id }) => {
+    const m = findMasterclass(id);
     for (const pr of store.projects) if (pr.masterclassId === id) pr.masterclassId = "";
-    store.masterclasses = store.masterclasses.filter((m) => m.id !== id);
-    store.covers.delete(`masterclass:${id}`);
+    for (const p of m.parts) store.covers.delete(`masterclass:${p.id}`);
+    store.masterclasses = store.masterclasses.filter((x) => x.id !== id);
   },
   get_masterclass_thumb: ({ id }) => {
     const bytes = store.covers.get(`masterclass:${id}`);
