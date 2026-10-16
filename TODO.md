@@ -194,6 +194,10 @@ back empty, and in a run over the library, note the pattern and go on.
   rounds, repeats and increase rounds, top-down (chart.ts fittedToYoke),
   what is drawn kept; the yoke from above beside the numbers, and Draw on
   the chart ↗ opens it, ← Round yoke coming back. *0.3.70*
+  Measurements from People (For: whose, from when, what they lack, left
+  empty) and back to them (Save to People…: the person chosen, or someone
+  new; only what changed, today's set taking it; the yoke's depth saved as
+  the armhole's, 2 cm less). *0.3.71*
   And stitches for a size (fitted to a repeat), increasing or decreasing
   evenly in the round or flat, a pattern re-gauged to yours, and yarns held
   together (the strands' metres per 100 g in, the yarn they make out; from
