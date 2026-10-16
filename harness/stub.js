@@ -772,6 +772,7 @@ function projectOut(pr) {
     planOrder: 0,
     chartId: "",
     chartStart: 1,
+    size: "",
     galleryHidden: false,
     gallerySkip: [],
     ...pr,
@@ -1815,6 +1816,13 @@ const handlers = {
     if (chartId && !store.charts.some((c) => c.id === chartId)) throw new Error("That chart is no longer there.");
     p.chartId = chartId;
     p.chartStart = Math.max(1, Math.round(start) || 1);
+    return projectOut(p);
+  },
+  // As db::set_project_size: one line, trimmed.
+  set_project_size: ({ id, size }) => {
+    const p = store.projects.find((x) => x.id === id);
+    if (!p) throw new Error("That project is no longer there.");
+    p.size = String(size ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 100);
     return projectOut(p);
   },
   set_project_gallery: ({ id, hidden, skip }) => {

@@ -3,6 +3,7 @@ import { coverUrl, logPhotoUrl, projectCoverUrl } from "../covers";
 import { customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
+import { openProjectCard } from "./project-card";
 import { longDate } from "./project-form";
 import { describe } from "./tool-filter";
 
@@ -133,6 +134,7 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
         ${current && !choosing ? `<button type="button" class="ghost" data-act="copy-photo" title="Copy the photo shown, to paste anywhere">Copy photo</button>` : ""}
         ${photos.length ? `<button type="button" class="ghost" data-act="choose">${choosing ? "Done choosing" : "Choose photos"}</button>` : ""}
         <button type="button" class="ghost" data-act="hide">${p.galleryHidden ? "Show in the gallery" : "Hide from the gallery"}</button>
+        <button type="button" class="ghost" data-act="card" title="A picture of it with what there is to say about it, to post">Card to post…</button>
         <button type="button" class="ghost" data-act="page">Open its page</button>
         <button type="button" class="primary" data-act="close">Close</button>
       </div>`;
@@ -183,6 +185,14 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
     }
     if (act === "hide") void save(!p.galleryHidden, p.gallerySkip);
     if (act === "close") dialog.close();
+    if (act === "card") {
+      void openProjectCard(p, {
+        changed: (q) => {
+          p = q;
+          hooks.changed(q);
+        },
+      });
+    }
     if (act === "copy-photo") {
       const current = visible()[at];
       if (current) void copyPicture(photoUrl(p, current.key), "The photo");

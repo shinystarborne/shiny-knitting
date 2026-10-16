@@ -736,6 +736,8 @@ export interface Project {
   /** The colourwork chart knitted from on its page ("" for none), and the project's row its first row is knitted on. */
   chartId?: string;
   chartStart?: number;
+  /** The size knitted, as said: "M", "2nd size". */
+  size: string;
 }
 
 export interface ProjectYarnInput {
@@ -1359,6 +1361,7 @@ export const api = {
   listGalleryPhotos: () => invoke<GalleryPhoto[]>("list_gallery_photos"),
   /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
   setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
+  setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
   /** The chart a project is knitted from ("" for none), and the project's row its first row is knitted on. */
   setProjectChart: (id: string, chartId: string, start: number) => invoke<Project>("set_project_chart", { id, chartId, start }),
   /** Dated now. */

@@ -6,6 +6,7 @@ import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
+import { openProjectCard } from "./project-card";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -245,6 +246,7 @@ export class ProjectPage {
         <button class="ghost" data-act="cover-file">Choose…</button>
         <button class="ghost" data-act="cover-copy" title="Copy the cover, to paste anywhere" ${p.coverPath ? "" : "hidden"}>Copy</button>
         <button class="ghost" data-act="cover-remove" ${p.coverPath ? "" : "hidden"}>Remove</button>
+        <button class="ghost" data-act="card" title="A picture of the project with what there is to say about it, to post: its photos, pattern, yarn, needles, size">Card to post…</button>
       </div>
 
       <input class="project-title" data-f="name" value="${esc(p.name)}" aria-label="Project name" />
@@ -295,6 +297,7 @@ ${plan ? "" : `      <div class="project-side-dates">
             : `<button class="ghost" data-act="finish" title="Release the needles and record the leftover yarn">Finish…</button>`
         }</label>
       </div>`}
+      <label class="field"><span>Size knitted</span><input data-f="size" value="${esc(p.size)}" placeholder="e.g. M, or the 2nd size" maxlength="100" /></label>
 
       <div class="side-section">
         <h3>Needles, hooks &amp; cables</h3>
@@ -434,6 +437,15 @@ ${plan ? "" : `      <div class="project-side-dates">
       input.click();
     }
     if (act === "cover-copy") await copyPicture(projectCoverUrl(this.projectId), "The cover");
+    if (act === "card") {
+      await openProjectCard(this.project, {
+        changed: (p) => {
+          this.project = p;
+          const size = this.root.querySelector<HTMLInputElement>('[data-f="size"]');
+          if (size) size.value = p.size;
+        },
+      });
+    }
     if (act === "cover-remove") {
       await api.removeProjectCover(this.projectId).catch(() => {});
       forgetProjectCover(this.projectId);
@@ -459,6 +471,15 @@ ${plan ? "" : `      <div class="project-side-dates">
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
     if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));
+    // The size is saved on its own, as who it is for is.
+    if (f === "size") {
+      try {
+        this.project = await api.setProjectSize(this.projectId, (e.target as HTMLInputElement).value);
+      } catch (err) {
+        await say(err instanceof Error ? err.message : String(err), "Project");
+      }
+      return;
+    }
     // Who it is for is saved on its own, so saving the details never clears it.
     if (f === "person") {
       try {

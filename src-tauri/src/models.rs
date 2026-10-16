@@ -1013,6 +1013,9 @@ pub struct Project {
     pub chart_id: String,
     #[serde(default)]
     pub chart_start: i64,
+    /// The size knitted, as said: "M", "2nd size", "chest 96 cm".
+    #[serde(default)]
+    pub size: String,
 }
 
 /// A photo in a project's log, for the gallery: its entry, when, and what it says.

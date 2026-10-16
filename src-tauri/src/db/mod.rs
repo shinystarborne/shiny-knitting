@@ -724,6 +724,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "projects", "cover_path")? {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
     }
+    // The size a project is knitted in, as said.
+    if !column_exists(conn, "projects", "size")? {
+        conn.execute("ALTER TABLE projects ADD COLUMN size TEXT NOT NULL DEFAULT ''", [])?;
+    }
     // A cheatsheet of part of a page: the box kept, as JSON; empty for all of it.
     if !column_exists(conn, "cheatsheets", "region")? {
         conn.execute("ALTER TABLE cheatsheets ADD COLUMN region TEXT NOT NULL DEFAULT ''", [])?;
@@ -2583,7 +2587,18 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         gallery_skip: serde_json::from_str(&row.get::<_, String>("gallery_skip")?).unwrap_or_default(),
         chart_id: row.get("chart_id")?,
         chart_start: row.get("chart_start")?,
+        size: row.get("size")?,
     })
+}
+
+/// The size a project is knitted in, as said: one line, trimmed.
+pub fn set_project_size(conn: &Connection, id: &str, size: &str) -> AppResult<Project> {
+    let size: String = size.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(100).collect();
+    let changed = conn.execute("UPDATE projects SET size = ?2 WHERE id = ?1", params![id, size])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    get_project(conn, id)
 }
 
 /// The chart a project is knitted from, or none (an empty id), and the

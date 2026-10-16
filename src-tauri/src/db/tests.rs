@@ -3507,6 +3507,18 @@ fn a_cheatsheet_keeps_the_part_of_its_page() {
 }
 
 #[test]
+fn a_project_says_the_size_knitted() {
+    let conn = test_db();
+    let p = insert_project(&conn, "pr-size", &crate::models::ProjectInput { name: "Cardigan".into(), ..Default::default() }).unwrap();
+    assert_eq!(p.size, "");
+    let p = set_project_size(&conn, "pr-size", "  2nd   size
+(M) ").unwrap();
+    assert_eq!(p.size, "2nd size (M)");
+    assert_eq!(get_project(&conn, "pr-size").unwrap().size, "2nd size (M)");
+    assert!(set_project_size(&conn, "nowhere", "M").is_err());
+}
+
+#[test]
 fn a_project_is_knitted_from_a_chart_until_the_chart_goes() {
     let conn = test_db();
     let pattern = sample(&conn, "Mittens", "", "", &[]);

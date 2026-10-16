@@ -25,6 +25,12 @@ fn tidy(mut input: ProjectInput) -> ProjectInput {
     input
 }
 
+/// The size it is knitted in, as said.
+#[tauri::command]
+pub fn set_project_size(state: State<'_, AppState>, id: String, size: String) -> CmdResult<Project> {
+    db::set_project_size(&state.db(), &id, &size)
+}
+
 #[tauri::command]
 pub fn list_projects(state: State<'_, AppState>) -> CmdResult<Vec<Project>> {
     db::list_projects(&state.db())

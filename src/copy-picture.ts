@@ -34,6 +34,11 @@ export async function copyPicture(url: string | null | Promise<string | null>, w
     if (!u) throw new Error(`${what} is not there to copy.`);
     return pngOf(u);
   });
+  return copyPng(png, what);
+}
+
+/** Copies a PNG, or one still being made; says it is copied, or why not. */
+export async function copyPng(png: Promise<Blob>, what = "The picture"): Promise<boolean> {
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("This window cannot put pictures on the clipboard.");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
