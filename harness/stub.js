@@ -379,6 +379,8 @@ function seed() {
     notes: "",
     addedAt: now,
     ...fields,
+    // As the migration fills it in: the system an interchangeable one's brand says.
+    connector: ["tips", "cable"].includes(fields.kind) ? connectorOfBrand(fields.brand) : "",
   });
   store.tools = [
     tool("t1", { kind: "dpn", sizeMm: 2.5, lengthCm: 20, brand: "HiyaHiya", material: "metal" }),
@@ -487,11 +489,24 @@ function cleanTool(input) {
     lengthCm: ["straight", "dpn", "tips", "hook"].includes(kind) ? measure(input.lengthCm, 1, 200, "length", "cm") : 0,
     cableCm: ["circular", "cable"].includes(kind) ? measure(input.cableCm, 1, 500, "cable length", "cm") : 0,
     cableSize: ["tips", "cable"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
+    // As said, or as the brand says when not.
+    connector: ["tips", "cable"].includes(kind) ? oneOf(input.connector, CONNECTORS, "connector system") || connectorOfBrand(input.brand) : "",
     brand: String(input.brand || "").trim().slice(0, 80),
     material: toolMaterial(input.material),
     projectId,
     notes: String(input.notes || ""),
   };
+}
+// `models::CONNECTORS`, and `tools::connector_of_brand`.
+const CONNECTORS = ["chiaogoo", "knitpro", "addi", "hiyahiya", "lykke"];
+function connectorOfBrand(brand) {
+  const b = String(brand || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (b.includes("chiaogoo") || b.includes("lotus")) return "chiaogoo";
+  if (b.includes("knitpro") || b.includes("knitterspride")) return "knitpro";
+  if (b.includes("addi")) return "addi";
+  if (b.includes("hiyahiya")) return "hiyahiya";
+  if (b.includes("lykke")) return "lykke";
+  return "";
 }
 // The rules of `shopping::clean_shop` and `clean_wish`.
 const WISH_KINDS = ["yarn", "tool", "pattern", "other"];

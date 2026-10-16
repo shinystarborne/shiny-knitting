@@ -639,6 +639,18 @@ export const CABLE_SIZES = [
   { key: "large", label: "Large" },
 ] as const;
 
+/**
+ * The interchangeable systems: whose tips and cables fit each other. The
+ * keys are `models.rs::CONNECTORS`.
+ */
+export const CONNECTORS = [
+  { key: "chiaogoo", label: "ChiaoGoo / Lotus Yarns" },
+  { key: "knitpro", label: "KnitPro / Knitter's Pride" },
+  { key: "addi", label: "addi click" },
+  { key: "hiyahiya", label: "HiyaHiya" },
+  { key: "lykke", label: "Lykke" },
+] as const;
+
 /** A needle, a set of needles, a cable, or a hook. */
 export interface Tool {
   id: string;
@@ -651,6 +663,8 @@ export interface Tool {
   cableCm: number;
   /** Connector size of tips or a cable, or "". */
   cableSize: string;
+  /** The system tips or a cable belong to (a CONNECTORS key), or "" when not known. */
+  connector: string;
   brand: string;
   material: string;
   /** The active project it is on; null when it is free. */

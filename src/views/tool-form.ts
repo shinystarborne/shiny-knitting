@@ -2,6 +2,7 @@ import {
   api,
   isLive,
   CABLE_SIZES,
+  CONNECTORS,
   TOOL_KINDS,
   type Project,
   type Tool,
@@ -13,6 +14,7 @@ import { makeCombo } from "./combo";
 import {
   canonical,
   connectorFor,
+  connectorOfBrand,
   connectorSummary,
   knownBrands,
   knownMaterials,
@@ -127,6 +129,13 @@ export class ToolForm {
               <option value="${SPLIT}" data-el="split-option" hidden>Changes with size…</option>
             </select>
           </label>
+          <label class="field" data-show="connector" title="The maker whose tips and cables these fit: ChiaoGoo's fit Lotus Yarns', not KnitPro's">
+            <span>System</span>
+            <select data-f="connector">
+              <option value="">Not sure</option>
+              ${CONNECTORS.map((c) => `<option value="${c.key}" ${(v?.connector || connectorOfBrand(v?.brand ?? "")) === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
+            </select>
+          </label>
         </div>
         <p class="hint" data-el="kind-hint"></p>
         <div class="connector-steps" data-el="connector-steps" hidden></div>
@@ -188,6 +197,12 @@ export class ToolForm {
     const target = e.target as HTMLSelectElement;
     const f = target.dataset.f;
     if (f === "kind" || f === "project") this.applyKind();
+    // The brand says the system, until one is chosen.
+    if (f === "brand") {
+      const system = this.root.querySelector<HTMLSelectElement>('[data-f="connector"]');
+      const said = connectorOfBrand(this.value("brand"));
+      if (system && !system.value && said) system.value = said;
+    }
     if (f === "cableSize") this.previewSet();
     const step = target.dataset.step;
     if (step !== undefined) {
@@ -282,7 +297,7 @@ export class ToolForm {
       kind === "circular"
         ? "Cable length as sold: an 80 cm circular is 80 cm from tip to tip."
         : kind === "tips" || kind === "cable"
-          ? "Cable size is the connector, which decides which tips fit which cables."
+          ? "The system and the cable size are the connector: tips and a cable fit when both are the same."
           : kind === "dpn"
             ? "One entry for the needles of one size together."
             : "";
@@ -372,6 +387,7 @@ export class ToolForm {
       cableCm: HAS.cable(kind) ? num(this.value("cableCm")) : 0,
       // "Changes with size…" is not a size; save() gives each size its own.
       cableSize: HAS.connector(kind) && this.value("cableSize") !== SPLIT ? this.value("cableSize") : "",
+      connector: HAS.connector(kind) ? this.value("connector") : "",
       // The same word in another case files under the spelling already used.
       brand: canonical(this.value("brand"), this.brands),
       material: materialValue(canonical(this.value("material"), this.materials)),

@@ -1,5 +1,5 @@
 import type { Tool } from "../api";
-import { describe, isFree, projectName } from "./tool-filter";
+import { describe, fitsOnProject, isFree, kindLabel, projectName } from "./tool-filter";
 
 /**
  * Choosing a project's needles and hooks: the ones on it, each with ✕, and a
@@ -52,7 +52,15 @@ export class ToolPicker {
    */
   render(tools: Tool[], chosen: Set<string>, emptyHint: string): void {
     const mine = tools.filter((t) => chosen.has(t.id));
-    const rest = tools.filter((t) => !chosen.has(t.id));
+    // Tips the project's cable does not take, or a cable its tips do not, are not offered.
+    const others = tools.filter((t) => !chosen.has(t.id));
+    const rest = others.filter((t) => fitsOnProject(t, mine));
+    const unfit = others.filter((t) => !fitsOnProject(t, mine));
+    const unfitHint = unfit.length
+      ? `<p class="hint" data-el="tool-unfit">${unfit.length} ${unfit.length === 1 ? `${kindLabel(unfit[0].kind).toLowerCase()} that does` : "that do"} not fit what is on it ${unfit.length === 1 ? "is" : "are"} not offered: ${escapeHtml(
+          [...new Set(unfit.map((t) => describe(t)))].slice(0, 3).join("; "),
+        )}${unfit.length > 3 ? "…" : ""}.</p>`
+      : "";
     const free = rest.filter(isFree);
     const elsewhere = rest.filter((t) => !isFree(t));
     const option = (t: Tool, note = "") =>
@@ -88,8 +96,9 @@ export class ToolPicker {
               </select>
               <button type="button" class="ghost" data-act="tool-use" disabled title="Use it on this project">Use</button>
             </div>`
-          : `<p class="hint">${tools.length ? "Every needle and hook you have is on this project." : "Add your needles and hooks in the Needles &amp; hooks tab."}</p>`
+          : `<p class="hint">${tools.length ? (unfit.length ? "Nothing else you have fits what is on it." : "Every needle and hook you have is on this project.") : "Add your needles and hooks in the Needles &amp; hooks tab."}</p>`
       }
+      ${unfitHint}
     `;
   }
 }

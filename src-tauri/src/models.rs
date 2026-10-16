@@ -905,6 +905,11 @@ pub const TOOL_MATERIALS: &[&str] = &[
 /// whether a tip fits a cable. Empty is allowed, for a set that has only one.
 pub const CABLE_SIZES: &[&str] = &["mini", "small", "standard", "large"];
 
+/// The interchangeable systems: which makers' tips and cables fit each
+/// other. ChiaoGoo's and Lotus Yarns' are one; KnitPro's are Knitter's
+/// Pride's.
+pub const CONNECTORS: &[&str] = &["chiaogoo", "knitpro", "addi", "hiyahiya", "lykke"];
+
 /// A needle, a set of needles, a cable, or a hook.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -922,6 +927,10 @@ pub struct Tool {
     /// One of `CABLE_SIZES`, or empty. Only interchangeable tips and cables
     /// have one.
     pub cable_size: String,
+    /// One of `CONNECTORS`, or empty: the system its connector belongs to.
+    /// Tips and a cable fit when it and the size are the same.
+    #[serde(default)]
+    pub connector: String,
     pub brand: String,
     /// A key from `TOOL_MATERIALS`, a material as typed, or empty.
     pub material: String,
@@ -949,6 +958,8 @@ pub struct ToolInput {
     pub cable_cm: f64,
     #[serde(default)]
     pub cable_size: String,
+    #[serde(default)]
+    pub connector: String,
     #[serde(default)]
     pub brand: String,
     #[serde(default)]

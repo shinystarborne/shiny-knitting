@@ -1,4 +1,4 @@
-import { CABLE_SIZES, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "../api";
+import { CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "../api";
 
 /**
  * Filtering and naming needles and hooks.
@@ -22,6 +22,7 @@ export interface ToolFilter {
   size?: string[];
   material?: string[];
   cableSize?: string[];
+  connector?: string[];
   brand?: string[];
 }
 
@@ -112,6 +113,51 @@ export function cableSizeLabel(size: string): string {
   return CABLE_SIZES.find((c) => c.key === size)?.label ?? size;
 }
 
+export function connectorLabel(system: string): string {
+  return CONNECTORS.find((c) => c.key === system)?.label ?? system;
+}
+
+/**
+ * The system a brand's tips and cables belong to, when the brand says: as
+ * `tools::connector_of_brand`. Lotus Yarns' fit ChiaoGoo's.
+ */
+export function connectorOfBrand(brand: string): string {
+  const b = brand.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (b.includes("chiaogoo") || b.includes("lotus")) return "chiaogoo";
+  if (b.includes("knitpro") || b.includes("knitterspride")) return "knitpro";
+  if (b.includes("addi")) return "addi";
+  if (b.includes("hiyahiya")) return "hiyahiya";
+  if (b.includes("lykke")) return "lykke";
+  return "";
+}
+
+/**
+ * Whether interchangeable tips and a cable fit each other: the same system,
+ * and the same connector size where both are said. "unknown" when either
+ * has not said its system: it may well fit, so it is not left out.
+ */
+export function connectorFit(a: Tool, b: Tool): "yes" | "no" | "unknown" {
+  if (a.connector && b.connector && a.connector !== b.connector) return "no";
+  if (a.cableSize && b.cableSize && a.cableSize !== b.cableSize) return "no";
+  if (!a.connector || !b.connector) return "unknown";
+  return a.cableSize === b.cableSize || !a.cableSize || !b.cableSize ? "yes" : "unknown";
+}
+
+/** What tips are joined with, and a cable with: the other half of an interchangeable needle. */
+const OTHER_HALF: Record<string, string> = { tips: "cable", cable: "tips" };
+
+/**
+ * Whether a tool is worth offering for a project that has these on it: a
+ * cable when the project's tips take it (one of them, when it has several),
+ * tips when its cable does. Anything else, or with no other half on it yet,
+ * always is.
+ */
+export function fitsOnProject(t: Tool, onIt: Tool[]): boolean {
+  const half = OTHER_HALF[t.kind];
+  const others = half ? onIt.filter((o) => o.kind === half) : [];
+  return !others.length || others.some((o) => connectorFit(t, o) !== "no");
+}
+
 /** The brand as a filter key: the same brand typed two ways is one box. */
 const brandKey = (brand: string): string => brand.trim().toLowerCase();
 
@@ -129,7 +175,7 @@ export function measurements(t: Tool): string {
   const parts: string[] = [];
   if (t.kind === "circular" && t.cableCm) parts.push(`${trim(t.cableCm)} cm cable`);
   if (t.lengthCm) parts.push(`${trim(t.lengthCm)} cm long`);
-  if (t.cableSize) parts.push(`${cableSizeLabel(t.cableSize)} connector`);
+  if (t.cableSize || t.connector) parts.push(`${[connectorLabel(t.connector), t.cableSize ? cableSizeLabel(t.cableSize).toLowerCase() : ""].filter(Boolean).join(" ")} connector`.replace(/^(\w)/, (c) => c.toUpperCase()));
   return parts.join(" · ");
 }
 
@@ -178,6 +224,7 @@ function matches(t: Tool, f: ToolFilter): boolean {
   if (f.size?.length && (t.kind === "cable" || !f.size.includes(sizeKey(t.sizeMm)))) return false;
   if (f.material?.length && !f.material.includes(materialKey(t.material))) return false;
   if (f.cableSize?.length && !f.cableSize.includes(t.cableSize)) return false;
+  if (f.connector?.length && !f.connector.includes(t.connector)) return false;
   if (f.brand?.length && !f.brand.includes(brandKey(t.brand))) return false;
   return true;
 }
@@ -194,6 +241,7 @@ export function isFiltering(f: ToolFilter): boolean {
     f.size?.length ||
     f.material?.length ||
     f.cableSize?.length ||
+    f.connector?.length ||
     f.brand?.length
   );
 }
@@ -205,7 +253,7 @@ export function isFiltering(f: ToolFilter): boolean {
  * does not shift as the collection grows; sizes and brands list only what is
  * owned, since the possible values are endless.
  */
-export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "material" | "cableSize" | "brand", Facet[]> {
+export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "material" | "cableSize" | "connector" | "brand", Facet[]> {
   const count = (pred: (t: Tool) => boolean) => tools.filter(pred).length;
 
   const sizes = new Map<string, number>();
@@ -239,6 +287,7 @@ export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "mat
         .map((label) => ({ key: materialKey(label), label })),
     ].map((m) => ({ ...m, count: count((t) => materialKey(t.material) === m.key) })),
     cableSize: CABLE_SIZES.map((c) => ({ key: c.key, label: c.label, count: count((t) => t.cableSize === c.key) })),
+    connector: CONNECTORS.map((c) => ({ key: c.key, label: c.label, count: count((t) => t.connector === c.key) })),
     brand: [...brands.entries()]
       .sort((a, b) => a[1].localeCompare(b[1]))
       .map(([key, label]) => ({ key, label, count: count((t) => brandKey(t.brand) === key) })),

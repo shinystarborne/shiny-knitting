@@ -17,7 +17,7 @@ import {
 } from "./tool-filter";
 import { paintLazily } from "./lazy";
 
-type Group = "use" | "kind" | "size" | "material" | "cableSize" | "brand";
+type Group = "use" | "kind" | "size" | "material" | "cableSize" | "connector" | "brand";
 
 /** The filter groups down the side, in the order they are shown. */
 const GROUPS: { key: Group; title: string }[] = [
@@ -26,6 +26,7 @@ const GROUPS: { key: Group; title: string }[] = [
   { key: "size", title: "Size" },
   { key: "material", title: "Material" },
   { key: "cableSize", title: "Cable size" },
+  { key: "connector", title: "System" },
   { key: "brand", title: "Brand" },
 ];
 

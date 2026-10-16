@@ -724,6 +724,21 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "projects", "cover_path")? {
         conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
     }
+    // The system an interchangeable tip's or cable's connector is, which
+    // decides what fits it; the ones there already take it from their brand.
+    if !column_exists(conn, "tools", "connector")? {
+        conn.execute("ALTER TABLE tools ADD COLUMN connector TEXT NOT NULL DEFAULT ''", [])?;
+        let rows: Vec<(String, String)> = conn
+            .prepare("SELECT id, brand FROM tools WHERE kind IN ('tips', 'cable')")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        for (id, brand) in rows {
+            let system = crate::tools::connector_of_brand(&brand);
+            if !system.is_empty() {
+                conn.execute("UPDATE tools SET connector = ?2 WHERE id = ?1", params![id, system])?;
+            }
+        }
+    }
     // The size a project is knitted in, as said.
     if !column_exists(conn, "projects", "size")? {
         conn.execute("ALTER TABLE projects ADD COLUMN size TEXT NOT NULL DEFAULT ''", [])?;
@@ -2419,6 +2434,7 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
         length_cm: row.get("length_cm")?,
         cable_cm: row.get("cable_cm")?,
         cable_size: row.get("cable_size")?,
+        connector: row.get("connector")?,
         brand: row.get("brand")?,
         material: row.get("material")?,
         project_id: row.get("active_project_id")?,
@@ -2454,8 +2470,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     tx.execute(
         "INSERT INTO tools
          (id, kind, size_mm, length_cm, cable_cm, cable_size, brand, material,
-          notes, added_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+          notes, added_at, connector)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         params![
             id,
             input.kind,
@@ -2466,7 +2482,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.brand,
             input.material,
             input.notes,
-            now_ms()
+            now_ms(),
+            input.connector
         ],
     )?;
     place_tool(&tx, id, input.project_id.as_deref())?;
@@ -2479,7 +2496,7 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute(
         "UPDATE tools SET kind = ?2, size_mm = ?3, length_cm = ?4, cable_cm = ?5,
-         cable_size = ?6, brand = ?7, material = ?8, notes = ?9
+         cable_size = ?6, brand = ?7, material = ?8, notes = ?9, connector = ?10
          WHERE id = ?1",
         params![
             id,
@@ -2490,7 +2507,8 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.cable_size,
             input.brand,
             input.material,
-            input.notes
+            input.notes,
+            input.connector
         ],
     )?;
     if changed == 0 {

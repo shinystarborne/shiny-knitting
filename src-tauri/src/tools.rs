@@ -10,7 +10,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, Tool, ToolInput, CABLE_SIZES, TOOL_KINDS, TOOL_MATERIALS};
+use crate::models::{AppError, Tool, ToolInput, CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS};
 
 use super::state::AppState;
 
@@ -85,6 +85,25 @@ fn material(value: &str) -> String {
     }
 }
 
+/// The interchangeable system a brand's tips and cables belong to, when the
+/// brand says: Lotus Yarns' fit ChiaoGoo's, Knitter's Pride is KnitPro.
+pub fn connector_of_brand(brand: &str) -> &'static str {
+    let b: String = brand.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+    if b.contains("chiaogoo") || b.contains("lotus") {
+        "chiaogoo"
+    } else if b.contains("knitpro") || b.contains("knitterspride") {
+        "knitpro"
+    } else if b.contains("addi") {
+        "addi"
+    } else if b.contains("hiyahiya") {
+        "hiyahiya"
+    } else if b.contains("lykke") {
+        "lykke"
+    } else {
+        ""
+    }
+}
+
 /// Makes a tool consistent before it is stored. See the module comment.
 pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     let kind = input.kind.trim().to_lowercase();
@@ -120,6 +139,13 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     } else {
         String::new()
     };
+    // Its system, as said, or as its brand says when not.
+    let connector = if has_connector(&kind) {
+        let said = one_of(&input.connector, CONNECTORS, "connector system")?;
+        if said.is_empty() { connector_of_brand(&input.brand).to_string() } else { said }
+    } else {
+        String::new()
+    };
     let material = material(&input.material);
 
     let project_id = input
@@ -133,6 +159,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
         length_cm,
         cable_cm,
         cable_size,
+        connector,
         brand: input.brand.trim().chars().take(80).collect(),
         material,
         project_id,
@@ -190,6 +217,20 @@ mod tests {
             material: "Metal".to_string(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn tips_and_cables_belong_to_a_system() {
+        assert_eq!(clean(input("tips")).unwrap().connector, "chiaogoo", "from the brand, when not said");
+        assert_eq!(clean(ToolInput { brand: "Lotus Yarns".into(), ..input("cable") }).unwrap().connector, "chiaogoo", "Lotus Yarns' fit ChiaoGoo's");
+        assert_eq!(clean(ToolInput { brand: "Knitter's Pride".into(), ..input("tips") }).unwrap().connector, "knitpro");
+        assert_eq!(clean(ToolInput { brand: "ChiaoGoo".into(), connector: "KnitPro".into(), ..input("tips") }).unwrap().connector, "knitpro", "said, it is what is said");
+        assert_eq!(clean(ToolInput { brand: "Someone".into(), ..input("cable") }).unwrap().connector, "", "an unknown brand says nothing");
+        assert_eq!(clean(input("circular")).unwrap().connector, "", "a fixed circular has none");
+        assert!(clean(ToolInput { connector: "lego".into(), ..input("tips") }).is_err());
+        assert_eq!(connector_of_brand("addi Click"), "addi");
+        assert_eq!(connector_of_brand("HiyaHiya"), "hiyahiya");
+        assert_eq!(connector_of_brand("LYKKE"), "lykke");
     }
 
     #[test]

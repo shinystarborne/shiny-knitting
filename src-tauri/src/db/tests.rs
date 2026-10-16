@@ -2367,6 +2367,26 @@ fn a_library_built_before_weighing_was_said_is_migrated() {
 }
 
 #[test]
+fn tips_and_cables_there_already_take_their_system_from_their_brand() {
+    let conn = test_db();
+    let tool = |id: &str, kind: &str, brand: &str| {
+        insert_tool(&conn, id, &crate::models::ToolInput { kind: kind.into(), size_mm: if kind == "cable" { 0.0 } else { 4.0 }, brand: brand.into(), ..Default::default() }).unwrap();
+    };
+    tool("tip", "tips", "Lotus Yarns");
+    tool("cab", "cable", "KnitPro");
+    tool("own", "cable", "Somebody");
+    tool("fix", "circular", "ChiaoGoo");
+    // As the library was: no column.
+    conn.execute_batch("ALTER TABLE tools DROP COLUMN connector").unwrap();
+    migrate(&conn).unwrap();
+    let system = |id: &str| get_tool(&conn, id).unwrap().connector;
+    assert_eq!(system("tip"), "chiaogoo");
+    assert_eq!(system("cab"), "knitpro");
+    assert_eq!(system("own"), "", "a brand that says nothing");
+    assert_eq!(system("fix"), "", "a fixed circular has no connector");
+}
+
+#[test]
 fn a_removed_pattern_waits_in_the_bin_to_come_back() {
     let conn = test_db();
     let keep = sample(&conn, "Keep me", "Ann", "", &["hat"]);

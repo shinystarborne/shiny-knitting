@@ -88,7 +88,7 @@ function pure(results: CheckResult[], tools: Tool[]): void {
   check(results, "cable sizes count tips and cables", facets.cableSize.find((f) => f.key === "small")?.count === 2);
   const cable = tools.find((t) => t.id === "t6")!;
   check(results, "a cable is headed by its length", headline(cable) === "60 cm", headline(cable));
-  check(results, "a cable says its connector", measurements(cable) === "Small connector", measurements(cable));
+  check(results, "a cable says its connector, its system and size", measurements(cable) === "ChiaoGoo / Lotus Yarns small connector", measurements(cable));
   const circ = tools.find((t) => t.id === "t2")!;
   check(results, "a circular says its cable length", measurements(circ) === "80 cm cable", measurements(circ));
   check(results, "a tool has a one-line name", describe(circ) === "4 mm circular needle, 80 cm (ChiaoGoo)", describe(circ));
