@@ -21,9 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Needles and cables that fit each other**: a needle's and a cable's
-  connector system (ChiaoGoo / Lotus Yarns, KnitPro...), so a ChiaoGoo
-  needle is only offered ChiaoGoo cables. See below.
 - [ ] **One needle of a pair**: a project takes one tip of a set's size (a
   5 mm right needle with a 4.5 or 4 mm left), not the pair. See below.
 - [ ] **Ravelry in the app**: a tab to search Ravelry for a pattern without
@@ -43,15 +40,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### Needles and cables that fit each other
-
-A needle already has a connector size (Mini, Small, Standard, Large:
-ChiaoGoo's names), but not which system it is. ChiaoGoo and Lotus Yarns
-cables fit each other; KnitPro cables fit only KnitPro needles. A needle
-and a cable get a connector system as well as a size, and picking a cable
-for a project's needle offers only the ones that fit (the same system and
-size), and the other way round.
 
 ### One needle of a pair
 
@@ -236,6 +224,12 @@ round one). Which heels exactly is to be settled before building.
   form lists its swatches and adds one in it; a removed yarn's swatches keep
   its name.
 - **Needles & hooks:** inventory, sets, what each is used on, a Free filter.
+  Tips and cables have a system (tools.connector: ChiaoGoo / Lotus Yarns,
+  KnitPro / Knitter's Pride, addi click, HiyaHiya, Lykke), as said or as
+  the brand says (connector_of_brand; the ones there filled in once); a
+  project is offered only the cables its tips take and the tips its cable
+  takes (fitsOnProject), saying what it leaves out; a System filter.
+  *0.3.74*
 - **Project log:** a diary on each project's page (Board | Log), the newest
   first by day: entries dated by themselves, a photo each, changed or removed,
   and milestones the project writes (started, paused, frogged, finished, a new
