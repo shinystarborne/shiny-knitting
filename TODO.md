@@ -274,6 +274,12 @@ round one). Which heels exactly is to be settled before building.
   what does not fit shrunk, then left out from the end, and said; copied
   or saved as a PNG, the choices kept per project (localStorage). A
   project's size knitted (projects.size, set_project_size). *0.3.73*
+- **Masterclasses:** a tab of videos to learn from (masterclasses.rs): a
+  YouTube link kept as its video, its title and channel from YouTube's
+  oEmbed and its picture kept in the library; played in the tab
+  (youtube-nocookie embed), the browser or a window; notes and a search.
+  A project knitted along with one (projects.masterclass_id), chosen on its
+  page and watched there. *0.3.76*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with

@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.76](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.76)** —
+  masterclasses: a tab of videos to learn from, and a project knitted along with one. The one to test.
 - **[v0.3.0-beta.75](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.75)** —
-  adapters: tips of one connector size on a cable of another, offered through one. The one to test.
+  adapters: tips of one connector size on a cable of another, offered through one. Superseded by `beta.76`.
 - **[v0.3.0-beta.74](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.74)** —
   needles and cables that fit each other: a connector system, and only what fits offered. Superseded by `beta.75`.
 - **[v0.3.0-beta.73](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.73)** —
