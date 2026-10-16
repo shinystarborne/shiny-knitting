@@ -229,7 +229,9 @@ round one). Which heels exactly is to be settled before building.
   the brand says (connector_of_brand; the ones there filled in once); a
   project is offered only the cables its tips take and the tips its cable
   takes (fitsOnProject), saying what it leaves out; a System filter.
-  *0.3.74*
+  *0.3.74* Adapters (kind "adapter": tip end cable_size, cable end
+  adapter_to): tips and a cable of two sizes offered through one, the
+  project's or one owned, naming it (adapterFor). *0.3.75*
 - **Project log:** a diary on each project's page (Board | Log), the newest
   first by day: entries dated by themselves, a photo each, changed or removed,
   and milestones the project writes (started, paused, frogged, finished, a new
