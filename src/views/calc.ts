@@ -406,6 +406,12 @@ export interface RoundYokeResult {
   pieces: Pieces;
   finished: { chest: number; upperArm: number; wrist: number; neck: number; yokeDepth: number };
   warnings: string[];
+  /**
+   * Knitted from a yoke chart: its repeat goes round `repeats` times, and
+   * each count is that many of the stitches in a repeat, from the underarm
+   * (`perRepeat[0]`, the chart's width) to the neck. Null without a chart.
+   */
+  chart: { repeats: number; perRepeat: number[] } | null;
 }
 
 /**
@@ -419,8 +425,13 @@ export interface RoundYokeResult {
  * of the colourwork's repeat. At the
  * underarm it splits as a raglan does: the back and front, the sleeves on
  * hold, a few stitches cast on under each arm.
+ *
+ * Knitted from a yoke chart (`chartWidth`, its repeat's stitches), the
+ * chart's repeats are what is fixed instead: they go round the yoke a whole
+ * number of times, and each narrows towards the neck, so every count is the
+ * repeats times the stitches each has there, as a lopapeysa's chart has it.
  */
-export function roundYoke(i: RaglanInput, increases = 3, repeat = 1): RoundYokeResult | { error: string } {
+export function roundYoke(i: RaglanInput, increases = 3, repeat = 1, chartWidth = 0): RoundYokeResult | { error: string } {
   const p = pieces(i, "yoke depth");
   if ("error" in p) return p;
   const warnings = [...p.warnings];
@@ -439,6 +450,28 @@ export function roundYoke(i: RaglanInput, increases = 3, repeat = 1): RoundYokeR
   const counts = [nearestRepeat(yokeTotal, rep)];
   for (let s = 1; s <= k; s++) counts.push(s === k ? nearestRepeat(neckTarget, neckRep) : nearestRepeat(yokeTotal * ratio ** s, rep));
   if (ratio < 0.5) return { error: `${k} increase rounds would each more than double the stitches: choose more increase rounds.` };
+  let chart: RoundYokeResult["chart"] = null;
+  const width = Math.round(chartWidth);
+  if (width > 0) {
+    const repeats = Math.max(1, Math.round(yokeTotal / width));
+    // From the chart's whole repeat at the underarm, each step the same
+    // fraction smaller to the neck's: a stitch fewer at the least.
+    const step = (neckTarget / (repeats * width)) ** (1 / k);
+    const perRepeat = [width];
+    for (let s = 1; s <= k; s++) perRepeat.push(Math.min(perRepeat[s - 1] - 1, Math.round(width * step ** s)));
+    if (perRepeat[k] < 1) return { error: `The chart's ${width}-stitch repeat is too narrow for ${k} increase rounds: choose fewer, or a wider repeat.` };
+    if (step < 0.5) return { error: `${k} increase rounds would each more than double the chart's repeat: choose more increase rounds.` };
+    counts.splice(0, counts.length, ...perRepeat.map((n) => n * repeats));
+    chart = { repeats, perRepeat };
+    // A whole stitch a repeat is a big step round a neck: said when it lands far off.
+    const neckCm = counts[k] / p.spc;
+    const wanted = i.neck + i.neckEase;
+    if (Math.abs(neckCm - wanted) > 2) {
+      warnings.push(
+        `With the chart's repeat ${repeats} times round, the neck comes out at ${round1(neckCm)} cm (${perRepeat[k]} stitches a repeat), for the ${round1(wanted)} cm asked: the nearest the chart allows. More or fewer increase rounds, or a chart of another repeat, may come closer.`,
+      );
+    }
+  }
   const depthRounds = Math.round(i.yokeDepth * p.rpc);
   const yokeEnd = counts[0];
   const castOn = counts[k];
@@ -481,6 +514,7 @@ export function roundYoke(i: RaglanInput, increases = 3, repeat = 1): RoundYokeR
       yokeDepth: depthRounds / p.rpc,
     },
     warnings,
+    chart,
   };
 }
 
@@ -507,8 +541,8 @@ function belowTheYoke(p: Below, i: RaglanInput, len: (cm: number) => string): st
   return steps;
 }
 
-/** The round yoke as written steps, from the neck down. */
-export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: number) => string): string[] {
+/** The round yoke as written steps, from the neck down; knitted from a chart, the chart named. */
+export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: number) => string, chartName = ""): string[] {
   const p = r.pieces;
   const steps: string[] = [];
   steps.push(`Cast on ${r.neckRibSts} stitches. Join to knit in the round, and work ${p.neckRibRounds} rounds of rib (${len(i.neckRib)}) for the neckband.`);
@@ -521,9 +555,20 @@ export function roundYokeSteps(r: RoundYokeResult, i: RaglanInput, len: (cm: num
     steps.push(`The round starts at an edge of the back: the next ${back} stitches are the back, then ${sleeve} a shoulder, the front, and ${sleeve} the other shoulder.`);
     steps.push(...backNeckSteps(raised, back, "", false, len));
   }
-  steps.push("Knit the yoke in rounds, the colourwork if there is one, with these increase rounds, measured from the neckband:");
-  for (const round of r.rounds) {
-    steps.push(`At ${len(round.atCm)} (round ${round.atRound}), from ${round.from} to ${round.to}: ${round.text}`);
+  const c = r.chart;
+  if (c) {
+    const neck = c.perRepeat[c.perRepeat.length - 1];
+    steps.push(
+      `Knit the yoke from the chart${chartName ? ` “${chartName}”` : ""}, its repeat ${c.repeats} times round: ${neck} stitches in each at the neck, ${c.perRepeat[0]} at the underarm. Its increase rounds are these, measured from the neckband, the stitches made where the chart shows:`,
+    );
+    for (const round of r.rounds) {
+      steps.push(`At ${len(round.atCm)} (round ${round.atRound}), from ${round.from} to ${round.to}: from ${round.from / c.repeats} to ${round.to / c.repeats} stitches in each repeat.`);
+    }
+  } else {
+    steps.push("Knit the yoke in rounds, the colourwork if there is one, with these increase rounds, measured from the neckband:");
+    for (const round of r.rounds) {
+      steps.push(`At ${len(round.atCm)} (round ${round.atRound}), from ${round.from} to ${round.to}: ${round.text}`);
+    }
   }
   steps.push(`Knit until the yoke measures ${len(r.finished.yokeDepth)} from the neckband.`);
   if (r.adjust) steps.push(`Then one round from ${r.adjust.from} to ${r.adjust.to}, to split evenly: ${r.adjust.text}`);

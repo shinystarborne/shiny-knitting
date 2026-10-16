@@ -19,7 +19,7 @@ import { PeopleView, PersonPage } from "./views/people";
 import { SwatchesView, type StashMode } from "./views/swatches";
 import { StashHistoryView } from "./views/stash-history";
 import { StashStatsView } from "./views/stash-stats";
-import { CalculatorsView, openCalculatorsOn } from "./views/calculators";
+import { CalculatorsView, openCalculatorsOn, takeChartReturn } from "./views/calculators";
 import { ChartPage } from "./views/charts";
 import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
 import { PatternForm } from "./views/pattern-form";
@@ -503,11 +503,14 @@ class App {
     const token = ++this.navToken;
     this.clearScreen();
     this.setActiveTab("calculators");
+    // Opened from the round yoke calculator, it goes back there.
+    const from = takeChartReturn();
     const page = new ChartPage(this.screen, id, {
       back: () => {
-        openCalculatorsOn("charts");
+        openCalculatorsOn(from);
         void this.showCalculators();
       },
+      backLabel: from === "yoke" ? "← Round yoke" : "← Charts",
     });
     this.activeChartPage = page;
     await page.mount();

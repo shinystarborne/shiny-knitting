@@ -387,6 +387,78 @@ export function turnedRound(g: Grid): void {
   normalize(g);
 }
 
+// ---------- a yoke chart fitted to the round yoke calculator ----------
+
+/**
+ * What the round yoke calculator wants of its chart, top-down as it is
+ * knitted: the repeats around, a round of the chart for every round of the
+ * yoke, and the stitches in each repeat from each increase round on, the
+ * neck's from row 0.
+ */
+export interface YokeFit {
+  repeats: number;
+  height: number;
+  sections: { row: number; sts: number }[];
+  /** Stitches and rows per 10 cm, as the calculator has them. */
+  gauge: { sts: number; rows: number };
+}
+
+/** Whether a chart is already the yoke the calculator works out. */
+export function fitsYoke(g: Grid, f: YokeFit): boolean {
+  return (
+    g.kind === "yoke" &&
+    g.topDown &&
+    g.repeats === f.repeats &&
+    g.height === f.height &&
+    g.sections.length === f.sections.length &&
+    g.sections.every((s, i) => s.row === f.sections[i].row && s.sts === f.sections[i].sts)
+  );
+}
+
+/**
+ * The rounds nearest the underarm that fitting a chart would take away with
+ * something drawn on them: none when it is as high as the yoke, or higher.
+ */
+export function fitLoses(g: Grid, f: YokeFit): number {
+  const top = clone(g);
+  if (top.kind === "yoke" && !top.topDown) turnedRound(top);
+  let lost = 0;
+  for (let y = f.height; y < top.height; y++) {
+    for (let x = 0; x < top.width; x++) {
+      if (top.cells[y * top.width + x] !== 0) {
+        lost++;
+        break;
+      }
+    }
+  }
+  return lost;
+}
+
+/**
+ * The chart made the calculator's yoke: knitted from the neck down (a chart
+ * drawn the other way is turned round first, so it looks the same worn), as
+ * many rounds as the yoke has, added or taken at the underarm, the repeats
+ * and the increase rounds the calculator's. What is drawn stays; columns
+ * already chosen for a step of the same stitches are kept.
+ */
+export function fittedToYoke(g: Grid, f: YokeFit): Grid {
+  let out = clone(g);
+  if (out.kind === "yoke" && !out.topDown) turnedRound(out);
+  if (out.kind !== "yoke") {
+    out.kind = "yoke";
+    out.flat = false;
+    out.topDown = true;
+    out.sections = [{ row: 0, sts: out.width, cols: [] }];
+  }
+  const chosen = new Map(out.sections.map((s) => [s.sts, s.cols]));
+  out = resized(out, { width: out.width, height: f.height, atLeft: false, atBottom: false });
+  out.repeats = Math.max(1, Math.round(f.repeats));
+  out.sections = f.sections.map((s) => ({ row: s.row, sts: s.sts, cols: [...(chosen.get(s.sts) ?? [])] }));
+  if (f.gauge.sts > 0 && f.gauge.rows > 0) out.gauge = { ...f.gauge };
+  normalize(out);
+  return out;
+}
+
 // ---------- a block of squares: selected, copied, pasted ----------
 
 /** Squares from column `x0` to `x1` and row `y0` to `y1`, both ends in, rows counted from the first knitted. */

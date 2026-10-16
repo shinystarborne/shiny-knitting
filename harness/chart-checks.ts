@@ -379,7 +379,7 @@ export async function verifyCharts() {
     await saved();
     check(results, "…Flip ↔ mirrors the block before it goes down", square(2, 16) === "1" && square(3, 15) === "1" && square(2, 15) === "0");
     key("Escape");
-    check(results, "Esc stops pasting", canvasEl().dataset.pasting === "" && page()!.querySelector<HTMLElement>('[data-el="paste-tools"]')!.hidden);
+    check(results, "Esc stops pasting", canvasEl().dataset.pasting === "" && getComputedStyle(page()!.querySelector<HTMLElement>('[data-el="paste-tools"]')!).display === "none");
     click(page(), '[data-act="undo"]');
     await saved();
     check(results, "Undo takes back one paste", square(2, 16) === "0" && square(3, 15) === "0" && square(8, 11) === "1");

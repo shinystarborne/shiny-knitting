@@ -3627,6 +3627,15 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .calc-say { margin: 0; }
 .calc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
 .calc-actions select { width: auto; max-width: 240px; }
+/* A round yoke's chart: picked under the yoke's choices, and in the results the yoke from above. */
+.calc-field[hidden] { display: none; }
+.calc-yoke-chart { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.calc-yoke-chart .field { flex: 1 1 220px; }
+.calc-chart { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.calc-chart-ring { flex: none; width: 220px; height: 220px; }
+.calc-chart-text { flex: 1 1 220px; display: flex; flex-direction: column; gap: 8px; }
+.calc-chart-text p { margin: 0; }
+.calc-chart-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---------- plans: what to knit next ---------- */
 
@@ -3800,6 +3809,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .chart-canvas[data-tool="pick"] { cursor: copy; }
 .chart-canvas[data-tool="paste"] { cursor: copy; }
 .chart-paste-tools { display: inline-flex; gap: 4px; }
+.chart-paste-tools[hidden] { display: none; }
 .chart-side { width: 360px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg-raised); min-height: 0; }
 .chart-tabs { margin: 10px 14px 0; align-self: flex-start; }
 .chart-side-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 20px; display: flex; flex-direction: column; gap: 12px; }

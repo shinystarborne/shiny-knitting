@@ -253,6 +253,8 @@ const UNDO_LIMIT = 100;
 
 export interface ChartPageHooks {
   back(): void;
+  /** What the back button says: where it goes. */
+  backLabel?: string;
 }
 
 /**
@@ -332,7 +334,7 @@ export class ChartPage {
     this.root.className = "chart-page";
     this.root.innerHTML = `
       <header class="inspo-bar chart-bar">
-        <button class="ghost back" data-act="back">← Charts</button>
+        <button class="ghost back" data-act="back">${esc(this.hooks.backLabel ?? "← Charts")}</button>
         <input class="inspo-name" data-f="name" value="${esc(chart.name)}" aria-label="Chart name" placeholder="Name this chart" />
         <span class="hint" data-el="saved">Saved</span>
         <span class="hint chart-note" data-el="note"></span>

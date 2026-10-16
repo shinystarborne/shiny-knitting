@@ -1,7 +1,9 @@
-import { api, isLive, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
-import { say } from "../dialogs";
+import { api, isLive, type Chart, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
+import { askForm, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { cardigan, cardiganSteps, heldTogether, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult } from "./calc";
+import { cardigan, cardiganSteps, heldTogether, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult, type RoundYokeResult } from "./calc";
+import { decode, encode, fitLoses, fitsYoke, fittedToYoke, MAX_SIDE, newGrid, normalize, type YokeFit } from "./chart";
+import { drawRing } from "./chart-draw";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
@@ -72,6 +74,31 @@ export function openCalculatorsOn(calc: Calc): void {
   kept.calc = calc;
 }
 
+/** Where a chart opened goes back to: the charts, or the round yoke it was opened from. */
+let chartFrom: Calc = "charts";
+
+/** Where the chart being opened goes back to, said once. */
+export function takeChartReturn(): Calc {
+  const from = chartFrom;
+  chartFrom = "charts";
+  return from;
+}
+
+/**
+ * What the round yoke calculator wants of its chart, top-down: the neck's
+ * stitches in each repeat from row 0, and from each increase round (counted
+ * as the calculator counts its rounds, from 1 after the neckband) the next.
+ */
+export function yokeFitOf(r: RoundYokeResult, gauge: Gauge): YokeFit | null {
+  const c = r.chart;
+  if (!c) return null;
+  const sections = [{ row: 0, sts: c.perRepeat[c.perRepeat.length - 1] }];
+  for (const round of r.rounds) {
+    sections.push({ row: Math.max(sections[sections.length - 1].row + 1, round.atRound - 1), sts: round.to / c.repeats });
+  }
+  return { repeats: c.repeats, height: Math.min(MAX_SIDE, Math.max(r.yokeRounds, sections[sections.length - 1].row + 1)), sections, gauge: { sts: gauge.sts, rows: gauge.rows } };
+}
+
 /**
  * The Calculators tab: a top-down raglan from someone's measurements and a
  * swatch, and the small sums of every day -- stitches for a size, increasing
@@ -91,6 +118,10 @@ export class CalculatorsView {
   private unit: MeasureUnit = "cm";
   /** The latest result as text, for Copy and Save. */
   private plan: { title: string; text: string } | null = null;
+  /** The round yoke charts, to knit a yoke from. */
+  private charts: Chart[] = [];
+  /** What the round yoke worked out wants of its chart, for Fit the chart. */
+  private yokeFit: YokeFit | null = null;
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -98,13 +129,17 @@ export class CalculatorsView {
 
   async mount(): Promise<void> {
     let yarns: Yarn[];
-    [this.people, this.swatches, this.projects, this.unit, yarns] = await Promise.all([
+    let charts: Chart[];
+    [this.people, this.swatches, this.projects, this.unit, yarns, charts] = await Promise.all([
       api.listPeople().catch(() => [] as Person[]),
       api.listSwatches().catch(() => [] as Swatch[]),
       api.listProjects().catch(() => [] as Project[]),
       api.getMeasureUnit().catch(() => "cm" as const),
       api.listYarns().catch(() => [] as Yarn[]),
+      api.listCharts().catch(() => [] as Chart[]),
     ]);
+    this.charts = charts.filter((c) => c.data.kind === "yoke");
+    if (kept.values.chart && !this.charts.some((c) => c.id === kept.values.chart)) kept.values.chart = "";
     // One of each yarn, by brand and name: its colours are the same thickness.
     const seen = new Set<string>();
     this.yarns = yarns
@@ -258,8 +293,16 @@ export class CalculatorsView {
           <div class="calc-fields">
             <label class="field calc-field" title="Three is the classic; more makes a rounder yoke"><span>Increase rounds</span>
               <select data-k="increases">${[3, 4, 5, 6].map((n) => `<option value="${n}" ${String(n) === increases ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-            <label class="field calc-field" title="The colourwork's repeat, so every count fits it: 1 for none"><span>Pattern repeat</span>
+            <label class="field calc-field" title="The colourwork's repeat, so every count fits it: 1 for none" data-el="repeat-field" ${this.yokeChart() ? "hidden" : ""}><span>Pattern repeat</span>
               <input data-k="repeat" inputmode="numeric" value="${esc(kept.values.repeat ?? "1")}" /></label>
+          </div>
+          <div class="calc-yoke-chart">
+            <label class="field" title="A round yoke chart: its repeat goes round the yoke, narrowing to the neck, and the counts are fitted to it"><span>Colourwork chart</span>
+              <select data-k="chart">
+                <option value="">None: a pattern repeat typed in</option>
+                ${this.charts.map((c) => `<option value="${esc(c.id)}" ${c.id === kept.values.chart ? "selected" : ""}>${esc(`${c.name}: a ${c.data.width}-stitch repeat`)}</option>`).join("")}
+              </select></label>
+            <button class="ghost" data-act="new-yoke-chart" title="A round yoke chart made for this yoke, to draw the colourwork on">+ New yoke chart…</button>
           </div>`
               : ""
           }
@@ -433,6 +476,7 @@ export class CalculatorsView {
       if (calc === "evenly") out.innerHTML = this.evenlyResult();
       if (calc === "regauge") out.innerHTML = this.regaugeResult();
       if (calc === "held") out.innerHTML = this.heldResult();
+      if (calc === "yoke") this.drawYokeChart(out);
     } catch (err) {
       out.innerHTML = `<p class="calc-wait">${esc(err instanceof Error ? err.message : String(err))}</p>`;
     }
@@ -478,21 +522,30 @@ export class CalculatorsView {
     };
   }
 
+  /** The yoke chart chosen to knit the yoke from, if there is one. */
+  private yokeChart(): Chart | undefined {
+    return this.charts.find((c) => c.id === kept.values.chart);
+  }
+
   private yokeResult(): string {
+    this.yokeFit = null;
     const input = this.garmentInput();
-    const repeat = this.num("repeat");
+    const chart = this.yokeChart();
+    const repeat = chart ? 1 : this.num("repeat");
     this.need(!Number.isNaN(repeat), "The pattern repeat is a number of stitches: 1 for none.");
-    const r = roundYoke(input, Number(kept.values.increases ?? 3), repeat || 1);
+    const r = roundYoke(input, Number(kept.values.increases ?? 3), repeat || 1, chart?.data.width ?? 0);
     if ("error" in r) throw new Error(r.error);
     const p = r.pieces;
-    const steps = roundYokeSteps(r, input, this.len);
+    const steps = roundYokeSteps(r, input, this.len, chart?.name ?? "");
     this.keepPlan("Round yoke", input, r.finished, steps);
+    this.yokeFit = yokeFitOf(r, input.gauge);
     return `
       ${this.resultHead("The numbers")}
       ${table([
         ["Cast on", `${r.neckRibSts}`, `neck ${this.len(r.finished.neck)}`],
         ...(r.neckRibSts !== r.castOn ? [["After the neckband", `${r.neckRibSts} → ${r.castOn}`, "for the yoke"]] : []),
-        ...r.rounds.map((y, n) => [`Increase round ${n + 1}`, `${y.from} → ${y.to}`, `at ${this.len(y.atCm)}`]),
+        ...(r.chart ? [["Chart repeat", `${r.chart.repeats} times round`, `${r.chart.perRepeat[r.chart.perRepeat.length - 1]} sts each at the neck, ${r.chart.perRepeat[0]} at the underarm`]] : []),
+        ...r.rounds.map((y, n) => [`Increase round ${n + 1}`, `${y.from} → ${y.to}`, `at ${this.len(y.atCm)} (round ${y.atRound})${r.chart ? ` · ${y.from / r.chart.repeats} → ${y.to / r.chart.repeats} a repeat` : ""}`]),
         ...(r.adjust ? [["To split evenly", `${r.adjust.from} → ${r.adjust.to}`, "at the underarm"]] : []),
         ["Yoke", `${r.yokeRounds} rounds`, this.len(r.finished.yokeDepth)],
         ["At the split", `${p.front} back, ${p.front} front`, `${p.sleeve} each sleeve`],
@@ -501,9 +554,92 @@ export class CalculatorsView {
         ["Sleeve", `${p.upperArmSts} → ${p.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
       ])}
       ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
+      ${chart && this.yokeFit ? this.yokeChartHtml(chart, this.yokeFit) : ""}
       <h3>Steps</h3>
       <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
       ${this.actions()}`;
+  }
+
+  /** The yoke chart in the results: the yoke from above, as fitted, and whether the chart is so yet. */
+  private yokeChartHtml(chart: Chart, fit: YokeFit): string {
+    const g = decode(chart.data);
+    normalize(g);
+    const fitted = fitsYoke(g, fit);
+    const neck = fit.sections[0].sts;
+    return `
+      <h3>Colourwork chart</h3>
+      <div class="calc-chart">
+        <canvas class="calc-chart-ring" data-el="yoke-ring" title="The yoke from above, knitted from the chart fitted to it"></canvas>
+        <div class="calc-chart-text">
+          <p><b>${esc(chart.name)}</b>: a ${g.width}-stitch repeat, ${fit.repeats} times round, ${neck} stitches in each at the neck; ${fit.height} rounds.</p>
+          ${
+            fitted
+              ? `<p class="hint" data-el="chart-fitted">The chart is this yoke: its rounds, its repeats and its increase rounds are these.</p>`
+              : `<p class="calc-warnings-p" data-el="chart-unfitted">The chart is not this yoke's shape yet${g.height !== fit.height ? ` (${g.height} rounds, not ${fit.height})` : ""}. Fit it to give it these counts: what is drawn on it stays.</p>`
+          }
+          <div class="calc-chart-actions">
+            ${fitted ? "" : `<button class="primary" data-act="fit-chart">Fit the chart</button>`}
+            <button class="ghost" data-act="open-yoke-chart" title="Open the chart to draw on it; ← Round yoke comes back here">Draw on the chart ↗</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /** Draws the yoke from above, as the chart fitted to it would be. */
+  private drawYokeChart(out: HTMLElement): void {
+    const canvas = out.querySelector<HTMLCanvasElement>('[data-el="yoke-ring"]');
+    const chart = this.yokeChart();
+    if (!canvas || !chart || !this.yokeFit) return;
+    drawRing(canvas, fittedToYoke(decode(chart.data), this.yokeFit), 220);
+  }
+
+  /** Gives the chart this yoke's rounds, repeats and increase rounds, asking first if drawn rounds would go. */
+  private async fitChart(): Promise<void> {
+    const chart = this.yokeChart();
+    const fit = this.yokeFit;
+    if (!chart || !fit) return;
+    const g = decode(chart.data);
+    normalize(g);
+    const lost = fitLoses(g, fit);
+    if (lost) {
+      const ok = await askYesNo(
+        `The yoke is ${fit.height} rounds, and the chart ${g.height}. Fitting it takes away the chart's last ${g.height - fit.height} rounds, nearest the underarm: ${lost} of them have colourwork on them.`,
+        { title: "Fit the chart", okLabel: "Fit it", danger: true },
+      );
+      if (!ok) return;
+    }
+    try {
+      const saved = await api.updateChart(chart.id, chart.name, encode(fittedToYoke(g, fit)));
+      this.charts = this.charts.map((c) => (c.id === saved.id ? saved : c));
+      this.calculate();
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Fit the chart");
+    }
+  }
+
+  /** A round yoke chart for this yoke: its repeat asked for, made already fitted. */
+  private async newYokeChart(): Promise<void> {
+    const typed = Math.round(this.num("repeat"));
+    const answer = await askForm(
+      [
+        { label: "Name", placeholder: "e.g. Snowflake yoke" },
+        { label: "Stitches in the repeat", value: String(typed > 1 ? typed : 12), type: "number" },
+      ],
+      { title: "New yoke chart", okLabel: "Make the chart" },
+    );
+    if (!answer) return;
+    const width = Math.round(Number(answer["Stitches in the repeat"]));
+    if (!(width >= 2 && width <= MAX_SIDE)) return say(`A repeat is 2 to ${MAX_SIDE} stitches.`, "New yoke chart");
+    try {
+      const chart = await api.addChart(answer.Name.trim() || "Yoke", encode(newGrid({ kind: "yoke", width, height: 40, repeats: 1 })));
+      this.charts = [chart, ...this.charts];
+      kept.values.chart = chart.id;
+      this.show("yoke");
+      // Made for this yoke when it can be worked out: else as it is, to fit later.
+      if (this.yokeFit) await this.fitChart();
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "New yoke chart");
+    }
   }
 
   private raglanResult(): string {
@@ -672,6 +808,12 @@ export class CalculatorsView {
       }
     }
     if (act === "save" && this.plan) await this.saveToBoard();
+    if (act === "fit-chart") await this.fitChart();
+    if (act === "new-yoke-chart") await this.newYokeChart();
+    if (act === "open-yoke-chart" && kept.values.chart) {
+      chartFrom = "yoke";
+      this.root.dispatchEvent(new CustomEvent("open-chart", { bubbles: true, detail: kept.values.chart }));
+    }
   }
 
   private mark(text: string): void {
@@ -749,6 +891,11 @@ export class CalculatorsView {
         const m = Math.round((yarn.metresPerBall * 100) / yarn.gramsPerBall);
         this.setField("strands", now ? `${now.replace(/[,;\s]+$/, "")}, ${m}` : `${m}`);
       }
+    }
+    // A chart sets the counts in place of a repeat typed in.
+    if (key === "chart") {
+      const field = this.main.querySelector<HTMLElement>('[data-el="repeat-field"]');
+      if (field) field.hidden = !!el.value;
     }
     if (key === "direction") {
       const hint = this.main.querySelector<HTMLElement>(".calc-inputs h2 .hint");
