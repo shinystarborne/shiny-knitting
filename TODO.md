@@ -21,9 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Copy a project's pictures**: a photo on a project (its cover, the
-  board's pictures, the log's photos) copied to the clipboard, to paste
-  anywhere (a post on Threads...).
 - [ ] **A project card to post**: one picture of a project with what there
   is to say about it, saved or copied. *Decided:* its shape chosen each
   time (square, 4:5 portrait, a story's 9:16). See below.
@@ -266,6 +263,10 @@ round one). Which heels exactly is to be settled before building.
   cropped there: ✂ Crop, or C), the pattern read beside the board
   (resizable, minimises to a tab, its title and details a row above the
   tools), and the pattern's own row counter.
+- **Copying pictures:** a project's cover (Copy), a picture or pin on its
+  board (⧉ Copy, or Ctrl+C selected), a photo on the log card and in the
+  log (Copy), and the gallery's photo shown (Copy photo): to the clipboard
+  as a PNG (copy-picture.ts), to paste anywhere. *0.3.72*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with

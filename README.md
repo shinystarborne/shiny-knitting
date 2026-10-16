@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.72](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.72)** —
+  a project's pictures copied, to paste anywhere: its cover, board, log and gallery. The one to test.
 - **[v0.3.0-beta.71](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.71)** —
-  measurements between the calculators and People: whose filled them, and Save to People. The one to test.
+  measurements between the calculators and People: whose filled them, and Save to People. Superseded by `beta.72`.
 - **[v0.3.0-beta.70](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.70)** —
   the round yoke knitted from a yoke chart: the counts fitted to its repeat, the chart fitted to the yoke. Superseded by `beta.71`.
 - **[v0.3.0-beta.69](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.69)** —
