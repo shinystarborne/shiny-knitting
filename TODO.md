@@ -279,7 +279,9 @@ round one). Which heels exactly is to be settled before building.
   oEmbed and its picture kept in the library; played in the tab
   (youtube-nocookie embed), the browser or a window; notes and a search.
   A project knitted along with one (projects.masterclass_id), chosen on its
-  page and watched there. *0.3.76*
+  page and watched there. *0.3.76* A masterclass is its videos, in order
+  (masterclass_videos): added to, bundled, split, moved, ticked as watched;
+  a project started from one (Start a project…). *0.3.77*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
