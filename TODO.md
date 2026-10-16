@@ -41,6 +41,12 @@ under the list.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
 
+**Asked for 17 Oct 2026**
+
+- [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
+  from a person's foot and a swatch. **Decide first:** which heels. See
+  below.
+
 ### A project card to post
 
 One picture to post on social media, made from a project: its name, the
@@ -97,6 +103,17 @@ model can spend all of it thinking about a long pattern and answer with
 nothing, and the run shows an error. To do: send less of a long pattern,
 ask again once with more room (or less reasoning) when the reply comes
 back empty, and in a run over the library, note the pattern and go on.
+
+### Socks
+
+A calculator of its own, as the raglan and the round yoke are: from a
+person's foot (around the ball of the foot, its length, in People) and a
+swatch's gauge, with negative ease, as socks are knitted. Cuff-down and
+toe-up. The heel chosen from several, each with its own counts and steps:
+a heel flap and gusset, a short-row heel (German short rows), an
+afterthought heel, the Fish Lips Kiss heel, and a gusset heel worked
+toe-up. The leg's length, the cuff's rib, and the toe (a wedge toe, or a
+round one). Which heels exactly is to be settled before building.
 
 ---
 
