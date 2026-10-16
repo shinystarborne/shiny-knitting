@@ -19,10 +19,6 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-- [ ] **The round yoke calculator and a yoke chart together.** *Decided
-  (10 Oct 2026):* the chart fits the calculator's counts, and the yoke chart
-  lives in the round yoke calculator itself.
-
 **Asked for 16 Oct 2026**
 
 - [ ] **Copy a project's pictures**: a photo on a project (its cover, the
@@ -44,14 +40,6 @@ under the list.
   totals for the stash, the tools and per project. See below.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
-
-### The round yoke and its chart
-
-The calculator fits its counts to a repeat, but a lopapeysa chart keeps its
-repeats and narrows each one; the two work the other way round from each
-other. Decided (10 Oct 2026): the chart is fitted to the calculator's counts,
-not the calculator to the chart, and it is drawn in the round yoke
-calculator.
 
 ### A project card to post
 
@@ -200,6 +188,12 @@ back empty, and in a run over the library, note the pattern and go on.
   typed in) with the fit's ease: the numbers, and the steps in words, copied
   or saved to a project's board. A raised back neck in German short rows (the
   raglan and the round yoke), and rib that fits the counts (1x1, 2x2 or any).
+  The round yoke knitted from a yoke chart: its repeat a whole number of
+  times round, every count the repeats times each one's stitches there
+  (roundYoke's chartWidth), and Fit the chart gives the chart the yoke's
+  rounds, repeats and increase rounds, top-down (chart.ts fittedToYoke),
+  what is drawn kept; the yoke from above beside the numbers, and Draw on
+  the chart ↗ opens it, ← Round yoke coming back. *0.3.70*
   And stitches for a size (fitted to a repeat), increasing or decreasing
   evenly in the round or flat, a pattern re-gauged to yours, and yarns held
   together (the strands' metres per 100 g in, the yarn they make out; from
