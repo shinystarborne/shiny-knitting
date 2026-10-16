@@ -30,10 +30,11 @@ const COMMON_CABLES = [23, 30, 40, 60, 80, 100, 120, 150];
 
 /** Which measurements each kind has. Matches `tools::clean` on the backend. */
 const HAS = {
-  size: (k: string) => k !== "cable",
+  size: (k: string) => k !== "cable" && k !== "adapter",
   length: (k: string) => ["straight", "dpn", "tips", "hook"].includes(k),
   cable: (k: string) => k === "circular" || k === "cable",
-  connector: (k: string) => k === "tips" || k === "cable",
+  connector: (k: string) => k === "tips" || k === "cable" || k === "adapter",
+  adapter: (k: string) => k === "adapter",
 };
 
 /** What the length field is called for each kind. */
@@ -122,11 +123,18 @@ export class ToolForm {
               value="${v?.cableCm ? v.cableCm : ""}" placeholder="e.g. 80" />
           </label>
           <label class="field" data-show="connector">
-            <span>Cable size</span>
+            <span data-el="size-label">Cable size</span>
             <select data-f="cableSize">
               <option value="">Not sure</option>
               ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${v?.cableSize === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
               <option value="${SPLIT}" data-el="split-option" hidden>Changes with size…</option>
+            </select>
+          </label>
+          <label class="field" data-show="adapter" title="The size of cable the tips go on, through the adapter">
+            <span>Cable end</span>
+            <select data-f="adapterTo">
+              <option value="">Not sure</option>
+              ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${v?.adapterTo === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
             </select>
           </label>
           <label class="field" data-show="connector" title="The maker whose tips and cables these fit: ChiaoGoo's fit Lotus Yarns', not KnitPro's">
@@ -292,12 +300,17 @@ export class ToolForm {
     }
     const label = this.root.querySelector('[data-el="length-label"]');
     if (label) label.textContent = LENGTH_LABEL[kind] ?? "Length (cm)";
+    // An adapter's connector size is the end its tips go in.
+    const sizeLabel = this.root.querySelector('[data-el="size-label"]');
+    if (sizeLabel) sizeLabel.textContent = kind === "adapter" ? "Tip end" : "Cable size";
     const hint = this.root.querySelector('[data-el="kind-hint"]') as HTMLElement;
     hint.textContent =
       kind === "circular"
         ? "Cable length as sold: an 80 cm circular is 80 cm from tip to tip."
         : kind === "tips" || kind === "cable"
           ? "The system and the cable size are the connector: tips and a cable fit when both are the same."
+          : kind === "adapter"
+            ? "Tips of the tip end's size go on a cable of the cable end's: large tips on a small cable, for a bigger needle on one end."
           : kind === "dpn"
             ? "One entry for the needles of one size together."
             : "";
@@ -388,6 +401,7 @@ export class ToolForm {
       // "Changes with size…" is not a size; save() gives each size its own.
       cableSize: HAS.connector(kind) && this.value("cableSize") !== SPLIT ? this.value("cableSize") : "",
       connector: HAS.connector(kind) ? this.value("connector") : "",
+      adapterTo: HAS.adapter(kind) ? this.value("adapterTo") : "",
       // The same word in another case files under the spelling already used.
       brand: canonical(this.value("brand"), this.brands),
       material: materialValue(canonical(this.value("material"), this.materials)),
@@ -426,7 +440,7 @@ export class ToolForm {
           }
         }
       }
-      const what = saved.kind === "cable" ? "the cable" : sizes.length > 1 ? `${sizes.length}: ${sizes.join(", ")} mm` : `the ${saved.sizeMm} mm`;
+      const what = saved.kind === "cable" ? "the cable" : saved.kind === "adapter" ? "the adapter" : sizes.length > 1 ? `${sizes.length}: ${sizes.join(", ")} mm` : `the ${saved.sizeMm} mm`;
       if (another) {
         // Everything stays filled in for the next one; the size is what
         // usually changes, so it is selected ready to be typed over.

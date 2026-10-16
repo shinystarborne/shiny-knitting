@@ -1,5 +1,5 @@
 import type { Tool } from "../api";
-import { describe, fitsOnProject, isFree, kindLabel, projectName } from "./tool-filter";
+import { describe, fitOnProject, isFree, kindLabel, projectName } from "./tool-filter";
 
 /**
  * Choosing a project's needles and hooks: the ones on it, each with ✕, and a
@@ -54,8 +54,11 @@ export class ToolPicker {
     const mine = tools.filter((t) => chosen.has(t.id));
     // Tips the project's cable does not take, or a cable its tips do not, are not offered.
     const others = tools.filter((t) => !chosen.has(t.id));
-    const rest = others.filter((t) => fitsOnProject(t, mine));
-    const unfit = others.filter((t) => !fitsOnProject(t, mine));
+    // An adapter the project has, or one there is, joins tips and a cable of two sizes.
+    const adapters = tools.filter((t) => t.kind === "adapter");
+    const fit = new Map(others.map((t) => [t.id, fitOnProject(t, mine, adapters)]));
+    const rest = others.filter((t) => fit.get(t.id)!.fits);
+    const unfit = others.filter((t) => !fit.get(t.id)!.fits);
     const unfitHint = unfit.length
       ? `<p class="hint" data-el="tool-unfit">${unfit.length} ${unfit.length === 1 ? `${kindLabel(unfit[0].kind).toLowerCase()} that does` : "that do"} not fit what is on it ${unfit.length === 1 ? "is" : "are"} not offered: ${escapeHtml(
           [...new Set(unfit.map((t) => describe(t)))].slice(0, 3).join("; "),
@@ -63,8 +66,13 @@ export class ToolPicker {
       : "";
     const free = rest.filter(isFree);
     const elsewhere = rest.filter((t) => !isFree(t));
-    const option = (t: Tool, note = "") =>
-      `<option value="${t.id}">${escapeHtml(describe(t))}${note ? ` — ${escapeHtml(note)}` : ""}</option>`;
+    const option = (t: Tool, note = "") => {
+      // Said when it only fits through an adapter, and whether that is on it yet.
+      const via = fit.get(t.id)?.via;
+      const through = via ? `with the ${describe(via).replace(/^Adapter/, "adapter")}${chosen.has(via.id) ? "" : ": add it too"}` : "";
+      const notes = [note, through].filter(Boolean).join("; ");
+      return `<option value="${t.id}">${escapeHtml(describe(t))}${notes ? ` — ${escapeHtml(notes)}` : ""}</option>`;
+    };
     this.host.innerHTML = `
       ${
         mine.length

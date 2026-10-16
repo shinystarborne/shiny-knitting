@@ -610,6 +610,7 @@ export const TOOL_KINDS = [
   { key: "tips", label: "Interchangeable tips" },
   { key: "cable", label: "Interchangeable cable" },
   { key: "hook", label: "Crochet hook" },
+  { key: "adapter", label: "Adapter" },
 ] as const;
 
 export type ToolKind = (typeof TOOL_KINDS)[number]["key"];
@@ -665,6 +666,8 @@ export interface Tool {
   cableSize: string;
   /** The system tips or a cable belong to (a CONNECTORS key), or "" when not known. */
   connector: string;
+  /** An adapter's cable end, a cable size (its tip end is `cableSize`); "" for anything else. */
+  adapterTo: string;
   brand: string;
   material: string;
   /** The active project it is on; null when it is free. */

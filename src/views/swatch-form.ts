@@ -65,7 +65,8 @@ export class SwatchForm {
     const e = this.editing;
     this.yarns = [...yarns].sort((a, b) => yarnLabel(a).localeCompare(yarnLabel(b)));
     // A cable has no size to knit a swatch on.
-    this.tools = tools.filter((t) => t.kind !== "cable");
+    // What a swatch is knitted on: not a cable or an adapter, which have no size.
+    this.tools = tools.filter((t) => t.kind !== "cable" && t.kind !== "adapter");
     this.projects = projects.filter((p) => isLive(p.status) || p.id === e?.projectId || p.id === this.template.projectId);
     this.stitches = mostUsedSpellings([...swatches.map((s) => s.stitch).filter(Boolean), ...STITCHES]);
     this.unit = unit;

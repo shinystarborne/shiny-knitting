@@ -25,7 +25,7 @@ const MAX_LENGTH_CM: f64 = 200.0;
 const MAX_CABLE_CM: f64 = 500.0;
 
 fn has_size(kind: &str) -> bool {
-    kind != "cable"
+    !matches!(kind, "cable" | "adapter")
 }
 fn has_length(kind: &str) -> bool {
     matches!(kind, "straight" | "dpn" | "tips" | "hook")
@@ -34,7 +34,7 @@ fn has_cable(kind: &str) -> bool {
     matches!(kind, "circular" | "cable")
 }
 fn has_connector(kind: &str) -> bool {
-    matches!(kind, "tips" | "cable")
+    matches!(kind, "tips" | "cable" | "adapter")
 }
 
 /// A measurement, rounded to `places`, refused when it is not a number or
@@ -146,6 +146,16 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     } else {
         String::new()
     };
+    // An adapter joins two sizes: tips of its `cable_size` on a cable of this.
+    let adapter_to = if kind == "adapter" {
+        let to = one_of(&input.adapter_to, CABLE_SIZES, "cable size")?;
+        if !to.is_empty() && to == cable_size {
+            return Err(AppError::Message("An adapter joins two sizes: give its tip end and its cable end different ones.".to_string()));
+        }
+        to
+    } else {
+        String::new()
+    };
     let material = material(&input.material);
 
     let project_id = input
@@ -160,6 +170,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
         cable_cm,
         cable_size,
         connector,
+        adapter_to,
         brand: input.brand.trim().chars().take(80).collect(),
         material,
         project_id,
@@ -217,6 +228,16 @@ mod tests {
             material: "Metal".to_string(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn an_adapter_joins_two_sizes_of_a_system() {
+        let a = clean(ToolInput { cable_size: "Large".into(), adapter_to: "small".into(), ..input("adapter") }).unwrap();
+        assert_eq!((a.size_mm, a.length_cm, a.cable_cm), (0.0, 0.0, 0.0), "an adapter has no size or length");
+        assert_eq!((a.cable_size.as_str(), a.adapter_to.as_str(), a.connector.as_str()), ("large", "small", "chiaogoo"));
+        assert!(clean(ToolInput { cable_size: "small".into(), adapter_to: "small".into(), ..input("adapter") }).is_err(), "the same size at both ends joins nothing");
+        assert!(clean(ToolInput { adapter_to: "huge".into(), ..input("adapter") }).is_err());
+        assert_eq!(clean(ToolInput { adapter_to: "large".into(), ..input("tips") }).unwrap().adapter_to, "", "only an adapter has two ends");
     }
 
     #[test]

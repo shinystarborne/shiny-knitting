@@ -8,6 +8,9 @@ import { CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "
  * same list. Pure functions, so the harness checks them directly.
  */
 
+/** Whether a kind has a size in mm: a cable and an adapter have none. */
+export const hasSize = (kind: string): boolean => kind !== "cable" && kind !== "adapter";
+
 /** Whether a tool is free: on no active project. */
 export const isFree = (t: Tool): boolean => !t.projectId;
 
@@ -147,15 +150,43 @@ export function connectorFit(a: Tool, b: Tool): "yes" | "no" | "unknown" {
 const OTHER_HALF: Record<string, string> = { tips: "cable", cable: "tips" };
 
 /**
+ * The adapter, of those given, that puts these tips on this cable: the same
+ * system (or one not said), its tip end the tips' size and its cable end the
+ * cable's. None when they differ in system, or a size is not said.
+ */
+export function adapterFor(tips: Tool, cable: Tool, adapters: Tool[]): Tool | null {
+  if (tips.connector && cable.connector && tips.connector !== cable.connector) return null;
+  if (!tips.cableSize || !cable.cableSize) return null;
+  const system = tips.connector || cable.connector;
+  return (
+    adapters.find(
+      (a) => a.kind === "adapter" && a.cableSize === tips.cableSize && a.adapterTo === cable.cableSize && (!a.connector || !system || a.connector === system),
+    ) ?? null
+  );
+}
+
+/**
  * Whether a tool is worth offering for a project that has these on it: a
  * cable when the project's tips take it (one of them, when it has several),
- * tips when its cable does. Anything else, or with no other half on it yet,
- * always is.
+ * tips when its cable does -- straight, or through an adapter, the project's
+ * or one of those `owned` -- and which adapter, when it takes one. Anything
+ * else, or with no other half on it yet, always is.
  */
-export function fitsOnProject(t: Tool, onIt: Tool[]): boolean {
+export function fitOnProject(t: Tool, onIt: Tool[], owned: Tool[] = []): { fits: boolean; via: Tool | null } {
   const half = OTHER_HALF[t.kind];
   const others = half ? onIt.filter((o) => o.kind === half) : [];
-  return !others.length || others.some((o) => connectorFit(t, o) !== "no");
+  if (!others.length || others.some((o) => connectorFit(t, o) !== "no")) return { fits: true, via: null };
+  // Its own adapters first, then any other there is.
+  const adapters = [...onIt, ...owned.filter((a) => !onIt.includes(a))];
+  for (const o of others) {
+    const via = t.kind === "tips" ? adapterFor(t, o, adapters) : adapterFor(o, t, adapters);
+    if (via) return { fits: true, via };
+  }
+  return { fits: false, via: null };
+}
+
+export function fitsOnProject(t: Tool, onIt: Tool[], owned: Tool[] = []): boolean {
+  return fitOnProject(t, onIt, owned).fits;
 }
 
 /** The brand as a filter key: the same brand typed two ways is one box. */
@@ -167,6 +198,7 @@ const brandKey = (brand: string): string => brand.trim().toLowerCase();
  */
 export function headline(t: Tool): string {
   if (t.kind === "cable") return t.cableCm ? `${trim(t.cableCm)} cm` : "Cable";
+  if (t.kind === "adapter") return t.cableSize && t.adapterTo ? `${cableSizeLabel(t.cableSize)} → ${cableSizeLabel(t.adapterTo)}` : "Adapter";
   return sizeLabel(t.sizeMm);
 }
 
@@ -175,12 +207,22 @@ export function measurements(t: Tool): string {
   const parts: string[] = [];
   if (t.kind === "circular" && t.cableCm) parts.push(`${trim(t.cableCm)} cm cable`);
   if (t.lengthCm) parts.push(`${trim(t.lengthCm)} cm long`);
+  if (t.kind === "adapter") {
+    if (t.connector) parts.push(connectorLabel(t.connector));
+    if (t.cableSize && t.adapterTo) parts.push(`${cableSizeLabel(t.cableSize).toLowerCase()} tips on a ${cableSizeLabel(t.adapterTo).toLowerCase()} cable`);
+    return parts.join(" · ");
+  }
   if (t.cableSize || t.connector) parts.push(`${[connectorLabel(t.connector), t.cableSize ? cableSizeLabel(t.cableSize).toLowerCase() : ""].filter(Boolean).join(" ")} connector`.replace(/^(\w)/, (c) => c.toUpperCase()));
   return parts.join(" · ");
 }
 
 /** A one-line name for a tool, for lists and pickers: "4 mm circular needle, 80 cm". */
 export function describe(t: Tool): string {
+  const brand = t.brand ? ` (${t.brand})` : "";
+  if (t.kind === "adapter") {
+    const ends = t.cableSize && t.adapterTo ? `, ${cableSizeLabel(t.cableSize).toLowerCase()} tips on a ${cableSizeLabel(t.adapterTo).toLowerCase()} cable` : "";
+    return `Adapter${ends}${brand}`;
+  }
   const kind = kindLabel(t.kind).toLowerCase();
   const name = t.kind === "cable" ? `${kindLabel(t.kind)}` : `${sizeLabel(t.sizeMm)} ${kind}`;
   const size =
@@ -192,7 +234,6 @@ export function describe(t: Tool): string {
         ? `, ${trim(t.lengthCm)} cm`
         : "";
   const connector = t.cableSize ? `, ${cableSizeLabel(t.cableSize).toLowerCase()}` : "";
-  const brand = t.brand ? ` (${t.brand})` : "";
   return `${name}${size}${connector}${brand}`;
 }
 
@@ -210,7 +251,7 @@ function matches(t: Tool, f: ToolFilter): boolean {
       t.projectName,
       kindLabel(t.kind),
       materialLabel(t.material),
-      t.kind === "cable" ? "" : `${sizeLabel(t.sizeMm)} ${trim(t.sizeMm)}mm`,
+      hasSize(t.kind) ? `${sizeLabel(t.sizeMm)} ${trim(t.sizeMm)}mm` : "",
     ]
       .join(" ")
       .toLowerCase();
@@ -221,7 +262,7 @@ function matches(t: Tool, f: ToolFilter): boolean {
     if (!f.use.includes(state)) return false;
   }
   if (f.kind?.length && !f.kind.includes(t.kind)) return false;
-  if (f.size?.length && (t.kind === "cable" || !f.size.includes(sizeKey(t.sizeMm)))) return false;
+  if (f.size?.length && (!hasSize(t.kind) || !f.size.includes(sizeKey(t.sizeMm)))) return false;
   if (f.material?.length && !f.material.includes(materialKey(t.material))) return false;
   if (f.cableSize?.length && !f.cableSize.includes(t.cableSize)) return false;
   if (f.connector?.length && !f.connector.includes(t.connector)) return false;
@@ -258,7 +299,7 @@ export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "mat
 
   const sizes = new Map<string, number>();
   for (const t of tools) {
-    if (t.kind === "cable" || !t.sizeMm) continue;
+    if (!hasSize(t.kind) || !t.sizeMm) continue;
     sizes.set(sizeKey(t.sizeMm), t.sizeMm);
   }
   const brands = new Map<string, string>();
@@ -275,7 +316,7 @@ export function toolFacets(tools: Tool[]): Record<"use" | "kind" | "size" | "mat
     kind: TOOL_KINDS.map((k) => ({ key: k.key, label: k.label, count: count((t) => t.kind === k.key) })),
     size: [...sizes.entries()]
       .sort((a, b) => a[1] - b[1])
-      .map(([key, mm]) => ({ key, label: sizeLabel(mm), count: count((t) => t.kind !== "cable" && sizeKey(t.sizeMm) === key) })),
+      .map(([key, mm]) => ({ key, label: sizeLabel(mm), count: count((t) => hasSize(t.kind) && sizeKey(t.sizeMm) === key) })),
     // The known materials always ("Other" only once something uses it), then
     // any typed ones, so carbon or casein gets its own box.
     material: [

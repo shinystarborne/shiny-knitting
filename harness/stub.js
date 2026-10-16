@@ -381,6 +381,7 @@ function seed() {
     ...fields,
     // As the migration fills it in: the system an interchangeable one's brand says.
     connector: ["tips", "cable"].includes(fields.kind) ? connectorOfBrand(fields.brand) : "",
+    adapterTo: "",
   });
   store.tools = [
     tool("t1", { kind: "dpn", sizeMm: 2.5, lengthCm: 20, brand: "HiyaHiya", material: "metal" }),
@@ -452,7 +453,7 @@ function seed() {
 }
 
 // The rules of `tools::clean`, so the harness refuses what the app would.
-const TOOL_KINDS = ["straight", "circular", "dpn", "tips", "cable", "hook"];
+const TOOL_KINDS = ["straight", "circular", "dpn", "tips", "cable", "hook", "adapter"];
 const TOOL_MATERIALS = ["metal", "aluminium", "steel", "copper", "bamboo", "wood", "carbon", "plastic", "other"];
 // A known material by its key, whatever its case; anything else as typed.
 const toolMaterial = (v) => {
@@ -478,7 +479,7 @@ function cleanTool(input) {
     return w;
   };
   let sizeMm = 0;
-  if (kind !== "cable") {
+  if (kind !== "cable" && kind !== "adapter") {
     sizeMm = measure(input.sizeMm, 2, 50, "size", "mm");
     if (sizeMm <= 0) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
   }
@@ -488,14 +489,22 @@ function cleanTool(input) {
     sizeMm,
     lengthCm: ["straight", "dpn", "tips", "hook"].includes(kind) ? measure(input.lengthCm, 1, 200, "length", "cm") : 0,
     cableCm: ["circular", "cable"].includes(kind) ? measure(input.cableCm, 1, 500, "cable length", "cm") : 0,
-    cableSize: ["tips", "cable"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
+    cableSize: ["tips", "cable", "adapter"].includes(kind) ? oneOf(input.cableSize, CABLE_SIZES, "cable size") : "",
     // As said, or as the brand says when not.
-    connector: ["tips", "cable"].includes(kind) ? oneOf(input.connector, CONNECTORS, "connector system") || connectorOfBrand(input.brand) : "",
+    connector: ["tips", "cable", "adapter"].includes(kind) ? oneOf(input.connector, CONNECTORS, "connector system") || connectorOfBrand(input.brand) : "",
+    adapterTo: kind === "adapter" ? adapterEnd(input) : "",
     brand: String(input.brand || "").trim().slice(0, 80),
     material: toolMaterial(input.material),
     projectId,
     notes: String(input.notes || ""),
   };
+}
+/** As `tools::clean`: an adapter's cable end, another size than its tip end. */
+function adapterEnd(input) {
+  const to = String(input.adapterTo || "").trim().toLowerCase();
+  if (to && !CABLE_SIZES.includes(to)) throw new Error(`“${input.adapterTo}” is not a cable size this knows.`);
+  if (to && to === String(input.cableSize || "").trim().toLowerCase()) throw new Error("An adapter joins two sizes: give its tip end and its cable end different ones.");
+  return to;
 }
 // `models::CONNECTORS`, and `tools::connector_of_brand`.
 const CONNECTORS = ["chiaogoo", "knitpro", "addi", "hiyahiya", "lykke"];

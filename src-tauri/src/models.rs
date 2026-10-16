@@ -891,7 +891,7 @@ pub struct SuggestionResult {
 /// - `tips`: a pair of interchangeable tips
 /// - `cable`: an interchangeable cable
 /// - `hook`: a crochet hook
-pub const TOOL_KINDS: &[&str] = &["straight", "circular", "dpn", "tips", "cable", "hook"];
+pub const TOOL_KINDS: &[&str] = &["straight", "circular", "dpn", "tips", "cable", "hook", "adapter"];
 
 /// The materials known by name, offered as suggestions and stored by these
 /// keys. Any other material can be typed and is kept as typed: there are more
@@ -931,6 +931,10 @@ pub struct Tool {
     /// Tips and a cable fit when it and the size are the same.
     #[serde(default)]
     pub connector: String,
+    /// An adapter's cable end, one of `CABLE_SIZES` or empty; its tip end is
+    /// `cable_size`. Tips of the one size go on a cable of the other.
+    #[serde(default)]
+    pub adapter_to: String,
     pub brand: String,
     /// A key from `TOOL_MATERIALS`, a material as typed, or empty.
     pub material: String,
@@ -960,6 +964,8 @@ pub struct ToolInput {
     pub cable_size: String,
     #[serde(default)]
     pub connector: String,
+    #[serde(default)]
+    pub adapter_to: String,
     #[serde(default)]
     pub brand: String,
     #[serde(default)]

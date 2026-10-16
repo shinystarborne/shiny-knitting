@@ -2,13 +2,15 @@
  * Checks for needles and cables that fit each other: a tip's and a cable's
  * system (ChiaoGoo / Lotus Yarns, KnitPro…) as said or as the brand says,
  * what fits what, a project offered only the cables its tips take, the form
- * choosing the system from the brand, and the tab's System filter.
+ * choosing the system from the brand, and the tab's System filter. An
+ * adapter puts tips of one size on a cable of another: a project is offered
+ * them through one, saying which.
  *
  * Run with the harness open:
  *   window.__connectorChecks()
  */
 import type { Tool } from "../src/api";
-import { connectorFit, connectorOfBrand, fitsOnProject, measurements } from "../src/views/tool-filter";
+import { adapterFor, connectorFit, connectorOfBrand, describe, fitOnProject, fitsOnProject, headline, measurements } from "../src/views/tool-filter";
 
 interface CheckResult {
   name: string;
@@ -46,6 +48,15 @@ function pure(results: CheckResult[]): void {
   check(results, "…and anything else, and anything while nothing to fit is on it", fitsOnProject(t("hook", "", ""), onIt) && fitsOnProject(t("cable", "knitpro", ""), [t("circular", "", "")]));
   const said = measurements({ ...t("cable", "chiaogoo", "small"), cableCm: 0, lengthCm: 0 });
   check(results, "a card says the connector: its system and size", said === "ChiaoGoo / Lotus Yarns small connector", said);
+  const ad = { ...t("adapter", "chiaogoo", "large"), adapterTo: "small", brand: "ChiaoGoo" } as Tool;
+  check(results, "an adapter is named by its two ends", headline(ad) === "Large → Small" && describe(ad) === "Adapter, large tips on a small cable (ChiaoGoo)" && measurements(ad) === "ChiaoGoo / Lotus Yarns · large tips on a small cable", `${headline(ad)} | ${describe(ad)} | ${measurements(ad)}`);
+  const bigTips = t("tips", "chiaogoo", "large");
+  const smallCable = t("cable", "chiaogoo", "small");
+  check(results, "an adapter puts large tips on a small cable, not the other way round", adapterFor(bigTips, smallCable, [ad]) === ad && adapterFor(t("tips", "chiaogoo", "small"), t("cable", "chiaogoo", "large"), [ad]) === null);
+  check(results, "…nor tips of another system", adapterFor(t("tips", "knitpro", "large"), smallCable, [ad]) === null);
+  const through = fitOnProject(bigTips, [t("tips", "chiaogoo", "small"), smallCable], [ad]);
+  check(results, "large tips are offered for a project with a small cable, through the adapter there is", through.fits && through.via === ad && !fitOnProject(bigTips, [smallCable], []).fits);
+  check(results, "…and a small cable for a project with large tips", fitOnProject(smallCable, [bigTips], [ad]).via === ad);
   check(results, "…or only its size, the system not said", measurements({ ...t("tips", "", "large"), cableCm: 0, lengthCm: 0 }) === "Large connector");
 }
 
@@ -99,6 +110,26 @@ export async function verifyConnectors() {
     modal()!.querySelector<HTMLElement>('[data-act="cancel"]')?.click();
     await waitFor(() => !modal(), "the form closed");
 
+    // An adapter: large tips on a project knitted on a small cable.
+    const adapter = await add({ kind: "adapter", brand: "ChiaoGoo", cableSize: "large", adapterTo: "small" });
+    check(results, "an adapter is kept with its two ends, and its system from its brand", adapter.cableSize === "large" && adapter.adapterTo === "small" && adapter.connector === "chiaogoo" && adapter.sizeMm === 0);
+    const big = await add({ kind: "tips", brand: "ChiaoGoo", cableSize: "large", sizeMm: 6 });
+    const second = (await invoke<{ id: string }>("add_project", { input: { name: "Two-size cowl", patternId: null, notes: "", startedAt: null, toolIds: [tips.id, lotus.id], yarns: [] } })).id;
+    made.push(`project:${second}`);
+    document.querySelector(".projects")!.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: second }));
+    await waitFor(() => !!modal()?.querySelector('[data-el="tool-add"]'), "the second project's needles");
+    const option = (id: string) => modal()!.querySelector<HTMLOptionElement>(`[data-el="tool-add"] option[value="${id}"]`);
+    check(results, "a project on a small cable is offered large tips through the adapter, saying so", /with the adapter, large tips on a small cable \(ChiaoGoo\): add it too/.test(option(big.id)?.textContent ?? ""), option(big.id)?.textContent ?? "not offered");
+    const pick = modal()!.querySelector<HTMLSelectElement>('[data-el="tool-add"]')!;
+    pick.value = adapter.id;
+    pick.dispatchEvent(new Event("change", { bubbles: true }));
+    modal()!.querySelector<HTMLElement>('[data-act="tool-use"]')!.click();
+    await waitFor(() => !option(adapter.id), "the adapter on it");
+    check(results, "…and with the adapter on it, no more to add", /with the adapter, large tips on a small cable \(ChiaoGoo\)$/.test(option(big.id)?.textContent ?? ""), option(big.id)?.textContent ?? "");
+    check(results, "…the KnitPro cable still not offered", !option(knitpro.id));
+    modal()!.querySelector<HTMLElement>('[data-act="cancel"]')?.click();
+    await waitFor(() => !modal(), "the form closed");
+
     // The form: the system from the brand, until one is chosen.
     tab("tools");
     await waitFor(() => !!document.querySelector('input[data-filter="connector"]'), "the needles");
@@ -122,6 +153,27 @@ export async function verifyConnectors() {
     if (saved) made.push(saved.id);
     check(results, "…and the system chosen is kept", !!saved);
 
+    // An adapter in the form: its two ends, no size.
+    document.querySelector<HTMLElement>('[data-act="add"]')!.click();
+    await waitFor(() => !!modal()?.querySelector('[data-f="adapterTo"]'), "the tool form again");
+    field("kind").value = "adapter";
+    field("kind").dispatchEvent(new Event("change", { bubbles: true }));
+    const asked = (f: string) => !field(f).closest<HTMLElement>("[data-show]")!.hidden;
+    check(results, "an adapter is asked its tip end, its cable end and its system, not a size", asked("adapterTo") && asked("cableSize") && asked("connector") && !asked("sizeMm") && /Tip end/.test(modal()!.textContent ?? ""));
+    field("cableSize").value = "small";
+    field("adapterTo").value = "small";
+    field("brand").value = "HiyaHiya";
+    field("brand").dispatchEvent(new Event("change", { bubbles: true }));
+    modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
+    await waitFor(() => !modal()!.querySelector<HTMLElement>('[data-el="error"]')!.hidden, "the refusal");
+    check(results, "…two ends the same size join nothing, and it says so", /joins two sizes/.test(modal()!.querySelector('[data-el="error"]')!.textContent ?? ""));
+    field("adapterTo").value = "large";
+    modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
+    await waitFor(() => !modal(), "the adapter saved");
+    const hiya = (await invoke<Tool[]>("list_tools")).find((x) => x.kind === "adapter" && x.connector === "hiyahiya");
+    if (hiya) made.push(hiya.id);
+    check(results, "…a HiyaHiya one kept as HiyaHiya's, small tips on a large cable", !!hiya && hiya.cableSize === "small" && hiya.adapterTo === "large");
+
     // The tab's System filter.
     tab("projects");
     tab("tools");
@@ -141,7 +193,7 @@ export async function verifyConnectors() {
   } finally {
     modal()?.querySelector<HTMLElement>('[data-act="cancel"]')?.click();
     if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
-    for (const id of made) await invoke("delete_tool", { id }).catch(() => {});
+    for (const id of made) await invoke(id.startsWith("project:") ? "delete_project" : "delete_tool", { id: id.replace(/^project:/, "") }).catch(() => {});
     tab("patterns");
   }
 

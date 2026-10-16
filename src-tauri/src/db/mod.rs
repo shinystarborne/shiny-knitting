@@ -739,6 +739,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             }
         }
     }
+    // An adapter's cable end: tips of its connector size on a cable of this.
+    if !column_exists(conn, "tools", "adapter_to")? {
+        conn.execute("ALTER TABLE tools ADD COLUMN adapter_to TEXT NOT NULL DEFAULT ''", [])?;
+    }
     // The size a project is knitted in, as said.
     if !column_exists(conn, "projects", "size")? {
         conn.execute("ALTER TABLE projects ADD COLUMN size TEXT NOT NULL DEFAULT ''", [])?;
@@ -2435,6 +2439,7 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
         cable_cm: row.get("cable_cm")?,
         cable_size: row.get("cable_size")?,
         connector: row.get("connector")?,
+        adapter_to: row.get("adapter_to")?,
         brand: row.get("brand")?,
         material: row.get("material")?,
         project_id: row.get("active_project_id")?,
@@ -2470,8 +2475,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     tx.execute(
         "INSERT INTO tools
          (id, kind, size_mm, length_cm, cable_cm, cable_size, brand, material,
-          notes, added_at, connector)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+          notes, added_at, connector, adapter_to)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
         params![
             id,
             input.kind,
@@ -2483,7 +2488,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.material,
             input.notes,
             now_ms(),
-            input.connector
+            input.connector,
+            input.adapter_to
         ],
     )?;
     place_tool(&tx, id, input.project_id.as_deref())?;
@@ -2496,7 +2502,7 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute(
         "UPDATE tools SET kind = ?2, size_mm = ?3, length_cm = ?4, cable_cm = ?5,
-         cable_size = ?6, brand = ?7, material = ?8, notes = ?9, connector = ?10
+         cable_size = ?6, brand = ?7, material = ?8, notes = ?9, connector = ?10, adapter_to = ?11
          WHERE id = ?1",
         params![
             id,
@@ -2508,7 +2514,8 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.brand,
             input.material,
             input.notes,
-            input.connector
+            input.connector,
+            input.adapter_to
         ],
     )?;
     if changed == 0 {
