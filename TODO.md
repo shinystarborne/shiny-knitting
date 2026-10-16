@@ -19,8 +19,6 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-- [ ] **A cheatsheet from part of a page**: a box drawn round the table or
-  chart wanted, as a pin is, kept rather than the whole page.
 - [ ] **The round yoke calculator and a yoke chart together.** *Decided
   (10 Oct 2026):* the chart fits the calculator's counts, and the yoke chart
   lives in the round yoke calculator itself.
@@ -170,6 +168,10 @@ back empty, and in a run over the library, note the pattern and go on.
 - **Cheatsheets:** a tab of its own: online pages kept to read in the app (in
   a frame, or a window of its own where a site refuses frames), and pages
   from books in the library (a PDF's pages, an EPUB's chapter as a copy).
+  Part of a page: a box drawn round the table or chart wanted, as a pin is,
+  from the reader (Cheatsheet…, Part of a page…) or in the tab (Crop…);
+  stored upright (cheatsheets.region), drawn sharp from the book's file.
+  *0.3.69*
 - **Stash statistics:** the stash's metres and weight (in the Yarn view, of
   what the filters leave). A Statistics view: in the stash now, and yarn
   added and used each calendar month for the last twelve, in metres or grams,
