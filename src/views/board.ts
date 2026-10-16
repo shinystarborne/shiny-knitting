@@ -3,6 +3,7 @@ import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../d
 import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
 import { cropImage } from "./crop-dialog";
+import { copyPicture } from "../copy-picture";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -513,11 +514,13 @@ export class Board {
     if (!id) return;
     if (act === "remove") await this.remove(id);
     if (act === "crop") await this.crop(id);
+    if (act === "copy") await copyPicture(boardImageUrl(id));
     if (act === "open") this.open(id);
     if (act === "edit-link") await this.editLink(id);
     if (act === "log-add") await this.addToLog(id);
     if (act === "log-photo") this.chooseLogPhoto();
     if (act === "log-crop" && btn.dataset.entry) await this.cropLogPhoto(btn.dataset.entry);
+    if (act === "log-copy" && btn.dataset.entry) await copyPicture(logPhotoUrl(btn.dataset.entry), "The photo");
     if (act === "log-photo-clear") this.setLogPhoto(null);
     if (act === "open-log") this.hooks.openLog?.();
     if (act === "note-colour") {
@@ -572,6 +575,15 @@ export class Board {
     if ((e.key === "Delete" || e.key === "Backspace") && this.selected) {
       e.preventDefault();
       await this.remove(this.selected);
+    }
+    // Ctrl+C copies a picture selected, to paste anywhere.
+    if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey) && !e.altKey && this.selected) {
+      const item = this.items.find((i) => i.id === this.selected);
+      if (item?.hasImage && (item.kind === "image" || item.kind === "pin")) {
+        e.preventDefault();
+        await copyPicture(boardImageUrl(item.id));
+      }
+      return;
     }
     if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey && this.selected) {
       const item = this.items.find((i) => i.id === this.selected);
@@ -915,9 +927,11 @@ export class Board {
     const d = item.data;
     const style = `left:${item.x}px;top:${item.y}px;width:${item.w}px;height:${item.h}px;z-index:${item.z}`;
     const cls = `board-item kind-${item.kind}${item.id === this.selected ? " selected" : ""}`;
-    // A picture, or a pin, can be cropped: ✂ beside the ✕.
-    // A picture, or a pin, can be cropped: a labelled button as it is pointed at or selected, or C.
-    const crop = item.hasImage && (item.kind === "image" || item.kind === "pin") ? `<button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button>` : "";
+    // A picture, or a pin, can be cropped and copied: labelled buttons as it is pointed at or selected, or C and Ctrl+C.
+    const crop =
+      item.hasImage && (item.kind === "image" || item.kind === "pin")
+        ? `<span class="board-pic-tools"><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
+        : "";
     const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
     let body = "";
@@ -1006,7 +1020,7 @@ export class Board {
         <div class="board-log-entry${e.milestone ? " milestone" : ""}">
           <span class="board-log-when">${esc(when(e.at))}</span>
           ${e.text ? (e.milestone ? `<b>${esc(e.text)}</b>` : `<p>${esc(e.text)}</p>`) : ""}
-          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button></div>` : ""}
+          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><span class="board-pic-tools"><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button><button class="board-crop" data-act="log-copy" data-entry="${esc(e.id)}" title="Copy this photo, to paste anywhere">⧉ Copy</button></span></div>` : ""}
         </div>`,
       )
       .join("");

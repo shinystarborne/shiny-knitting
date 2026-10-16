@@ -2562,11 +2562,13 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 }
 .board-x:hover { background: var(--accent); color: #fff; }
 /* Crop, on a picture pointed at or selected: words, so it is found. */
-.board-crop { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 4px 10px; font-size: 12px; border-radius: 6px; background: rgba(20, 20, 24, 0.82); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); opacity: 0; transition: opacity 0.12s ease; cursor: pointer; }
+/* A picture's Crop and Copy, over its top left as it is pointed at or selected. */
+.board-pic-tools { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; gap: 6px; opacity: 0; transition: opacity 0.12s ease; }
+.board-crop { padding: 4px 10px; font-size: 12px; border-radius: 6px; background: rgba(20, 20, 24, 0.82); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); cursor: pointer; }
 .board-crop:hover { background: var(--accent); }
-.board-item:hover > .board-crop,
-.board-item.selected > .board-crop,
-.board-log-photo:hover > .board-crop { opacity: 1; }
+.board-item:hover > .board-pic-tools,
+.board-item.selected > .board-pic-tools,
+.board-log-photo:hover > .board-pic-tools { opacity: 1; }
 
 /* Cropping a picture: the picture, and the box over the part to keep. */
 .dialog-card.crop-dialog { max-width: min(1000px, 94vw); }

@@ -2,6 +2,7 @@ import { api, type GalleryPhoto, type LogEntry, type Project, type Tool, type Ya
 import { coverUrl, logPhotoUrl, projectCoverUrl } from "../covers";
 import { customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { copyPicture } from "../copy-picture";
 import { longDate } from "./project-form";
 import { describe } from "./tool-filter";
 
@@ -129,6 +130,7 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
       </div>
       <aside class="gallery-info">${info()}</aside>
       <div class="dialog-actions gallery-actions">
+        ${current && !choosing ? `<button type="button" class="ghost" data-act="copy-photo" title="Copy the photo shown, to paste anywhere">Copy photo</button>` : ""}
         ${photos.length ? `<button type="button" class="ghost" data-act="choose">${choosing ? "Done choosing" : "Choose photos"}</button>` : ""}
         <button type="button" class="ghost" data-act="hide">${p.galleryHidden ? "Show in the gallery" : "Hide from the gallery"}</button>
         <button type="button" class="ghost" data-act="page">Open its page</button>
@@ -181,6 +183,10 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
     }
     if (act === "hide") void save(!p.galleryHidden, p.gallerySkip);
     if (act === "close") dialog.close();
+    if (act === "copy-photo") {
+      const current = visible()[at];
+      if (current) void copyPicture(photoUrl(p, current.key), "The photo");
+    }
     if (act === "page") {
       dialog.close();
       hooks.openPage(p.id);

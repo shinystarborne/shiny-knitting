@@ -4,6 +4,7 @@ import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { PhotoBox } from "./photo-box";
 import { cropImage } from "./crop-dialog";
+import { copyPicture } from "../copy-picture";
 
 /**
  * A project's log: a diary of the knitting, the newest first, a day at a
@@ -120,7 +121,7 @@ export class ProjectLog {
           <span class="log-time">${esc(time)}</span>
           ${e.milestone ? `<span class="log-milestone">${esc(e.text)}</span>` : ""}
           <span class="spacer"></span>
-          ${e.photoPath ? `<button class="card-remove" data-act="crop" data-id="${esc(e.id)}" title="Crop its photo">Crop</button>` : ""}
+          ${e.photoPath ? `<button class="card-remove" data-act="copy" data-id="${esc(e.id)}" title="Copy its photo, to paste anywhere">Copy</button><button class="card-remove" data-act="crop" data-id="${esc(e.id)}" title="Crop its photo">Crop</button>` : ""}
           <button class="card-remove" data-act="edit" data-id="${esc(e.id)}" title="Change it">Edit</button>
           <button class="card-remove" data-act="remove" data-id="${esc(e.id)}" title="Take it out of the log">Remove</button>
         </div>
@@ -136,6 +137,7 @@ export class ProjectLog {
     const act = btn?.dataset.act;
     if (act === "add") await this.add();
     if (act === "crop" && btn?.dataset.id) return void (await this.cropPhoto(btn.dataset.id));
+    if (act === "copy" && btn?.dataset.id) return void (await copyPicture(logPhotoUrl(btn.dataset.id), "The photo"));
     if (act === "photo-file") this.composerPhoto?.choose();
     if (act === "photo-remove") this.composerPhoto?.reset();
     if (act === "edit") {

@@ -5,6 +5,7 @@ import { ProjectChart } from "./project-chart";
 import { ReaderView } from "../reader/reader";
 import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } from "../covers";
 import { closestEl } from "../dom";
+import { copyPicture } from "../copy-picture";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -242,6 +243,7 @@ export class ProjectPage {
       </div>
       <div class="project-cover-actions">
         <button class="ghost" data-act="cover-file">Choose…</button>
+        <button class="ghost" data-act="cover-copy" title="Copy the cover, to paste anywhere" ${p.coverPath ? "" : "hidden"}>Copy</button>
         <button class="ghost" data-act="cover-remove" ${p.coverPath ? "" : "hidden"}>Remove</button>
       </div>
 
@@ -396,6 +398,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     forgetProjectCover(this.projectId);
     this.project.coverPath = "set";
     this.root.querySelector<HTMLElement>('[data-act="cover-remove"]')!.hidden = false;
+    this.root.querySelector<HTMLElement>('[data-act="cover-copy"]')!.hidden = false;
     await this.paintCover();
   }
 
@@ -430,11 +433,13 @@ ${plan ? "" : `      <div class="project-side-dates">
       });
       input.click();
     }
+    if (act === "cover-copy") await copyPicture(projectCoverUrl(this.projectId), "The cover");
     if (act === "cover-remove") {
       await api.removeProjectCover(this.projectId).catch(() => {});
       forgetProjectCover(this.projectId);
       this.project.coverPath = "";
       btn.hidden = true;
+      this.root.querySelector<HTMLElement>('[data-act="cover-copy"]')!.hidden = true;
       await this.paintCover();
     }
     if (act === "remove") {
