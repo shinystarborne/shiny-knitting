@@ -3953,3 +3953,16 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 @media (max-width: 760px) {
   .pc-body { grid-template-columns: 1fr; max-height: none; }
 }
+
+/* ---------- masterclasses: videos kept to learn from ---------- */
+
+.mc-search { width: 260px; }
+.mc-item { align-items: center; }
+.mc-thumb { flex: none; width: 72px; height: 41px; border-radius: 5px; background: var(--bg-input) center / cover no-repeat; display: grid; place-items: center; color: var(--text-dim); font-size: 14px; }
+.mc-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.mc-player { width: 100%; max-width: 1000px; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; background: #000; flex: none; }
+.mc-player-note { margin: -6px 0 0; }
+.mc-projects { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-elsewhere { flex: none; }
+.project-masterclass select { width: 100%; }
+.project-mc-player { margin-top: 6px; border-radius: 6px; }

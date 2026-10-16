@@ -64,7 +64,7 @@ function pure(results: CheckResult[]): void {
     id: "pc", name: "Lopi for Anna", patternId: "pt", patternTitle: "Riddari", status: "finished", startedAt: Date.UTC(2026, 2, 3), finishedAt: Date.UTC(2026, 9, 12),
     notes: "", createdAt: 0, coverPath: "", personId: "pe", personName: "Anna", toolIds: ["t1", "t9"],
     yarns: [{ id: "e1", yarnId: "y1", yarnName: "Léttlopi", lotId: null, dyeLot: "", leftoverGrams: 40, plannedGrams: null }],
-    planWhen: "", planDate: null, planOrder: 0, galleryHidden: false, gallerySkip: [], size: "M",
+    planWhen: "", planDate: null, planOrder: 0, galleryHidden: false, gallerySkip: [], size: "M", masterclassId: "", masterclassTitle: "",
   } as Project;
   const d: CardData = {
     project,

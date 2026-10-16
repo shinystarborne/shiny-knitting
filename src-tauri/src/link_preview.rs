@@ -144,6 +144,16 @@ pub async fn look_for_frame(url: &str) -> Result<FrameLook, AppError> {
     Ok(FrameLook { title, framable })
 }
 
+/// Fetches a small JSON answer (an oEmbed's), as a value.
+pub async fn fetch_json(url: &str) -> Result<serde_json::Value, AppError> {
+    let response = client()?.get(url).header(reqwest::header::ACCEPT, "application/json").send().await.map_err(unreachable)?;
+    if !response.status().is_success() {
+        return Err(refused(response.status()));
+    }
+    let bytes = body(response, 256 * 1024, false).await?;
+    serde_json::from_slice(&bytes).map_err(|_| AppError::Message("The answer could not be read.".into()))
+}
+
 /// Fetches a picture's bytes, refusing anything that is not a picture.
 pub async fn fetch_image(url: &str) -> Result<Vec<u8>, AppError> {
     let response = client()?

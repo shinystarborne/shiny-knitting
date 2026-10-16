@@ -837,6 +837,34 @@ pub struct CheatsheetInput {
     pub region: Option<SheetRegion>,
 }
 
+/// A video kept to learn from: a technique, a course, a knit-along.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Masterclass {
+    pub id: String,
+    pub title: String,
+    /// Its address: a YouTube video's as youtube.com/watch?v=, anything else as typed.
+    pub url: String,
+    /// The YouTube video it is, for showing it embedded; empty for another site.
+    pub video_id: String,
+    /// The YouTube channel, as YouTube says.
+    pub channel: String,
+    pub notes: String,
+    /// Whether its picture is kept (`masterclasses/<id>.jpg`).
+    pub has_thumb: bool,
+    /// The projects it is on.
+    pub project_count: i64,
+    pub added_at: i64,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MasterclassInput {
+    pub url: String,
+    pub title: String,
+    pub notes: String,
+}
+
 /// The fields the AI is asked to fill in.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -1033,6 +1061,11 @@ pub struct Project {
     /// The size knitted, as said: "M", "2nd size", "chest 96 cm".
     #[serde(default)]
     pub size: String,
+    /// The masterclass it is knitted along with, or empty; and its title.
+    #[serde(default)]
+    pub masterclass_id: String,
+    #[serde(default)]
+    pub masterclass_title: String,
 }
 
 /// A photo in a project's log, for the gallery: its entry, when, and what it says.

@@ -3527,6 +3527,27 @@ fn a_cheatsheet_keeps_the_part_of_its_page() {
 }
 
 #[test]
+fn a_project_is_knitted_along_with_a_masterclass_until_it_goes() {
+    use crate::models::Masterclass;
+    let conn = test_db();
+    let m = insert_masterclass(&conn, &Masterclass { id: "mc".into(), title: "Italian cast-on".into(), url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into(), video_id: "dQw4w9WgXcQ".into(), channel: "Very Pink".into(), has_thumb: true, ..Default::default() }).unwrap();
+    assert_eq!((m.project_count, m.has_thumb, m.channel.as_str()), (0, true, "Very Pink"));
+    insert_project(&conn, "pr-mc", &crate::models::ProjectInput { name: "Brioche hat".into(), ..Default::default() }).unwrap();
+    let p = set_project_masterclass(&conn, "pr-mc", "mc").unwrap();
+    assert_eq!((p.masterclass_id.as_str(), p.masterclass_title.as_str()), ("mc", "Italian cast-on"));
+    assert_eq!(list_masterclasses(&conn).unwrap()[0].project_count, 1);
+    assert!(set_project_masterclass(&conn, "pr-mc", "nowhere").is_err(), "only one that is there");
+    let mut kept = get_masterclass(&conn, "mc").unwrap();
+    kept.title = "Italian tubular cast-on".into();
+    update_masterclass(&conn, &kept).unwrap();
+    assert_eq!(get_project(&conn, "pr-mc").unwrap().masterclass_title, "Italian tubular cast-on");
+    delete_masterclass(&conn, "mc").unwrap();
+    let p = get_project(&conn, "pr-mc").unwrap();
+    assert_eq!((p.masterclass_id.as_str(), p.masterclass_title.as_str()), ("", ""), "the project goes on without it");
+    assert!(list_masterclasses(&conn).unwrap().is_empty());
+}
+
+#[test]
 fn a_project_says_the_size_knitted() {
     let conn = test_db();
     let p = insert_project(&conn, "pr-size", &crate::models::ProjectInput { name: "Cardigan".into(), ..Default::default() }).unwrap();

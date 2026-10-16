@@ -25,6 +25,12 @@ fn tidy(mut input: ProjectInput) -> ProjectInput {
     input
 }
 
+/// The masterclass it is knitted along with, or none with an empty id.
+#[tauri::command]
+pub fn set_project_masterclass(state: State<'_, AppState>, id: String, masterclass_id: String) -> CmdResult<Project> {
+    db::set_project_masterclass(&state.db(), &id, masterclass_id.trim())
+}
+
 /// The size it is knitted in, as said.
 #[tauri::command]
 pub fn set_project_size(state: State<'_, AppState>, id: String, size: String) -> CmdResult<Project> {

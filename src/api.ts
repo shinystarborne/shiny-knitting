@@ -755,6 +755,24 @@ export interface Project {
   chartStart?: number;
   /** The size knitted, as said: "M", "2nd size". */
   size: string;
+  /** The masterclass it is knitted along with ("" for none), and its title. */
+  masterclassId: string;
+  masterclassTitle: string;
+}
+
+/** A video kept to learn from. Mirrors `models.rs::Masterclass`. */
+export interface Masterclass {
+  id: string;
+  title: string;
+  /** A YouTube video's as youtube.com/watch?v=; anything else as typed. */
+  url: string;
+  /** The YouTube video, for showing it embedded; "" for another site. */
+  videoId: string;
+  channel: string;
+  notes: string;
+  hasThumb: boolean;
+  projectCount: number;
+  addedAt: number;
 }
 
 export interface ProjectYarnInput {
@@ -1379,6 +1397,13 @@ export const api = {
   /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
   setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
+  setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
+  listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
+  /** A YouTube link asks YouTube for its title, channel and picture; any other is kept as it is. */
+  addMasterclass: (input: { url: string; title?: string; notes?: string }) => invoke<Masterclass>("add_masterclass", { input }),
+  updateMasterclass: (masterclass: Masterclass) => invoke<Masterclass>("update_masterclass", { masterclass }),
+  deleteMasterclass: (id: string) => invoke<void>("delete_masterclass", { id }),
+  getMasterclassThumb: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_masterclass_thumb", { id }),
   /** The chart a project is knitted from ("" for none), and the project's row its first row is knitted on. */
   setProjectChart: (id: string, chartId: string, start: number) => invoke<Project>("set_project_chart", { id, chartId, start }),
   /** Dated now. */

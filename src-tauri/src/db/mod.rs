@@ -9,7 +9,7 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput, YarnDetails, Cheatsheet,
+    Chart, ChartInput, YarnDetails, Cheatsheet, Masterclass,
 };
 
 #[cfg(test)]
@@ -353,6 +353,19 @@ fn migrate(conn: &Connection) -> AppResult<()> {
             added_at      INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_swatches_yarn ON swatches(yarn_id);
+
+        -- Videos kept to learn from. A YouTube one has its video id, and its
+        -- picture in masterclasses/<id>.jpg when has_thumb.
+        CREATE TABLE IF NOT EXISTS masterclasses (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            url         TEXT NOT NULL,
+            video_id    TEXT NOT NULL DEFAULT '',
+            channel     TEXT NOT NULL DEFAULT '',
+            notes       TEXT NOT NULL DEFAULT '',
+            has_thumb   INTEGER NOT NULL DEFAULT 0,
+            added_at    INTEGER NOT NULL
+        );
 
         -- Kept to look things up in: a web page, pages of a PDF, or an EPUB's
         -- chapter (its copy is a file, cheatsheets/<id>.html). `pattern_id`
@@ -742,6 +755,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     // An adapter's cable end: tips of its connector size on a cable of this.
     if !column_exists(conn, "tools", "adapter_to")? {
         conn.execute("ALTER TABLE tools ADD COLUMN adapter_to TEXT NOT NULL DEFAULT ''", [])?;
+    }
+    // The masterclass a project is knitted along with.
+    if !column_exists(conn, "projects", "masterclass_id")? {
+        conn.execute("ALTER TABLE projects ADD COLUMN masterclass_id TEXT NOT NULL DEFAULT ''", [])?;
     }
     // The size a project is knitted in, as said.
     if !column_exists(conn, "projects", "size")? {
@@ -2613,6 +2630,8 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         chart_id: row.get("chart_id")?,
         chart_start: row.get("chart_start")?,
         size: row.get("size")?,
+        masterclass_id: row.get("masterclass_id")?,
+        masterclass_title: row.get("masterclass_title")?,
     })
 }
 
@@ -2642,9 +2661,11 @@ pub fn set_project_chart(conn: &Connection, id: &str, chart_id: &str, start: i64
     get_project(conn, id)
 }
 
-const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title, COALESCE(pe.name, '') AS person_name
+const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_title, COALESCE(pe.name, '') AS person_name,
+            COALESCE(mc.title, '') AS masterclass_title
      FROM projects pr LEFT JOIN patterns p ON p.id = pr.pattern_id
-     LEFT JOIN people pe ON pe.id = pr.person_id";
+     LEFT JOIN people pe ON pe.id = pr.person_id
+     LEFT JOIN masterclasses mc ON mc.id = pr.masterclass_id";
 
 /// Fills in a project's tools and yarns.
 fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
@@ -5095,6 +5116,69 @@ pub fn yarn_facets(conn: &Connection) -> AppResult<Vec<YarnFamilyFacet>> {
         });
     }
     Ok(out)
+}
+
+// ---------- masterclasses ----------
+
+fn row_to_masterclass(r: &rusqlite::Row) -> rusqlite::Result<Masterclass> {
+    Ok(Masterclass {
+        id: r.get("id")?,
+        title: r.get("title")?,
+        url: r.get("url")?,
+        video_id: r.get("video_id")?,
+        channel: r.get("channel")?,
+        notes: r.get("notes")?,
+        has_thumb: r.get::<_, i64>("has_thumb")? != 0,
+        project_count: r.get("project_count")?,
+        added_at: r.get("added_at")?,
+    })
+}
+
+const MASTERCLASS_SELECT: &str = "SELECT m.*, (SELECT COUNT(*) FROM projects pr WHERE pr.masterclass_id = m.id) AS project_count FROM masterclasses m";
+
+/// Every one, the newest first.
+pub fn list_masterclasses(conn: &Connection) -> AppResult<Vec<Masterclass>> {
+    let mut stmt = conn.prepare(&format!("{MASTERCLASS_SELECT} ORDER BY m.added_at DESC, m.rowid DESC"))?;
+    let rows = stmt.query_map([], row_to_masterclass)?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
+    conn.query_row(&format!("{MASTERCLASS_SELECT} WHERE m.id = ?1"), params![id], row_to_masterclass)
+        .optional()?
+        .ok_or_else(|| AppError::NotFound("That masterclass is no longer there.".to_string()))
+}
+
+pub fn insert_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<Masterclass> {
+    conn.execute(
+        "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![m.id, m.title, m.url, m.video_id, m.channel, m.notes, m.has_thumb as i64, now_ms()],
+    )?;
+    get_masterclass(conn, &m.id)
+}
+
+pub fn update_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<()> {
+    conn.execute("UPDATE masterclasses SET title = ?2, notes = ?3 WHERE id = ?1", params![m.id, m.title, m.notes])?;
+    Ok(())
+}
+
+/// Removes it; the projects it was for keep going without it.
+pub fn delete_masterclass(conn: &Connection, id: &str) -> AppResult<()> {
+    conn.execute("UPDATE projects SET masterclass_id = '' WHERE masterclass_id = ?1", params![id])?;
+    conn.execute("DELETE FROM masterclasses WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// The masterclass a project is knitted along with, or none (an empty id).
+pub fn set_project_masterclass(conn: &Connection, id: &str, masterclass_id: &str) -> AppResult<Project> {
+    if !masterclass_id.is_empty() {
+        get_masterclass(conn, masterclass_id)?;
+    }
+    let changed = conn.execute("UPDATE projects SET masterclass_id = ?2 WHERE id = ?1", params![id, masterclass_id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    get_project(conn, id)
 }
 
 // ---------- cheatsheets ----------

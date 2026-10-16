@@ -357,6 +357,9 @@ export const swatchPhotoUrl = swatchPhotoCache.url;
 export const forgetSwatchPhoto = swatchPhotoCache.forget;
 export const clearSwatchPhotoCache = swatchPhotoCache.clear;
 
+const masterclassThumbCache = makeImageCache((id) => api.getMasterclassThumb(id));
+export const masterclassThumbUrl = masterclassThumbCache.url;
+
 const projectCoverCache = makeImageCache((id) => api.getProjectCover(id));
 export const projectCoverUrl = projectCoverCache.url;
 export const forgetProjectCover = projectCoverCache.forget;

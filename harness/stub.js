@@ -48,6 +48,8 @@ const store = {
   swatches: [],
   // Colourwork charts, their data stored whole as the backend's one table.
   charts: [],
+  // Videos kept to learn from: as the backend's masterclasses.
+  masterclasses: [],
   // Yarn used, when: as the backend's yarn_usage.
   yarnUsage: [],
   // What a yarn's ball band says, by brand and name: as the backend's yarn_details.
@@ -802,6 +804,8 @@ function projectOut(pr) {
     ...pr,
     patternId: pattern ? pr.patternId : null,
     patternTitle: pattern ? pattern.title : "",
+    masterclassId: store.masterclasses.some((m) => m.id === pr.masterclassId) ? pr.masterclassId : "",
+    masterclassTitle: store.masterclasses.find((m) => m.id === pr.masterclassId)?.title ?? "",
     coverPath: pr.coverPath || "",
     personId: store.people.some((p) => p.id === pr.personId) ? pr.personId : null,
     personName: store.people.find((p) => p.id === pr.personId)?.name ?? "",
@@ -1425,6 +1429,78 @@ const handlers = {
   // ---------- opening outside the app ----------
   //
   // Recorded rather than opened, so a test can see what would have been.
+  // ---------- masterclasses ----------
+  //
+  // As masterclasses.rs, without asking YouTube: a YouTube link is named
+  // "A video, <id>" and channel "A channel" unless a name is given, and
+  // gets a picture drawn here.
+  list_masterclasses: () =>
+    [...store.masterclasses]
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .map((m) => clone({ ...m, projectCount: store.projects.filter((pr) => pr.masterclassId === m.id).length })),
+  add_masterclass: ({ input }) => {
+    const typed = String(input.url ?? "").trim();
+    if (!typed) throw new Error("Give the video's link: a YouTube address.");
+    let url;
+    try {
+      url = new URL(typed.includes("://") ? typed : `https://${typed}`);
+    } catch {
+      throw new Error("That is not a web address.");
+    }
+    if (!/^https?:$/.test(url.protocol)) throw new Error("A masterclass is a web page: an address starting http:// or https://.");
+    const host = url.host.replace(/^(www|m|music)\./, "");
+    const seg = url.pathname.split("/").filter(Boolean);
+    let video = host === "youtu.be" ? seg[0] : host === "youtube.com" ? (seg[0] === "watch" ? url.searchParams.get("v") : ["shorts", "live", "embed"].includes(seg[0]) ? seg[1] : null) : null;
+    if (video && !/^[\w-]{6,20}$/.test(video)) video = null;
+    const id = `mc${store.nextId++}`;
+    const m = {
+      id,
+      title: String(input.title ?? "").trim() || (video ? `A video, ${video}` : host),
+      url: video ? `https://www.youtube.com/watch?v=${video}` : url.toString(),
+      videoId: video ?? "",
+      channel: video ? "A channel" : "",
+      notes: String(input.notes ?? "").trim(),
+      hasThumb: !!video,
+      addedAt: Date.now() + store.nextId,
+    };
+    if (video) {
+      const c = document.createElement("canvas");
+      c.width = 48;
+      c.height = 27;
+      const x = c.getContext("2d");
+      x.fillStyle = "#c33";
+      x.fillRect(0, 0, 48, 27);
+      const b64 = c.toDataURL("image/png").split(",")[1];
+      store.covers.set(`masterclass:${id}`, Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
+    }
+    store.masterclasses.push(m);
+    return clone({ ...m, projectCount: 0 });
+  },
+  update_masterclass: ({ masterclass }) => {
+    const kept = store.masterclasses.find((m) => m.id === masterclass.id);
+    if (!kept) throw new Error("That masterclass is no longer there.");
+    if (masterclass.title.trim()) kept.title = masterclass.title.trim().slice(0, 200);
+    kept.notes = masterclass.notes.trim().slice(0, 4000);
+    return clone({ ...kept, projectCount: store.projects.filter((pr) => pr.masterclassId === kept.id).length });
+  },
+  delete_masterclass: ({ id }) => {
+    for (const pr of store.projects) if (pr.masterclassId === id) pr.masterclassId = "";
+    store.masterclasses = store.masterclasses.filter((m) => m.id !== id);
+    store.covers.delete(`masterclass:${id}`);
+  },
+  get_masterclass_thumb: ({ id }) => {
+    const bytes = store.covers.get(`masterclass:${id}`);
+    if (!bytes) throw new Error("That video has no picture.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  set_project_masterclass: ({ id, masterclassId }) => {
+    const pr = store.projects.find((x) => x.id === id);
+    if (!pr) throw new Error("That project is no longer there.");
+    if (masterclassId && !store.masterclasses.some((m) => m.id === masterclassId)) throw new Error("That masterclass is no longer there.");
+    pr.masterclassId = masterclassId || "";
+    return projectOut(pr);
+  },
+
   // ---------- cheatsheets ----------
   //
   // As cheatsheets.rs: an address tidied (an embed code unwrapped, YouTube as

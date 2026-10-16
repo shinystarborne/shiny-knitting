@@ -9,6 +9,7 @@ mod db;
 mod export;
 mod external;
 mod link_preview;
+mod masterclasses;
 mod models;
 mod needle_size;
 mod people;
@@ -140,6 +141,12 @@ pub fn run() {
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,
+            projects::set_project_masterclass,
+            masterclasses::list_masterclasses,
+            masterclasses::add_masterclass,
+            masterclasses::update_masterclass,
+            masterclasses::delete_masterclass,
+            masterclasses::get_masterclass_thumb,
             projects::set_project_chart,
             projects::delete_project,
             projects::set_project_cover,

@@ -31,6 +31,7 @@ import { askYesNo, say } from "./dialogs";
 import { closestEl } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 import { CheatsheetsView } from "./views/cheatsheets";
+import { MasterclassesView } from "./views/masterclasses";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
@@ -40,7 +41,7 @@ import { CheatsheetsView } from "./views/cheatsheets";
  * The current layout choice is remembered for the session.
  */
 
-type Tab = "patterns" | "projects" | "people" | "calculators" | "cheatsheets" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
+type Tab = "patterns" | "projects" | "people" | "calculators" | "cheatsheets" | "masterclasses" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
@@ -66,6 +67,7 @@ class App {
   private activeWishlist: WishlistView | null = null;
   private activeShops: ShopsView | null = null;
   private activeCheatsheets: CheatsheetsView | null = null;
+  private activeMasterclasses: MasterclassesView | null = null;
   private layout: Layout = "split";
 
   /**
@@ -92,6 +94,7 @@ class App {
       <button class="tab" data-tab="people">People</button>
       <button class="tab" data-tab="calculators">Calculators</button>
       <button class="tab" data-tab="cheatsheets">Cheatsheets</button>
+      <button class="tab" data-tab="masterclasses">Masterclasses</button>
       <button class="tab" data-tab="inspiration">Inspiration</button>
       <button class="tab" data-tab="stash">Stash</button>
       <button class="tab" data-tab="tools">Needles &amp; hooks</button>
@@ -135,6 +138,8 @@ class App {
         void this.showCalculators();
       } else if (tab.dataset.tab === "cheatsheets") {
         void this.showCheatsheets();
+      } else if (tab.dataset.tab === "masterclasses") {
+        void this.showMasterclasses();
       } else if (tab.dataset.tab === "projects") {
         void this.showProjects();
       } else {
@@ -396,6 +401,8 @@ class App {
     this.activeChartPage = null;
     this.activeCheatsheets?.destroy();
     this.activeCheatsheets = null;
+    this.activeMasterclasses?.destroy();
+    this.activeMasterclasses = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.activeWishlist = null;
@@ -496,6 +503,15 @@ class App {
     this.setActiveTab("cheatsheets");
     const view = new CheatsheetsView(this.screen);
     this.activeCheatsheets = view;
+    await view.mount();
+  }
+
+  private async showMasterclasses(): Promise<void> {
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("masterclasses");
+    const view = new MasterclassesView(this.screen);
+    this.activeMasterclasses = view;
     await view.mount();
   }
 

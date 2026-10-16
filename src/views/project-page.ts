@@ -1,4 +1,4 @@
-import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type Masterclass, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ProjectChart } from "./project-chart";
@@ -7,6 +7,7 @@ import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } fro
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
+import { playerHtml } from "./masterclasses";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -56,6 +57,9 @@ export class ProjectPage {
   private tools: Tool[] = [];
   /** The people a project can be for, and how their measurements are shown. */
   private people: Person[] = [];
+  private masterclasses: Masterclass[] = [];
+  /** The masterclass played on the page, beside its details. */
+  private watching = false;
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
@@ -94,11 +98,12 @@ export class ProjectPage {
       return;
     }
     this.project = found;
-    [this.patterns, this.tools, this.people, this.unit] = await Promise.all([
+    [this.patterns, this.tools, this.people, this.unit, this.masterclasses] = await Promise.all([
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.listTools().catch(() => [] as Tool[]),
       api.listPeople().catch(() => [] as Person[]),
       api.getMeasureUnit().catch(() => "cm" as const),
+      api.listMasterclasses().catch(() => [] as Masterclass[]),
     ]);
 
     this.root = document.createElement("div");
@@ -278,6 +283,7 @@ export class ProjectPage {
              <div data-el="chart"></div>`
           : ""
       }
+      ${this.masterclassHtml()}
 
       <label class="field">
         <span>For</span>
@@ -363,6 +369,33 @@ ${plan ? "" : `      <div class="project-side-dates">
    * The latest measurements of the person it is for: every one they have,
    * since which matter depends on what is being knitted.
    */
+  /**
+   * The masterclass it is knitted along with: chosen from the ones kept, and
+   * played here (YouTube's), or opened in the browser.
+   */
+  private masterclassHtml(): string {
+    const p = this.project;
+    const m = this.masterclasses.find((x) => x.id === p.masterclassId);
+    if (!this.masterclasses.length && !m) return "";
+    return `
+      <div class="field project-masterclass">
+        <span>Masterclass</span>
+        <select data-f="masterclass" title="A video it is knitted along with, from the Masterclasses tab">
+          <option value="">None</option>
+          ${this.masterclasses.map((x) => `<option value="${esc(x.id)}" ${x.id === p.masterclassId ? "selected" : ""}>${esc(x.title)}${x.channel ? ` (${esc(x.channel)})` : ""}</option>`).join("")}
+        </select>
+        ${
+          m
+            ? `<div class="project-pattern-links">
+                 ${m.videoId ? `<button class="ghost" data-act="mc-watch" title="Play it here, under its name">${this.watching ? "▾ Hide the video" : "▶ Watch here"}</button>` : ""}
+                 <button class="link" data-act="mc-open" title="Open it in your browser">Open it ↗</button>
+               </div>
+               ${this.watching && m.videoId ? playerHtml(m, "mc-player project-mc-player") : ""}`
+            : ""
+        }
+      </div>`;
+  }
+
   private personMeasures(): string {
     const person = this.people.find((pe) => pe.id === this.project.personId);
     if (!person) return "";
@@ -437,6 +470,14 @@ ${plan ? "" : `      <div class="project-side-dates">
       input.click();
     }
     if (act === "cover-copy") await copyPicture(projectCoverUrl(this.projectId), "The cover");
+    if (act === "mc-watch") {
+      this.watching = !this.watching;
+      return this.renderSide();
+    }
+    if (act === "mc-open") {
+      const m = this.masterclasses.find((x) => x.id === this.project.masterclassId);
+      if (m) await api.openLink(m.url).catch((err) => say(err instanceof Error ? err.message : String(err), "Masterclass"));
+    }
     if (act === "card") {
       await openProjectCard(this.project, {
         changed: (p) => {
@@ -471,6 +512,16 @@ ${plan ? "" : `      <div class="project-side-dates">
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
     if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));
+    // The masterclass is saved on its own, as who it is for is.
+    if (f === "masterclass") {
+      try {
+        this.project = await api.setProjectMasterclass(this.projectId, (e.target as HTMLSelectElement).value);
+      } catch (err) {
+        await say(err instanceof Error ? err.message : String(err), "Project");
+      }
+      this.watching = false;
+      return this.renderSide();
+    }
     // The size is saved on its own, as who it is for is.
     if (f === "size") {
       try {
