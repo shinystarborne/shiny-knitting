@@ -21,9 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **A project card to post**: one picture of a project with what there
-  is to say about it, saved or copied. *Decided:* its shape chosen each
-  time (square, 4:5 portrait, a story's 9:16). See below.
 - [ ] **Needles and cables that fit each other**: a needle's and a cable's
   connector system (ChiaoGoo / Lotus Yarns, KnitPro...), so a ChiaoGoo
   needle is only offered ChiaoGoo cables. See below.
@@ -46,15 +43,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### A project card to post
-
-One picture to post on social media, made from a project: its name, the
-pattern and its designer, started and finished dates, a few of its photos
-(chosen), the yarn used and how much, the size knitted, the needles, and
-lines from its log (chosen). Saved as a PNG, or copied to paste straight into
-a post. Decided (16 Oct 2026): the shape is picked in the card's screen
-each time: square, 4:5 portrait or a story's 9:16.
 
 ### Needles and cables that fit each other
 
@@ -283,6 +271,13 @@ round one). Which heels exactly is to be settled before building.
   board (⧉ Copy, or Ctrl+C selected), a photo on the log card and in the
   log (Copy), and the gallery's photo shown (Copy photo): to the clipboard
   as a PNG (copy-picture.ts), to paste anywhere. *0.3.72*
+- **A project's card, to post:** Card to post… on its page and in the
+  gallery (project-card.ts): up to four photos, its name, pattern and
+  designer, dates, yarn and how much it used (yarn_usage), needles, size,
+  who for, and lines from its log; square, 4:5 or 9:16, in four colours;
+  what does not fit shrunk, then left out from the end, and said; copied
+  or saved as a PNG, the choices kept per project (localStorage). A
+  project's size knitted (projects.size, set_project_size). *0.3.73*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with

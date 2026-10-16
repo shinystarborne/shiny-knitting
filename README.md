@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.73](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.73)** —
+  a project's card to post: its photos, pattern, yarn, needles and size, square, 4:5 or a story. The one to test.
 - **[v0.3.0-beta.72](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.72)** —
-  a project's pictures copied, to paste anywhere: its cover, board, log and gallery. The one to test.
+  a project's pictures copied, to paste anywhere: its cover, board, log and gallery. Superseded by `beta.73`.
 - **[v0.3.0-beta.71](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.71)** —
   measurements between the calculators and People: whose filled them, and Save to People. Superseded by `beta.72`.
 - **[v0.3.0-beta.70](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.70)** —
