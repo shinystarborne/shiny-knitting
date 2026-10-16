@@ -41,6 +41,12 @@ under the list.
   from a person's foot and a swatch. **Decide first:** which heels. See
   below.
 
+**Asked for 17 Oct 2026**
+
+- [ ] **Pictures opened big, to zoom**: a lightbox for a project's
+  pictures (its cover, its board's, its log's), finished projects' and the
+  gallery's. See below.
+
 ### A project card to post
 
 One picture to post on social media, made from a project: its name, the
@@ -97,6 +103,16 @@ model can spend all of it thinking about a long pattern and answer with
 nothing, and the run shows an error. To do: send less of a long pattern,
 ask again once with more room (or less reasoning) when the reply comes
 back empty, and in a run over the library, note the pattern and go on.
+
+### Pictures opened big
+
+A picture clicked opens over the app, as big as the window allows: zoomed
+in and out (the wheel, + and −, a double-click), dragged about when it is
+bigger than the window, the next and the one before by the arrow keys when
+there are several (a project's photos, the gallery's), Copy there too, and
+Esc or a click beside it to close. The same everywhere a project's picture
+is: its cover, the board's pictures and pins, the log card's and the log's
+photos, and the gallery (whose big photo zooms the same way).
 
 ### Socks
 
