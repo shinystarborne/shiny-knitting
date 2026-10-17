@@ -815,6 +815,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "patterns", "price")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
     }
+    // The size knitted from a pattern, as its place among the sizes.
+    if !column_exists(conn, "patterns", "size_index")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN size_index INTEGER", [])?;
+    }
     // Needles and hooks: what one cost alone, and the set it came in, a set
     // having one price for all its pieces.
     conn.execute_batch(
@@ -1113,6 +1117,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
         zoom: row.get("zoom")?,
         file_missing: false,
         price: row.get("price")?,
+        size_index: row.get("size_index")?,
     })
 }
 
@@ -2872,6 +2877,20 @@ pub fn price(p: Option<f64>) -> AppResult<Option<f64>> {
 /// What a pattern cost, or not said.
 pub fn set_pattern_price(conn: &Connection, id: &str, value: Option<f64>) -> AppResult<Pattern> {
     let changed = conn.execute("UPDATE patterns SET price = ?2 WHERE id = ?1", params![id, price(value)?])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That pattern is no longer in the library.".to_string()));
+    }
+    get_pattern(conn, id)
+}
+
+/// The size knitted from a pattern, as its place among the pattern's sizes;
+/// None for none. A pattern has a handful of sizes, so a place past 30 is a
+/// mistake.
+pub fn set_pattern_size(conn: &Connection, id: &str, index: Option<i64>) -> AppResult<Pattern> {
+    if index.is_some_and(|i| !(0..=30).contains(&i)) {
+        return Err(AppError::Message("A size is one of the pattern's: the first, the second…".to_string()));
+    }
+    let changed = conn.execute("UPDATE patterns SET size_index = ?2 WHERE id = ?1", params![id, index])?;
     if changed == 0 {
         return Err(AppError::NotFound("That pattern is no longer in the library.".to_string()));
     }

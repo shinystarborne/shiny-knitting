@@ -1449,6 +1449,7 @@ const handlers = {
     const p = store.patterns.find((x) => x.id === id);
     if (p.fileName === "long-pattern.pdf") return fetchFixture("long-pattern.pdf");
     if (p.fileName === "scanned-pattern.pdf") return fetchFixture("scanned-pattern.pdf");
+    if (p.fileName === "sized-pattern.pdf") return fetchFixture("sized-pattern.pdf");
     return fetchFixture(p.format === "epub" ? "sample-pattern.epub" : "sample-pattern.pdf");
   },
   // ---------- counters ----------
@@ -2527,6 +2528,14 @@ const handlers = {
     const p = store.patterns.find((x) => x.id === id);
     if (!p) throw new Error(`pattern not found: ${id}`);
     p.price = cents(price);
+    return clone(p);
+  },
+  // As db::set_pattern_size: a place among the sizes, 0 to 30, or none.
+  set_pattern_size: ({ id, index }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error(`pattern not found: ${id}`);
+    if (index != null && !(Number.isInteger(index) && index >= 0 && index <= 30)) throw new Error("A size is one of the pattern's: the first, the second…");
+    p.sizeIndex = index ?? null;
     return clone(p);
   },
   get_measure_unit: () => store.measureUnit ?? "cm",

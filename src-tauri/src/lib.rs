@@ -57,6 +57,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::add_pattern,
             commands::set_pattern_price,
+            commands::set_pattern_size,
             commands::get_currency,
             commands::save_currency,
             commands::upload_pattern,

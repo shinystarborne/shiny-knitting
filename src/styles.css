@@ -4097,3 +4097,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .measure-how h3 { margin: 0; font-size: 15px; }
 .measure-how p { margin: 0; font-size: 13px; }
 .measure-label[data-how] { cursor: help; }
+/* The size knitted, in a pattern's runs of sizes: its number marked, the others dimmed (pdf.ts). */
+.page-sizes { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.size-mine { position: absolute; background: rgba(46, 204, 113, 0.32); outline: 2px solid rgba(30, 150, 80, 0.9); outline-offset: 1px; border-radius: 2px; mix-blend-mode: multiply; }
+.size-dim { position: absolute; background: rgba(255, 255, 255, 0.62); }
+.size-pick { max-width: 150px; height: 30px; padding: 0 6px; font-size: 12px; }

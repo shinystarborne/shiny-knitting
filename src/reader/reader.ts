@@ -9,6 +9,7 @@ import { MarkLayer, MARK_COLOURS, type MarkTool } from "./marks";
 import { PinLayer } from "./pins";
 import { ContentsPanel } from "./contents";
 import { SearchBar } from "./search";
+import { sizeLabel, sizesOf } from "./sizes";
 import { PdfView, type RenderedDoc } from "./pdf";
 import { RowCounter } from "./counter";
 import { ProjectPanel } from "./project-panel";
@@ -253,6 +254,8 @@ export class ReaderView {
         this.search.onToggle = (open) =>
           this.root.querySelector("[data-search-tool]")?.classList.toggle("on", open);
         document.addEventListener("keydown", this.onFindKey, true);
+        // The pattern's sizes, read from its text while it is read.
+        void this.offerSizes(searchTexts);
       }
     }
     this.pins = new PinLayer(this.scroller, this.pattern.id, {
@@ -383,6 +386,7 @@ export class ReaderView {
               ? `<div class="zoom-tools" role="toolbar" aria-label="Zoom">
                   <button data-act="go-page" class="ghost page-readout" data-page-readout title="The page in view, of all of them: click to go to another">1 / 1</button>
                   <button data-act="search" class="ghost icon-btn" aria-label="Search" title="Search in this PDF (Ctrl+F)" data-search-tool>🔎</button>
+                  <select class="size-pick" data-size-pick hidden aria-label="Your size" title="The size you knit: its numbers marked in the pattern, the other sizes dimmed"></select>
                   <button data-act="zoom-out" class="ghost icon-btn" aria-label="Zoom out" title="Zoom out (Ctrl+-)">−</button>
                   <span class="zoom-pct" data-zoom-pct>100%</span>
                   <button data-act="zoom-in" class="ghost icon-btn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
@@ -939,6 +943,31 @@ export class ReaderView {
     return true;
   }
 
+
+  /**
+   * The Size picker: shown when the pattern's text gives its sizes, named
+   * ("XS (S, M, L)") or by their place; the size chosen is the pattern's,
+   * marked in its text as it is read.
+   */
+  private async offerSizes(texts: () => Promise<string[]>): Promise<void> {
+    const pick = this.root.querySelector<HTMLSelectElement>("[data-size-pick]");
+    if (!pick) return;
+    const found = sizesOf(await texts().catch(() => [] as string[]));
+    if (this.destroyed || found.count < 2) return;
+    const chosen = this.pattern.sizeIndex != null && this.pattern.sizeIndex < found.count ? this.pattern.sizeIndex : null;
+    pick.innerHTML = [
+      `<option value="">Size: all</option>`,
+      ...Array.from({ length: found.count }, (_, i) => `<option value="${i}" ${i === chosen ? "selected" : ""}>Size: ${escapeHtml(sizeLabel(i, found.names))}</option>`),
+    ].join("");
+    pick.hidden = false;
+    this.doc?.setSizes?.(found.count, chosen);
+    pick.addEventListener("change", () => {
+      const index = pick.value === "" ? null : Number(pick.value);
+      this.doc?.setSizes?.(found.count, index);
+      this.pattern = { ...this.pattern, sizeIndex: index };
+      void api.setPatternSize(this.pattern.id, index).catch((err) => say(err instanceof Error ? err.message : String(err), "Size"));
+    });
+  }
 
   /** Switches the marking tool, and paints the toolbar to show which is on. */
   private setMarkTool(tool: MarkTool): void {

@@ -250,7 +250,31 @@ function normalise(value: string): string {
 export function findTextMatches(container: HTMLElement, query: string): Range[][] {
   const wanted = normalise(query).toLowerCase();
   if (!wanted) return [];
+  const text = textIndex(container);
+  const matches: Range[][] = [];
+  for (let at = text.haystack.indexOf(wanted); at >= 0; at = text.haystack.indexOf(wanted, at + wanted.length)) {
+    const ranges = text.rangesFor(at, at + wanted.length);
+    if (ranges.length) matches.push(ranges);
+  }
+  return matches;
+}
 
+/**
+ * Places found in a container's text by a finder of its own -- each a list
+ * of parts, as a run of sizes is its numbers -- as the ranges each part
+ * covers. The finder reads the text as search does (see `findTextMatches`).
+ */
+export function findTextParts(container: HTMLElement, find: (text: string) => { start: number; end: number }[][]): Range[][][] {
+  const text = textIndex(container);
+  return find(text.haystack).map((parts) => parts.map((p) => text.rangesFor(p.start, p.end)));
+}
+
+/**
+ * A container's text as search reads it -- whitespace collapsed, a boundary
+ * between elements a space, lower-cased -- and the DOM ranges for any span
+ * of it.
+ */
+function textIndex(container: HTMLElement): { haystack: string; rangesFor(start: number, end: number): Range[] } {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   let haystack = "";
@@ -281,8 +305,7 @@ export function findTextMatches(container: HTMLElement, query: string): Range[][
     }
   }
 
-  const matches: Range[][] = [];
-  for (let at = haystack.indexOf(wanted); at >= 0; at = haystack.indexOf(wanted, at + wanted.length)) {
+  const rangesFor = (start: number, end: number): Range[] => {
     const ranges: Range[] = [];
     let current: { node: Text; start: number; end: number } | null = null;
     const flush = () => {
@@ -297,7 +320,7 @@ export function findTextMatches(container: HTMLElement, query: string): Range[][
       }
       current = null;
     };
-    for (let i = at; i < at + wanted.length; i++) {
+    for (let i = start; i < end; i++) {
       const o = origin[i];
       const node = nodes[o.node];
       // A space standing for a boundary between elements has no text of its
@@ -314,9 +337,9 @@ export function findTextMatches(container: HTMLElement, query: string): Range[][
       current = { node, start: o.offset, end: o.offset + 1 };
     }
     flush();
-    if (ranges.length) matches.push(ranges);
-  }
-  return matches;
+    return ranges;
+  };
+  return { haystack, rangesFor };
 }
 
 /**

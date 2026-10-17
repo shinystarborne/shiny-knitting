@@ -3721,6 +3721,19 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
 }
 
 #[test]
+fn a_pattern_keeps_the_size_knitted_from_it() {
+    let conn = test_db();
+    let p = sample(&conn, "Riddari", "Védís", "", &[]);
+    assert_eq!(p.size_index, None);
+    assert_eq!(set_pattern_size(&conn, &p.id, Some(2)).unwrap().size_index, Some(2));
+    assert_eq!(get_pattern(&conn, &p.id).unwrap().size_index, Some(2), "kept");
+    assert_eq!(set_pattern_size(&conn, &p.id, None).unwrap().size_index, None);
+    assert!(set_pattern_size(&conn, &p.id, Some(-1)).is_err());
+    assert!(set_pattern_size(&conn, &p.id, Some(31)).is_err());
+    assert!(set_pattern_size(&conn, "nowhere", Some(0)).is_err());
+}
+
+#[test]
 fn prices_are_kept_to_the_cent_or_not_said() {
     let conn = test_db();
     let p = sample(&conn, "Riddari", "Védís", "", &[]);

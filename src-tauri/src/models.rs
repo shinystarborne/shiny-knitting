@@ -114,6 +114,11 @@ pub struct Pattern {
     /// What it cost, in the currency of the settings; None when not said.
     #[serde(default)]
     pub price: Option<f64>,
+    /// The size knitted from it, as its place in the pattern's sizes (0 the
+    /// first): its numbers are marked as it is read, the others dimmed. None
+    /// marks nothing.
+    #[serde(default)]
+    pub size_index: Option<i64>,
 }
 
 fn fit_width() -> f64 {

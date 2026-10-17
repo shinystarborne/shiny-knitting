@@ -1,6 +1,7 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { findTextMatches, pageSearchText, rectsForRanges } from "../annotations";
+import { findTextMatches, findTextParts, pageSearchText, rectsForRanges } from "../annotations";
+import { sizeRuns } from "./sizes";
 import { boxToView, normalRotation, type Rotation } from "./rotation";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -83,6 +84,12 @@ export interface RenderedDoc {
   searchTexts?(): Promise<string[]>;
   /** PDF only: shows a query's matches, marking one as current; null clears. */
   setSearch?(query: string | null, current?: SearchHit | null): void;
+  /**
+   * PDF only: the size knitted, among a pattern's `count` sizes: in every run
+   * of the sizes' numbers its number is marked and the others dimmed. Null
+   * marks nothing.
+   */
+  setSizes?(count: number, chosen: number | null): void;
   /**
    * PDF only: how far the reader has turned a page, clockwise. Marks and pins
    * are stored upright and turned by this on the way to the screen.
@@ -435,6 +442,8 @@ export class PdfView implements RenderedDoc {
   private pageTexts = new Map<number, string>();
   /** The query being shown, and which match is the current one. */
   private search: { query: string; current: SearchHit | null } | null = null;
+  /** The size knitted, among how many: its numbers marked, the others dimmed. */
+  private sizes: { count: number; chosen: number } | null = null;
 
   /**
    * Every page's text, as search counts it.
@@ -462,6 +471,40 @@ export class PdfView implements RenderedDoc {
       );
     }
     return Array.from({ length: this.pageCount }, (_, i) => this.pageTexts.get(i + 1) ?? "");
+  }
+
+  /** Marks the size knitted in every run of the sizes' numbers, dimming the others; null clears. */
+  setSizes(count: number, chosen: number | null): void {
+    this.sizes = count >= 2 && chosen !== null && chosen < count ? { count, chosen } : null;
+    for (let n = 1; n <= this.pages.length; n++) this.paintSizes(n);
+  }
+
+  /** Draws one page's sizes over its text: only runs of as many numbers as there are sizes. */
+  private paintSizes(n: number): void {
+    const page = this.pages[n - 1];
+    if (!page) return;
+    page.querySelector(".page-sizes")?.remove();
+    const sizes = this.sizes;
+    const text = this.textLayerFor(n);
+    if (!sizes || !text) return;
+    const runs = findTextParts(text, (t) => sizeRuns(t).filter((run) => run.length === sizes.count));
+    if (!runs.length) return;
+    const layer = document.createElement("div");
+    layer.className = "page-sizes";
+    for (const run of runs) {
+      run.forEach((ranges, i) => {
+        for (const r of rectsForRanges(ranges, page)) {
+          const box = document.createElement("div");
+          box.className = i === sizes.chosen ? "size-mine" : "size-dim";
+          box.style.left = `${r.x * 100}%`;
+          box.style.top = `${r.y * 100}%`;
+          box.style.width = `${r.w * 100}%`;
+          box.style.height = `${r.h * 100}%`;
+          layer.appendChild(box);
+        }
+      });
+    }
+    page.appendChild(layer);
   }
 
   /** Shows a query's matches on the painted pages, or clears them with null. */
@@ -780,8 +823,9 @@ export class PdfView implements RenderedDoc {
     this.textLayers.set(page.pageNumber, layer);
     await layer.render();
     // A page painted after a search started, by scrolling to it, shows its
-    // matches too.
+    // matches too; and the size knitted, once there is one.
     if (this.search) this.paintSearch(page.pageNumber);
+    if (this.sizes) this.paintSizes(page.pageNumber);
   }
 
   /**

@@ -52,6 +52,8 @@ export interface Pattern {
   fileMissing?: boolean;
   /** What it cost, in the settings' currency; null when not said. */
   price?: number | null;
+  /** The size knitted from it, as its place among its sizes (0 the first); null for none. */
+  sizeIndex?: number | null;
 }
 
 /** Mirrors `models.rs::Section`. */
@@ -1510,6 +1512,8 @@ export const api = {
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
   /** What a pattern cost, in the settings' currency; null for not said. */
   setPatternPrice: (id: string, price: number | null) => invoke<Pattern>("set_pattern_price", { id, price }),
+  /** The size knitted from a pattern, as its place among its sizes; null for none. */
+  setPatternSize: (id: string, index: number | null) => invoke<Pattern>("set_pattern_size", { id, index }),
   /** The currency prices are in, as an ISO code: EUR unless chosen. */
   getCurrency: () => invoke<string>("get_currency"),
   saveCurrency: (code: string) => invoke<string>("save_currency", { code }),

@@ -35,6 +35,12 @@ pub fn set_pattern_price(state: State<'_, AppState>, id: String, price: Option<f
     db::set_pattern_price(&state.db(), &id, price)
 }
 
+/// The size knitted from a pattern, as its place among its sizes; None for none.
+#[tauri::command]
+pub fn set_pattern_size(state: State<'_, AppState>, id: String, index: Option<i64>) -> CmdResult<Pattern> {
+    db::set_pattern_size(&state.db(), &id, index)
+}
+
 /// The currency prices are in: an ISO code, EUR unless chosen.
 #[tauri::command]
 pub fn get_currency(state: State<'_, AppState>) -> CmdResult<String> {
