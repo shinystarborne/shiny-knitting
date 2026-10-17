@@ -21,9 +21,9 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Prices**: what yarn, needles and patterns cost, to keep track of what
-  is spent. *Decided (16 Oct 2026):* yarn priced per ball, a lot adding up;
-  totals for the stash, the tools and per project. See below.
+- [ ] **Prices for tools**: what needles & hooks cost, a set with one price
+  for the set, and the total cost of all the tools. Yarn and patterns have
+  theirs (0.3.86). See below.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
@@ -38,15 +38,9 @@ under the list.
 
 ### Prices
 
-The wishlist takes a price already, as typed ("€4.95 a ball"). The stash's
-yarn, needles & hooks and patterns get one too, carried over when a
-wishlist item is got. Decided (16 Oct 2026):
+Decided (16 Oct 2026). Yarn, patterns, the stash's worth, the spending by
+month and a project's cost are built (0.3.86, see Already built). Left:
 
-- **Yarn:** a price per ball; a lot's cost is its balls times that.
-- **The stash's total:** what the yarn in it cost, and in the Statistics
-  what was spent each month, from when it was added to the stash.
-- **Per project:** what its yarn and its pattern cost. Tools are left out of
-  a project's cost.
 - **Tools:** the total cost of all the needles & hooks. A set is added as
   one entry per size, with nothing tying them together afterwards, so a set
   needs to become a thing of its own: its pieces chosen (or the ones added
@@ -293,7 +287,16 @@ round one). Which heels exactly is to be settled before building.
   app's port 47851, the tokens kept with DPAPI and renewed; the app's id and
   secret built in from src-tauri/.env.ravelry, never in Git. Ravelry's site refuses frames (X-Frame-Options
   SAMEORIGIN), so nothing of it is shown inside the app. Built to the API's
-  docs and a stand-in: not yet tried against Ravelry itself. *0.3.84*
+  docs and a stand-in, then signed in for real (17 Oct 2026). *0.3.84*
+- **Prices:** a lot's price a ball (yarn_lots.price) and a pattern's price
+  (patterns.price, set_pattern_price), plain numbers to the cent in the one
+  currency of Settings (setting "currency", EUR to start). money.ts holds
+  the sums: what the stash is worth (a weighed lot by its share of a ball),
+  what was spent by month (a lot dated when bought, else when its yarn was
+  added; a pattern when added), shown in Statistics with the month's list
+  and a Spent column; a project's cost on its page, its yarn by the grams
+  used once finished or else planned, and its pattern, tools not counted. A
+  wishlist price becomes a ball's (pricePerBall). *0.3.86*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
