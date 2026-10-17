@@ -19,7 +19,91 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-Nothing on it now: the next comes from the ideas below, or anything new.
+**Asked for 17 Oct 2026**
+
+- [ ] **Your size highlighted in a pattern**: pick a size once, and every
+  "100 (110, 120, 130)" in it shows that size's number. See below.
+- [ ] **How much yarn it will take**: the calculators' metres and grams
+  from the swatch, checked against the stash. See below.
+- [ ] **Restoring a backup**: reading a backup back in (from the ideas).
+  See below.
+- [ ] **Abbreviations explained**: ssk, m1l, w&t and the like, explained
+  where they are in a pattern. See below.
+- [ ] **Calculator steps as a checklist**: steps saved to a project, ticked
+  off as knitted, a counter for a step that repeats. See below.
+- [ ] **Knitting time**: a timer on a project; hours per project, and what
+  it cost an hour. See below.
+- [ ] **The yarn form filled from a photo of the ball band**, read by the
+  model. See below.
+- [ ] **Colours from a photo**: a palette for a chart, and the nearest
+  yarns in the stash. See below.
+- [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
+  below.
+- [ ] **Every People measurement drawn**, as the foot's are. See below.
+
+### Your size in a pattern
+
+A pattern gives every size at once: "Cast on 100 (110, 120, 130) sts". A
+size chosen for the pattern (kept with it, or with a project knitted from
+it) is shown wherever such a run of numbers is in its text: the number for
+that size marked, the others dimmed. The sizes read from the pattern's own
+list ("XS (S, M, L)") where it gives one. Text layers vary: numbers split
+over lines, or in a table, are the hard part.
+
+### How much yarn
+
+The raglan, round yoke and socks say about how much yarn: the stitches
+knitted, by the swatch's metres (a swatch weighed, or its yarn's metres per
+gram), with a margin. Then the stash: which yarns of that weight have
+enough, and how far short the others are, in balls.
+
+### Restoring a backup
+
+Make a backup is built (Settings): the database and the files. Restoring
+reads one back in, in place of what is there now, after saying so plainly
+and making a backup of the present first.
+
+### Abbreviations
+
+A glossary of the common abbreviations (ssk, k2tog, m1l, m1r, w&t, sl1
+wyif, kfb, psso, …), each with what it means; one in a pattern's text shown
+when pointed at, and a masterclass video linked where one covers it. Your
+own added to it.
+
+### Steps as a checklist
+
+A calculator's steps saved to a project as a checklist, not a text: each
+step ticked when done, the one being knitted marked, and a step that
+repeats ("decrease every other round 10 times") given its own counter.
+
+### Knitting time
+
+A timer on a project's page: started and stopped, or typed in. Hours per
+project, in Statistics too; with its cost (Prices), what it came to an
+hour.
+
+### The ball band, from a photo
+
+A photo of a ball band in the yarn form, read by the model set in Settings
+(as a pattern's scan is): brand, name, colourway, dye lot, metres and grams
+per ball, fibres, the gauge and needles, and the care symbols, filled in to
+check before saving.
+
+### Colours from a photo
+
+A photo's main colours picked out: as a palette for a colourwork chart,
+and matched to the nearest yarns in the stash (by their photos' colour).
+
+### Yearly goals
+
+Goals for a year: projects finished, grams or metres of the stash used,
+or your own. Shown in Statistics with how far along they are.
+
+### Every measurement drawn
+
+Drawings for People's other measurements, as the foot's are: a simple
+figure, the tape or the line marked, beside the table and in the
+calculators.
 
 ---
 
@@ -56,7 +140,6 @@ Nothing on it now: the next comes from the ideas below, or anything new.
   import would fill both tabs.
 - **Needles a plan needs.** Plans take no needles yet; a plan could warn that
   it needs a 4 mm circular you do not own, or that is busy on another project.
-- **Restoring a backup.** Make a backup is built; reading one back in is not.
 
 ---
 
