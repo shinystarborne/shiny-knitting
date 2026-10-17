@@ -3721,6 +3721,50 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
 }
 
 #[test]
+fn knitting_is_timed_one_project_at_a_time() {
+    let conn = test_db();
+    let project = |name: &str| insert_project(&conn, name, &crate::models::ProjectInput { name: name.into(), ..Default::default() }).unwrap();
+    let hat = project("Hat");
+    let socks = project("Socks");
+    assert_eq!(running_knit_session(&conn).unwrap(), None);
+    let first = start_knitting(&conn, &hat.id).unwrap();
+    assert_eq!((running_knit_session(&conn).unwrap().unwrap().id, first.ended_at), (first.id.clone(), None));
+    // Another started stops the first.
+    let second = start_knitting(&conn, &socks.id).unwrap();
+    let hats = list_knit_sessions(&conn, Some(&hat.id)).unwrap();
+    assert!(hats[0].ended_at.is_some(), "the hat's timer stopped");
+    assert_eq!(running_knit_session(&conn).unwrap().unwrap().id, second.id);
+    let stopped = stop_knitting(&conn).unwrap().unwrap();
+    assert!(stopped.ended_at.unwrap() >= stopped.started_at);
+    assert_eq!(stop_knitting(&conn).unwrap(), None, "nothing runs now");
+
+    // Typed in, put right, removed.
+    let day = now_ms() - 3 * 86_400_000;
+    let typed = add_knit_time(&conn, &hat.id, day, 5400).unwrap();
+    assert_eq!(typed.ended_at, Some(day + 5_400_000));
+    assert!(add_knit_time(&conn, &hat.id, day, 30).is_err(), "a minute at least");
+    assert!(add_knit_time(&conn, &hat.id, day, 25 * 3600).is_err(), "a day at most");
+    assert!(add_knit_time(&conn, &hat.id, now_ms() + 86_400_000, 3600).is_err(), "not to come");
+    assert!(add_knit_time(&conn, "nowhere", day, 3600).is_err());
+    let fixed = change_knit_session(&conn, &typed.id, day, 7200).unwrap();
+    assert_eq!(fixed.ended_at, Some(day + 7_200_000));
+    assert_eq!(list_knit_sessions(&conn, None).unwrap().len(), 3);
+    delete_knit_session(&conn, &typed.id).unwrap();
+    assert_eq!(list_knit_sessions(&conn, Some(&hat.id)).unwrap().len(), 1);
+
+    // Finished, frogged or removed, its timer stops, or its time goes with it.
+    start_knitting(&conn, &hat.id).unwrap();
+    finish_project(&conn, &hat.id, &crate::models::FinishInput { finished_at: None, leftovers: vec![] }).unwrap();
+    assert_eq!(running_knit_session(&conn).unwrap(), None, "finishing stops it");
+    assert!(start_knitting(&conn, &hat.id).is_err(), "a finished one is typed in");
+    start_knitting(&conn, &socks.id).unwrap();
+    set_project_status(&conn, &socks.id, "frogged").unwrap();
+    assert_eq!(running_knit_session(&conn).unwrap(), None, "frogging stops it");
+    delete_project(&conn, &socks.id).unwrap();
+    assert!(list_knit_sessions(&conn, Some(&socks.id)).unwrap().is_empty());
+}
+
+#[test]
 fn a_pattern_keeps_the_size_knitted_from_it() {
     let conn = test_db();
     let p = sample(&conn, "Riddari", "Védís", "", &[]);

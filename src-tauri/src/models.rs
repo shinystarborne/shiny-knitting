@@ -1051,6 +1051,17 @@ pub struct ToolSetInput {
     pub tool_ids: Vec<String>,
 }
 
+/// A spell of knitting on a project, timed or typed in: when it started,
+/// and when it stopped -- None while the timer runs.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct KnitSession {
+    pub id: String,
+    pub project_id: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+}
+
 /// A tool on an active project: the pair, or one tip of it.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]

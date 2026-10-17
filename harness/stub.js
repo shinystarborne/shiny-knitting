@@ -1228,6 +1228,14 @@ function findChart(id) {
   return c;
 }
 
+/** A sitting's end, as db::sitting checks it: a minute to a day long, not in the future. */
+function knitSitting(startedAt, seconds) {
+  if (!(seconds >= 60 && seconds <= 86400)) throw new Error("A spell of knitting is a minute at least, and 24 hours at most.");
+  const endedAt = startedAt + seconds * 1000;
+  if (endedAt > Date.now() + 60000) throw new Error("That time is still to come.");
+  return endedAt;
+}
+
 /** A price as db::price keeps it: to the cent, null when not said; a wrong one is refused. */
 function cents(price) {
   if (price == null) return null;
@@ -2139,6 +2147,7 @@ const handlers = {
   },
   // As db::set_project_status.
   set_project_status: ({ id, status }) => {
+    if (!isLive(status)) for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("That project is no longer there.");
     if (!["planned", "active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
@@ -2177,6 +2186,7 @@ const handlers = {
     return projectOut(pr);
   },
   finish_project: ({ id, input }) => {
+    for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("That project is no longer there.");
     if (!isLive(pr.status)) throw new Error("That project is already finished or frogged.");
@@ -2222,6 +2232,7 @@ const handlers = {
     return projectOut(pr);
   },
   delete_project: ({ id }) => {
+    store.knitSessions = (store.knitSessions ?? []).filter((k) => k.projectId !== id);
     if (!store.projects.some((x) => x.id === id)) throw new Error("That project is no longer there.");
     for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
     store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
@@ -2529,6 +2540,45 @@ const handlers = {
     if (!p) throw new Error(`pattern not found: ${id}`);
     p.price = cents(price);
     return clone(p);
+  },
+  // ---------- knitting time, as db's knit_sessions ----------
+  list_knit_sessions: ({ projectId }) =>
+    clone((store.knitSessions ?? []).filter((s) => !projectId || s.projectId === projectId).sort((a, b) => b.startedAt - a.startedAt)),
+  running_knit_session: () => clone((store.knitSessions ?? []).find((s) => s.endedAt === null) ?? null),
+  start_knitting: ({ projectId }) => {
+    const p = store.projects.find((x) => x.id === projectId);
+    if (!p) throw new Error("That project is no longer there.");
+    if (!isLive(p.status)) throw new Error("A finished or frogged project is not being knitted: add its time by hand.");
+    const now = Date.now();
+    store.knitSessions = store.knitSessions ?? [];
+    for (const s of store.knitSessions) if (s.endedAt === null) s.endedAt = Math.max(s.startedAt, now);
+    const s = { id: `ks${store.nextId++}`, projectId, startedAt: now, endedAt: null };
+    store.knitSessions.push(s);
+    return clone(s);
+  },
+  stop_knitting: () => {
+    const s = (store.knitSessions ?? []).find((x) => x.endedAt === null);
+    if (!s) return null;
+    s.endedAt = Math.max(s.startedAt, Date.now());
+    return clone(s);
+  },
+  add_knit_time: ({ projectId, startedAt, seconds }) => {
+    if (!store.projects.some((x) => x.id === projectId)) throw new Error("That project is no longer there.");
+    const endedAt = knitSitting(startedAt, seconds);
+    const s = { id: `ks${store.nextId++}`, projectId, startedAt, endedAt };
+    (store.knitSessions = store.knitSessions ?? []).push(s);
+    return clone(s);
+  },
+  change_knit_session: ({ id, startedAt, seconds }) => {
+    const s = (store.knitSessions ?? []).find((x) => x.id === id);
+    if (!s) throw new Error("That time is no longer there.");
+    Object.assign(s, { startedAt, endedAt: knitSitting(startedAt, seconds) });
+    return clone(s);
+  },
+  delete_knit_session: ({ id }) => {
+    const before = (store.knitSessions ?? []).length;
+    store.knitSessions = (store.knitSessions ?? []).filter((x) => x.id !== id);
+    if (store.knitSessions.length === before) throw new Error("That time is no longer there.");
   },
   // As db::set_pattern_size: a place among the sizes, 0 to 30, or none.
   set_pattern_size: ({ id, index }) => {

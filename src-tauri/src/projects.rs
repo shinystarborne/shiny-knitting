@@ -7,7 +7,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, InspirationBoard, LogEntry, Project, ProjectInput};
+use crate::models::{AppError, BoardItem, BoardItemInput, BoardItemPatch, FinishInput, InspirationBoard, KnitSession, LogEntry, Project, ProjectInput};
 
 use super::state::AppState;
 
@@ -86,6 +86,45 @@ pub fn set_project_status(state: State<'_, AppState>, id: String, status: String
 #[tauri::command]
 pub fn finish_project(state: State<'_, AppState>, id: String, input: FinishInput) -> CmdResult<Project> {
     db::finish_project(&state.db(), &id, &input)
+}
+
+/// The spells of knitting: one project's, or all of them.
+#[tauri::command]
+pub fn list_knit_sessions(state: State<'_, AppState>, project_id: Option<String>) -> CmdResult<Vec<KnitSession>> {
+    db::list_knit_sessions(&state.db(), project_id.as_deref())
+}
+
+/// The timer running now, if one is.
+#[tauri::command]
+pub fn running_knit_session(state: State<'_, AppState>) -> CmdResult<Option<KnitSession>> {
+    db::running_knit_session(&state.db())
+}
+
+/// Starts timing a project's knitting, stopping any other timer.
+#[tauri::command]
+pub fn start_knitting(state: State<'_, AppState>, project_id: String) -> CmdResult<KnitSession> {
+    db::start_knitting(&state.db(), &project_id)
+}
+
+#[tauri::command]
+pub fn stop_knitting(state: State<'_, AppState>) -> CmdResult<Option<KnitSession>> {
+    db::stop_knitting(&state.db())
+}
+
+/// Knitting time typed in: when it started, and how many seconds.
+#[tauri::command]
+pub fn add_knit_time(state: State<'_, AppState>, project_id: String, started_at: i64, seconds: i64) -> CmdResult<KnitSession> {
+    db::add_knit_time(&state.db(), &project_id, started_at, seconds)
+}
+
+#[tauri::command]
+pub fn change_knit_session(state: State<'_, AppState>, id: String, started_at: i64, seconds: i64) -> CmdResult<KnitSession> {
+    db::change_knit_session(&state.db(), &id, started_at, seconds)
+}
+
+#[tauri::command]
+pub fn delete_knit_session(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    db::delete_knit_session(&state.db(), &id)
 }
 
 /// Removes a project, and its cover and board pictures with it.

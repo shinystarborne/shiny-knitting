@@ -1,4 +1,5 @@
-import { api, type Pattern, type Tool, type ToolSet, type Yarn, type YarnUse } from "../api";
+import { api, type KnitSession, type Pattern, type Tool, type ToolSet, type Yarn, type YarnUse } from "../api";
+import { hoursText, knittedSince } from "./knit-time";
 import { closestEl } from "../dom";
 import { stashModeSwitch } from "./swatches";
 import { money, spending, spentByMonth, stashWorth, type Spend } from "./money";
@@ -22,6 +23,8 @@ export class StashStatsView {
   /** What was bought with a price, and in what currency prices are. */
   private spends: Spend[] = [];
   private currency = "EUR";
+  /** Every spell of knitting, for the time knitted. */
+  private sessions: KnitSession[] = [];
   /** The month whose yarn is listed: the current one to start with. */
   private chosen = 11;
 
@@ -40,14 +43,16 @@ export class StashStatsView {
     `;
     this.screen.appendChild(this.root);
     this.wire();
-    const [yarns, uses, patterns, currency, tools, sets] = await Promise.all([
+    const [yarns, uses, patterns, currency, tools, sets, sessions] = await Promise.all([
       api.listYarns({ used: "all" }),
       api.listYarnUsage().catch(() => [] as YarnUse[]),
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.getCurrency().catch(() => "EUR"),
       api.listTools().catch(() => [] as Tool[]),
       api.listToolSets().catch(() => [] as ToolSet[]),
+      api.listKnitSessions().catch(() => [] as KnitSession[]),
     ]);
+    this.sessions = sessions;
     this.yarns = yarns;
     this.currency = currency;
     this.spends = spending(yarns, patterns, tools, sets);
@@ -78,6 +83,7 @@ export class StashStatsView {
         <div class="stat-tile"><span>Added in the last 12 months</span><b>${fmt(sum(this.months, "added", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "added", other(kept.unit)))} ${other(kept.unit)}</small></div>
         <div class="stat-tile"><span>Used in the last 12 months</span><b>${fmt(sum(this.months, "used", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "used", other(kept.unit)))} ${other(kept.unit)}</small></div>
         <div class="stat-tile" data-el="worth"><span>The stash is worth</span><b>${money(worth.worth, this.currency)}</b><small>${worth.unpriced ? `${worth.unpriced} yarn${worth.unpriced === 1 ? "" : "s"} without a price` : "what is left, at what it cost"}</small></div>
+        <div class="stat-tile" data-el="knitted"><span>Knitted in the last 12 months</span><b>${hoursText(knittedSince(this.sessions, spent[0].start))}</b><small>${timedCount(this.sessions, spent[0].start)}</small></div>
         <div class="stat-tile" data-el="spent"><span>Spent in the last 12 months</span><b>${money(spentTotal, this.currency)}</b><small>${money(spentYarn, this.currency)} on yarn, ${money(spentPatterns, this.currency)} on patterns, ${money(spentTools, this.currency)} on needles &amp; hooks</small></div>
       </section>
       <section class="usage-panel">
@@ -193,4 +199,10 @@ function weight(grams: number): string {
 
 function esc(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** How many projects were timed since a day: "1 project timed", "3 projects timed". */
+function timedCount(sessions: KnitSession[], from: number): string {
+  const n = new Set(sessions.filter((s) => s.startedAt >= from).map((s) => s.projectId)).size;
+  return n ? `${n} project${n === 1 ? "" : "s"} timed` : "time a project on its page";
 }

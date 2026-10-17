@@ -1,6 +1,7 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, toBytes, type AiSettingsView, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
+import { clock, sessionMs } from "./views/knit-time";
+import { api, toBytes, type AiSettingsView, type KnitSession, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
@@ -105,6 +106,7 @@ class App {
       <button class="tab" data-tab="wishlist">Wishlist</button>
       <button class="tab" data-tab="shops">Shops</button>
       <span class="tab-spacer"></span>
+      <button class="timer-pill" data-act="timer" hidden title="Knitting being timed: open its project"></button>
       <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
     this.screen = document.createElement("div");
@@ -118,6 +120,10 @@ class App {
       const act = closestEl(e.target, "button[data-act]")?.dataset.act;
       if (act === "settings") {
         void this.openSettings();
+        return;
+      }
+      if (act === "timer" && this.timer) {
+        void this.showProjectPage(this.timer.session.projectId);
         return;
       }
       if (act === "update-available") {
@@ -204,6 +210,9 @@ class App {
       const detail = (e as CustomEvent<ProjectPreset>).detail ?? {};
       void this.openProjectForm(null, detail.patternId ?? null, detail);
     });
+    // A timer started or stopped anywhere: the tab bar says so.
+    this.screen.addEventListener("knit-timer", () => void this.refreshTimer());
+    void this.refreshTimer();
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
     });
@@ -300,6 +309,44 @@ class App {
 
   /** The update the startup check found, for the notice to install. */
   private pendingUpdate: UpdateInfo | null = null;
+  /** The knitting being timed, and its project's name, while a timer runs. */
+  private timer: { session: KnitSession; name: string } | null = null;
+  private timerTick: number | null = null;
+
+  /**
+   * The timer in the tab bar: the project being timed and for how long, a
+   * second at a time, wherever the app is. Read again every half minute, so a
+   * timer stopped by finishing its project goes too.
+   */
+  async refreshTimer(): Promise<void> {
+    const session = await api.runningKnitSession().catch(() => null);
+    const pill = this.tabBar.querySelector<HTMLElement>('[data-act="timer"]');
+    if (!pill) return;
+    if (!session) {
+      this.timer = null;
+      pill.hidden = true;
+      if (this.timerTick !== null) window.clearInterval(this.timerTick);
+      this.timerTick = null;
+      return;
+    }
+    const project = (await api.listProjects().catch(() => [] as Project[])).find((p) => p.id === session.projectId);
+    this.timer = { session, name: project?.name ?? "A project" };
+    // The name in its tooltip: the tab bar has no room for it.
+    pill.title = `Knitting ${this.timer.name}: open it`;
+    const paint = () => {
+      if (!this.timer) return;
+      pill.textContent = `⏱ ${clock(sessionMs(this.timer.session))}`;
+    };
+    paint();
+    pill.hidden = false;
+    if (this.timerTick === null) {
+      let n = 0;
+      this.timerTick = window.setInterval(() => {
+        paint();
+        if (++n % 30 === 0) void this.refreshTimer();
+      }, 1000);
+    }
+  }
   /** The versions already announced this session, so "Later" means later. */
   private announced = new Set<string>();
 

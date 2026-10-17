@@ -1,5 +1,5 @@
-import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type LogEntry, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
-import { askYesNo, dialogOpen, say } from "../dialogs";
+import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type KnitSession, type LogEntry, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { askForm, askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ProjectChart } from "./project-chart";
 import { ReaderView } from "../reader/reader";
@@ -9,6 +9,7 @@ import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
 import { money, projectCost } from "./money";
+import { clock, hoursText, perHour, sessionMs, totalMs, typedStart } from "./knit-time";
 import { openLightbox } from "../lightbox";
 import { projectPictures } from "./project-photos";
 import { mountPatternPicker } from "./pattern-picker";
@@ -65,6 +66,8 @@ export class ProjectPage {
   private yarns: Yarn[] = [];
   private uses: YarnUse[] = [];
   private currency = "EUR";
+  /** This project's spells of knitting, the latest first. */
+  private sessions: KnitSession[] = [];
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
@@ -110,11 +113,15 @@ export class ProjectPage {
       api.getMeasureUnit().catch(() => "cm" as const),
       api.listMasterclasses().catch(() => [] as Masterclass[]),
     ]);
-    [this.yarns, this.uses, this.currency] = await Promise.all([
+    [this.yarns, this.uses, this.currency, this.sessions] = await Promise.all([
       api.listYarns({ used: "all" }).catch(() => [] as Yarn[]),
       api.listYarnUsage().catch(() => [] as YarnUse[]),
       api.getCurrency().catch(() => "EUR"),
+      api.listKnitSessions(this.projectId).catch(() => [] as KnitSession[]),
     ]);
+    // A timer running here ticks on the page.
+    const tick = window.setInterval(() => this.tickTime(), 1000);
+    this.teardown.push(() => window.clearInterval(tick));
 
     this.root = document.createElement("div");
     this.root.className = "project-page";
@@ -315,6 +322,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       </div>`}
       <label class="field"><span>Size knitted</span><input data-f="size" value="${esc(p.size)}" placeholder="e.g. M, or the 2nd size" maxlength="100" /></label>
       ${this.costHtml()}
+      ${plan ? "" : this.timeHtml()}
 
       <div class="side-section">
         <h3>Needles, hooks &amp; cables</h3>
@@ -415,6 +423,111 @@ ${plan ? "" : `      <div class="project-side-dates">
       </div>`;
   }
 
+  /**
+   * Knitting time: the total, the timer (Start, or Stop with its clock) while
+   * the project is being knitted, time added by hand, and the spells, each
+   * to put right or remove. With a cost, what it came to an hour.
+   */
+  private timeHtml(): string {
+    const live = isLive(this.project.status);
+    const running = this.sessions.find((s) => s.endedAt === null);
+    const total = totalMs(this.sessions);
+    const cost = projectCost(this.project, this.yarns, this.patterns, this.uses).total;
+    const rate = perHour(cost, total);
+    const at = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    const n = this.sessions.length;
+    return `
+      <div class="side-section knit-time" data-el="knit-time">
+        <h3>Knitting time</h3>
+        <p class="knit-total"><b data-el="knit-total">${n ? hoursText(total) : "Not timed yet"}</b>${n ? ` <span class="hint">in ${n} sitting${n === 1 ? "" : "s"}</span>` : ""}</p>
+        ${rate !== null ? `<p class="hint" data-el="knit-rate">${esc(money(rate, this.currency))} an hour, by what it cost</p>` : ""}
+        <div class="knit-actions">
+          ${
+            live
+              ? running
+                ? `<button class="primary knit-stop" data-act="knit-stop" title="Stop the timer: you have put it down">■ Stop <span class="knit-clock" data-el="knit-clock">${clock(sessionMs(running))}</span></button>`
+                : `<button class="ghost knit-start" data-act="knit-start" title="Time your knitting: start when you pick it up, stop when you put it down. It runs with the app closed too.">▶ Start knitting</button>`
+              : ""
+          }
+          <button class="link" data-act="knit-add" title="Time knitted away from here, or before timing">+ Add time by hand</button>
+        </div>
+        ${
+          n
+            ? `<details class="knit-sittings"><summary>The sittings</summary><ul>${this.sessions
+                .map(
+                  (s) => `<li>
+                    <span>${esc(longDate(s.startedAt))} · ${at(s.startedAt)}${s.endedAt ? `–${at(s.endedAt)}` : " – now"}</span>
+                    <b>${hoursText(sessionMs(s))}</b>
+                    <button class="link" data-act="knit-change" data-id="${esc(s.id)}" title="Put it right: a timer left running, or the wrong day">Change</button>
+                    <button class="card-remove" data-act="knit-remove" data-id="${esc(s.id)}" title="Remove this sitting">×</button>
+                  </li>`,
+                )
+                .join("")}</ul></details>`
+            : ""
+        }
+      </div>`;
+  }
+
+  /** Draws the knitting time again, the sittings left open if they were. */
+  private paintTime(): void {
+    const box = this.root.querySelector<HTMLElement>('[data-el="knit-time"]');
+    if (!box) return;
+    const open = box.querySelector<HTMLDetailsElement>(".knit-sittings")?.open ?? false;
+    box.outerHTML = this.timeHtml();
+    const details = this.root.querySelector<HTMLDetailsElement>('[data-el="knit-time"] .knit-sittings');
+    if (details) details.open = open;
+  }
+
+  /** A second on: the running clock and the total. */
+  private tickTime(): void {
+    const running = this.sessions.find((s) => s.endedAt === null);
+    if (!running) return;
+    const clockEl = this.root.querySelector('[data-el="knit-clock"]');
+    if (clockEl) clockEl.textContent = clock(sessionMs(running));
+    const totalEl = this.root.querySelector('[data-el="knit-total"]');
+    if (totalEl) totalEl.textContent = hoursText(totalMs(this.sessions));
+  }
+
+  /** Reads this project's time again, draws it, and tells the app a timer changed. */
+  private async reloadTime(): Promise<void> {
+    this.sessions = await api.listKnitSessions(this.projectId).catch(() => this.sessions);
+    this.paintTime();
+    this.root.dispatchEvent(new CustomEvent("knit-timer", { bubbles: true }));
+  }
+
+  /** Asks for a sitting's day, start and length: for one added, or put right. */
+  private async askTime(title: string, s: KnitSession | null): Promise<{ startedAt: number; seconds: number } | null> {
+    const length = s ? Math.round(sessionMs(s) / 60000) : 60;
+    const answer = await askForm(
+      [
+        { label: "Day", value: toDateInput(s?.startedAt ?? Date.now()), placeholder: "YYYY-MM-DD" },
+        ...(s ? [{ label: "Started at", value: new Date(s.startedAt).toTimeString().slice(0, 5), placeholder: "e.g. 19:30" }] : []),
+        { label: "Hours", value: String(Math.floor(length / 60)), type: "number" as const },
+        { label: "Minutes", value: String(length % 60), type: "number" as const },
+      ],
+      { title, okLabel: s ? "Save" : "Add" },
+    );
+    if (!answer) return null;
+    const seconds = Math.round((Number(answer.Hours || 0) * 60 + Number(answer.Minutes || 0)) * 60);
+    if (!Number.isFinite(seconds) || seconds < 60) {
+      await say("A sitting is a minute at least: give its hours and minutes.", title);
+      return null;
+    }
+    let startedAt = typedStart(answer.Day, seconds);
+    if (s && startedAt !== null) {
+      const t = /^(\d{1,2})[:.](\d{2})$/.exec((answer["Started at"] ?? "").trim());
+      if (t) {
+        const day = new Date(startedAt);
+        startedAt = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Number(t[1]), Number(t[2])).getTime();
+      }
+    }
+    if (startedAt === null) {
+      await say("The day is a date: 2026-10-18.", title);
+      return null;
+    }
+    return { startedAt, seconds };
+  }
+
   /** The masterclass's video watched here: one of its videos, chosen when it has several. */
   private masterclassPartHtml(m: Masterclass): string {
     const part = partShown(m, `project:${this.projectId}`);
@@ -491,6 +604,32 @@ ${plan ? "" : `      <div class="project-side-dates">
       this.root.dispatchEvent(new CustomEvent("open-person", { bubbles: true, detail: this.project.personId }));
     }
     if (act === "finish") this.hooks.finish(this.project);
+    if (act === "knit-start" || act === "knit-stop") {
+      try {
+        if (act === "knit-start") await api.startKnitting(this.projectId);
+        else await api.stopKnitting();
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
+      }
+      await this.reloadTime();
+    }
+    if (act === "knit-add" || act === "knit-change") {
+      const s = act === "knit-change" ? (this.sessions.find((x) => x.id === btn.dataset.id) ?? null) : null;
+      const time = await this.askTime(s ? "Put a sitting right" : "Add knitting time", s);
+      if (!time) return;
+      try {
+        if (s) await api.changeKnitSession(s.id, time.startedAt, time.seconds);
+        else await api.addKnitTime(this.projectId, time.startedAt, time.seconds);
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
+      }
+      await this.reloadTime();
+    }
+    if (act === "knit-remove" && btn.dataset.id) {
+      if (!(await askYesNo("Remove this sitting from the knitting time?", { title: "Knitting time", okLabel: "Remove", danger: true }))) return;
+      await api.deleteKnitSession(btn.dataset.id).catch(() => {});
+      await this.reloadTime();
+    }
     if (act === "start-plan") {
       try {
         this.project = await api.setProjectStatus(this.projectId, "active");

@@ -4102,3 +4102,16 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .size-mine { position: absolute; background: rgba(46, 204, 113, 0.32); outline: 2px solid rgba(30, 150, 80, 0.9); outline-offset: 1px; border-radius: 2px; mix-blend-mode: multiply; }
 .size-dim { position: absolute; background: rgba(255, 255, 255, 0.62); }
 .size-pick { max-width: 150px; height: 30px; padding: 0 6px; font-size: 12px; }
+/* Knitting time, on a project's page, and the timer in the tab bar. */
+.knit-time .knit-total { margin: 0 0 4px; }
+.knit-time .knit-total b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.knit-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
+.knit-stop .knit-clock { font-variant-numeric: tabular-nums; margin-left: 4px; }
+.knit-sittings summary { cursor: pointer; font-size: 13px; color: var(--text-dim); }
+.knit-sittings ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.knit-sittings li { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; }
+.knit-sittings li b { font-variant-numeric: tabular-nums; }
+.timer-pill { margin-right: 8px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+/* Twelve tabs and a running timer on one line: no tab breaks in two, and their sides narrow when the window does. */
+.tab-bar .tab { white-space: nowrap; padding-left: clamp(8px, 1vw, 16px); padding-right: clamp(8px, 1vw, 16px); }
+.timer-pill { align-self: center; margin-bottom: 6px; }

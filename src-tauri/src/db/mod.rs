@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    Tool, ToolInput, ToolSet, ToolSetInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
+    Tool, ToolInput, ToolSet, ToolSetInput, Yarn, YarnInput, KnitSession, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
@@ -835,6 +835,16 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "tools", "set_id")? {
         conn.execute("ALTER TABLE tools ADD COLUMN set_id TEXT REFERENCES tool_sets(id) ON DELETE SET NULL", [])?;
     }
+    // Time spent knitting a project: spells of it, one timed at a time.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS knit_sessions (
+            id         TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            started_at INTEGER NOT NULL,
+            ended_at   INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_knit_sessions_project ON knit_sessions(project_id);",
+    )?;
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
         conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -2831,6 +2841,102 @@ pub fn delete_tool_set(conn: &Connection, id: &str) -> AppResult<()> {
     Ok(())
 }
 
+// ---------- knitting time ----------
+
+/// The longest one sitting is taken to be: a timer left running longer was forgotten.
+const LONGEST_SITTING_MS: i64 = 24 * 3600 * 1000;
+
+fn row_to_session(r: &rusqlite::Row) -> rusqlite::Result<KnitSession> {
+    Ok(KnitSession { id: r.get(0)?, project_id: r.get(1)?, started_at: r.get(2)?, ended_at: r.get(3)? })
+}
+
+/// The spells of knitting, the latest first: one project's, or every one's.
+pub fn list_knit_sessions(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<KnitSession>> {
+    let sql = "SELECT id, project_id, started_at, ended_at FROM knit_sessions";
+    Ok(match project_id {
+        Some(p) => conn
+            .prepare(&format!("{sql} WHERE project_id = ?1 ORDER BY started_at DESC"))?
+            .query_map(params![p], row_to_session)?
+            .collect::<Result<_, _>>()?,
+        None => conn.prepare(&format!("{sql} ORDER BY started_at DESC"))?.query_map([], row_to_session)?.collect::<Result<_, _>>()?,
+    })
+}
+
+/// The spell being timed now, if one is.
+pub fn running_knit_session(conn: &Connection) -> AppResult<Option<KnitSession>> {
+    Ok(conn
+        .query_row("SELECT id, project_id, started_at, ended_at FROM knit_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1", [], row_to_session)
+        .optional()?)
+}
+
+/// Stops a project's timer, if it runs.
+fn stop_knitting_on(conn: &Connection, project_id: &str, at: i64) -> AppResult<()> {
+    conn.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, ?2) WHERE project_id = ?1 AND ended_at IS NULL", params![project_id, at])?;
+    Ok(())
+}
+
+/// Starts timing a project's knitting; one knitted at a time, so any other
+/// timer stops. One being knitted only: a finished project's time is typed in.
+pub fn start_knitting(conn: &Connection, project_id: &str) -> AppResult<KnitSession> {
+    let project = get_project(conn, project_id)?;
+    if !is_live(&project.status) {
+        return Err(AppError::Message("A finished or frogged project is not being knitted: add its time by hand.".to_string()));
+    }
+    let now = now_ms();
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, ?1) WHERE ended_at IS NULL", params![now])?;
+    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at: now, ended_at: None };
+    tx.execute("INSERT INTO knit_sessions (id, project_id, started_at, ended_at) VALUES (?1, ?2, ?3, NULL)", params![session.id, project_id, now])?;
+    tx.commit()?;
+    Ok(session)
+}
+
+/// Stops the timer running, and says the spell it timed; None when none ran.
+pub fn stop_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
+    let Some(running) = running_knit_session(conn)? else { return Ok(None) };
+    let now = now_ms().max(running.started_at);
+    conn.execute("UPDATE knit_sessions SET ended_at = ?2 WHERE id = ?1", params![running.id, now])?;
+    Ok(Some(KnitSession { ended_at: Some(now), ..running }))
+}
+
+/// A spell's length checked: a minute at least, a day at most, not in the future.
+fn sitting(started_at: i64, seconds: i64) -> AppResult<i64> {
+    if !(60..=LONGEST_SITTING_MS / 1000).contains(&seconds) {
+        return Err(AppError::Message("A spell of knitting is a minute at least, and 24 hours at most.".to_string()));
+    }
+    let ended = started_at + seconds * 1000;
+    if ended > now_ms() + 60_000 {
+        return Err(AppError::Message("That time is still to come.".to_string()));
+    }
+    Ok(ended)
+}
+
+/// Knitting time typed in: when, and how long.
+pub fn add_knit_time(conn: &Connection, project_id: &str, started_at: i64, seconds: i64) -> AppResult<KnitSession> {
+    get_project(conn, project_id)?;
+    let ended = sitting(started_at, seconds)?;
+    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at, ended_at: Some(ended) };
+    conn.execute("INSERT INTO knit_sessions (id, project_id, started_at, ended_at) VALUES (?1, ?2, ?3, ?4)", params![session.id, project_id, started_at, ended])?;
+    Ok(session)
+}
+
+/// A spell put right: when it started and how long it was. One still timed
+/// is stopped so, as a timer left running is put right.
+pub fn change_knit_session(conn: &Connection, id: &str, started_at: i64, seconds: i64) -> AppResult<KnitSession> {
+    let ended = sitting(started_at, seconds)?;
+    if conn.execute("UPDATE knit_sessions SET started_at = ?2, ended_at = ?3 WHERE id = ?1", params![id, started_at, ended])? == 0 {
+        return Err(AppError::NotFound("That time is no longer there.".to_string()));
+    }
+    Ok(conn.query_row("SELECT id, project_id, started_at, ended_at FROM knit_sessions WHERE id = ?1", params![id], row_to_session)?)
+}
+
+pub fn delete_knit_session(conn: &Connection, id: &str) -> AppResult<()> {
+    if conn.execute("DELETE FROM knit_sessions WHERE id = ?1", params![id])? == 0 {
+        return Err(AppError::NotFound("That time is no longer there.".to_string()));
+    }
+    Ok(())
+}
+
 // ---------- projects ----------
 
 fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
@@ -3263,6 +3369,8 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
         "UPDATE projects SET status = 'finished', finished_at = ?2 WHERE id = ?1",
         params![id, input.finished_at.unwrap_or(now)],
     )?;
+    // Finished, it is not being knitted any more.
+    stop_knitting_on(&tx, id, now)?;
     log_milestone(&tx, id, "Finished", Some(input.finished_at.unwrap_or(now)))?;
     tx.execute(
         "UPDATE project_tools SET released_at = ?2 WHERE project_id = ?1 AND released_at IS NULL",
@@ -3438,6 +3546,10 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
             return Err(AppError::Message(format!("A project cannot go from {from} to {to}.")));
         }
     }
+    // Frogged, its timer stops.
+    if !is_live(status) {
+        stop_knitting_on(&tx, id, now)?;
+    }
     tx.commit()?;
     get_project(conn, id)
 }
@@ -3452,6 +3564,7 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("UPDATE wishlist SET project_id = NULL WHERE project_id = ?1", params![id])?;
     conn.execute("UPDATE swatches SET project_id = NULL WHERE project_id = ?1", params![id])?;
     conn.execute("DELETE FROM project_log WHERE project_id = ?1", params![id])?;
+    conn.execute("DELETE FROM knit_sessions WHERE project_id = ?1", params![id])?;
     // Its own counters and row totals go with it; the pattern keeps its own.
     conn.execute("DELETE FROM counters WHERE project_id = ?1", params![id])?;
     conn.execute("DELETE FROM project_progress WHERE project_id = ?1", params![id])?;

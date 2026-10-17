@@ -709,6 +709,14 @@ export interface ToolSetInput {
   toolIds: string[];
 }
 
+/** A spell of knitting on a project; `endedAt` null while its timer runs. Mirrors `models.rs::KnitSession`. */
+export interface KnitSession {
+  id: string;
+  projectId: string;
+  startedAt: number;
+  endedAt: number | null;
+}
+
 /** A tool on an active project: the pair ("" tip), or one tip of it ("one"). Mirrors `models.rs::ToolUse`. */
 export interface ToolUse {
   projectId: string;
@@ -1512,6 +1520,18 @@ export const api = {
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
   /** What a pattern cost, in the settings' currency; null for not said. */
   setPatternPrice: (id: string, price: number | null) => invoke<Pattern>("set_pattern_price", { id, price }),
+  /** Knitting time: one project's spells, or all of them, the latest first. */
+  listKnitSessions: (projectId: string | null = null) => invoke<KnitSession[]>("list_knit_sessions", { projectId }),
+  /** The timer running now, if one is. */
+  runningKnitSession: () => invoke<KnitSession | null>("running_knit_session"),
+  /** Starts timing a project's knitting; any other timer stops. */
+  startKnitting: (projectId: string) => invoke<KnitSession>("start_knitting", { projectId }),
+  stopKnitting: () => invoke<KnitSession | null>("stop_knitting"),
+  /** Knitting time typed in: when it started, and how many seconds. */
+  addKnitTime: (projectId: string, startedAt: number, seconds: number) => invoke<KnitSession>("add_knit_time", { projectId, startedAt, seconds }),
+  /** A spell put right; one still timed is stopped so. */
+  changeKnitSession: (id: string, startedAt: number, seconds: number) => invoke<KnitSession>("change_knit_session", { id, startedAt, seconds }),
+  deleteKnitSession: (id: string) => invoke<void>("delete_knit_session", { id }),
   /** The size knitted from a pattern, as its place among its sizes; null for none. */
   setPatternSize: (id: string, index: number | null) => invoke<Pattern>("set_pattern_size", { id, index }),
   /** The currency prices are in, as an ISO code: EUR unless chosen. */
