@@ -22,24 +22,8 @@ under the list.
 **Asked for 16 Oct 2026**
 
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
-  from a person's foot and a swatch. **Decide first:** which heels. See
+  from a person's foot and a swatch, several heels to choose from. See
   below.
-
-**Asked for 17 Oct 2026**
-
-- [ ] **Pictures opened big, to zoom**: a lightbox for a project's
-  pictures (its cover, its board's, its log's), finished projects' and the
-  gallery's. See below.
-
-### Pictures opened big
-
-A picture clicked opens over the app, as big as the window allows: zoomed
-in and out (the wheel, + and −, a double-click), dragged about when it is
-bigger than the window, the next and the one before by the arrow keys when
-there are several (a project's photos, the gallery's), Copy there too, and
-Esc or a click beside it to close. The same everywhere a project's picture
-is: its cover, the board's pictures and pins, the log card's and the log's
-photos, and the gallery (whose big photo zooms the same way).
 
 ### Socks
 
@@ -50,7 +34,8 @@ toe-up. The heel chosen from several, each with its own counts and steps:
 a heel flap and gusset, a short-row heel (German short rows), an
 afterthought heel, the Fish Lips Kiss heel, and a gusset heel worked
 toe-up. The leg's length, the cuff's rib, and the toe (a wedge toe, or a
-round one). Which heels exactly is to be settled before building.
+round one). *Decided (17 Oct 2026):* several heels to choose from, these
+five to start with.
 
 ---
 
@@ -241,6 +226,12 @@ round one). Which heels exactly is to be settled before building.
   board (⧉ Copy, or Ctrl+C selected), a photo on the log card and in the
   log (Copy), and the gallery's photo shown (Copy photo): to the clipboard
   as a PNG (copy-picture.ts), to paste anywhere. *0.3.72*
+- **Pictures opened big:** a project's cover, a board picture or pin (⤢ View,
+  a double-click, Space selected), a log photo (in the log, or ⤢ View on the
+  log card) and the gallery's photo open in a lightbox (lightbox.ts) over
+  everything: fitted, zoomed (wheel, + −, double-click, 0 to fit), dragged,
+  the others a step away (the project's photos, the board's), Copy, Esc or a
+  click beside it to close; its keys go nowhere else. *0.3.90*
 - **A project's card, to post:** Card to post… on its page and in the
   gallery (project-card.ts): up to four photos, its name, pattern and
   designer, dates, yarn and how much it used (yarn_usage), needles, size,
