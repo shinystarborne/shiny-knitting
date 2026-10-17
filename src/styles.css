@@ -4115,3 +4115,5 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 /* Twelve tabs and a running timer on one line: no tab breaks in two, and their sides narrow when the window does. */
 .tab-bar .tab { white-space: nowrap; padding-left: clamp(8px, 1vw, 16px); padding-right: clamp(8px, 1vw, 16px); }
 .timer-pill { align-self: center; margin-bottom: 6px; }
+.knit-worth { margin: 2px 0 4px; font-size: 13px; }
+.knit-worth b { font-variant-numeric: tabular-nums; }

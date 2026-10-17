@@ -1520,6 +1520,9 @@ export const api = {
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
   /** What a pattern cost, in the settings' currency; null for not said. */
   setPatternPrice: (id: string, price: number | null) => invoke<Pattern>("set_pattern_price", { id, price }),
+  /** What an hour of your knitting is worth, in the settings' currency; null when not said. */
+  getHourRate: () => invoke<number | null>("get_hour_rate"),
+  saveHourRate: (rate: number | null) => invoke<number | null>("save_hour_rate", { rate }),
   /** Knitting time: one project's spells, or all of them, the latest first. */
   listKnitSessions: (projectId: string | null = null) => invoke<KnitSession[]>("list_knit_sessions", { projectId }),
   /** The timer running now, if one is. */

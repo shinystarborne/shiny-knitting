@@ -48,6 +48,11 @@ export function perHour(cost: number, ms: number): number | null {
   return Math.round((cost / (ms / 3600000)) * 100) / 100;
 }
 
+/** What a project really costs: what it cost, and its knitting time at what an hour is worth. */
+export function trueCost(cost: number, ms: number, hourRate: number): number {
+  return Math.round((cost + (ms / 3600000) * hourRate) * 100) / 100;
+}
+
 /**
  * When a spell typed in started: noon on the day given, or, for today, as
  * long before now as it lasted -- a spell is never in the future.

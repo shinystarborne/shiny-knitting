@@ -1,5 +1,6 @@
 import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
 import { clickedOn, closestEl } from "../dom";
+import { parsePrice } from "./money";
 import { longDate, toDateInput } from "./project-form";
 
 /** Currencies offered for prices, the commonest for a knitter in Europe first. */
@@ -139,6 +140,11 @@ export class SettingsDialog {
           </select>
           <em class="hint">What yarn and patterns cost is a plain number in this currency, so it all adds up. Changing it changes no number, only how it is written.</em>
         </label>
+        <label class="field">
+          <span>Your hour is worth</span>
+          <input data-f="hourRate" inputmode="decimal" placeholder="e.g. 15" />
+          <em class="hint">What an hour of your knitting is worth, in the currency above. A project's page then adds its knitting time at this to what its yarn and pattern cost: what it really costs. Empty for none.</em>
+        </label>
 
         <h3>Describe patterns with a model</h3>
         <label class="check">
@@ -252,6 +258,14 @@ export class SettingsDialog {
         <p class="form-error" data-el="error" hidden></p>
       </div>
     `;
+    // What an hour is worth, as kept.
+    void api
+      .getHourRate()
+      .then((rate) => {
+        const input = this.root.querySelector<HTMLInputElement>('[data-f="hourRate"]');
+        if (input && rate != null) input.value = String(rate);
+      })
+      .catch(() => {});
     // The currency, as kept; EUR until it answers.
     void api
       .getCurrency()
@@ -439,6 +453,10 @@ export class SettingsDialog {
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
     await api.saveMeasureUnit((this.root.querySelector('[data-f="measureUnit"]') as HTMLSelectElement).value as MeasureUnit);
     await api.saveCurrency((this.root.querySelector('[data-f="currency"]') as HTMLSelectElement).value);
+    const typed = (this.root.querySelector('[data-f="hourRate"]') as HTMLInputElement).value.trim();
+    const rate = typed ? parsePrice(typed) : null;
+    if (typed && rate === null) throw new Error("What your hour is worth is a number: 15, or 12,50.");
+    await api.saveHourRate(rate);
     return saved;
   }
 

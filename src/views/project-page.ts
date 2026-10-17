@@ -9,7 +9,7 @@ import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
 import { money, projectCost } from "./money";
-import { clock, hoursText, perHour, sessionMs, totalMs, typedStart } from "./knit-time";
+import { clock, hoursText, perHour, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
 import { openLightbox } from "../lightbox";
 import { projectPictures } from "./project-photos";
 import { mountPatternPicker } from "./pattern-picker";
@@ -68,6 +68,8 @@ export class ProjectPage {
   private currency = "EUR";
   /** This project's spells of knitting, the latest first. */
   private sessions: KnitSession[] = [];
+  /** What an hour of knitting is worth, from Settings; null when not said. */
+  private hourRate: number | null = null;
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
@@ -113,11 +115,12 @@ export class ProjectPage {
       api.getMeasureUnit().catch(() => "cm" as const),
       api.listMasterclasses().catch(() => [] as Masterclass[]),
     ]);
-    [this.yarns, this.uses, this.currency, this.sessions] = await Promise.all([
+    [this.yarns, this.uses, this.currency, this.sessions, this.hourRate] = await Promise.all([
       api.listYarns({ used: "all" }).catch(() => [] as Yarn[]),
       api.listYarnUsage().catch(() => [] as YarnUse[]),
       api.getCurrency().catch(() => "EUR"),
       api.listKnitSessions(this.projectId).catch(() => [] as KnitSession[]),
+      api.getHourRate().catch(() => null),
     ]);
     // A timer running here ticks on the page.
     const tick = window.setInterval(() => this.tickTime(), 1000);
@@ -441,6 +444,7 @@ ${plan ? "" : `      <div class="project-side-dates">
         <h3>Knitting time</h3>
         <p class="knit-total"><b data-el="knit-total">${n ? hoursText(total) : "Not timed yet"}</b>${n ? ` <span class="hint">in ${n} sitting${n === 1 ? "" : "s"}</span>` : ""}</p>
         ${rate !== null ? `<p class="hint" data-el="knit-rate">${esc(money(rate, this.currency))} an hour, by what it cost</p>` : ""}
+        ${this.worthHtml(cost, total)}
         <div class="knit-actions">
           ${
             live
@@ -466,6 +470,18 @@ ${plan ? "" : `      <div class="project-side-dates">
             : ""
         }
       </div>`;
+  }
+
+  /**
+   * What it really costs: what it cost and its knitting time at what an hour
+   * is worth. A hint to say what an hour is worth, once there is time to count.
+   */
+  private worthHtml(cost: number, ms: number): string {
+    if (!ms) return "";
+    if (this.hourRate === null) return `<p class="hint" data-el="knit-worth">Say what your hour is worth in Settings, under Prices, to see what it really costs with your time.</p>`;
+    const time = trueCost(0, ms, this.hourRate);
+    const all = trueCost(cost, ms, this.hourRate);
+    return `<p class="knit-worth" data-el="knit-worth">With your time at ${esc(money(this.hourRate, this.currency))} an hour: <b>${esc(money(all, this.currency))}</b> <span class="hint">(${cost ? `${esc(money(cost, this.currency))} + ` : ""}${esc(money(time, this.currency))} for your time)</span></p>`;
   }
 
   /** Draws the knitting time again, the sittings left open if they were. */

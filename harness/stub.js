@@ -2528,6 +2528,11 @@ const handlers = {
   backup_progress: () => clone(store.backupProgress ?? { running: false, done: 0, total: 0 }),
   last_backup: () => clone(store.lastBackup ?? null),
   get_currency: () => store.currency ?? "EUR",
+  get_hour_rate: () => store.hourRate ?? null,
+  save_hour_rate: ({ rate }) => {
+    store.hourRate = cents(rate);
+    return store.hourRate;
+  },
   save_currency: ({ code }) => {
     const c = String(code).trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(c)) throw new Error("A currency is three letters: EUR, USD, GBP…");

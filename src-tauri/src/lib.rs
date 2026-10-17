@@ -60,6 +60,8 @@ pub fn run() {
             commands::set_pattern_size,
             commands::get_currency,
             commands::save_currency,
+            commands::get_hour_rate,
+            commands::save_hour_rate,
             commands::upload_pattern,
             commands::scan_pattern_folder,
             commands::list_patterns,

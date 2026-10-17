@@ -48,6 +48,20 @@ pub fn get_currency(state: State<'_, AppState>) -> CmdResult<String> {
     Ok(if code.len() == 3 { code } else { "EUR".to_string() })
 }
 
+/// What an hour of your knitting is worth, in the currency of the settings;
+/// None when not said.
+#[tauri::command]
+pub fn get_hour_rate(state: State<'_, AppState>) -> CmdResult<Option<f64>> {
+    db::get_setting(&state.db(), "hour_rate")
+}
+
+#[tauri::command]
+pub fn save_hour_rate(state: State<'_, AppState>, rate: Option<f64>) -> CmdResult<Option<f64>> {
+    let rate = db::price(rate)?;
+    db::set_setting(&state.db(), "hour_rate", &rate)?;
+    Ok(rate)
+}
+
 #[tauri::command]
 pub fn save_currency(state: State<'_, AppState>, code: String) -> CmdResult<String> {
     let code = code.trim().to_uppercase();
