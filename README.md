@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.79](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.79)** —
+  the pattern a masterclass goes with, and a project started from either has both. The one to test.
 - **[v0.3.0-beta.78](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.78)** —
-  a masterclass's video on the project's board, as big as you make it. The one to test.
+  a masterclass's video on the project's board, as big as you make it. Superseded by `beta.79`.
 - **[v0.3.0-beta.77](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.77)** —
   masterclasses of several videos, bundled and ticked as watched; a project started from one. Superseded by `beta.78`.
 - **[v0.3.0-beta.76](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.76)** —

@@ -283,7 +283,9 @@ round one). Which heels exactly is to be settled before building.
   (masterclass_videos): added to, bundled, split, moved, ticked as watched;
   a project started from one (Start a project…). *0.3.77* Watched on the
   project's board, a video card (board kind "video"), put there from the
-  project's Masterclass or the board's Video. *0.3.78*
+  project's Masterclass or the board's Video. *0.3.78* The pattern a
+  masterclass goes with (masterclasses.pattern_id), chosen as it is added
+  or later; a project started from either has both. *0.3.79*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
