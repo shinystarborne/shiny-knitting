@@ -3,11 +3,17 @@
 //! yarn and price -- which the app shows as its own. Buying and downloading
 //! stay on Ravelry's site, opened in the browser.
 //!
-//! The API is used with a personal key the knitter makes on Ravelry's
-//! developer page: an access key and a personal key, sent as HTTP basic
-//! authentication. It is kept in the library's settings, never in the app,
-//! which is published. Ravelry's answers are read loosely: a field missing
-//! or named otherwise leaves that detail empty rather than failing.
+//! The knitter signs in with Ravelry (OAuth 2.0): the app is registered with
+//! Ravelry once, its client id and secret built into the installers from a
+//! file kept out of the repository (`src-tauri/.env.ravelry`, read by
+//! build.rs). Signing in opens Ravelry in the browser; approved there,
+//! Ravelry sends the browser back to a port the app listens on, for that
+//! moment only, on this computer, with a code the app exchanges for tokens.
+//! Those are kept in the settings encrypted for this Windows account
+//! (DPAPI), as the model's key is, and renewed as they run out.
+//!
+//! Ravelry's answers are read loosely: a field missing or named otherwise
+//! leaves that detail empty rather than failing.
 
 use std::time::Duration;
 
@@ -23,21 +29,44 @@ use super::state::AppState;
 type CmdResult<T> = Result<T, AppError>;
 
 const API: &str = "https://api.ravelry.com";
-const KEYS: &str = "ravelry_keys";
+const AUTHORIZE: &str = "https://www.ravelry.com/oauth2/auth";
+const TOKEN: &str = "https://www.ravelry.com/oauth2/token";
+/// The port Ravelry sends the browser back to, as registered with Ravelry.
+const PORT: u16 = 47851;
+const SIGNED_IN: &str = "ravelry_oauth";
 
-/// The personal key, as Ravelry gives it, and whose account it is.
+/// The app as registered with Ravelry, built in; absent from a build without the file.
+const CLIENT_ID: Option<&str> = option_env!("RAVELRY_CLIENT_ID");
+const CLIENT_SECRET: Option<&str> = option_env!("RAVELRY_CLIENT_SECRET");
+
+fn redirect() -> String {
+    format!("http://localhost:{PORT}/ravelry")
+}
+
+fn client() -> Option<(&'static str, &'static str)> {
+    match (CLIENT_ID, CLIENT_SECRET) {
+        (Some(id), Some(secret)) if !id.trim().is_empty() && !secret.trim().is_empty() => Some((id.trim(), secret.trim())),
+        _ => None,
+    }
+}
+
+/// A signing-in as kept: the tokens encrypted, when the access one runs out, whose it is.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(default)]
-struct Keys {
+struct SignedIn {
     access: String,
-    personal: String,
+    refresh: String,
+    /// Milliseconds since 1970.
+    expires_at: i64,
     username: String,
 }
 
-/// Whether the API can be used, and as whom; the key itself stays here.
+/// Whether Ravelry can be searched, and as whom; the tokens themselves stay here.
 #[derive(Debug, Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RavelryAccount {
+    /// Whether this copy of the app can sign in with Ravelry at all.
+    pub available: bool,
     pub connected: bool,
     pub username: String,
 }
@@ -203,6 +232,51 @@ pub fn detail_answer(v: &Value) -> RavelryPatternDetail {
     }
 }
 
+/// A value for a URL, as the web writes it: letters, digits and -._~ as
+/// they are, the rest as %XX.
+fn escaped(v: &str) -> String {
+    v.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// PKCE's challenge for a verifier: its SHA-256, base64url without padding.
+pub fn challenge(verifier: &str) -> String {
+    use base64::Engine;
+    use sha2::Digest;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier.as_bytes()))
+}
+
+/// Where the browser is sent to sign in: Ravelry's page, asking for a code
+/// back here, the renewal kept ("offline").
+pub fn authorize_address(client_id: &str, state: &str, verifier: &str) -> String {
+    format!(
+        "{AUTHORIZE}?response_type=code&client_id={}&redirect_uri={}&scope=offline&state={}&code_challenge={}&code_challenge_method=S256",
+        escaped(client_id),
+        escaped(&redirect()),
+        escaped(state),
+        challenge(verifier)
+    )
+}
+
+/// What came back to the app's port: the code, if it is the answer to this
+/// signing-in; else why not. None for another request (a favicon).
+pub fn callback(request_line: &str, state: &str) -> Option<Result<String, AppError>> {
+    let target = request_line.split_whitespace().nth(1)?;
+    let url = reqwest::Url::parse(&format!("http://localhost{target}")).ok()?;
+    if url.path() != "/ravelry" {
+        return None;
+    }
+    let get = |k: &str| url.query_pairs().find(|(key, _)| key == k).map(|(_, v)| v.to_string());
+    if let Some(error) = get("error") {
+        return Some(Err(AppError::Message(if error == "access_denied" { "Ravelry wasn't allowed: nothing was signed in.".into() } else { format!("Ravelry said no: {error}.") })));
+    }
+    if get("state").as_deref() != Some(state) {
+        return Some(Err(AppError::Message("That answer wasn't for this signing-in: try again.".into())));
+    }
+    Some(get("code").filter(|c| !c.is_empty()).ok_or_else(|| AppError::Message("Ravelry sent no code back: try again.".into())))
+}
+
 /// The search's address, its choices as Ravelry takes them.
 pub fn search_address(q: &RavelryQuery) -> String {
     let mut url = reqwest::Url::parse(&format!("{API}/patterns/search.json")).expect("a fixed address");
@@ -224,77 +298,195 @@ pub fn search_address(q: &RavelryQuery) -> String {
     url.to_string()
 }
 
-fn keys(state: &AppState) -> Result<Keys, AppError> {
-    let k: Keys = db::get_setting(&state.db(), KEYS)?;
-    if k.access.is_empty() || k.personal.is_empty() {
-        return Err(AppError::Message("Connect your Ravelry account first: paste your personal API key in the Ravelry tab.".into()));
-    }
-    Ok(k)
-}
-
-/// Asks Ravelry, with the key; its refusals said in words.
-async fn get(url: &str, k: &Keys) -> Result<Value, AppError> {
-    let client = reqwest::Client::builder()
+fn http() -> Result<reqwest::Client, AppError> {
+    reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
-        .map_err(|e| AppError::Message(format!("Could not start a connection: {e}")))?;
-    let response = client
-        .get(url)
-        .basic_auth(&k.access, Some(&k.personal))
-        .header(reqwest::header::ACCEPT, "application/json")
-        .send()
-        .await
-        .map_err(|e| AppError::Message(if e.is_timeout() { "Ravelry took too long to answer.".into() } else { "Ravelry could not be reached. Check that you are online.".into() }))?;
-    match response.status().as_u16() {
-        200..=299 => response.json::<Value>().await.map_err(|_| AppError::Message("Ravelry's answer could not be read.".into())),
-        401 | 403 => Err(AppError::Message("Ravelry didn't accept the key. Check it, and paste it again in the Ravelry tab.".into())),
-        404 => Err(AppError::Message("Ravelry has no such pattern.".into())),
-        429 => Err(AppError::Message("Ravelry asks to slow down: try again in a minute.".into())),
-        code => Err(AppError::Message(format!("Ravelry answered {code}."))),
+        .map_err(|e| AppError::Message(format!("Could not start a connection: {e}")))
+}
+
+fn unreachable(e: reqwest::Error) -> AppError {
+    AppError::Message(if e.is_timeout() { "Ravelry took too long to answer.".into() } else { "Ravelry could not be reached. Check that you are online.".into() })
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+fn signed_in(state: &AppState) -> Result<SignedIn, AppError> {
+    let s: SignedIn = db::get_setting(&state.db(), SIGNED_IN)?;
+    if s.access.is_empty() {
+        return Err(AppError::Message("Sign in with Ravelry first, in the Ravelry tab.".into()));
     }
+    Ok(s)
+}
+
+/// Kept encrypted for this Windows account; not kept at all if that fails.
+fn keep(state: &AppState, access: &str, refresh: &str, expires_in: i64, username: &str) -> Result<(), AppError> {
+    let seal = |v: &str| if v.is_empty() { Ok(String::new()) } else { crate::ai::secret::encrypt(v).map_err(|e| AppError::Message(format!("The sign-in could not be kept safely: {e}"))) };
+    let kept = SignedIn { access: seal(access)?, refresh: seal(refresh)?, expires_at: now_ms() + expires_in.max(60) * 1000, username: username.to_string() };
+    db::set_setting(&state.db(), SIGNED_IN, &kept)
+}
+
+fn unseal(v: &str) -> Result<String, AppError> {
+    crate::ai::secret::decrypt(v).map_err(|_| AppError::Message("The Ravelry sign-in could not be read: sign in again.".into()))
+}
+
+/// Asks Ravelry's token address, as the registered app: tokens for a code, or renewed ones.
+async fn tokens(form: &[(&str, &str)]) -> Result<(String, String, i64), AppError> {
+    let (id, secret) = client().ok_or_else(|| AppError::Message("This copy of the app was built without Ravelry's sign-in.".into()))?;
+    let response = http()?.post(TOKEN).basic_auth(id, Some(secret)).form(form).send().await.map_err(unreachable)?;
+    if !response.status().is_success() {
+        return Err(AppError::Message(format!("Ravelry wouldn't sign in ({}): try again.", response.status().as_u16())));
+    }
+    let v: Value = response.json().await.map_err(|_| AppError::Message("Ravelry's answer could not be read.".into()))?;
+    let access = text(&v, &["access_token"]);
+    if access.is_empty() {
+        return Err(AppError::Message("Ravelry sent no token back: try again.".into()));
+    }
+    let expires = v.get("expires_in").and_then(Value::as_i64).unwrap_or(3600);
+    Ok((access, text(&v, &["refresh_token"]), expires))
+}
+
+/// The access token, renewed first when it has run out, or is about to.
+async fn access(state: &AppState, force: bool) -> Result<String, AppError> {
+    let s = signed_in(state)?;
+    if !force && s.expires_at > now_ms() + 60_000 {
+        return unseal(&s.access);
+    }
+    let refresh = if s.refresh.is_empty() { String::new() } else { unseal(&s.refresh)? };
+    if refresh.is_empty() {
+        return Err(AppError::Message("The Ravelry sign-in has run out: sign in again.".into()));
+    }
+    let (access, renewed, expires) = tokens(&[("grant_type", "refresh_token"), ("refresh_token", &refresh)])
+        .await
+        .map_err(|_| AppError::Message("The Ravelry sign-in has run out: sign in again.".into()))?;
+    // Ravelry may keep the same refresh token, or give a new one.
+    keep(state, &access, if renewed.is_empty() { &refresh } else { &renewed }, expires, &s.username)?;
+    Ok(access)
+}
+
+/// Asks Ravelry's API as the knitter signed in; a refusal tried once more
+/// with a renewed token, then said in words.
+async fn get(state: &AppState, url: &str) -> Result<Value, AppError> {
+    let mut token = access(state, false).await?;
+    for again in [false, true] {
+        let response = http()?.get(url).bearer_auth(&token).header(reqwest::header::ACCEPT, "application/json").send().await.map_err(unreachable)?;
+        match response.status().as_u16() {
+            200..=299 => return response.json::<Value>().await.map_err(|_| AppError::Message("Ravelry's answer could not be read.".into())),
+            401 if !again => token = access(state, true).await?,
+            401 | 403 => return Err(AppError::Message("Ravelry didn't let the app in: sign in again, in the Ravelry tab.".into())),
+            404 => return Err(AppError::Message("Ravelry has no such pattern.".into())),
+            429 => return Err(AppError::Message("Ravelry asks to slow down: try again in a minute.".into())),
+            code => return Err(AppError::Message(format!("Ravelry answered {code}."))),
+        }
+    }
+    unreachable!("the second try returns")
 }
 
 #[tauri::command]
 pub fn ravelry_account(state: State<'_, AppState>) -> CmdResult<RavelryAccount> {
-    let k: Keys = db::get_setting(&state.db(), KEYS)?;
-    Ok(RavelryAccount { connected: !k.access.is_empty() && !k.personal.is_empty(), username: k.username })
+    let s: SignedIn = db::get_setting(&state.db(), SIGNED_IN)?;
+    Ok(RavelryAccount { available: client().is_some(), connected: !s.access.is_empty(), username: s.username })
 }
 
-/// Keeps a personal key, once Ravelry has said whose it is.
-#[tauri::command]
-pub async fn connect_ravelry(state: State<'_, AppState>, access: String, personal: String) -> CmdResult<RavelryAccount> {
-    let mut k = Keys { access: access.trim().to_string(), personal: personal.trim().to_string(), username: String::new() };
-    if k.access.is_empty() || k.personal.is_empty() {
-        return Err(AppError::Message("Paste both parts of the key: the access key and the personal key.".into()));
+/// Waits on the app's port for Ravelry's answer, five minutes at most, and
+/// says in the browser that it is done.
+fn wait_for_code(listener: std::net::TcpListener, state: &str) -> Result<String, AppError> {
+    use std::io::{Read, Write};
+    listener.set_nonblocking(true)?;
+    let until = std::time::Instant::now() + Duration::from_secs(300);
+    while std::time::Instant::now() < until {
+        let (mut stream, _) = match listener.accept() {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
+        stream.set_nonblocking(false)?;
+        stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+        let mut buf = [0u8; 8192];
+        let n = stream.read(&mut buf).unwrap_or(0);
+        let request = String::from_utf8_lossy(&buf[..n]);
+        let line = request.lines().next().unwrap_or("");
+        let Some(answer) = callback(line, state) else {
+            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            continue;
+        };
+        let words = if answer.is_ok() { "Signed in with Ravelry. You can close this tab and go back to Shiny Knitting." } else { "Not signed in. Go back to Shiny Knitting to try again." };
+        let page = format!("<!doctype html><meta charset=\"utf-8\"><title>Shiny Knitting</title><body style=\"font:16px system-ui;padding:40px;background:#1c1b1f;color:#eee\"><p>{words}</p></body>");
+        let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}", page.len()).as_bytes());
+        return answer;
     }
-    let me = get(&format!("{API}/current_user.json"), &k).await?;
-    k.username = text(&me, &["user", "username"]);
-    db::set_setting(&state.db(), KEYS, &k)?;
-    Ok(RavelryAccount { connected: true, username: k.username })
+    Err(AppError::Message("Ravelry didn't answer within five minutes: try again.".into()))
 }
 
-/// Forgets the key.
+/// Signs in with Ravelry: its page in the browser, the answer caught on the
+/// app's port, the code exchanged for tokens, kept; whose they are asked.
+#[tauri::command]
+pub async fn sign_in_ravelry(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<RavelryAccount> {
+    let (id, _) = client().ok_or_else(|| AppError::Message("This copy of the app was built without Ravelry's sign-in.".into()))?;
+    let listener = std::net::TcpListener::bind(("127.0.0.1", PORT))
+        .map_err(|_| AppError::Message(format!("The app couldn't listen for Ravelry's answer: port {PORT} is in use. Close what uses it, or try again.")))?;
+    let state_word = uuid::Uuid::new_v4().simple().to_string();
+    let verifier = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+    crate::external::open_link(authorize_address(id, &state_word, &verifier))?;
+    let expected = state_word.clone();
+    let code = tokio::task::spawn_blocking(move || wait_for_code(listener, &expected))
+        .await
+        .map_err(|e| AppError::Message(format!("Signing in stopped: {e}")))??;
+    let redirect = redirect();
+    let (access, refresh, expires) = tokens(&[("grant_type", "authorization_code"), ("code", &code), ("redirect_uri", &redirect), ("code_verifier", &verifier)]).await?;
+    keep(&state, &access, &refresh, expires, "")?;
+    // Whose it is; the sign-in stands without it.
+    let username = get(&state, &format!("{API}/current_user.json")).await.map(|me| text(&me, &["user", "username"])).unwrap_or_default();
+    if !username.is_empty() {
+        keep(&state, &access, &refresh, expires, &username)?;
+    }
+    if let Some(window) = tauri::Manager::get_webview_window(&app, "main") {
+        let _ = window.set_focus();
+    }
+    Ok(RavelryAccount { available: true, connected: true, username })
+}
+
+/// Forgets the sign-in.
 #[tauri::command]
 pub fn disconnect_ravelry(state: State<'_, AppState>) -> CmdResult<()> {
-    db::set_setting(&state.db(), KEYS, &Keys::default())
+    db::set_setting(&state.db(), SIGNED_IN, &SignedIn::default())
 }
 
 #[tauri::command]
 pub async fn search_ravelry(state: State<'_, AppState>, query: RavelryQuery) -> CmdResult<RavelrySearch> {
-    let k = keys(&state)?;
-    Ok(search_answer(&get(&search_address(&query), &k).await?))
+    Ok(search_answer(&get(&state, &search_address(&query)).await?))
 }
 
 #[tauri::command]
 pub async fn ravelry_pattern(state: State<'_, AppState>, id: i64) -> CmdResult<RavelryPatternDetail> {
-    let k = keys(&state)?;
-    Ok(detail_answer(&get(&format!("{API}/patterns/{id}.json"), &k).await?))
+    Ok(detail_answer(&get(&state, &format!("{API}/patterns/{id}.json")).await?))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn signing_in_asks_ravelry_and_knows_its_answer() {
+        // PKCE's challenge, as Python's hashlib and base64 work it out.
+        assert_eq!(challenge("shinyknittingverifier0123456789abcdefghijklmnopqrstuv"), "bPJyBI9_JeTzWv1Dop8RNkn7z1HPkNr20fDj29yAq7I");
+        let url = authorize_address("my app", "s1", "shinyknittingverifier0123456789abcdefghijklmnopqrstuv");
+        assert_eq!(
+            url,
+            "https://www.ravelry.com/oauth2/auth?response_type=code&client_id=my%20app&redirect_uri=http%3A%2F%2Flocalhost%3A47851%2Fravelry&scope=offline&state=s1&code_challenge=bPJyBI9_JeTzWv1Dop8RNkn7z1HPkNr20fDj29yAq7I&code_challenge_method=S256"
+        );
+        assert_eq!(callback("GET /ravelry?code=abc&state=s1 HTTP/1.1", "s1").unwrap().unwrap(), "abc");
+        assert!(callback("GET /favicon.ico HTTP/1.1", "s1").is_none(), "another request is not the answer");
+        assert!(callback("GET /ravelry?code=abc&state=other HTTP/1.1", "s1").unwrap().unwrap_err().to_string().contains("wasn't for this signing-in"));
+        assert!(callback("GET /ravelry?error=access_denied&state=s1 HTTP/1.1", "s1").unwrap().unwrap_err().to_string().contains("wasn't allowed"));
+        assert!(callback("GET /ravelry?state=s1 HTTP/1.1", "s1").unwrap().is_err(), "no code");
+    }
 
     #[test]
     fn a_search_is_asked_with_its_choices() {

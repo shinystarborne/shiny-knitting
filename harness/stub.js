@@ -1525,21 +1525,22 @@ const handlers = {
   // Recorded rather than opened, so a test can see what would have been.
   // ---------- Ravelry ----------
   //
-  // As ravelry.rs, with a Ravelry of its own: a key whose access part is
-  // "refused" is not accepted; a search finds by name or designer among a
-  // few patterns, twenty-four to a page, the free ones alone when asked.
-  ravelry_account: () => ({ connected: !!store.ravelryKey, username: store.ravelryKey?.username ?? "" }),
-  connect_ravelry: ({ access, personal }) => {
-    if (!String(access ?? "").trim() || !String(personal ?? "").trim()) throw new Error("Paste both parts of the key: the access key and the personal key.");
-    if (String(access).trim() === "refused") throw new Error("Ravelry didn't accept the key. Check it, and paste it again in the Ravelry tab.");
+  // As ravelry.rs, with a Ravelry of its own: signing in is allowed
+  // unless window.__ravelryRefuse is set (as if the knitter said no in the
+  // browser); a search finds by name or designer among a few patterns,
+  // twenty-four to a page, the free ones alone when asked.
+  ravelry_account: () => ({ available: true, connected: !!store.ravelryKey, username: store.ravelryKey?.username ?? "" }),
+  sign_in_ravelry: async () => {
+    await new Promise((r) => setTimeout(r, 150));
+    if (window.__ravelryRefuse) throw new Error("Ravelry wasn't allowed: nothing was signed in.");
     store.ravelryKey = { username: "shinyknits" };
-    return { connected: true, username: "shinyknits" };
+    return { available: true, connected: true, username: "shinyknits" };
   },
   disconnect_ravelry: () => {
     store.ravelryKey = null;
   },
   search_ravelry: ({ query }) => {
-    if (!store.ravelryKey) throw new Error("Connect your Ravelry account first: paste your personal API key in the Ravelry tab.");
+    if (!store.ravelryKey) throw new Error("Sign in with Ravelry first, in the Ravelry tab.");
     const all = ravelryPatterns();
     const words = String(query.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
     const found = all.filter((p) => words.every((w) => `${p.name} ${p.designer}`.toLowerCase().includes(w)) && (!query.free || p.free));

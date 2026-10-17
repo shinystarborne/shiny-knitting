@@ -2,9 +2,6 @@ import { api, type RavelryAccount, type RavelryPattern, type RavelryPatternDetai
 import { askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 
-/** Where a personal API key is made, signed in to Ravelry. */
-const DEVELOPER = "https://www.ravelry.com/pro/developer";
-
 /** The search last made, kept while the app is open. */
 const kept: { query: RavelryQuery } = { query: { query: "", craft: "knitting", free: false, sort: "" } };
 
@@ -14,13 +11,13 @@ const kept: { query: RavelryQuery } = { query: { query: "", craft: "knitting", f
  * Ravelry says of it, to put on the wishlist or buy on Ravelry, in the
  * browser. Ravelry's site itself will not be shown inside another app.
  *
- * The API needs the knitter's own personal key, made on Ravelry's
- * developer page and pasted here once.
+ * The knitter signs in with Ravelry once, in the browser (OAuth): an
+ * ordinary Ravelry account is all it takes.
  */
 export class RavelryView {
   private screen: HTMLElement;
   private root!: HTMLElement;
-  private account: RavelryAccount = { connected: false, username: "" };
+  private account: RavelryAccount = { available: false, connected: false, username: "" };
   private found: RavelryPattern[] = [];
   private page = 1;
   private pages = 1;
@@ -40,7 +37,6 @@ export class RavelryView {
     this.root.addEventListener("submit", (e) => {
       e.preventDefault();
       const form = e.target as HTMLFormElement;
-      if (form.dataset.el === "connect") void this.connect();
       if (form.dataset.el === "search") void this.search(1);
     });
     this.account = await api.ravelryAccount().catch(() => this.account);
@@ -60,7 +56,7 @@ export class RavelryView {
         <h1>Ravelry</h1>
         <div class="lib-actions">
           <span class="hint">Connected as <b>${esc(this.account.username || "you")}</b></span>
-          <button class="ghost" data-act="disconnect" title="Forget the key: the tab asks for one again">Disconnect</button>
+          <button class="ghost" data-act="disconnect" title="Forget the sign-in: the tab asks for it again">Disconnect</button>
         </div>
       </header>
       <form class="rav-search" data-el="search">
@@ -99,44 +95,41 @@ export class RavelryView {
       ${this.page < this.pages ? `<div class="rav-more"><button class="ghost" data-act="more">More</button></div>` : ""}`;
   }
 
-  /** Not connected yet: how to make a key, and where to paste it. */
+  /** Not signed in yet: a button to, in the browser. */
   private paintConnect(): void {
     this.root.innerHTML = `
       <header class="lib-bar"><h1>Ravelry</h1></header>
       <div class="rav-connect">
         <section class="rav-card">
-          <h2>Connect your Ravelry account</h2>
-          <p>Ravelry is searched through its API, which wants a key of your own. It is made once, in a minute:</p>
-          <ol>
-            <li>Open Ravelry's developer page, signed in: <button class="link" data-act="developer">ravelry.com/pro/developer ↗</button></li>
-            <li>Under <b>My Apps</b>, choose <b>Basic Auth: read only access</b>, and <b>create app</b>. A free Ravelry account is enough.</li>
-            <li>Ravelry shows its key in two parts: an access key (a username) and a personal key (a password). Paste both below.</li>
-          </ol>
-          <form class="rav-keys" data-el="connect">
-            <label class="field"><span>Access key <em class="hint">the username part</em></span><input data-f="access" autocomplete="off" spellcheck="false" /></label>
-            <label class="field"><span>Personal key <em class="hint">the password part</em></span><input data-f="personal" type="password" autocomplete="off" spellcheck="false" /></label>
-            <p class="form-error" data-el="error" hidden></p>
-            <div><button class="primary" type="submit">Connect</button></div>
-          </form>
-          <p class="hint">The key is kept in your library on this computer, never in the app. It is read-only: the app can search Ravelry with it, and nothing more.</p>
+          <h2>Sign in with Ravelry</h2>
+          ${
+            this.account.available
+              ? `<p>Search Ravelry's patterns here, see them with their photos, and put the ones you like on your wishlist. Sign in once with your Ravelry account: Ravelry asks you, in your browser, to let the app in.</p>
+                 <div><button class="primary" data-act="sign-in">Sign in with Ravelry</button></div>
+                 <p class="hint" data-el="waiting" hidden>Waiting for Ravelry, in your browser: allow the app there, and come back.</p>
+                 <p class="form-error" data-el="error" hidden></p>
+                 <p class="hint">Only reading: the app searches Ravelry for you, and changes nothing there. Disconnect forgets the sign-in.</p>`
+              : `<p>This copy of the app was built without Ravelry's sign-in, so Ravelry can't be searched from it.</p>`
+          }
         </section>
       </div>`;
   }
 
-  private async connect(): Promise<void> {
-    const value = (f: string) => this.root.querySelector<HTMLInputElement>(`[data-f="${f}"]`)!.value;
+  private async signIn(): Promise<void> {
+    const button = this.root.querySelector<HTMLButtonElement>('[data-act="sign-in"]')!;
+    const waiting = this.root.querySelector<HTMLElement>('[data-el="waiting"]')!;
     const error = this.root.querySelector<HTMLElement>('[data-el="error"]')!;
-    const button = this.root.querySelector<HTMLButtonElement>('[data-el="connect"] button[type="submit"]')!;
     button.disabled = true;
-    button.textContent = "Asking Ravelry…";
+    waiting.hidden = false;
+    error.hidden = true;
     try {
-      this.account = await api.connectRavelry(value("access"), value("personal"));
+      this.account = await api.signInRavelry();
       this.paint();
     } catch (err) {
       error.textContent = err instanceof Error ? err.message : String(err);
       error.hidden = false;
+      waiting.hidden = true;
       button.disabled = false;
-      button.textContent = "Connect";
     }
   }
 
@@ -164,12 +157,12 @@ export class RavelryView {
     const card = closestEl(e.target, "[data-pattern]");
     if (card) return this.openPattern(Number(card.dataset.pattern));
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
-    if (act === "developer") await api.openLink(DEVELOPER).catch(() => {});
+    if (act === "sign-in") await this.signIn();
     if (act === "more") await this.search(this.page + 1);
     if (act === "disconnect") {
-      if (!(await askYesNo("Forget the Ravelry key? The tab asks for one again; Ravelry keeps it until you delete it there.", { title: "Disconnect Ravelry", okLabel: "Disconnect" }))) return;
+      if (!(await askYesNo("Sign out of Ravelry here? The tab asks you to sign in again.", { title: "Disconnect Ravelry", okLabel: "Disconnect" }))) return;
       await api.disconnectRavelry().catch(() => {});
-      this.account = { connected: false, username: "" };
+      this.account = { ...this.account, connected: false, username: "" };
       this.found = [];
       this.paint();
     }

@@ -144,7 +144,7 @@ pub fn run() {
             projects::set_project_size,
             projects::set_project_masterclass,
             ravelry::ravelry_account,
-            ravelry::connect_ravelry,
+            ravelry::sign_in_ravelry,
             ravelry::disconnect_ravelry,
             ravelry::search_ravelry,
             ravelry::ravelry_pattern,

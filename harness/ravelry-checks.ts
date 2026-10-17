@@ -1,6 +1,6 @@
 /**
- * Checks for the Ravelry tab, through Ravelry's API: connected with a
- * personal key (a wrong one said so), searched, the patterns found as cards,
+ * Checks for the Ravelry tab, through Ravelry's API: signed in with Ravelry
+ * in the browser (a refusal there said so), searched, the patterns found as cards,
  * more of them on asking, the free ones alone; one opened with what Ravelry
  * says of it, to the wishlist with its name, designer and price, or to its
  * page in the browser; disconnected again.
@@ -31,7 +31,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 15000): Pr
 
 export async function verifyRavelry() {
   const results: CheckResult[] = [];
-  const w = window as unknown as { __store: { ravelryKey?: unknown }; __opened?: string[] };
+  const w = window as unknown as { __store: { ravelryKey?: unknown }; __opened?: string[]; __ravelryRefuse?: boolean };
   const store = w.__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const view = () => document.querySelector<HTMLElement>(".ravelry");
@@ -50,21 +50,18 @@ export async function verifyRavelry() {
 
   try {
     tab("ravelry");
-    await waitFor(() => !!view()?.querySelector('[data-el="connect"]'), "the Ravelry tab");
-    check(results, "a tab of its own, beside Masterclasses, asking first for a personal API key, saying how to make one", document.querySelector('.tab-bar [data-tab="masterclasses"] + [data-tab="ravelry"]') !== null && /Connect your Ravelry account/.test(view()!.textContent ?? "") && /Basic Auth: read only access/.test(view()!.textContent ?? ""));
-    view()!.querySelector<HTMLElement>('[data-act="developer"]')!.click();
-    await wait(100);
-    check(results, "…its developer page opened in the browser from there", (w.__opened ?? []).at(-1) === "https://www.ravelry.com/pro/developer");
-
-    field("access").value = "refused";
-    field("personal").value = "secret";
-    view()!.querySelector<HTMLFormElement>('[data-el="connect"]')!.requestSubmit();
+    await waitFor(() => !!view()?.querySelector('[data-act="sign-in"]'), "the Ravelry tab");
+    check(results, "a tab of its own, beside Masterclasses, asking to sign in with Ravelry, with no key to make", document.querySelector('.tab-bar [data-tab="masterclasses"] + [data-tab="ravelry"]') !== null && /Sign in with Ravelry/.test(view()!.textContent ?? "") && !view()!.querySelector('[data-f="access"]'));
+    // Said no to, in the browser.
+    w.__ravelryRefuse = true;
+    view()!.querySelector<HTMLElement>('[data-act="sign-in"]')!.click();
+    check(results, "signing in says it waits for Ravelry, in the browser", !view()!.querySelector<HTMLElement>('[data-el="waiting"]')!.hidden && view()!.querySelector<HTMLButtonElement>('[data-act="sign-in"]')!.disabled);
     await waitFor(() => !view()!.querySelector<HTMLElement>('[data-el="error"]')!.hidden, "the refusal");
-    check(results, "a key Ravelry won't take is said so, and nothing kept", /didn't accept the key/.test(view()!.querySelector('[data-el="error"]')!.textContent ?? "") && !store.ravelryKey);
-    field("access").value = "my-access";
-    view()!.querySelector<HTMLFormElement>('[data-el="connect"]')!.requestSubmit();
-    await waitFor(() => !!view()!.querySelector('[data-el="search"]'), "connected");
-    check(results, "a good key connects, saying as whom", /Connected as shinyknits/.test(view()!.textContent ?? ""));
+    check(results, "…not allowed there, it says so, and nothing is kept", /wasn't allowed/.test(view()!.querySelector('[data-el="error"]')!.textContent ?? "") && !store.ravelryKey && !view()!.querySelector<HTMLButtonElement>('[data-act="sign-in"]')!.disabled);
+    w.__ravelryRefuse = false;
+    view()!.querySelector<HTMLElement>('[data-act="sign-in"]')!.click();
+    await waitFor(() => !!view()!.querySelector('[data-el="search"]'), "signed in");
+    check(results, "…allowed, it is signed in, saying as whom", /Connected as shinyknits/.test(view()!.textContent ?? ""));
 
     await search("védís");
     check(results, "a search shows the patterns found as cards, with their designer", cards().length === 2 && /Riddari/.test(cards()[0].textContent ?? "") && /Védís Jónsdóttir/.test(cards()[0].textContent ?? ""), cards().map((c) => c.textContent).join(" | "));
@@ -96,14 +93,15 @@ export async function verifyRavelry() {
     view()!.querySelector<HTMLElement>('[data-act="disconnect"]')!.click();
     await waitFor(() => !!document.querySelector(".dialog-card"), "the question");
     document.querySelector<HTMLElement>(".dialog-card button.primary")!.click();
-    await waitFor(() => !!view()!.querySelector('[data-el="connect"]'), "disconnected");
-    check(results, "Disconnect forgets the key, and the tab asks for one again", !store.ravelryKey);
+    await waitFor(() => !!view()!.querySelector('[data-act="sign-in"]'), "disconnected");
+    check(results, "Disconnect forgets the sign-in, and the tab asks for it again", !store.ravelryKey && !!view()!.querySelector('[data-act="sign-in"]'));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
     for (let i = 0; i < 3 && document.querySelector(".dialog-card"); i++) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     document.querySelector<HTMLElement>('.modal [data-act="cancel"]')?.click();
     store.ravelryKey = before;
+    w.__ravelryRefuse = false;
     tab("patterns");
   }
 

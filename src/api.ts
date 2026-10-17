@@ -771,8 +771,10 @@ export interface Project {
   masterclassTitle: string;
 }
 
-/** Whether Ravelry's API can be used, and as whom. Mirrors `ravelry.rs::RavelryAccount`. */
+/** Whether Ravelry can be searched, and as whom. Mirrors `ravelry.rs::RavelryAccount`. */
 export interface RavelryAccount {
+  /** Whether this copy of the app can sign in with Ravelry at all. */
+  available: boolean;
   connected: boolean;
   username: string;
 }
@@ -1477,8 +1479,8 @@ export const api = {
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
   /** Whether Ravelry's API can be used, and as whom. */
   ravelryAccount: () => invoke<RavelryAccount>("ravelry_account"),
-  /** Keeps a personal API key, once Ravelry has said whose it is. */
-  connectRavelry: (access: string, personal: string) => invoke<RavelryAccount>("connect_ravelry", { access, personal }),
+  /** Signs in with Ravelry, in the browser; resolves once Ravelry has answered, or says why not. */
+  signInRavelry: () => invoke<RavelryAccount>("sign_in_ravelry"),
   disconnectRavelry: () => invoke<void>("disconnect_ravelry"),
   searchRavelry: (query: RavelryQuery) => invoke<RavelrySearch>("search_ravelry", { query }),
   ravelryPattern: (id: number) => invoke<RavelryPatternDetail>("ravelry_pattern", { id }),
