@@ -117,6 +117,23 @@ export async function verifyMasterclasses() {
     await waitFor(() => items().some((i) => /Italian cast-on/.test(i.textContent ?? "")), "the list renamed");
     check(results, "renamed and noted where it shows, the list too", true);
 
+    // The pattern got after the video was kept: chosen on it afterwards, at the top, and shown.
+    const later = (store as unknown as { patterns: { id: string; title: string }[] }).patterns[1];
+    const field = view()!.querySelector<HTMLElement>(".mc-body > .mc-pattern");
+    check(results, "a masterclass has its Pattern at the top, to choose or change any time", !!field && field === view()!.querySelector(".mc-body")!.firstElementChild);
+    const pickBox = field!.querySelector<HTMLInputElement>(".pattern-pick-input")!;
+    pickBox.focus();
+    pickBox.value = later.title.split(" ")[0];
+    pickBox.dispatchEvent(new Event("input", { bubbles: true }));
+    [...field!.querySelectorAll<HTMLElement>(".pattern-pick-item")].find((li) => li.textContent?.includes(later.title))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    await waitFor(() => store.masterclasses.some((m) => (m as unknown as { patternId: string }).patternId === later.id) && !!view()!.querySelector('[data-act="open-pattern"]'), "the pattern chosen afterwards");
+    check(results, "…chosen, it is kept, and shown in the list with the masterclass", items().some((i) => i.textContent?.includes(`📄 ${later.title}`)));
+    const clear = view()!.querySelector<HTMLInputElement>(".mc-pattern [data-f=\"pattern\"]")!;
+    clear.value = "";
+    clear.dispatchEvent(new Event("change", { bubbles: true }));
+    await waitFor(() => !store.masterclasses.some((m) => (m as unknown as { patternId: string }).patternId === later.id) && !view()!.querySelector('[data-act="open-pattern"]'), "the pattern taken off");
+    check(results, "…and taken off again", true);
+
     // A course in several videos: one added to it.
     act("add-part")!.click();
     await answer(["https://www.youtube.com/watch?v=aaaaaaaaaaa", "Part two: the rib"]);

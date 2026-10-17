@@ -144,7 +144,7 @@ export class MasterclassesView {
       ? shown
           .map((m) => {
             const pic = m.parts.find((p) => p.hasThumb);
-            const said = [m.channel || host(m.parts[0]?.url ?? ""), partsSummary(m), m.projectCount ? `${m.projectCount} project${m.projectCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+            const said = [m.channel || host(m.parts[0]?.url ?? ""), m.patternTitle ? `📄 ${m.patternTitle}` : "", partsSummary(m), m.projectCount ? `${m.projectCount} project${m.projectCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
             return `
           <button class="sheet-item mc-item${m.id === this.openId ? " on" : ""}" data-class="${esc(m.id)}" title="${esc(m.title)}">
             <span class="mc-thumb" data-thumb="${pic ? esc(pic.id) : ""}" aria-hidden="true">${pic ? "" : "▶"}${m.parts.length > 1 ? `<i class="mc-count">${m.parts.length}</i>` : ""}</span>
@@ -186,6 +186,9 @@ export class MasterclassesView {
         </span>
       </header>
       <div class="mc-body">
+        <div class="field mc-pattern"><span>📄 Pattern <em class="hint">the one it goes with, if you have it: choose or change it here any time; a project started from either has both</em></span>
+          <div class="mc-pattern-row"><div data-el="mc-pattern"></div>${m.patternTitle ? `<button class="ghost" data-act="open-pattern" title="Read it">Open ↗</button>` : ""}</div>
+        </div>
         ${many ? `<p class="mc-now"><b>${m.parts.indexOf(part) + 1} of ${m.parts.length}:</b> ${esc(part.title)}</p>` : ""}
         ${
           part.videoId
@@ -195,9 +198,6 @@ export class MasterclassesView {
         <div class="field"><span>Its videos <em class="hint">in order; tick them as you watch</em></span>
           <ol class="mc-parts">${m.parts.map((p, i) => this.partHtml(p, i, m.parts.length, p.id === part.id)).join("")}</ol>
           <div class="mc-part-add"><button class="ghost" data-act="add-part" title="Another video of the same course or knit-along, after these">+ Add a video to it</button></div>
-        </div>
-        <div class="field mc-pattern"><span>Pattern <em class="hint">the one it goes with, if it is in the library: a project started from either has both</em></span>
-          <div class="mc-pattern-row"><div data-el="mc-pattern"></div>${m.patternTitle ? `<button class="ghost" data-act="open-pattern" title="Read it">Open ↗</button>` : ""}</div>
         </div>
         <label class="field"><span>Notes</span>
           <textarea data-f="notes" rows="4" placeholder="What it teaches, where the good bit starts (12:30), what to remember…" maxlength="4000">${esc(m.notes)}</textarea></label>
@@ -331,6 +331,7 @@ export class MasterclassesView {
       if (f === "pattern") {
         const saved = await api.updateMasterclass({ ...m, patternId: el.value });
         this.replace(saved);
+        this.paintList();
         return this.paintView();
       }
       if (f !== "title" && f !== "notes") return;
