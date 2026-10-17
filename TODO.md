@@ -21,9 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Ravelry in the app**: a tab to search Ravelry for a pattern without
-  leaving the app. **Check first** whether it can be shown in a frame. See
-  below.
 - [ ] **Prices**: what yarn, needles and patterns cost, to keep track of what
   is spent. *Decided (16 Oct 2026):* yarn priced per ball, a lot adding up;
   totals for the stash, the tools and per project. See below.
@@ -38,13 +35,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### Ravelry in the app
-
-A tab with Ravelry's search, to find a pattern from the app. Ravelry may
-refuse to be shown in a frame (as some cheatsheet sites do), in which case
-it opens in a window of its own, as those do. A pattern found there could
-go to the wishlist or, once bought and downloaded, into the library.
 
 ### Prices
 
@@ -281,6 +271,14 @@ round one). Which heels exactly is to be settled before building.
   project's Masterclass or the board's Video. *0.3.78* The pattern a
   masterclass goes with (masterclasses.pattern_id), chosen as it is added
   or later; a project started from either has both. *0.3.79*
+- **Ravelry:** its own tab, through Ravelry's API (ravelry.rs): patterns
+  searched (craft, order, free only, 24 a page), shown as cards with their
+  photos (img-src allows Ravelry's image hosts); one opened with what
+  Ravelry says, to the wishlist (name, designer, price filled in) or its
+  page in the browser. A personal key, made on Ravelry's developer page,
+  kept in app_settings. Ravelry's site refuses frames (X-Frame-Options
+  SAMEORIGIN), so nothing of it is shown inside the app. Built to the API's
+  docs and a stand-in: not yet tried against Ravelry itself. *0.3.84*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
