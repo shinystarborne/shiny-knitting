@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.85](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.85)** —
+  sign in with Ravelry, in the browser: no key to make. The one to test.
 - **[v0.3.0-beta.84](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.84)** —
-  Ravelry in its own tab: its patterns searched through its API, to the wishlist or to Ravelry to buy. The one to test.
+  Ravelry in its own tab: its patterns searched through its API, to the wishlist or to Ravelry to buy. Superseded by `beta.85`.
 - **[v0.3.0-beta.83](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.83)** —
   interchangeable tips on a project: both, or one tip, the other free for another. Superseded by `beta.84`.
 - **[v0.3.0-beta.82](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.82)** —

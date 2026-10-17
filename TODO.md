@@ -288,8 +288,10 @@ round one). Which heels exactly is to be settled before building.
   searched (craft, order, free only, 24 a page), shown as cards with their
   photos (img-src allows Ravelry's image hosts); one opened with what
   Ravelry says, to the wishlist (name, designer, price filled in) or its
-  page in the browser. A personal key, made on Ravelry's developer page,
-  kept in app_settings. Ravelry's site refuses frames (X-Frame-Options
+  page in the browser. Signed in with Ravelry (OAuth 2.0, 0.3.85): its page
+  in the browser, the answer back by docs/ravelry/ on GitHub Pages to the
+  app's port 47851, the tokens kept with DPAPI and renewed; the app's id and
+  secret built in from src-tauri/.env.ravelry, never in Git. Ravelry's site refuses frames (X-Frame-Options
   SAMEORIGIN), so nothing of it is shown inside the app. Built to the API's
   docs and a stand-in: not yet tried against Ravelry itself. *0.3.84*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
