@@ -5,7 +5,8 @@
  * searched, renamed and noted; a course in several videos (one added, the
  * ones there bundled, ticked as watched, put in order, one taken out); a
  * project started from one, or chosen on a project's page and put on its
- * board to watch, as a card of its own (or from the board's Video); removed,
+ * board to watch, as a card of its own (or from the board's Video); the
+ * pattern it goes with, a project started from either having both; removed,
  * the project going on without it.
  *
  * Run with the harness open:
@@ -174,6 +175,38 @@ export async function verifyMasterclasses() {
     await waitFor(() => !!page()!.querySelector(".board-item.kind-video iframe.board-video"), "the chosen video on the board");
     check(results, "…the one chosen put on the board to play", page()!.querySelector(".board-item.kind-video iframe.board-video")!.getAttribute("src")!.includes("dQw4w9WgXcQ"));
     await invoke("delete_project", { id: started.id });
+    tab("masterclasses");
+    await waitFor(() => items().length === 2, "the tab again");
+    items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.click();
+
+    // The pattern a video goes with: chosen as it is added, and a project
+    // started from either the video or the pattern has both.
+    const pattern = (store as unknown as { patterns: { id: string; title: string }[] }).patterns[0];
+    act("add")!.click();
+    await waitFor(() => !!dialog()?.querySelector('[data-el="pattern"] .pattern-pick-input'), "the add dialog's pattern");
+    check(results, "adding a video asks, besides its link and name, the pattern it goes with, if any", /optional: the one it goes with/.test(dialog()!.textContent ?? ""));
+    dialog()!.querySelector<HTMLInputElement>('[data-f="link"]')!.value = "https://youtu.be/ccccccccccc";
+    dialog()!.querySelector<HTMLInputElement>('[data-f="name"]')!.value = "Riddari yoke, step by step";
+    dialog()!.querySelector<HTMLInputElement>('[data-el="pattern"] [data-f="pattern"]')!.value = pattern.id;
+    dialog()!.querySelector<HTMLElement>('[data-act="keep"]')!.click();
+    await waitFor(() => store.masterclasses.some((m) => m.title === "Riddari yoke, step by step") && !!view()!.querySelector('[data-act="open-pattern"]'), "kept with its pattern");
+    const withPattern = store.masterclasses.find((m) => m.title === "Riddari yoke, step by step")!;
+    check(results, "…kept with it, the pattern shown on it with Open ↗", (withPattern as unknown as { patternId: string }).patternId === pattern.id && view()!.querySelector<HTMLInputElement>(".mc-pattern .pattern-pick-input")!.value === pattern.title);
+    act("start")!.click();
+    await waitFor(() => !!document.querySelector(".modal.project-form"), "the form");
+    document.querySelector<HTMLElement>('.modal.project-form [data-act="save"]')!.click();
+    await waitFor(() => store.projects.some((p) => p.name === "Riddari yoke, step by step" && !!p.masterclassId), "the project");
+    const fromVideo = store.projects.find((p) => p.name === "Riddari yoke, step by step")!;
+    check(results, "a project started from the video has the video and its pattern", fromVideo.masterclassId === withPattern.id && fromVideo.patternId === pattern.id, JSON.stringify({ m: fromVideo.masterclassId, p: fromVideo.patternId }));
+    await invoke("delete_project", { id: fromVideo.id });
+    (page() ?? view() ?? document.querySelector<HTMLElement>(".projects"))!.dispatchEvent(new CustomEvent("add-project", { bubbles: true, detail: { patternId: pattern.id, name: "From the pattern" } }));
+    await waitFor(() => !!document.querySelector(".modal.project-form"), "the form, from the pattern");
+    document.querySelector<HTMLElement>('.modal.project-form [data-act="save"]')!.click();
+    await waitFor(() => store.projects.some((p) => p.name === "From the pattern" && !!p.masterclassId), "the project from the pattern");
+    const fromPattern = store.projects.find((p) => p.name === "From the pattern")!;
+    check(results, "a project started from the pattern has the video that goes with it too", fromPattern.patternId === pattern.id && fromPattern.masterclassId === withPattern.id, JSON.stringify({ m: fromPattern.masterclassId }));
+    await invoke("delete_project", { id: fromPattern.id });
+    await invoke("delete_masterclass", { id: withPattern.id });
     tab("masterclasses");
     await waitFor(() => items().length === 2, "the tab again");
     items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.click();

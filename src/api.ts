@@ -769,6 +769,9 @@ export interface Masterclass {
   channel: string;
   /** Its videos, in order; never none. */
   parts: MasterclassPart[];
+  /** The pattern in the library it goes with ("" for none), and its title ("" when it is gone). */
+  patternId: string;
+  patternTitle: string;
   projectCount: number;
   addedAt: number;
 }
@@ -1415,7 +1418,7 @@ export const api = {
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
   /** A YouTube link asks YouTube for its title, channel and picture; any other is kept as it is. */
-  addMasterclass: (input: { url: string; title?: string; notes?: string }) => invoke<Masterclass>("add_masterclass", { input }),
+  addMasterclass: (input: { url: string; title?: string; notes?: string; patternId?: string }) => invoke<Masterclass>("add_masterclass", { input }),
   updateMasterclass: (masterclass: Masterclass) => invoke<Masterclass>("update_masterclass", { masterclass }),
   /** Another video for a masterclass, after its others. */
   addMasterclassPart: (masterclassId: string, input: { url: string; title?: string }) => invoke<Masterclass>("add_masterclass_part", { masterclassId, input }),

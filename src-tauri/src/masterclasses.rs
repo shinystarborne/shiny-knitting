@@ -107,13 +107,15 @@ async fn video(state: &AppState, typed: &str, title: &str) -> Result<Masterclass
 pub async fn add_masterclass(state: State<'_, AppState>, input: MasterclassInput) -> CmdResult<Masterclass> {
     let first = video(&state, &input.url, &input.title).await?;
     let title: String = input.title.trim().chars().take(200).collect();
+    let conn = state.db();
     let class = Masterclass {
         id: uuid::Uuid::new_v4().to_string(),
         title: if title.is_empty() { first.title.clone() } else { title },
         notes: input.notes.trim().chars().take(4000).collect(),
+        pattern_id: pattern(&conn, &input.pattern_id)?,
         ..Default::default()
     };
-    db::insert_masterclass(&state.db(), &class, &first)
+    db::insert_masterclass(&conn, &class, &first)
 }
 
 /// Another video for a masterclass, after its others.
@@ -126,7 +128,16 @@ pub async fn add_masterclass_part(state: State<'_, AppState>, masterclass_id: St
     db::get_masterclass(&conn, &masterclass_id)
 }
 
-/// Its title and notes; the rest stays.
+/// A pattern it goes with: one in the library, or none.
+fn pattern(conn: &rusqlite::Connection, id: &str) -> Result<String, AppError> {
+    let id = id.trim();
+    if !id.is_empty() {
+        db::get_pattern(conn, id)?;
+    }
+    Ok(id.to_string())
+}
+
+/// Its title, notes and pattern; the rest stays.
 #[tauri::command]
 pub fn update_masterclass(state: State<'_, AppState>, masterclass: Masterclass) -> CmdResult<Masterclass> {
     let conn = state.db();
@@ -136,6 +147,7 @@ pub fn update_masterclass(state: State<'_, AppState>, masterclass: Masterclass) 
         kept.title = title.chars().take(200).collect();
     }
     kept.notes = masterclass.notes.trim().chars().take(4000).collect();
+    kept.pattern_id = pattern(&conn, &masterclass.pattern_id)?;
     db::update_masterclass(&conn, &kept)?;
     db::get_masterclass(&conn, &kept.id)
 }

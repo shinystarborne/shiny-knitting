@@ -3992,3 +3992,6 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .board-video { flex: 1; width: 100%; min-height: 0; border: 0; }
 /* While a card is moved or sized, the player is not to take the pointer. */
 .board.dragging .board-video { pointer-events: none; }
+/* The pattern a masterclass goes with: the picker, and Open beside it. */
+.mc-pattern-row { display: flex; gap: 8px; align-items: flex-start; }
+.mc-pattern-row > [data-el="mc-pattern"] { flex: 1; min-width: 0; }

@@ -781,6 +781,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
          WHERE NOT EXISTS (SELECT 1 FROM masterclass_videos v WHERE v.masterclass_id = m.id)",
         [],
     )?;
+    // The pattern a masterclass goes with.
+    if !column_exists(conn, "masterclasses", "pattern_id")? {
+        conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
+    }
     // The masterclass a project is knitted along with.
     if !column_exists(conn, "projects", "masterclass_id")? {
         conn.execute("ALTER TABLE projects ADD COLUMN masterclass_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -5178,9 +5182,22 @@ pub fn list_masterclasses(conn: &Connection) -> AppResult<Vec<Masterclass>> {
 pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
     let mut m = conn
         .query_row(
-            "SELECT m.id, m.title, m.notes, m.added_at, (SELECT COUNT(*) FROM projects pr WHERE pr.masterclass_id = m.id) AS project_count FROM masterclasses m WHERE m.id = ?1",
+            "SELECT m.id, m.title, m.notes, m.added_at, (SELECT COUNT(*) FROM projects pr WHERE pr.masterclass_id = m.id) AS project_count,
+                    m.pattern_id, COALESCE(p.title, '') AS pattern_title
+             FROM masterclasses m LEFT JOIN patterns p ON p.id = m.pattern_id AND p.removed_at IS NULL WHERE m.id = ?1",
             params![id],
-            |r| Ok(Masterclass { id: r.get(0)?, title: r.get(1)?, notes: r.get(2)?, added_at: r.get(3)?, project_count: r.get(4)?, ..Default::default() }),
+            |r| {
+                Ok(Masterclass {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    notes: r.get(2)?,
+                    added_at: r.get(3)?,
+                    project_count: r.get(4)?,
+                    pattern_id: r.get(5)?,
+                    pattern_title: r.get(6)?,
+                    ..Default::default()
+                })
+            },
         )
         .optional()?
         .ok_or_else(|| AppError::NotFound("That masterclass is no longer there.".to_string()))?;
@@ -5199,8 +5216,8 @@ pub fn get_masterclass_part(conn: &Connection, id: &str) -> AppResult<Masterclas
 pub fn insert_masterclass(conn: &Connection, m: &Masterclass, first: &MasterclassPart) -> AppResult<Masterclass> {
     let tx = conn.unchecked_transaction()?;
     tx.execute(
-        "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![m.id, m.title, first.url, first.video_id, first.channel, m.notes, first.has_thumb as i64, now_ms()],
+        "INSERT INTO masterclasses (id, title, url, video_id, channel, notes, has_thumb, added_at, pattern_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![m.id, m.title, first.url, first.video_id, first.channel, m.notes, first.has_thumb as i64, now_ms(), m.pattern_id],
     )?;
     insert_part(&tx, &m.id, first)?;
     tx.commit()?;
@@ -5217,8 +5234,9 @@ pub fn insert_part(conn: &Connection, masterclass_id: &str, p: &MasterclassPart)
     Ok(())
 }
 
+/// Its title, notes and pattern.
 pub fn update_masterclass(conn: &Connection, m: &Masterclass) -> AppResult<()> {
-    conn.execute("UPDATE masterclasses SET title = ?2, notes = ?3 WHERE id = ?1", params![m.id, m.title, m.notes])?;
+    conn.execute("UPDATE masterclasses SET title = ?2, notes = ?3, pattern_id = ?4 WHERE id = ?1", params![m.id, m.title, m.notes, m.pattern_id])?;
     Ok(())
 }
 
@@ -5295,6 +5313,10 @@ pub fn bundle_masterclasses(conn: &Connection, ids: &[String], title: &str) -> A
     let mut notes = vec![kept.notes.clone()];
     for id in others {
         let m = get_masterclass(&tx, id)?;
+        // Its pattern, when the first has none.
+        if kept.pattern_id.is_empty() {
+            kept.pattern_id = m.pattern_id.clone();
+        }
         order.extend(m.parts.iter().map(|p| p.id.clone()));
         notes.push(m.notes.clone());
         tx.execute("UPDATE masterclass_videos SET masterclass_id = ?2 WHERE masterclass_id = ?1", params![id, first])?;

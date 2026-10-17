@@ -170,8 +170,8 @@ class App {
     this.screen.addEventListener("show-cheatsheets", () => void this.showCheatsheets());
     // A project started from a masterclass: named after it, knitted along with it.
     this.screen.addEventListener("start-project-from-masterclass", (e) => {
-      const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
-      void this.openProjectForm(null, null, { name: title, masterclassId: id });
+      const { id, title, patternId } = (e as CustomEvent<{ id: string; title: string; patternId?: string }>).detail;
+      void this.openProjectForm(null, patternId || null, { name: title, masterclassId: id });
     });
     // A cheatsheet's pages, in their book.
     this.screen.addEventListener("open-pattern-at", (e) => {

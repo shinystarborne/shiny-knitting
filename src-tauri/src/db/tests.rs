@@ -3562,8 +3562,16 @@ fn a_masterclass_is_its_videos_in_order_bundled_and_split() {
     set_project_masterclass(&conn, "pr", "c").unwrap();
     let order = |m: &Masterclass| m.parts.iter().map(|p| p.id.as_str()).collect::<Vec<_>>().join(" ");
 
+    // The pattern one of them goes with: the bundle takes it, the first having none.
+    let pattern = sample(&conn, "Riddari", "Védís", "", &[]);
+    let mut c = get_masterclass(&conn, "c").unwrap();
+    c.pattern_id = pattern.id.clone();
+    update_masterclass(&conn, &c).unwrap();
+    assert_eq!(get_masterclass(&conn, "c").unwrap().pattern_title, "Riddari");
+
     // Bundled: the first takes the others' videos after its own, their notes and their projects.
     let m = bundle_masterclasses(&conn, &["a".into(), "b".into(), "c".into()], "The sweater course").unwrap();
+    assert_eq!((m.pattern_id.as_str(), m.pattern_title.as_str()), (pattern.id.as_str(), "Riddari"), "the pattern comes with it");
     assert_eq!((m.title.as_str(), order(&m).as_str()), ("The sweater course", "a1 b1 b2 c1"));
     assert_eq!(m.notes, "Cast on loosely.\n\nBlock hard.");
     assert_eq!(get_project(&conn, "pr").unwrap().masterclass_id, "a", "its projects come with it");

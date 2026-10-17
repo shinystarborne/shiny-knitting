@@ -834,9 +834,18 @@ function findMasterclass(id) {
   if (!m) throw new Error("That masterclass is no longer there.");
   return m;
 }
+/** As masterclasses.rs: a pattern in the library, or none. */
+function stubPatternOf(id) {
+  const want = String(id ?? "").trim();
+  if (want && !store.patterns.some((p) => p.id === want)) throw new Error("That pattern is no longer in the library.");
+  return want;
+}
 function masterclassOut(m) {
+  const pattern = store.patterns.find((p) => p.id === m.patternId && !p.removedAt);
   return clone({
+    patternId: "",
     ...m,
+    patternTitle: pattern ? pattern.title : "",
     parts: m.parts.map((p, i) => ({ ...p, position: i })),
     channel: m.parts.map((p) => p.channel).find(Boolean) ?? "",
     projectCount: store.projects.filter((pr) => pr.masterclassId === m.id).length,
@@ -1489,7 +1498,8 @@ const handlers = {
   list_masterclasses: () => [...store.masterclasses].sort((a, b) => b.addedAt - a.addedAt).map(masterclassOut),
   add_masterclass: ({ input }) => {
     const first = stubVideo(input.url, input.title);
-    const m = { id: `mc${store.nextId++}`, title: String(input.title ?? "").trim() || first.title, notes: String(input.notes ?? "").trim(), parts: [first], addedAt: Date.now() + store.nextId };
+    const patternId = stubPatternOf(input.patternId);
+    const m = { id: `mc${store.nextId++}`, title: String(input.title ?? "").trim() || first.title, notes: String(input.notes ?? "").trim(), parts: [first], patternId, addedAt: Date.now() + store.nextId };
     first.masterclassId = m.id;
     store.masterclasses.push(m);
     return masterclassOut(m);
@@ -1505,6 +1515,7 @@ const handlers = {
     const kept = findMasterclass(masterclass.id);
     if (masterclass.title.trim()) kept.title = masterclass.title.trim().slice(0, 200);
     kept.notes = masterclass.notes.trim().slice(0, 4000);
+    kept.patternId = stubPatternOf(masterclass.patternId);
     return masterclassOut(kept);
   },
   update_masterclass_part: ({ part }) => {
@@ -1547,6 +1558,8 @@ const handlers = {
     const [first, ...others] = unique.map(findMasterclass);
     const notes = [first.notes];
     for (const m of others) {
+      // Its pattern, when the first has none.
+      if (!first.patternId) first.patternId = m.patternId ?? "";
       for (const p of m.parts) {
         p.masterclassId = first.id;
         first.parts.push(p);

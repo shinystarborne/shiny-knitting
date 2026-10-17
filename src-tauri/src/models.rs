@@ -849,6 +849,10 @@ pub struct Masterclass {
     pub channel: String,
     /// Its videos, in order; never none.
     pub parts: Vec<MasterclassPart>,
+    /// The pattern in the library it goes with, if there is one ("" for
+    /// none), and that pattern's title ("" when it is gone).
+    pub pattern_id: String,
+    pub pattern_title: String,
     /// The projects knitted along with it.
     pub project_count: i64,
     pub added_at: i64,
@@ -879,6 +883,8 @@ pub struct MasterclassInput {
     pub url: String,
     pub title: String,
     pub notes: String,
+    /// The pattern in the library it goes with, or empty.
+    pub pattern_id: String,
 }
 
 /// The fields the AI is asked to fill in.

@@ -1,7 +1,8 @@
-import { api, type Masterclass, type MasterclassPart, type Project } from "../api";
+import { api, type Masterclass, type MasterclassPart, type Pattern, type Project } from "../api";
 import { masterclassThumbUrl } from "../covers";
 import { askForm, askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { mountPatternPicker } from "./pattern-picker";
 
 /** The one open, remembered after. */
 function readOpen(): string {
@@ -70,6 +71,8 @@ export class MasterclassesView {
   private root!: HTMLElement;
   private classes: Masterclass[] = [];
   private projects: Project[] = [];
+  /** The library's patterns, for the one a masterclass goes with. */
+  private patterns: Pattern[] = [];
   private openId = readOpen();
   private search = "";
 
@@ -101,7 +104,11 @@ export class MasterclassesView {
       this.search = el.value;
       this.paintList();
     });
-    [this.classes, this.projects] = await Promise.all([api.listMasterclasses().catch(() => [] as Masterclass[]), api.listProjects().catch(() => [] as Project[])]);
+    [this.classes, this.projects, this.patterns] = await Promise.all([
+      api.listMasterclasses().catch(() => [] as Masterclass[]),
+      api.listProjects().catch(() => [] as Project[]),
+      api.listPatterns({}).catch(() => [] as Pattern[]),
+    ]);
     if (!this.classes.some((m) => m.id === this.openId)) this.openId = this.classes[0]?.id ?? "";
     this.paintList();
     this.paintView();
@@ -171,7 +178,7 @@ export class MasterclassesView {
         <input class="sheet-title" data-f="title" value="${esc(m.title)}" aria-label="Its name" maxlength="200" />
         <span class="hint sheet-source">${esc([m.channel || host(part.url), partsSummary(m)].filter(Boolean).join(" · "))}</span>
         <span class="sheet-tools">
-          <button class="primary" data-act="start" title="A new project, knitted along with this">Start a project…</button>
+          <button class="primary" data-act="start" title="A new project, knitted along with this${m.patternTitle ? `, and its pattern` : ""}">Start a project…</button>
           <button class="ghost" data-act="browser" title="This video in your web browser">Browser ↗</button>
           <button class="ghost" data-act="window" title="This video in a window of its own, beside the app">Window ↗</button>
           <button class="ghost" data-act="bundle" title="Make this and others one masterclass, a course in several videos" ${this.classes.length > 1 ? "" : "disabled"}>Bundle with…</button>
@@ -189,6 +196,9 @@ export class MasterclassesView {
           <ol class="mc-parts">${m.parts.map((p, i) => this.partHtml(p, i, m.parts.length, p.id === part.id)).join("")}</ol>
           <div class="mc-part-add"><button class="ghost" data-act="add-part" title="Another video of the same course or knit-along, after these">+ Add a video to it</button></div>
         </div>
+        <div class="field mc-pattern"><span>Pattern <em class="hint">the one it goes with, if it is in the library: a project started from either has both</em></span>
+          <div class="mc-pattern-row"><div data-el="mc-pattern"></div>${m.patternTitle ? `<button class="ghost" data-act="open-pattern" title="Read it">Open ↗</button>` : ""}</div>
+        </div>
         <label class="field"><span>Notes</span>
           <textarea data-f="notes" rows="4" placeholder="What it teaches, where the good bit starts (12:30), what to remember…" maxlength="4000">${esc(m.notes)}</textarea></label>
         <div class="field"><span>Knitted along with it</span>
@@ -200,6 +210,7 @@ export class MasterclassesView {
         </div>
       </div>`;
     paintThumbs(view);
+    mountPatternPicker(view.querySelector<HTMLElement>('[data-el="mc-pattern"]')!, this.patterns, m.patternTitle ? m.patternId : null);
   }
 
   private partHtml(p: MasterclassPart, i: number, count: number, playing: boolean): string {
@@ -241,7 +252,8 @@ export class MasterclassesView {
     const partId = closestEl(e.target, "[data-part]")?.dataset.part;
     const part = partShown(m, m.id);
     try {
-      if (act === "start") this.root.dispatchEvent(new CustomEvent("start-project-from-masterclass", { bubbles: true, detail: { id: m.id, title: m.title } }));
+      if (act === "start") this.root.dispatchEvent(new CustomEvent("start-project-from-masterclass", { bubbles: true, detail: { id: m.id, title: m.title, patternId: m.patternTitle ? m.patternId : "" } }));
+      if (act === "open-pattern" && m.patternId) this.root.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: m.patternId }));
       if (act === "browser") await api.openLink(part.url);
       if (act === "window") await api.openCheatsheetWindow(`mc-${part.id}`, part.url, part.title);
       if (act === "play" && partId) {
@@ -315,6 +327,12 @@ export class MasterclassesView {
         }
         return;
       }
+      // The pattern it goes with, from the picker's hidden field.
+      if (f === "pattern") {
+        const saved = await api.updateMasterclass({ ...m, patternId: el.value });
+        this.replace(saved);
+        return this.paintView();
+      }
       if (f !== "title" && f !== "notes") return;
       const value = el.value.trim();
       if (f === "title" && !value) {
@@ -333,17 +351,11 @@ export class MasterclassesView {
   }
 
   private async add(): Promise<void> {
-    const answer = await askForm(
-      [
-        { label: "Link", placeholder: "https://www.youtube.com/watch?v=…" },
-        { label: "Name", placeholder: "Optional: the video's own title is used" },
-      ],
-      { title: "A video to learn from", okLabel: "Keep it" },
-    );
+    const answer = await askVideo(this.patterns);
     if (!answer) return;
     this.asking();
     try {
-      const m = await api.addMasterclass({ url: answer.Link, title: answer.Name });
+      const m = await api.addMasterclass({ url: answer.url, title: answer.title, patternId: answer.patternId });
       this.replace(m);
       this.openId = m.id;
       keepOpen(m.id);
@@ -448,6 +460,56 @@ export class MasterclassesView {
   private asking(): void {
     this.root.querySelector<HTMLElement>('[data-el="list"]')!.insertAdjacentHTML("afterbegin", `<p class="hint sheet-none" data-el="asking">Asking YouTube for it…</p>`);
   }
+}
+
+/**
+ * Asks for a video to keep: its link, a name if the video's own will not
+ * do, and the pattern in the library it goes with, if there is one.
+ */
+function askVideo(patterns: Pattern[]): Promise<{ url: string; title: string; patternId: string } | null> {
+  return new Promise((resolve) => {
+    const finish = (answer: { url: string; title: string; patternId: string } | null) => {
+      dialog.close();
+      resolve(answer);
+    };
+    const dialog = customDialog("A video to learn from", () => finish(null), "mc-add-dialog");
+    dialog.card.insertAdjacentHTML(
+      "beforeend",
+      `
+      <label class="dialog-field"><span class="dialog-label">Link</span><input class="dialog-input" data-f="link" placeholder="https://www.youtube.com/watch?v=…" /></label>
+      <label class="dialog-field"><span class="dialog-label">Name</span><input class="dialog-input" data-f="name" placeholder="Optional: the video's own title is used" /></label>
+      <div class="dialog-field"><span class="dialog-label">Pattern <em class="hint">optional: the one it goes with, if you have it</em></span><div data-el="pattern"></div></div>
+      <p class="form-error" data-el="error" hidden></p>
+      <div class="dialog-actions">
+        <button class="ghost" data-act="cancel">Cancel</button>
+        <button class="primary" data-act="keep">Keep it</button>
+      </div>`,
+    );
+    const card = dialog.card;
+    mountPatternPicker(card.querySelector<HTMLElement>('[data-el="pattern"]')!, patterns, null);
+    const keep = () => {
+      const url = card.querySelector<HTMLInputElement>('[data-f="link"]')!.value.trim();
+      if (!url) {
+        const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
+        error.textContent = "Give the video's link: a YouTube address.";
+        error.hidden = false;
+        return;
+      }
+      finish({ url, title: card.querySelector<HTMLInputElement>('[data-f="name"]')!.value.trim(), patternId: card.querySelector<HTMLInputElement>('[data-f="pattern"]')!.value });
+    };
+    card.addEventListener("click", (e) => {
+      const act = closestEl(e.target, "button[data-act]")?.dataset.act;
+      if (act === "cancel") finish(null);
+      if (act === "keep") keep();
+    });
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.target as HTMLElement).matches('[data-f="link"], [data-f="name"]')) {
+        e.preventDefault();
+        keep();
+      }
+    });
+    dialog.show(card.querySelector<HTMLElement>('[data-f="link"]')!);
+  });
 }
 
 /** Fills in the videos' pictures under an element, as they load. */

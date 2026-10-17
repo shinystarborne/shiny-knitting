@@ -257,8 +257,12 @@ export class ProjectForm {
       let saved = this.editing
         ? await api.updateProject(this.editing.id, this.input())
         : await api.addProject(this.input());
-      // Started from a masterclass, it is knitted along with it.
-      if (!this.editing && this.preset.masterclassId) saved = await api.setProjectMasterclass(saved.id, this.preset.masterclassId);
+      // Started from a masterclass, it is knitted along with it; from a
+      // pattern a masterclass goes with, along with that masterclass.
+      if (!this.editing) {
+        const along = this.preset.masterclassId || (saved.patternId ? (await api.listMasterclasses().catch(() => [])).find((m) => m.patternId === saved.patternId)?.id : "");
+        if (along) saved = await api.setProjectMasterclass(saved.id, along);
+      }
       this.close();
       this.hooks.onDone(saved);
       return saved;
