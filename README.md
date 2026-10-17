@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.88](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.88)** —
+  prices for needles and hooks: one alone, a set with one price, and what they all cost. The one to test.
 - **[v0.3.0-beta.87](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.87)** —
-  one price a ball for a yarn: every colour and lot of it the same. The one to test.
+  one price a ball for a yarn: every colour and lot of it the same. Superseded by `beta.88`.
 - **[v0.3.0-beta.86](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.86)** —
   prices: a lot's price a ball and a pattern's, what the stash is worth, what was spent, what a project cost. Superseded by `beta.87`.
 - **[v0.3.0-beta.85](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.85)** —

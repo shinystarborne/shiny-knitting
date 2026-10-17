@@ -21,9 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Prices for tools**: what needles & hooks cost, a set with one price
-  for the set, and the total cost of all the tools. Yarn and patterns have
-  theirs (0.3.86, one price per yarn 0.3.87). See below.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
@@ -35,17 +32,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### Prices
-
-Decided (16 Oct 2026). Yarn, patterns, the stash's worth, the spending by
-month and a project's cost are built (0.3.86, see Already built). Left:
-
-- **Tools:** the total cost of all the needles & hooks. A set is added as
-  one entry per size, with nothing tying them together afterwards, so a set
-  needs to become a thing of its own: its pieces chosen (or the ones added
-  together), and one price written for the set. To think through when
-  building it.
 
 ### Describing with a model fails on some patterns
 
@@ -298,7 +284,13 @@ round one). Which heels exactly is to be settled before building.
   added; a pattern when added), shown in Statistics with the month's list
   and a Spent column; a project's cost on its page, its yarn by the grams
   used once finished or else planned, and its pattern, tools not counted. A
-  wishlist price becomes a ball's (pricePerBall). *0.3.86*
+  wishlist price becomes a ball's (pricePerBall). *0.3.86* Needles and hooks:
+  one alone has a price (tools.price), a set one for all its pieces
+  (tool_sets, tools.set_id; a piece's own price not counted while in one).
+  Several sizes added at once are a set; Sets makes and changes one, its
+  pieces ticked. Needles & hooks' header says what they all cost
+  (toolsCost), and they are in Statistics' Spent. A price the same brand and
+  kind has is offered for another bought alone. *0.3.88*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
