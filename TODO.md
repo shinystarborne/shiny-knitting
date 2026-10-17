@@ -23,7 +23,7 @@ under the list.
 
 - [ ] **Prices for tools**: what needles & hooks cost, a set with one price
   for the set, and the total cost of all the tools. Yarn and patterns have
-  theirs (0.3.86). See below.
+  theirs (0.3.86, one price per yarn 0.3.87). See below.
 - [ ] **Describing with a model fails on some patterns**: the model uses its
   whole reply on reasoning and returns no answer. See below.
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
@@ -288,8 +288,10 @@ round one). Which heels exactly is to be settled before building.
   secret built in from src-tauri/.env.ravelry, never in Git. Ravelry's site refuses frames (X-Frame-Options
   SAMEORIGIN), so nothing of it is shown inside the app. Built to the API's
   docs and a stand-in, then signed in for real (17 Oct 2026). *0.3.84*
-- **Prices:** a lot's price a ball (yarn_lots.price) and a pattern's price
-  (patterns.price, set_pattern_price), plain numbers to the cent in the one
+- **Prices:** a yarn's price a ball, the same for every colour and lot of
+  it (yarn_details.price, by brand and name, 0.3.87; it was a lot's in
+  0.3.86, yarn_lots.price, carried over and left empty), and a pattern's
+  price (patterns.price, set_pattern_price), plain numbers to the cent in the one
   currency of Settings (setting "currency", EUR to start). money.ts holds
   the sums: what the stash is worth (a weighed lot by its share of a ball),
   what was spent by month (a lot dated when bought, else when its yarn was
