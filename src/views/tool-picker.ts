@@ -19,10 +19,10 @@ export class ToolPicker {
   private host: HTMLElement;
   private onAdd: (id: string) => void;
   private onRemove: (id: string) => void;
-  /** Interchangeable tips on it: the pair (""), or the right or left tip only. */
-  private onTip: (id: string, tip: "" | "right" | "left") => void;
+  /** Interchangeable tips on it: the pair (""), or one tip ("one"). */
+  private onTip: (id: string, tip: "" | "one") => void;
 
-  constructor(host: HTMLElement, onAdd: (id: string) => void, onRemove: (id: string) => void, onTip: (id: string, tip: "" | "right" | "left") => void = () => {}) {
+  constructor(host: HTMLElement, onAdd: (id: string) => void, onRemove: (id: string) => void, onTip: (id: string, tip: "" | "one") => void = () => {}) {
     this.host = host;
     this.onAdd = onAdd;
     this.onRemove = onRemove;
@@ -42,7 +42,7 @@ export class ToolPicker {
     });
     host.addEventListener("change", (e) => {
       const select = e.target as HTMLSelectElement;
-      if (select.dataset.tip !== undefined) return this.onTip(select.dataset.tip, select.value as "" | "right" | "left");
+      if (select.dataset.tip !== undefined) return this.onTip(select.dataset.tip, select.value as "" | "one");
       if (select.dataset.el !== "tool-add") return;
       const use = host.querySelector<HTMLButtonElement>('[data-act="tool-use"]');
       if (use) use.disabled = !select.value;
@@ -90,7 +90,7 @@ export class ToolPicker {
                   ${
                     t.kind === "tips"
                       ? `<select data-tip="${t.id}" aria-label="Both tips, or one" title="Both tips, or only one: the other stays free for another project">
-                          ${(["", "right", "left"] as const).map((v) => `<option value="${v}" ${(tips.get(t.id) ?? "") === v ? "selected" : ""}>${v === "" ? "Both tips" : v === "right" ? "Right tip only" : "Left tip only"}</option>`).join("")}
+                          ${(["", "one"] as const).map((v) => `<option value="${v}" ${(tips.get(t.id) ?? "") === v ? "selected" : ""}>${v ? "One tip" : "Both tips"}</option>`).join("")}
                         </select>`
                       : ""
                   }

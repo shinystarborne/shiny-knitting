@@ -1009,7 +1009,7 @@ pub struct Tool {
 pub struct ToolUse {
     pub project_id: String,
     pub project_name: String,
-    /// "" for the pair (or anything not interchangeable tips), "right" or "left" for one tip.
+    /// "" for the pair (or anything not interchangeable tips), "one" for one tip of it.
     pub tip: String,
 }
 
@@ -1072,7 +1072,7 @@ pub struct Project {
     pub person_name: String,
     /// The tools on it: while active, those in use; once finished, those it used.
     pub tool_ids: Vec<String>,
-    /// The interchangeable tips it has one of, by the tool's id: "right" or "left".
+    /// The interchangeable tips it has one of, by the tool's id: "one".
     #[serde(default)]
     pub tool_tips: std::collections::BTreeMap<String, String>,
     pub yarns: Vec<ProjectYarn>,
@@ -1169,7 +1169,7 @@ pub struct ProjectInput {
     pub finished_at: Option<i64>,
     #[serde(default)]
     pub tool_ids: Vec<String>,
-    /// The interchangeable tips it takes one of, by the tool's id: "right" or "left". The rest are the whole thing.
+    /// The interchangeable tips it takes one of, by the tool's id: "one". The rest are the whole thing.
     #[serde(default)]
     pub tool_tips: std::collections::BTreeMap<String, String>,
     #[serde(default)]

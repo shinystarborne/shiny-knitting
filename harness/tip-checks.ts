@@ -1,9 +1,9 @@
 /**
- * Checks for one tip of a pair of interchangeable tips on a project: a 5 mm
- * right needle and a 4.5 mm left, each tip chosen in the project's form and
- * said wherever its needles are listed; the other tip of the pair free for
- * another project, offered there as such and taken as the other side; the
- * card in Needles & hooks saying where each tip is.
+ * Checks for one tip of a pair of interchangeable tips on a project (the two
+ * are alike, so one tip or both): one tip of 5 mm and one of 4.5 mm, chosen
+ * in the project's form and said wherever its needles are listed; the other
+ * tip of a pair free for another project, offered there as such and taken
+ * as one tip; the card in Needles & hooks saying where each tip is.
  *
  * Run with the harness open:
  *   window.__tipChecks()
@@ -37,9 +37,9 @@ const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
 function pure(results: CheckResult[]): void {
   const tips = (uses: Tool["uses"]) => ({ kind: "tips", projectId: uses[0]?.projectId ?? null, uses }) as Tool;
   check(results, "a pair on no project has both tips free", tipsFree(tips([])) === 2 && isFree(tips([])));
-  check(results, "…one tip on a project leaves one free, and it counts as free", tipsFree(tips([{ projectId: "a", projectName: "A", tip: "right" }])) === 1 && isFree(tips([{ projectId: "a", projectName: "A", tip: "right" }])));
-  check(results, "…the pair, or a tip each on two, none", tipsFree(tips([{ projectId: "a", projectName: "A", tip: "" }])) === 0 && tipsFree(tips([{ projectId: "a", projectName: "A", tip: "right" }, { projectId: "b", projectName: "B", tip: "left" }])) === 0);
-  check(results, "a tip is said as which hand", tipLabel("right") === "right tip" && tipLabel("left") === "left tip" && tipLabel("") === "");
+  check(results, "…one tip on a project leaves one free, and it counts as free", tipsFree(tips([{ projectId: "a", projectName: "A", tip: "one" }])) === 1 && isFree(tips([{ projectId: "a", projectName: "A", tip: "one" }])));
+  check(results, "…the pair, or a tip each on two, none", tipsFree(tips([{ projectId: "a", projectName: "A", tip: "" }])) === 0 && tipsFree(tips([{ projectId: "a", projectName: "A", tip: "one" }, { projectId: "b", projectName: "B", tip: "one" }])) === 0);
+  check(results, "one tip is said so, the pair not", tipLabel("one") === "one tip" && tipLabel("") === "");
 }
 
 export async function verifyTips() {
@@ -80,20 +80,21 @@ export async function verifyTips() {
     await waitFor(() => !!document.querySelector(".projects"), "the projects");
     await edit(brioche.id);
     check(results, "tips on a project are both tips to start with, and say so; a cable has no such choice", tip(five.id)?.value === "" && /Both tips/.test(tip(five.id)!.selectedOptions[0].textContent ?? "") && !tip(cable.id));
-    tip(five.id)!.value = "right";
+    check(results, "…the choice is both tips or one, no right or left", [...tip(five.id)!.options].map((o) => o.textContent).join(" | ") === "Both tips | One tip");
+    tip(five.id)!.value = "one";
     tip(five.id)!.dispatchEvent(new Event("change", { bubbles: true }));
-    tip(four.id)!.value = "left";
+    tip(four.id)!.value = "one";
     tip(four.id)!.dispatchEvent(new Event("change", { bubbles: true }));
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
-    await waitFor(() => !modal() && tipsOf(brioche.id) === JSON.stringify(Object.fromEntries([[five.id, "right"], [four.id, "left"]].sort())), "the tips kept");
-    check(results, "a 5 mm right tip and a 4.5 mm left tip are kept on the project", true);
+    await waitFor(() => !modal() && tipsOf(brioche.id) === JSON.stringify(Object.fromEntries([[five.id, "one"], [four.id, "one"]].sort())), "the tips kept");
+    check(results, "one tip of 5 mm and one of 4.5 mm are kept on the project", true);
 
     document.querySelector<HTMLElement>(".projects")!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: brioche.id }));
     await waitFor(() => !!page()?.querySelector(".tool-list"), "the project's page");
     const listed = page()!.querySelector(".tool-list")!.textContent ?? "";
-    check(results, "its page says which tip is which", /5 mm interchangeable tips[^—]*— right tip/.test(listed) && /4\.5 mm interchangeable tips[^—]*— left tip/.test(listed), listed.replace(/\s+/g, " "));
+    check(results, "its page says it has one tip of each", /5 mm interchangeable tips[^—]*— one tip/.test(listed) && /4\.5 mm interchangeable tips[^—]*— one tip/.test(listed), listed.replace(/\s+/g, " "));
 
-    // The other 5 mm tip is free: another project is offered it, and takes the other side.
+    // The other 5 mm tip is free: another project is offered it, and takes it.
     const cowl = await project("Second cowl", []);
     tab("patterns");
     tab("projects");
@@ -106,18 +107,18 @@ export async function verifyTips() {
     pick.dispatchEvent(new Event("change", { bubbles: true }));
     modal()!.querySelector<HTMLElement>('[data-act="tool-use"]')!.click();
     await waitFor(() => !!tip(five.id), "the 5 mm on the second project");
-    check(results, "…and taken, it is the other tip: the left", tip(five.id)!.value === "left");
+    check(results, "…and taken, it is one tip: the other", tip(five.id)!.value === "one");
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     await waitFor(() => !modal(), "saved");
     const shared = (await invoke<Tool[]>("list_tools")).find((t) => t.id === five.id)!;
-    check(results, "the pair is on both projects now, a tip each", shared.uses.length === 2 && shared.uses.map((u) => `${u.projectId}:${u.tip}`).sort().join(" ") === [`${brioche.id}:right`, `${cowl.id}:left`].sort().join(" "), JSON.stringify(shared.uses));
+    check(results, "the pair is on both projects now, a tip each", shared.uses.length === 2 && shared.uses.map((u) => `${u.projectId}:${u.tip}`).sort().join(" ") === [`${brioche.id}:one`, `${cowl.id}:one`].sort().join(" "), JSON.stringify(shared.uses));
 
     // Needles & hooks: where each tip is.
     tab("tools");
     await waitFor(() => !!document.querySelector(`.tool-card[data-open="${four.id}"]`), "the needles");
     const card = (id: string) => document.querySelector<HTMLElement>(`.tool-card[data-open="${id}"]`)!.textContent!.replace(/\s+/g, " ");
-    check(results, "a pair with one tip on a project says which, and that one tip is free", /On Brioche cowl left tip/.test(card(four.id)) && /One tip free/.test(card(four.id)), card(four.id));
-    check(results, "…a pair on two projects says both, and none free", /On Brioche cowl right tip/.test(card(five.id)) && /On Second cowl left tip/.test(card(five.id)) && !/One tip free/.test(card(five.id)), card(five.id));
+    check(results, "a pair with one tip on a project says which, and that one tip is free", /On Brioche cowl one tip/.test(card(four.id)) && /One tip free/.test(card(four.id)), card(four.id));
+    check(results, "…a pair on two projects says both, and none free", /On Brioche cowl one tip/.test(card(five.id)) && /On Second cowl one tip/.test(card(five.id)) && !/One tip free/.test(card(five.id)), card(five.id));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

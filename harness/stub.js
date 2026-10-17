@@ -692,7 +692,7 @@ function placeTip(toolId, projectId, tip) {
     for (const l of store.projectTools) if (l.toolId === toolId && l.projectId === projectId) l.tip = "";
     return;
   }
-  if (tip !== "right" && tip !== "left") throw new Error("A tip is the right one or the left one.");
+  if (tip !== "one") throw new Error("Interchangeable tips are on a project both, or one.");
   if (store.tools.find((t) => t.id === toolId)?.kind !== "tips") throw new Error("Only interchangeable tips are used one at a time.");
   const pr = store.projects.find((x) => x.id === projectId);
   if (!pr) throw new Error("That project is no longer there.");

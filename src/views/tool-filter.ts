@@ -24,9 +24,9 @@ export function tipsFree(t: Tool): number {
 /** Whether a tool is free: on no active project, or for tips, one of them still free. */
 export const isFree = (t: Tool): boolean => (t.kind === "tips" ? tipsFree(t) > 0 : !t.projectId);
 
-/** "right tip", "left tip", or "" for the pair. */
+/** "one tip", or "" for the pair. */
 export function tipLabel(tip: string | undefined): string {
-  return tip === "right" ? "right tip" : tip === "left" ? "left tip" : "";
+  return tip ? "one tip" : "";
 }
 
 /**

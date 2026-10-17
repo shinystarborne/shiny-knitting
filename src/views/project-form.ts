@@ -42,8 +42,8 @@ export class ProjectForm {
   private tools: Tool[] = [];
   private yarns: Yarn[] = [];
   private chosenTools = new Set<string>();
-  /** Interchangeable tips it takes one of: "right" or "left", by the tool's id. */
-  private chosenTips = new Map<string, "right" | "left">();
+  /** Interchangeable tips it takes one of, by the tool's id. */
+  private chosenTips = new Map<string, "one">();
   private chosenYarns: ChosenYarn[] = [];
   private toolPicker: ToolPicker | null = null;
   private yarnPicker: YarnPicker | null = null;
@@ -152,8 +152,7 @@ export class ProjectForm {
           this.chosenTools.add(id);
           // A pair with one tip on another project: this one takes the other tip.
           const t = this.tools.find((x) => x.id === id);
-          const other = t?.kind === "tips" ? (t.uses ?? []).find((u) => u.tip && u.projectId !== this.editing?.id) : undefined;
-          if (other) this.chosenTips.set(id, other.tip === "right" ? "left" : "right");
+          if (t?.kind === "tips" && (t.uses ?? []).some((u) => u.tip && u.projectId !== this.editing?.id)) this.chosenTips.set(id, "one");
           this.renderTools();
         },
         (id) => {

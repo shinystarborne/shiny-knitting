@@ -3625,21 +3625,26 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
     insert_project(&conn, "a", &project("a", None)).unwrap();
     assert_eq!(uses(&conn), "a:", "the pair");
     // A tip of it for another: the first has it no more, as a pair.
-    let b = insert_project(&conn, "b", &project("b", Some("right"))).unwrap();
-    assert_eq!(uses(&conn), "b:right");
-    assert_eq!(b.tool_tips.get("t5").map(String::as_str), Some("right"));
+    let b = insert_project(&conn, "b", &project("b", Some("one"))).unwrap();
+    assert_eq!(uses(&conn), "b:one");
+    assert_eq!(b.tool_tips.get("t5").map(String::as_str), Some("one"));
     // The other tip for a third: they share it.
-    insert_project(&conn, "c", &project("c", Some("left"))).unwrap();
-    assert_eq!(uses(&conn), "b:right c:left");
+    insert_project(&conn, "c", &project("c", Some("one"))).unwrap();
+    assert_eq!(uses(&conn), "b:one c:one");
     // A fourth wanting a tip: both are in use.
-    let err = insert_project(&conn, "d", &project("d", Some("right"))).unwrap_err().to_string();
+    let err = insert_project(&conn, "d", &project("d", Some("one"))).unwrap_err().to_string();
     assert!(err.contains("Both its tips are in use already: on b and c"), "{err}");
     // The pair taken back: from both.
     update_project(&conn, "a", &project("a", None)).unwrap();
     assert_eq!(uses(&conn), "a:");
     // One tip of a hook is not a thing.
-    let hook = ProjectInput { name: "h".into(), tool_ids: vec!["hook".into()], tool_tips: [("hook".to_string(), "left".to_string())].into_iter().collect(), ..Default::default() };
+    let hook = ProjectInput { name: "h".into(), tool_ids: vec!["hook".into()], tool_tips: [("hook".to_string(), "one".to_string())].into_iter().collect(), ..Default::default() };
     assert!(insert_project(&conn, "h", &hook).is_err());
+    // Said as right or left once: one tip, the two being alike.
+    update_project(&conn, "b", &project("b", Some("one"))).unwrap();
+    conn.execute("UPDATE project_tools SET tip = 'right' WHERE project_id = 'b'", []).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_project(&conn, "b").unwrap().tool_tips.get("t5").map(String::as_str), Some("one"));
 }
 
 #[test]

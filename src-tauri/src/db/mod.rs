@@ -785,6 +785,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "project_tools", "tip")? {
         conn.execute("ALTER TABLE project_tools ADD COLUMN tip TEXT NOT NULL DEFAULT ''", [])?;
     }
+    // A tip of a pair was once said as right or left: the two are alike, so one.
+    conn.execute("UPDATE project_tools SET tip = 'one' WHERE tip IN ('right', 'left')", [])?;
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
         conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -2598,25 +2600,18 @@ pub fn set_tool_project(conn: &Connection, id: &str, project_id: Option<&str>) -
     get_tool(conn, id)
 }
 
-/// The one place a tool is put on or taken off a project.
-///
-/// Only active projects are touched: a finished project's tools are its
-/// record of what it used, and stay. Taking a tool off an active project
-/// removes it from that project altogether -- it was moved or freed, not used
-/// to the end -- and putting it on one takes it off any other active one,
-/// since a needle is in one project at a time.
 /// Puts a tool on an active project, the whole of it or one tip of a pair of
-/// interchangeable tips ("right" or "left"). The whole takes it from every
-/// other active project. One tip takes it from one that has the whole, and
-/// shares it with one that has the other tip; a third is refused.
+/// interchangeable tips ("one": the two are alike). The whole takes it from
+/// every other active project. One tip takes it from one that has the whole,
+/// and shares it with one that has the other tip; a third is refused.
 fn place_tip(conn: &Connection, tool_id: &str, project_id: &str, tip: &str) -> AppResult<()> {
     if tip.is_empty() {
         place_tool(conn, tool_id, Some(project_id))?;
         conn.execute("UPDATE project_tools SET tip = '' WHERE project_id = ?1 AND tool_id = ?2", params![project_id, tool_id])?;
         return Ok(());
     }
-    if tip != "right" && tip != "left" {
-        return Err(AppError::Message("A tip is the right one or the left one.".to_string()));
+    if tip != "one" {
+        return Err(AppError::Message("Interchangeable tips are on a project both, or one.".to_string()));
     }
     let kind: String = conn.query_row("SELECT kind FROM tools WHERE id = ?1", params![tool_id], |r| r.get(0))?;
     if kind != "tips" {
@@ -2666,6 +2661,13 @@ fn tool_uses(conn: &Connection) -> AppResult<std::collections::HashMap<String, V
     Ok(out)
 }
 
+/// The one place a tool is put on or taken off a project.
+///
+/// Only active projects are touched: a finished project's tools are its
+/// record of what it used, and stay. Taking a tool off an active project
+/// removes it from that project altogether -- it was moved or freed, not used
+/// to the end -- and putting it on one takes it off any other active one,
+/// since a needle is in one project at a time.
 fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> AppResult<()> {
     if let Some(p) = project_id {
         let status: Option<String> = conn
