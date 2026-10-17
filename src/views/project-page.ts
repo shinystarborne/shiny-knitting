@@ -1,4 +1,4 @@
-import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type Masterclass, type MeasureUnit, type Pattern, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ProjectChart } from "./project-chart";
@@ -8,6 +8,7 @@ import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
+import { money, projectCost } from "./money";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -58,6 +59,10 @@ export class ProjectPage {
   /** The people a project can be for, and how their measurements are shown. */
   private people: Person[] = [];
   private masterclasses: Masterclass[] = [];
+  /** For what it cost: the stash's yarn, what was used, and the currency. */
+  private yarns: Yarn[] = [];
+  private uses: YarnUse[] = [];
+  private currency = "EUR";
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
@@ -102,6 +107,11 @@ export class ProjectPage {
       api.listPeople().catch(() => [] as Person[]),
       api.getMeasureUnit().catch(() => "cm" as const),
       api.listMasterclasses().catch(() => [] as Masterclass[]),
+    ]);
+    [this.yarns, this.uses, this.currency] = await Promise.all([
+      api.listYarns({ used: "all" }).catch(() => [] as Yarn[]),
+      api.listYarnUsage().catch(() => [] as YarnUse[]),
+      api.getCurrency().catch(() => "EUR"),
     ]);
 
     this.root = document.createElement("div");
@@ -302,6 +312,7 @@ ${plan ? "" : `      <div class="project-side-dates">
         }</label>
       </div>`}
       <label class="field"><span>Size knitted</span><input data-f="size" value="${esc(p.size)}" placeholder="e.g. M, or the 2nd size" maxlength="100" /></label>
+      ${this.costHtml()}
 
       <div class="side-section">
         <h3>Needles, hooks &amp; cables</h3>
@@ -383,6 +394,22 @@ ${plan ? "" : `      <div class="project-side-dates">
           ${this.masterclasses.map((x) => `<option value="${esc(x.id)}" ${x.id === p.masterclassId ? "selected" : ""}>${esc(x.title)}${x.channel ? ` (${esc(x.channel)})` : ""}</option>`).join("")}
         </select>
         ${m ? this.masterclassPartHtml(m) : ""}
+      </div>`;
+  }
+
+  /**
+   * What it cost: its yarn, by what it used or plans to take at its lot's
+   * price a ball, and its pattern; tools are not counted. Says what has no
+   * price, and nothing at all when nothing has one.
+   */
+  private costHtml(): string {
+    const c = projectCost(this.project, this.yarns, this.patterns, this.uses);
+    if (!c.total && !c.unknown.length) return "";
+    const parts = [c.yarn ? `yarn ${money(c.yarn, this.currency)}` : "", c.pattern ? `pattern ${money(c.pattern, this.currency)}` : ""].filter(Boolean).join(", ");
+    return `
+      <div class="field project-cost-field"><span>Cost</span>
+        <p class="project-cost" data-el="cost"><b>${money(c.total, this.currency)}</b>${parts ? ` <span class="hint">${esc(parts)}</span>` : ""}</p>
+        ${c.unknown.length ? `<p class="hint">Not counted, no price a ball or no amount: ${esc(c.unknown.join(", "))}.</p>` : ""}
       </div>`;
   }
 

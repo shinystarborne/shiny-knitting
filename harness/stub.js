@@ -1216,6 +1216,13 @@ function findChart(id) {
   return c;
 }
 
+/** A price as db::price keeps it: to the cent, null when not said; a wrong one is refused. */
+function cents(price) {
+  if (price == null) return null;
+  if (!Number.isFinite(price) || price < 0 || price > 1000000) throw new Error("A price is a number from 0 up.");
+  return Math.round(price * 100) / 100;
+}
+
 const handlers = {
   list_patterns: ({ filter }) => {
     // fileMissing as commands::with_file_checked says it; a test sets store's pattern.fileGone.
@@ -2472,6 +2479,20 @@ const handlers = {
   },
   backup_progress: () => clone(store.backupProgress ?? { running: false, done: 0, total: 0 }),
   last_backup: () => clone(store.lastBackup ?? null),
+  get_currency: () => store.currency ?? "EUR",
+  save_currency: ({ code }) => {
+    const c = String(code).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(c)) throw new Error("A currency is three letters: EUR, USD, GBP…");
+    store.currency = c;
+    return c;
+  },
+  // As db::set_pattern_price: to the cent, or not said.
+  set_pattern_price: ({ id, price }) => {
+    const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error(`pattern not found: ${id}`);
+    p.price = cents(price);
+    return clone(p);
+  },
   get_measure_unit: () => store.measureUnit ?? "cm",
   save_measure_unit: ({ unit }) => {
     store.measureUnit = unit;
@@ -2677,6 +2698,7 @@ const handlers = {
         location: lot.location || "",
         boughtAt: lot.boughtAt ?? null,
         leftover: !!lot.leftover,
+        price: cents(lot.price),
       })),
     };
     if (input.details) setYarnDetails(y.brand, y.name, input.details);
@@ -2699,6 +2721,7 @@ const handlers = {
       location: lot.location || "",
       boughtAt: lot.boughtAt ?? null,
       leftover: !!lot.leftover,
+      price: cents(lot.price),
     }));
     const next = {
       ...clone(yarn),

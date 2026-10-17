@@ -29,6 +29,29 @@ type CmdResult<T> = Result<T, AppError>;
 /// safe here because the only path the app ever produces comes from the native
 /// dialog, the webview loads nothing remote, and the copy is read-only into a
 /// freshly generated name — the original is never moved or modified.
+/// What a pattern cost, in the currency of the settings; None for not said.
+#[tauri::command]
+pub fn set_pattern_price(state: State<'_, AppState>, id: String, price: Option<f64>) -> CmdResult<Pattern> {
+    db::set_pattern_price(&state.db(), &id, price)
+}
+
+/// The currency prices are in: an ISO code, EUR unless chosen.
+#[tauri::command]
+pub fn get_currency(state: State<'_, AppState>) -> CmdResult<String> {
+    let code: String = db::get_setting(&state.db(), "currency")?;
+    Ok(if code.len() == 3 { code } else { "EUR".to_string() })
+}
+
+#[tauri::command]
+pub fn save_currency(state: State<'_, AppState>, code: String) -> CmdResult<String> {
+    let code = code.trim().to_uppercase();
+    if code.len() != 3 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err(AppError::Message("A currency is three letters: EUR, USD, GBP…".into()));
+    }
+    db::set_setting(&state.db(), "currency", &code)?;
+    Ok(code)
+}
+
 #[tauri::command]
 pub fn add_pattern(state: State<'_, AppState>, input: PatternInput) -> CmdResult<Pattern> {
     add_pattern_to(&state, input)

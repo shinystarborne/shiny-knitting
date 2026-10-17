@@ -787,6 +787,13 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     // A tip of a pair was once said as right or left: the two are alike, so one.
     conn.execute("UPDATE project_tools SET tip = 'one' WHERE tip IN ('right', 'left')", [])?;
+    // Prices: a lot's per ball, a pattern's; None when not said.
+    if !column_exists(conn, "yarn_lots", "price")? {
+        conn.execute("ALTER TABLE yarn_lots ADD COLUMN price REAL", [])?;
+    }
+    if !column_exists(conn, "patterns", "price")? {
+        conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
+    }
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
         conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -1068,6 +1075,7 @@ fn row_to_pattern(row: &rusqlite::Row) -> rusqlite::Result<Pattern> {
         removed_at: row.get("removed_at")?,
         zoom: row.get("zoom")?,
         file_missing: false,
+        price: row.get("price")?,
     })
 }
 
@@ -2737,6 +2745,26 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         masterclass_id: row.get("masterclass_id")?,
         masterclass_title: row.get("masterclass_title")?,
     })
+}
+
+/// A price as kept: to the cent, refused when below nothing or past belief;
+/// None when not said.
+pub fn price(p: Option<f64>) -> AppResult<Option<f64>> {
+    match p {
+        None => Ok(None),
+        Some(v) if !v.is_finite() || v < 0.0 => Err(AppError::Message("A price is a number of money, 0 or more.".to_string())),
+        Some(v) if v > 1_000_000.0 => Err(AppError::Message(format!("{v} is more than anything here costs: is it right?"))),
+        Some(v) => Ok(Some((v * 100.0).round() / 100.0)),
+    }
+}
+
+/// What a pattern cost, or not said.
+pub fn set_pattern_price(conn: &Connection, id: &str, value: Option<f64>) -> AppResult<Pattern> {
+    let changed = conn.execute("UPDATE patterns SET price = ?2 WHERE id = ?1", params![id, price(value)?])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That pattern is no longer in the library.".to_string()));
+    }
+    get_pattern(conn, id)
 }
 
 /// The size a project is knitted in, as said: one line, trimmed.
@@ -4725,6 +4753,7 @@ fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
         location: row.get("location")?,
         bought_at: row.get("bought_at")?,
         leftover: row.get("leftover")?,
+        price: row.get("price")?,
     })
 }
 
@@ -5034,8 +5063,8 @@ fn insert_lot(
         .filter(|i| !i.is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     conn.execute(
-        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, price)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             id,
             yarn_id,
@@ -5045,7 +5074,8 @@ fn insert_lot(
             lot.location,
             lot.bought_at,
             lot.leftover,
-            lot.is_weighed()
+            lot.is_weighed(),
+            price(lot.price)?
         ],
     )?;
     Ok(())
@@ -5100,7 +5130,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             // Scoped to the yarn as well as the id, so a lot can never be
             // rewritten through another yarn's update.
             tx.execute(
-                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9, price=?10
                  WHERE id=?1 AND yarn_id=?2",
                 params![
                     lot.id,
@@ -5111,7 +5141,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed()
+                    lot.is_weighed(),
+                    price(lot.price)?
                 ],
             )?;
             kept.push(&lot.id);
@@ -5122,8 +5153,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                 lot.id.clone()
             };
             tx.execute(
-                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, price)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
                 params![
                     id,
                     yarn.id,
@@ -5133,7 +5164,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed()
+                    lot.is_weighed(),
+                    price(lot.price)?
                 ],
             )?;
         }

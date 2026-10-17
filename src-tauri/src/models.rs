@@ -111,6 +111,9 @@ pub struct Pattern {
     /// Its file is not in the library any more: worked out when listed, not stored.
     #[serde(default)]
     pub file_missing: bool,
+    /// What it cost, in the currency of the settings; None when not said.
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 
 fn fit_width() -> f64 {
@@ -350,6 +353,10 @@ pub struct YarnLot {
     /// leftovers, shown as a Leftover tag in the stash.
     #[serde(default)]
     pub leftover: bool,
+    /// What a ball cost, in the currency of the settings; None when not said.
+    /// The lot cost its balls times this.
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 
 impl YarnLot {
@@ -549,6 +556,9 @@ pub struct YarnLotInput {
     pub bought_at: Option<i64>,
     #[serde(default)]
     pub leftover: bool,
+    /// As `YarnLot::price`.
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 
 impl YarnLotInput {

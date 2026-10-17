@@ -25,6 +25,7 @@ import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
 import type { YarnStart } from "./shopping";
+import { parsePrice } from "./money";
 import { gaugeSpan, readGauge, showGauge, swatchLine } from "./measure";
 import { CARE_SYMBOLS, careIcon, toggleCare } from "./care";
 import { longDate } from "./project-form";
@@ -41,6 +42,8 @@ interface LotRow {
   boughtAt: string;
   /** What a finished project left over; the stash tags it. */
   leftover: boolean;
+  /** What a ball cost, as typed: "4,95"; empty for not said. */
+  price: string;
 }
 
 /**
@@ -122,9 +125,10 @@ export class YarnForm {
           location: lot.location,
           boughtAt: lot.boughtAt != null ? toDateInput(lot.boughtAt) : "",
           leftover: lot.leftover ?? false,
+          price: lot.price != null ? String(lot.price) : "",
         }))
       : this.start
-        ? [{ ...emptyLot(), balls: this.start.balls ? String(this.start.balls) : "", boughtAt: toDateInput(this.start.boughtAt ?? Date.now()) }]
+        ? [{ ...emptyLot(), balls: this.start.balls ? String(this.start.balls) : "", boughtAt: toDateInput(this.start.boughtAt ?? Date.now()), price: this.start.price != null ? String(this.start.price) : "" }]
         : [emptyLot()];
     const from = editing ?? this.template;
     this.fibres = (from?.fibres ?? []).map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
@@ -662,6 +666,7 @@ export class YarnForm {
             <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />
+            <input data-lf="price" class="lot-price" inputmode="decimal" value="${escapeAttr(lot.price)}" placeholder="Price a ball" title="What a ball cost: the lot cost its balls times this, for what the stash is worth and what was spent" />
             <label class="lot-leftover" title="What a finished project left over">
               <input type="checkbox" data-lf="leftover" ${lot.leftover ? "checked" : ""} /> Leftover
             </label>
@@ -682,6 +687,7 @@ export class YarnForm {
       location: field(row, "location"),
       boughtAt: field(row, "boughtAt"),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
+      price: field(row, "price"),
     }));
   }
 
@@ -910,10 +916,11 @@ export class YarnForm {
           location: lot.location.trim(),
           boughtAt: lot.boughtAt ? Date.parse(lot.boughtAt) : null,
           leftover: lot.leftover,
+          price: lot.price.trim() ? parsePrice(lot.price) : null,
         }))
         .filter(
           (lot) =>
-            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null,
+            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null || lot.price != null,
         );
 
       this.readDetails(true);
@@ -996,7 +1003,7 @@ export class YarnForm {
 }
 
 function emptyLot(): LotRow {
-  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: "", leftover: false };
+  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: "", leftover: false, price: "" };
 }
 
 function field(row: HTMLElement, name: string): string {

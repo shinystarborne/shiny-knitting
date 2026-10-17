@@ -1915,7 +1915,7 @@ body.sizing-highlight { cursor: nwse-resize; user-select: none; }
 .lot-list:empty { display: none; }
 .lot-row {
   display: grid;
-  grid-template-columns: 1.1fr 0.7fr 0.9fr 1.2fr 1fr auto auto;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr 1.2fr 1fr 0.8fr auto auto;
   gap: 6px;
   align-items: center;
 }
@@ -4034,3 +4034,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .rav-photos img:first-child { grid-column: 1 / -1; }
 .rav-notes { font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 @media (max-width: 760px) { .rav-pattern { grid-template-columns: 1fr; } }
+/* What was spent in the month chosen, under the chart. */
+.spent-month { padding: 4px 0 12px; }
+.spent-month h3 { margin: 0 0 6px; font-size: 14px; }
+.project-cost { margin: 0; font-size: 13px; }
+.project-cost b { font-variant-numeric: tabular-nums; }

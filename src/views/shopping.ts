@@ -1,3 +1,4 @@
+import { pricePerBall } from "./money";
 import { WISH_KINDS, type Shop, type ToolInput, type ToolKind, type Wish } from "../api";
 
 /**
@@ -182,6 +183,8 @@ export interface YarnStart {
   notes: string;
   /** When it was got, for the lot's bought date. */
   boughtAt: number | null;
+  /** What a ball cost, from the price as typed; null when it says none. */
+  price: number | null;
 }
 
 /**
@@ -206,7 +209,8 @@ export function yarnStart(w: Wish): YarnStart {
   const brand = w.brand.trim();
   // The brand is its own field, so it is not said twice.
   if (brand && name.toLowerCase().startsWith(`${brand.toLowerCase()} `)) name = name.slice(brand.length).trim();
-  return { brand, name: name || w.name.trim(), colourway, balls: ballsIn(w.amount), notes: w.notes, boughtAt: w.gotAt };
+  const balls = ballsIn(w.amount);
+  return { brand, name: name || w.name.trim(), colourway, balls, notes: w.notes, boughtAt: w.gotAt, price: pricePerBall(w.price, balls) };
 }
 
 /** How many balls an amount says: "6 balls", "6 x 50 g", "6 Knäuel", or just "6". */

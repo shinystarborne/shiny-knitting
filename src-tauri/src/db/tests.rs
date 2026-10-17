@@ -1878,6 +1878,7 @@ fn updating_a_yarn_reconciles_its_lots() {
             location: String::new(),
             bought_at: None,
             leftover: false,
+            price: Some(4.955),
         },
     ];
 
@@ -1897,6 +1898,9 @@ fn updating_a_yarn_reconciles_its_lots() {
 
     // The dropped lot is gone, and the new one was inserted with a fresh id.
     assert!(by_id(&y.lots[2].id).is_none(), "the dropped lot must go");
+    // Its price a ball, kept to the cent; the others not said.
+    assert_eq!(saved.lots.iter().find(|l| l.dye_lot == "D4").unwrap().price, Some(4.96));
+    assert_eq!(still_there.price, None);
     let added = saved
         .lots
         .iter()
@@ -3645,6 +3649,18 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
     conn.execute("UPDATE project_tools SET tip = 'right' WHERE project_id = 'b'", []).unwrap();
     migrate(&conn).unwrap();
     assert_eq!(get_project(&conn, "b").unwrap().tool_tips.get("t5").map(String::as_str), Some("one"));
+}
+
+#[test]
+fn prices_are_kept_to_the_cent_or_not_said() {
+    let conn = test_db();
+    let p = sample(&conn, "Riddari", "Védís", "", &[]);
+    assert_eq!(p.price, None);
+    assert_eq!(set_pattern_price(&conn, &p.id, Some(6.499)).unwrap().price, Some(6.5));
+    assert_eq!(set_pattern_price(&conn, &p.id, None).unwrap().price, None);
+    assert!(set_pattern_price(&conn, &p.id, Some(-1.0)).is_err());
+    assert!(set_pattern_price(&conn, &p.id, Some(f64::NAN)).is_err());
+    assert!(set_pattern_price(&conn, "nowhere", Some(1.0)).is_err());
 }
 
 #[test]

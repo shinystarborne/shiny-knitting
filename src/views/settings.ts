@@ -2,6 +2,22 @@ import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type Needle
 import { clickedOn, closestEl } from "../dom";
 import { longDate, toDateInput } from "./project-form";
 
+/** Currencies offered for prices, the commonest for a knitter in Europe first. */
+const CURRENCIES = [
+  { code: "EUR", label: "Euro (€)" },
+  { code: "USD", label: "US dollar ($)" },
+  { code: "GBP", label: "Pound sterling (£)" },
+  { code: "CHF", label: "Swiss franc (CHF)" },
+  { code: "SEK", label: "Swedish krona (kr)" },
+  { code: "NOK", label: "Norwegian krone (kr)" },
+  { code: "DKK", label: "Danish krone (kr)" },
+  { code: "ISK", label: "Icelandic króna (kr)" },
+  { code: "PLN", label: "Polish złoty (zł)" },
+  { code: "CZK", label: "Czech koruna (Kč)" },
+  { code: "CAD", label: "Canadian dollar ($)" },
+  { code: "AUD", label: "Australian dollar ($)" },
+];
+
 /**
  * The app settings: updates first, then describing patterns with a model,
  * which is off unless switched on; its settings show only once it is.
@@ -113,6 +129,15 @@ export class SettingsDialog {
             <option value="in" ${this.measureUnit === "in" ? "selected" : ""}>Inches</option>
           </select>
           <em class="hint">They are kept in centimetres either way, so changing this changes nothing you measured. A figure typed with its unit, like 36 in, is read as that.</em>
+        </label>
+
+        <h3>Prices</h3>
+        <label class="field">
+          <span>Prices are in</span>
+          <select data-f="currency">
+            ${CURRENCIES.map((c) => `<option value="${c.code}">${c.label}</option>`).join("")}
+          </select>
+          <em class="hint">What yarn and patterns cost is a plain number in this currency, so it all adds up. Changing it changes no number, only how it is written.</em>
         </label>
 
         <h3>Describe patterns with a model</h3>
@@ -227,6 +252,14 @@ export class SettingsDialog {
         <p class="form-error" data-el="error" hidden></p>
       </div>
     `;
+    // The currency, as kept; EUR until it answers.
+    void api
+      .getCurrency()
+      .then((code) => {
+        const select = this.root.querySelector<HTMLSelectElement>('[data-f="currency"]');
+        if (select) select.value = code;
+      })
+      .catch(() => {});
 
     this.modelPicker = this.root.querySelector('[data-el="models"]') as HTMLSelectElement;
     this.updatePrivacy();
@@ -405,6 +438,7 @@ export class SettingsDialog {
     await api.saveUpdateSettings(this.collectUpdates());
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
     await api.saveMeasureUnit((this.root.querySelector('[data-f="measureUnit"]') as HTMLSelectElement).value as MeasureUnit);
+    await api.saveCurrency((this.root.querySelector('[data-f="currency"]') as HTMLSelectElement).value);
     return saved;
   }
 

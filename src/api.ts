@@ -50,6 +50,8 @@ export interface Pattern {
   zoom?: number;
   /** Its file is not in the library any more: moved or deleted outside the app. */
   fileMissing?: boolean;
+  /** What it cost, in the settings' currency; null when not said. */
+  price?: number | null;
 }
 
 /** Mirrors `models.rs::Section`. */
@@ -421,6 +423,8 @@ export interface YarnLot {
   boughtAt: number | null;
   /** What a finished project left over; shown as a Leftover tag. */
   leftover: boolean;
+  /** What a ball cost, in the settings' currency; null when not said. */
+  price?: number | null;
 }
 
 /** Mirrors `models.rs::Yarn`. */
@@ -512,6 +516,8 @@ export interface YarnLotInput {
   location: string;
   boughtAt: number | null;
   leftover: boolean;
+  /** What a ball cost; null when not said. */
+  price?: number | null;
 }
 
 /** What the yarn form sends; ids and derived figures are the backend's. */
@@ -1475,6 +1481,11 @@ export const api = {
   /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
   setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
+  /** What a pattern cost, in the settings' currency; null for not said. */
+  setPatternPrice: (id: string, price: number | null) => invoke<Pattern>("set_pattern_price", { id, price }),
+  /** The currency prices are in, as an ISO code: EUR unless chosen. */
+  getCurrency: () => invoke<string>("get_currency"),
+  saveCurrency: (code: string) => invoke<string>("save_currency", { code }),
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
   /** Whether Ravelry's API can be used, and as whom. */

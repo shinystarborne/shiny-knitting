@@ -1,3 +1,4 @@
+import { parsePrice } from "./money";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
@@ -134,6 +135,10 @@ export class PatternForm {
             <input data-el="taginput" placeholder="Add a tag and press Enter" />
           </div>
         </div>
+        <label class="field pattern-price">
+          <span>Price <em class="hint">what it cost, if anything</em></span>
+          <input data-f="price" inputmode="decimal" value="${e?.price != null ? escapeAttr(String(e.price)) : ""}" placeholder="e.g. 6,50" />
+        </label>
         <label class="field">
           <span>Notes</span>
           <textarea data-f="notes" placeholder="Anything worth remembering about this pattern.">${escapeHtml(
@@ -364,7 +369,7 @@ export class PatternForm {
           notes: this.value("notes"),
           tags: this.tagList,
         };
-        this.onDone(await api.updatePattern(updated));
+        this.onDone(await this.withPrice(await api.updatePattern(updated)));
       } else {
         if (!this.fileBytes && !this.filePath) throw new Error("Choose a file first.");
         const details = {
@@ -383,13 +388,21 @@ export class PatternForm {
         const created = this.filePath
           ? await api.addPattern({ ...details, sourcePath: this.filePath })
           : await api.uploadPattern(details, this.fileBytes!);
-        this.onDone(created);
+        this.onDone(await this.withPrice(created));
       }
       this.close();
     } catch (err) {
       this.showError(err instanceof Error ? err.message : String(err));
       saveBtn.disabled = false;
     }
+  }
+
+  /** Its price saved on its own, when it is said or changed: typed, or emptied. */
+  private async withPrice(p: Pattern): Promise<Pattern> {
+    const typed = this.value("price").trim();
+    const price = typed ? parsePrice(typed) : null;
+    if (typed && price === null) throw new Error("The price is a number: 6,50 or 6.50.");
+    return price === (p.price ?? null) ? p : api.setPatternPrice(p.id, price);
   }
 
   private showError(message: string): void {
