@@ -279,6 +279,32 @@ pub struct CompletionRequest {
     /// Empty for the normal case. When present, the user message is sent as
     /// the multimodal content array rather than a plain string.
     pub images: Vec<String>,
+    /// The user message with less of the pattern in it, for asking again
+    /// when the model thought through the whole reply. None sends the same.
+    pub shorter: Option<String>,
+}
+
+impl CompletionRequest {
+    /// The same ask, lighter: less of the pattern (or half the pages), and
+    /// the model told to answer straight away. `/no_think` is Qwen's own
+    /// switch; any other model reads it as a word and goes on.
+    fn quicker(&self) -> CompletionRequest {
+        let user = self.shorter.clone().unwrap_or_else(|| self.user.clone());
+        let keep = self.images.len().div_ceil(2);
+        CompletionRequest {
+            system: self.system.clone(),
+            user: format!("{user}\n\nAnswer straight away with the JSON object: do not think it through at length. /no_think"),
+            images: self.images.iter().take(keep).cloned().collect(),
+            shorter: None,
+        }
+    }
+}
+
+/// Whether a server refused a request for asking too long a reply, so it is
+/// asked again for a shorter one.
+fn too_long_asked(detail: &str) -> bool {
+    let d = detail.to_lowercase();
+    d.contains("max_tokens") || d.contains("max tokens") || d.contains("maximum context") || d.contains("context length") || d.contains("context_length")
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -291,6 +317,10 @@ pub enum AiError {
 
     #[error("{0}")]
     BadResponse(String),
+
+    /// The reply had no answer in it: thinking took all of it, or it was cut off.
+    #[error("{}", no_answer(*reasoned, finished))]
+    NoAnswer { reasoned: bool, finished: String },
 
     #[error("no model server is configured yet. Open Settings and enter its address.")]
     NotConfigured,
@@ -317,12 +347,44 @@ impl AiError {
 
 pub type AiResult<T> = Result<T, AiError>;
 
+fn no_answer(reasoned: bool, finished: &str) -> String {
+    if reasoned {
+        "the model used its whole reply on reasoning and produced no answer, even asked again \
+         with less of the pattern and to think less. Try a lower reasoning effort in Settings, \
+         or a model that does not reason before answering."
+            .to_string()
+    } else {
+        format!("the model returned an empty reply (finished: {finished}), even asked again.")
+    }
+}
+
 /// Issues a chat completion against the configured server.
+///
+/// Asked with room to think; a server that cannot give that much is asked
+/// for less. When the reply has no answer -- a reasoning model thought
+/// through all of it -- it is asked once more, lighter (see
+/// `CompletionRequest::quicker`), and with more room still.
 pub async fn complete(
     settings: &AiSettings,
     request: &CompletionRequest,
 ) -> AiResult<String> {
-    openai_compat::complete(settings, request).await
+    use openai_compat::Attempt;
+    match openai_compat::complete(settings, request, &Attempt::FIRST).await {
+        Err(AiError::NoAnswer { .. }) => {}
+        Err(AiError::Api { detail, .. }) if too_long_asked(&detail) => {
+            return match openai_compat::complete(settings, request, &Attempt::SMALLER).await {
+                Err(AiError::NoAnswer { .. }) => openai_compat::complete(settings, &request.quicker(), &Attempt { max_tokens: 4000, ..Attempt::QUICKER_PLAIN }).await,
+                other => other,
+            };
+        }
+        other => return other,
+    }
+    let quicker = request.quicker();
+    match openai_compat::complete(settings, &quicker, &Attempt::QUICKER).await {
+        // A server that will not take the template switch is asked without it.
+        Err(AiError::Api { .. }) => openai_compat::complete(settings, &quicker, &Attempt::QUICKER_PLAIN).await,
+        other => other,
+    }
 }
 
 /// The model name to use, falling back when the configured one is blank.
@@ -636,5 +698,128 @@ mod tests {
         let s = AiSettings::default();
         assert!(s.base_url.starts_with("https://"));
         assert!(!is_local_model_server(&s));
+    }
+}
+
+/// Asking again, against a stand-in server that answers as a reasoning model
+/// does: each ask is answered in turn, and what was sent is kept to look at.
+#[cfg(test)]
+mod asking_again {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::sync::{Arc, Mutex};
+
+    type Seen = Arc<Mutex<Vec<serde_json::Value>>>;
+
+    fn server(replies: Vec<(u16, serde_json::Value)>) -> (String, Seen) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for (status, reply) in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut got = Vec::new();
+                let mut chunk = [0u8; 8192];
+                let body = loop {
+                    let n = stream.read(&mut chunk).unwrap();
+                    got.extend_from_slice(&chunk[..n]);
+                    let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else { continue };
+                    let head = String::from_utf8_lossy(&got[..end]).to_lowercase();
+                    let length: usize = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .map(|v| v.trim().parse().unwrap())
+                        .unwrap_or(0);
+                    while got.len() < end + 4 + length {
+                        let n = stream.read(&mut chunk).unwrap();
+                        got.extend_from_slice(&chunk[..n]);
+                    }
+                    break got[end + 4..end + 4 + length].to_vec();
+                };
+                log.lock().unwrap().push(serde_json::from_slice(&body).unwrap());
+                let text = reply.to_string();
+                let answer = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                    text.len()
+                );
+                stream.write_all(answer.as_bytes()).unwrap();
+            }
+        });
+        (format!("http://{address}/v1"), seen)
+    }
+
+    fn thought_it_all() -> (u16, serde_json::Value) {
+        (200, serde_json::json!({ "choices": [{ "message": { "content": "", "reasoning_content": "Hmm, the gauge..." }, "finish_reason": "length" }] }))
+    }
+
+    fn answered() -> (u16, serde_json::Value) {
+        (200, serde_json::json!({ "choices": [{ "message": { "content": "<think>quick</think>{\"designer\": \"Védís\"}" }, "finish_reason": "stop" }] }))
+    }
+
+    fn settings(base_url: &str) -> AiSettings {
+        AiSettings { base_url: base_url.to_string(), model: "m".to_string(), reasoning_effort: "medium".to_string(), ..Default::default() }
+    }
+
+    fn request() -> CompletionRequest {
+        CompletionRequest { system: "sys".into(), user: "the whole pattern".into(), images: Vec::new(), shorter: Some("half the pattern".into()) }
+    }
+
+    fn user_of(body: &serde_json::Value) -> String {
+        body["messages"][1]["content"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[tokio::test]
+    async fn a_model_that_thought_through_its_reply_is_asked_again_lighter() {
+        let (url, seen) = server(vec![thought_it_all(), answered()]);
+        let reply = complete(&settings(&url), &request()).await.unwrap();
+        assert_eq!(reply, "{\"designer\": \"Védís\"}", "the thinking left out of the answer");
+        let seen = seen.lock().unwrap();
+        assert_eq!((seen[0]["max_tokens"].as_u64(), user_of(&seen[0]).as_str()), (Some(8000), "the whole pattern"));
+        assert_eq!(seen[1]["max_tokens"].as_u64(), Some(12000), "more room");
+        assert_eq!(seen[1]["reasoning"]["effort"], "low");
+        assert_eq!(seen[1]["chat_template_kwargs"]["enable_thinking"], false);
+        assert!(user_of(&seen[1]).starts_with("half the pattern") && user_of(&seen[1]).ends_with("/no_think"), "{}", user_of(&seen[1]));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_refuses_the_thinking_switch_is_asked_without_it() {
+        let refused = (400, serde_json::json!({ "error": { "message": "Unrecognized request argument: chat_template_kwargs" } }));
+        let (url, seen) = server(vec![thought_it_all(), refused, answered()]);
+        assert!(complete(&settings(&url), &request()).await.is_ok());
+        let seen = seen.lock().unwrap();
+        assert!(seen[2].get("chat_template_kwargs").is_none() && seen[2]["reasoning"]["effort"] == "low");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_cannot_give_so_long_a_reply_is_asked_for_less() {
+        let too_long = (400, serde_json::json!({ "error": { "message": "This model's maximum context length is 8192 tokens." } }));
+        let (url, seen) = server(vec![too_long, answered()]);
+        assert!(complete(&settings(&url), &request()).await.is_ok());
+        assert_eq!(seen.lock().unwrap()[1]["max_tokens"].as_u64(), Some(4000));
+    }
+
+    #[tokio::test]
+    async fn no_answer_twice_says_so() {
+        let (url, _) = server(vec![thought_it_all(), thought_it_all()]);
+        let err = complete(&settings(&url), &request()).await.unwrap_err();
+        assert!(matches!(err, AiError::NoAnswer { reasoned: true, .. }));
+        assert!(err.to_string().contains("even asked again"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_reply_cut_off_before_its_object_closed_is_no_answer() {
+        let cut = (200, serde_json::json!({ "choices": [{ "message": { "content": "{\"designer\": \"Vé" }, "finish_reason": "length" }] }));
+        let (url, seen) = server(vec![cut, answered()]);
+        assert!(complete(&settings(&url), &request()).await.is_ok());
+        assert_eq!(seen.lock().unwrap().len(), 2, "asked again");
+    }
+
+    #[test]
+    fn asked_again_from_pictures_sends_the_first_half() {
+        let r = CompletionRequest { system: "s".into(), user: "u".into(), images: vec!["a".into(), "b".into(), "c".into()], shorter: None };
+        let q = r.quicker();
+        assert_eq!(q.images, vec!["a".to_string(), "b".into()]);
+        assert!(q.user.starts_with("u\n\n"));
     }
 }

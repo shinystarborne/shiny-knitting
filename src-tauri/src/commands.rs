@@ -974,21 +974,21 @@ pub async fn suggest_metadata(
 
     // With no text there is nothing to quote, so the model is asked to read
     // the pictures instead and told not to guess at what it cannot see.
-    let (user, images) = if excerpt.trim().is_empty() {
+    let (user, shorter, images) = if excerpt.trim().is_empty() {
         (
             crate::ai::build_vision_prompt(&before.title, &before.file_name, images.len(), pages),
+            // Asked again, the first half of the pages: the front says most.
+            Some(crate::ai::build_vision_prompt(&before.title, &before.file_name, images.len().div_ceil(2), pages)),
             images,
         )
     } else {
+        // Cleaned here rather than in the frontend, so the budget in
+        // settings is the one that actually applies. Asked again, half of it:
+        // the start of a pattern says most of what is asked.
+        let prompt = |chars: i64| crate::ai::build_user_prompt(&before.title, &before.file_name, &crate::ai::clean_excerpt(&excerpt, chars), pages);
         (
-            crate::ai::build_user_prompt(
-                &before.title,
-                &before.file_name,
-                // Cleaned here rather than in the frontend, so the budget in
-                // settings is the one that actually applies.
-                &crate::ai::clean_excerpt(&excerpt, settings.max_characters),
-                pages,
-            ),
+            prompt(settings.max_characters),
+            Some(prompt(settings.max_characters / 2)),
             // Text is readable, so the pages are not sent as well.
             Vec::new(),
         )
@@ -998,6 +998,7 @@ pub async fn suggest_metadata(
         system: crate::ai::SYSTEM_PROMPT.to_string(),
         user,
         images,
+        shorter,
     };
 
     let sent_images = !request.images.is_empty();

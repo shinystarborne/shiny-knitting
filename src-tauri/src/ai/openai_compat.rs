@@ -19,6 +19,33 @@ use crate::models::AiSettings;
 
 const TIMEOUT: Duration = Duration::from_secs(180);
 
+/// How one request is sent: how long the reply may be, and whether the model
+/// is asked to think less. A reasoning model can spend the whole reply
+/// thinking about a long pattern and answer nothing; asked again, it is given
+/// more room and told to be quick about it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Attempt {
+    pub max_tokens: u32,
+    /// A low reasoning effort, whatever Settings say.
+    pub think_less: bool,
+    /// The thinking switched off through the server's chat template
+    /// (`chat_template_kwargs`), which vLLM, SGLang and llama.cpp read for
+    /// Qwen and its like. A server that refuses fields it does not know is
+    /// asked again without it.
+    pub no_thinking: bool,
+}
+
+impl Attempt {
+    /// The first ask: generous, since thinking eats into it.
+    pub const FIRST: Attempt = Attempt { max_tokens: 8000, think_less: false, no_thinking: false };
+    /// For a server whose model cannot give that much.
+    pub const SMALLER: Attempt = Attempt { max_tokens: 4000, think_less: false, no_thinking: false };
+    /// Asked again after thinking took the whole reply.
+    pub const QUICKER: Attempt = Attempt { max_tokens: 12000, think_less: true, no_thinking: true };
+    /// The same, for a server that refused the template switch.
+    pub const QUICKER_PLAIN: Attempt = Attempt { max_tokens: 12000, think_less: true, no_thinking: false };
+}
+
 #[derive(Deserialize)]
 struct ChatResponse {
     #[serde(default)]
@@ -193,7 +220,7 @@ fn user_content(request: &CompletionRequest) -> serde_json::Value {
 /// JSON object, and whether the model *reasons* has nothing to do with the
 /// shape it answers in. The reasoning effort is separate, and only sent when
 /// one is chosen, so clearing the field leaves the model's own default alone.
-fn request_body(model: &str, settings: &AiSettings, request: &CompletionRequest) -> serde_json::Value {
+fn request_body(model: &str, settings: &AiSettings, request: &CompletionRequest, attempt: &Attempt) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": model,
         "messages": [
@@ -205,21 +232,42 @@ fn request_body(model: &str, settings: &AiSettings, request: &CompletionRequest)
         // thinking before it writes anything, and if the cap lands first the
         // reply comes back empty. Running out of room mid-answer is far more
         // expensive than a few unused tokens.
-        "max_tokens": 4000,
+        "max_tokens": attempt.max_tokens,
         "stream": false,
         "response_format": { "type": "json_object" },
     });
 
-    let effort = settings.reasoning_effort.trim();
+    let effort = if attempt.think_less { "low" } else { settings.reasoning_effort.trim() };
     if !effort.is_empty() {
         body["reasoning"] = serde_json::json!({ "effort": effort });
     }
+    if attempt.no_thinking {
+        body["chat_template_kwargs"] = serde_json::json!({ "enable_thinking": false });
+    }
     body
+}
+
+/// The answer without any thinking written into it: some servers put a
+/// reasoning model's `<think>...</think>` in the reply itself, and a brace in
+/// the thinking would be taken for the answer. Says whether there was any.
+fn without_thinking(content: &str) -> (String, bool) {
+    let mut out = content.to_string();
+    let mut thought = false;
+    while let Some(start) = out.find("<think>") {
+        thought = true;
+        match out[start..].find("</think>") {
+            Some(len) => out.replace_range(start..start + len + "</think>".len(), ""),
+            // Cut off while thinking: nothing after it is an answer.
+            None => out.truncate(start),
+        }
+    }
+    (out.trim().to_string(), thought)
 }
 
 pub async fn complete(
     settings: &AiSettings,
     request: &CompletionRequest,
+    attempt: &Attempt,
 ) -> AiResult<String> {
     let base = normalise_base_url(&settings.base_url);
     if base.is_empty() {
@@ -231,7 +279,7 @@ pub async fn complete(
     }
 
     let url = format!("{base}/chat/completions");
-    let body = request_body(&model, settings, request);
+    let body = request_body(&model, settings, request, attempt);
 
     let response = authorised(client()?.post(&url), settings)
         .json(&body)
@@ -269,24 +317,19 @@ pub async fn complete(
         .next()
         .ok_or_else(|| AiError::BadResponse("the reply contained no choices".to_string()))?;
 
-    if choice.message.content.trim().is_empty() {
+    let (content, thought) = without_thinking(&choice.message.content);
+    // Cut off at the limit before the object was finished is no answer either.
+    let cut_off = choice.finish_reason.as_deref() == Some("length") && super::extract_json_object(&content).is_none();
+    if content.is_empty() || cut_off {
         // A reasoning model that ran out of budget answers with an empty
         // message. Saying which it was beats a bare parsing failure.
-        let reasoned = choice.message.reasoning.is_some() || choice.message.reasoning_content.is_some();
-        return Err(AiError::BadResponse(if reasoned {
-            "the model used its whole reply on reasoning and produced no answer. \
-             Try a lower reasoning effort in Settings, or a model that does not \
-             reason before answering."
-                .to_string()
-        } else {
-            format!(
-                "the model returned an empty reply (finished: {}).",
-                choice.finish_reason.as_deref().unwrap_or("unspecified")
-            )
-        }));
+        return Err(AiError::NoAnswer {
+            reasoned: thought || choice.message.reasoning.is_some() || choice.message.reasoning_content.is_some(),
+            finished: choice.finish_reason.unwrap_or_else(|| "unspecified".to_string()),
+        });
     }
 
-    Ok(choice.message.content)
+    Ok(content)
 }
 
 pub async fn list_models(settings: &AiSettings) -> AiResult<Vec<ModelInfo>> {
@@ -452,7 +495,7 @@ mod tests {
             reasoning_effort: String::new(),
             ..Default::default()
         };
-        let body = request_body("m", &settings, &request(vec![]));
+        let body = request_body("m", &settings, &request(vec![]), &Attempt::FIRST);
         assert_eq!(body["response_format"]["type"], "json_object");
         assert!(body.get("reasoning").is_none());
 
@@ -460,9 +503,28 @@ mod tests {
             reasoning_effort: "low".to_string(),
             ..Default::default()
         };
-        let body = request_body("m", &settings, &request(vec![]));
+        let body = request_body("m", &settings, &request(vec![]), &Attempt::FIRST);
         assert_eq!(body["response_format"]["type"], "json_object");
         assert_eq!(body["reasoning"]["effort"], "low");
+    }
+
+    #[test]
+    fn asked_again_the_model_is_given_room_and_told_to_think_less() {
+        let settings = AiSettings { reasoning_effort: "high".to_string(), ..Default::default() };
+        let first = request_body("m", &settings, &request(vec![]), &Attempt::FIRST);
+        assert_eq!((first["max_tokens"].as_u64(), first["reasoning"]["effort"].as_str()), (Some(8000), Some("high")));
+        assert!(first.get("chat_template_kwargs").is_none(), "the first ask sends only what every server takes");
+        let again = request_body("m", &settings, &request(vec![]), &Attempt::QUICKER);
+        assert_eq!((again["max_tokens"].as_u64(), again["reasoning"]["effort"].as_str()), (Some(12000), Some("low")));
+        assert_eq!(again["chat_template_kwargs"]["enable_thinking"], false);
+        assert!(request_body("m", &settings, &request(vec![]), &Attempt::QUICKER_PLAIN).get("chat_template_kwargs").is_none());
+    }
+
+    #[test]
+    fn thinking_written_into_the_reply_is_not_the_answer() {
+        assert_eq!(without_thinking("<think>a {brace}</think>\n{\"ok\":1}"), ("{\"ok\":1}".to_string(), true));
+        assert_eq!(without_thinking("<think>still going, {"), (String::new(), true), "cut off while thinking");
+        assert_eq!(without_thinking(" {\"ok\":1} "), ("{\"ok\":1}".to_string(), false));
     }
 
     #[test]
@@ -478,6 +540,7 @@ mod tests {
             system: "sys".to_string(),
             user: "usr".to_string(),
             images: images.into_iter().map(str::to_string).collect(),
+            shorter: None,
         }
     }
 
@@ -535,13 +598,21 @@ mod tests {
             system: "Reply with a JSON object with one key named ok set to true.".to_string(),
             user: "Reply now.".to_string(),
             images: Vec::new(),
+            shorter: None,
         };
-        let reply = complete(&settings, &request)
+        let reply = complete(&settings, &request, &Attempt::FIRST)
             .await
             .expect("the model should answer");
         assert!(
             reply.contains("ok"),
             "expected a JSON object, got: {reply}"
         );
+
+        // Asked again, lighter: the server takes the thinking switch, or
+        // refuses it with an error the second try leaves it out after.
+        match complete(&settings, &request, &Attempt::QUICKER).await {
+            Ok(reply) => assert!(reply.contains("ok"), "expected a JSON object, got: {reply}"),
+            Err(e) => panic!("the lighter ask was refused: {e}"),
+        }
     }
 }
