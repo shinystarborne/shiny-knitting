@@ -353,10 +353,6 @@ pub struct YarnLot {
     /// leftovers, shown as a Leftover tag in the stash.
     #[serde(default)]
     pub leftover: bool,
-    /// What a ball cost, in the currency of the settings; None when not said.
-    /// The lot cost its balls times this.
-    #[serde(default)]
-    pub price: Option<f64>,
 }
 
 impl YarnLot {
@@ -472,6 +468,10 @@ pub struct YarnDetails {
     /// Its care symbols, from `CARE_SYMBOLS`, in that order.
     #[serde(default)]
     pub care: Vec<String>,
+    /// What a ball costs, in the currency of the settings: the same for every
+    /// colour and every lot of the yarn. None when not said.
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 
 /// The care symbols a ball band can show, in the order they are read on a
@@ -556,9 +556,6 @@ pub struct YarnLotInput {
     pub bought_at: Option<i64>,
     #[serde(default)]
     pub leftover: bool,
-    /// As `YarnLot::price`.
-    #[serde(default)]
-    pub price: Option<f64>,
 }
 
 impl YarnLotInput {

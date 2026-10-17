@@ -787,9 +787,30 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     // A tip of a pair was once said as right or left: the two are alike, so one.
     conn.execute("UPDATE project_tools SET tip = 'one' WHERE tip IN ('right', 'left')", [])?;
-    // Prices: a lot's per ball, a pattern's; None when not said.
+    // Prices: a ball's, by brand and yarn as the band's details are; a
+    // pattern's. None when not said.
     if !column_exists(conn, "yarn_lots", "price")? {
         conn.execute("ALTER TABLE yarn_lots ADD COLUMN price REAL", [])?;
+    }
+    if !column_exists(conn, "yarn_details", "price")? {
+        conn.execute("ALTER TABLE yarn_details ADD COLUMN price REAL", [])?;
+        // A price was once a lot's (0.3.86): each yarn takes the one said
+        // last for any of its colours, and the lots' are left behind.
+        let said: Vec<(String, String, f64)> = conn
+            .prepare(
+                "SELECT y.brand, y.name, l.price FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id
+                 WHERE l.price IS NOT NULL ORDER BY COALESCE(l.bought_at, y.added_at), l.rowid",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        for (brand, name, price) in said {
+            conn.execute(
+                "INSERT INTO yarn_details (brand, name, price) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (brand, name) DO UPDATE SET price = ?3",
+                params![details_key(&brand), details_key(&name), price],
+            )?;
+        }
+        conn.execute("UPDATE yarn_lots SET price = NULL", [])?;
     }
     if !column_exists(conn, "patterns", "price")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
@@ -4753,7 +4774,6 @@ fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
         location: row.get("location")?,
         bought_at: row.get("bought_at")?,
         leftover: row.get("leftover")?,
-        price: row.get("price")?,
     })
 }
 
@@ -4993,11 +5013,12 @@ fn details_key(v: &str) -> String {
     v.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// What the ball band says of a yarn, by its brand and name; all 0 when nothing is.
+/// What the ball band says of a yarn, and what a ball of it costs, by its
+/// brand and name; all 0 and no price when nothing is.
 pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
     Ok(conn
         .query_row(
-            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price FROM yarn_details WHERE brand = ?1 AND name = ?2",
             params![details_key(brand), details_key(name)],
             |r| {
                 Ok(YarnDetails {
@@ -5006,6 +5027,7 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
                     needle_from: r.get(2)?,
                     needle_to: r.get(3)?,
                     care: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
+                    price: r.get(5)?,
                 })
             },
         )
@@ -5013,8 +5035,9 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
         .unwrap_or_default())
 }
 
-/// Sets what the ball band says of a yarn, for every colour of it. A range
-/// typed the wrong way round is turned; one size twice is one size.
+/// Sets what the ball band says of a yarn, and its price a ball, for every
+/// colour of it. A range typed the wrong way round is turned; one size twice
+/// is one size; a price is kept to the cent.
 pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDetails) -> AppResult<()> {
     let ok = |v: f64, max: f64| v.is_finite() && (0.0..=max).contains(&v);
     if !ok(d.gauge_sts, 100.0) || !ok(d.gauge_rows, 150.0) {
@@ -5040,14 +5063,15 @@ pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDeta
     let care = serde_json::to_string(&care).unwrap_or_else(|_| "[]".into());
     let (brand, name) = (details_key(brand), details_key(name));
     let (sts, rows) = (tenth(d.gauge_sts), tenth(d.gauge_rows));
-    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" {
+    let cost = price(d.price)?;
+    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" && cost.is_none() {
         conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2", params![brand, name])?;
         return Ok(());
     }
     conn.execute(
-        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7",
-        params![brand, name, sts, rows, from, to, care],
+        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care, price) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7, price = ?8",
+        params![brand, name, sts, rows, from, to, care, cost],
     )?;
     Ok(())
 }
@@ -5063,8 +5087,8 @@ fn insert_lot(
         .filter(|i| !i.is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     conn.execute(
-        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, price)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
         params![
             id,
             yarn_id,
@@ -5074,8 +5098,7 @@ fn insert_lot(
             lot.location,
             lot.bought_at,
             lot.leftover,
-            lot.is_weighed(),
-            price(lot.price)?
+            lot.is_weighed()
         ],
     )?;
     Ok(())
@@ -5130,7 +5153,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             // Scoped to the yarn as well as the id, so a lot can never be
             // rewritten through another yarn's update.
             tx.execute(
-                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9, price=?10
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9
                  WHERE id=?1 AND yarn_id=?2",
                 params![
                     lot.id,
@@ -5141,8 +5164,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed(),
-                    price(lot.price)?
+                    lot.is_weighed()
                 ],
             )?;
             kept.push(&lot.id);
@@ -5153,8 +5175,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                 lot.id.clone()
             };
             tx.execute(
-                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, price)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 params![
                     id,
                     yarn.id,
@@ -5164,8 +5186,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed(),
-                    price(lot.price)?
+                    lot.is_weighed()
                 ],
             )?;
         }

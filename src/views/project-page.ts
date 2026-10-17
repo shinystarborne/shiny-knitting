@@ -398,7 +398,7 @@ ${plan ? "" : `      <div class="project-side-dates">
   }
 
   /**
-   * What it cost: its yarn, by what it used or plans to take at its lot's
+   * What it cost: its yarn, by what it used or plans to take at the yarn's
    * price a ball, and its pattern; tools are not counted. Says what has no
    * price, and nothing at all when nothing has one.
    */

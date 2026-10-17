@@ -423,8 +423,6 @@ export interface YarnLot {
   boughtAt: number | null;
   /** What a finished project left over; shown as a Leftover tag. */
   leftover: boolean;
-  /** What a ball cost, in the settings' currency; null when not said. */
-  price?: number | null;
 }
 
 /** Mirrors `models.rs::Yarn`. */
@@ -503,6 +501,8 @@ export interface YarnDetails {
   needleTo: number;
   /** Its care symbols' ids (see views/care.ts), in the order a label is read. */
   care: string[];
+  /** What a ball costs, in the settings' currency: every colour and lot of the yarn the same. Null when not said. */
+  price?: number | null;
 }
 
 export interface YarnLotInput {
@@ -516,8 +516,6 @@ export interface YarnLotInput {
   location: string;
   boughtAt: number | null;
   leftover: boolean;
-  /** What a ball cost; null when not said. */
-  price?: number | null;
 }
 
 /** What the yarn form sends; ids and derived figures are the backend's. */

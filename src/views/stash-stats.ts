@@ -74,7 +74,7 @@ export class StashStatsView {
         <div class="stat-tile"><span>In the stash now</span><b>${fmt(metres)} m</b><small>${weight(grams)} in ${inStash.length} yarn${inStash.length === 1 ? "" : "s"}</small></div>
         <div class="stat-tile"><span>Added in the last 12 months</span><b>${fmt(sum(this.months, "added", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "added", other(kept.unit)))} ${other(kept.unit)}</small></div>
         <div class="stat-tile"><span>Used in the last 12 months</span><b>${fmt(sum(this.months, "used", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "used", other(kept.unit)))} ${other(kept.unit)}</small></div>
-        <div class="stat-tile" data-el="worth"><span>The stash is worth</span><b>${money(worth.worth, this.currency)}</b><small>${worth.unpriced ? `${worth.unpriced} lot${worth.unpriced === 1 ? "" : "s"} without a price` : "what is left, at what it cost"}</small></div>
+        <div class="stat-tile" data-el="worth"><span>The stash is worth</span><b>${money(worth.worth, this.currency)}</b><small>${worth.unpriced ? `${worth.unpriced} yarn${worth.unpriced === 1 ? "" : "s"} without a price` : "what is left, at what it cost"}</small></div>
         <div class="stat-tile" data-el="spent"><span>Spent in the last 12 months</span><b>${money(spentTotal, this.currency)}</b><small>${money(spentYarn, this.currency)} on yarn, ${money(spentPatterns, this.currency)} on patterns</small></div>
       </section>
       <section class="usage-panel">
@@ -96,7 +96,7 @@ export class StashStatsView {
           ${
             bought.items.length
               ? `<ul class="usage-list">${bought.items.map((x) => `<li><span>${esc(x.name)}</span><b>${money(x.amount, this.currency)}</b><em>${x.kind === "yarn" ? "yarn" : "pattern"} · ${day(x.at)}</em></li>`).join("")}</ul>`
-              : `<p class="hint">Nothing bought with a price this month. A lot's price a ball, and a pattern's price, are in their forms.</p>`
+              : `<p class="hint">Nothing bought with a price this month. A yarn's price a ball, and a pattern's price, are in their forms.</p>`
           }
         </div>
         <details class="usage-table"><summary>The months as a table</summary>

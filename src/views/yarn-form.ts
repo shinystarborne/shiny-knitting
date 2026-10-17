@@ -42,8 +42,6 @@ interface LotRow {
   boughtAt: string;
   /** What a finished project left over; the stash tags it. */
   leftover: boolean;
-  /** What a ball cost, as typed: "4,95"; empty for not said. */
-  price: string;
 }
 
 /**
@@ -125,10 +123,9 @@ export class YarnForm {
           location: lot.location,
           boughtAt: lot.boughtAt != null ? toDateInput(lot.boughtAt) : "",
           leftover: lot.leftover ?? false,
-          price: lot.price != null ? String(lot.price) : "",
         }))
       : this.start
-        ? [{ ...emptyLot(), balls: this.start.balls ? String(this.start.balls) : "", boughtAt: toDateInput(this.start.boughtAt ?? Date.now()), price: this.start.price != null ? String(this.start.price) : "" }]
+        ? [{ ...emptyLot(), balls: this.start.balls ? String(this.start.balls) : "", boughtAt: toDateInput(this.start.boughtAt ?? Date.now()) }]
         : [emptyLot()];
     const from = editing ?? this.template;
     this.fibres = (from?.fibres ?? []).map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
@@ -137,6 +134,8 @@ export class YarnForm {
     this.plans = (editing?.plans ?? []).map((p) => ({ ...p }));
     // What the band says is the yarn's, whatever its colour.
     if (from?.details) this.details = { ...from.details, care: [...from.details.care] };
+    // A price from the wishlist is the one to start with, the yarn's or not.
+    if (this.start?.price != null) this.details = { ...this.details, price: this.start.price };
   }
 
   open(): void {
@@ -226,6 +225,11 @@ export class YarnForm {
           <div class="care-pick" data-el="care"></div>
           <p class="hint" data-el="details-hint">The gauge to expect, the needles to use, and how to wash it. Kept for every colour of this yarn.</p>
         </div>
+        <label class="field yarn-price">
+          <span>Price a ball</span>
+          <input data-f="price" inputmode="decimal" value="${this.details.price != null ? escapeAttr(String(this.details.price)) : ""}" placeholder="e.g. 4,95" />
+          <em class="hint">The same for every colour and every lot of this yarn, by its brand and name. A lot costs its balls times this.</em>
+        </label>
         <div class="field">
           <span>Fibre content</span>
           <div class="fibre-list" data-el="fibres"></div>
@@ -429,10 +433,17 @@ export class YarnForm {
     const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom || d.care.length);
     const band = same.find((y) => said(y.details))?.details;
     if (band && !said(this.details)) {
-      this.details = { ...band, care: [...band.care] };
+      this.details = { ...band, care: [...band.care], price: this.details.price };
       this.renderDetails();
       this.renderCare();
       filled.push("gauge, needles and care");
+    }
+    // Its price a ball: the yarn's, whatever the colour.
+    const priced = same.find((y) => y.details?.price != null)?.details?.price;
+    const priceInput = this.root.querySelector<HTMLInputElement>('[data-f="price"]');
+    if (priced != null && priceInput && !priceInput.value.trim()) {
+      priceInput.value = String(priced);
+      filled.push("price a ball");
     }
     // Its fibres and superwash too, when none are typed yet.
     if (this.takeFibresFrom(same)) filled.push("fibres");
@@ -666,7 +677,6 @@ export class YarnForm {
             <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />
-            <input data-lf="price" class="lot-price" inputmode="decimal" value="${escapeAttr(lot.price)}" placeholder="Price a ball" title="What a ball cost: the lot cost its balls times this, for what the stash is worth and what was spent" />
             <label class="lot-leftover" title="What a finished project left over">
               <input type="checkbox" data-lf="leftover" ${lot.leftover ? "checked" : ""} /> Leftover
             </label>
@@ -687,7 +697,6 @@ export class YarnForm {
       location: field(row, "location"),
       boughtAt: field(row, "boughtAt"),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
-      price: field(row, "price"),
     }));
   }
 
@@ -724,7 +733,7 @@ export class YarnForm {
       if (strict) throw new Error(bad[0].startsWith("gauge") ? "The gauge is a number of stitches or rows: 22, or 22.5." : "Needles are a size in mm: 4, or 3.5.");
       return;
     }
-    this.details = { ...read, care: this.details.care };
+    this.details = { ...this.details, ...read };
   }
 
   /** The care symbols, each with what it means; one of a kind (one way to wash) at a time. */
@@ -916,14 +925,16 @@ export class YarnForm {
           location: lot.location.trim(),
           boughtAt: lot.boughtAt ? Date.parse(lot.boughtAt) : null,
           leftover: lot.leftover,
-          price: lot.price.trim() ? parsePrice(lot.price) : null,
         }))
         .filter(
           (lot) =>
-            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null || lot.price != null,
+            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null,
         );
 
       this.readDetails(true);
+      const typed = this.value("price").trim();
+      const price = typed ? parsePrice(typed) : null;
+      if (typed && price === null) throw new Error("The price a ball is a number: 4,95 or 4.95.");
       const shared = {
         // The same brand or yarn typed in another case files with the one
         // already there, so the lists do not fill with near-twins.
@@ -937,7 +948,7 @@ export class YarnForm {
         fibres: this.fibreValues(),
         superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,
         plans: this.plans,
-        details: this.details,
+        details: { ...this.details, price },
       };
 
       let saved: Yarn;
@@ -1003,7 +1014,7 @@ export class YarnForm {
 }
 
 function emptyLot(): LotRow {
-  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: "", leftover: false, price: "" };
+  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: "", leftover: false };
 }
 
 function field(row: HTMLElement, name: string): string {

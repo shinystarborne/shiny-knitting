@@ -1,6 +1,7 @@
 /**
  * Checks for prices: what was typed read as a price, a wishlist price taken
- * as a ball's, a lot's price a ball kept from the yarn form, a pattern's
+ * as a ball's, a yarn's price a ball kept from the yarn form for every
+ * colour and lot of it (by brand and name), a pattern's
  * price from its form, the currency chosen in Settings, what the stash is
  * worth and what was spent in Statistics, and what a project cost on its
  * page (its yarn by the grams it takes, and its pattern; no tools).
@@ -47,26 +48,27 @@ function pure(results: CheckResult[]): void {
   const wish = (price: string, amount: string) => ({ id: "w", kind: "yarn", name: "Air, Off white", brand: "Drops", url: "", shopId: null, price, amount, notes: "", gotAt: null }) as unknown as Wish;
   check(results, "a yarn got from the wishlist starts its lot at a ball's price", yarnStart(wish("€4.95 a ball", "6 balls")).price === 4.95 && yarnStart(wish("29,70 €", "6 balls")).price === 4.95 && yarnStart(wish("", "6 balls")).price === null);
 
-  // The stash: a lot of whole balls, one weighed, one with no price, and a used-up yarn.
-  const lot = (fields: Partial<YarnLot>): YarnLot => ({ id: "l", yarnId: "y", dyeLot: "", balls: 0, gramsLeft: 0, weighed: false, location: "", boughtAt: null, leftover: false, price: null, ...fields }) as YarnLot;
-  const yarn = (fields: Partial<Yarn>): Yarn => ({ id: "y", brand: "Drops", name: "Air", colourway: "", gramsPerBall: 50, metresPerBall: 150, addedAt: new Date(2028, 0, 20).getTime(), usedUpAt: null, lots: [], ...fields }) as unknown as Yarn;
+  // The stash: a yarn of whole balls and a weighed lot, one with no price, and a used-up yarn.
+  const lot = (fields: Partial<YarnLot>): YarnLot => ({ id: "l", yarnId: "y", dyeLot: "", balls: 0, gramsLeft: 0, weighed: false, location: "", boughtAt: null, leftover: false, ...fields }) as YarnLot;
+  const priced = (price: number | null) => ({ gaugeSts: 0, gaugeRows: 0, needleFrom: 0, needleTo: 0, care: [], price });
+  const yarn = (fields: Partial<Yarn>): Yarn => ({ id: "y", brand: "Drops", name: "Air", colourway: "", gramsPerBall: 50, metresPerBall: 150, addedAt: new Date(2028, 0, 20).getTime(), usedUpAt: null, lots: [], details: priced(null), ...fields }) as unknown as Yarn;
   const yarns = [
-    yarn({ id: "a", lots: [lot({ id: "a1", balls: 3, price: 4.95, boughtAt: new Date(2028, 2, 3).getTime() }), lot({ id: "a2", weighed: true, gramsLeft: 25, price: 4 })] }),
+    yarn({ id: "a", details: priced(4.95), lots: [lot({ id: "a1", balls: 3, boughtAt: new Date(2028, 2, 3).getTime() }), lot({ id: "a2", weighed: true, gramsLeft: 20 })] }),
     yarn({ id: "b", name: "Kid-Silk", lots: [lot({ id: "b1", balls: 2 })] }),
-    yarn({ id: "c", name: "Gone", usedUpAt: 1, lots: [lot({ id: "c1", balls: 5, price: 10 })] }),
+    yarn({ id: "c", name: "Gone", usedUpAt: 1, details: priced(10), lots: [lot({ id: "c1", balls: 5 })] }),
   ];
   const worth = stashWorth(yarns);
-  check(results, "the stash's worth: whole balls at their price, a weighed lot by its share of a ball, used up yarn not", worth.worth === 16.85 && worth.unpriced === 1, JSON.stringify(worth));
+  check(results, "the stash's worth: whole balls at the yarn's price, a weighed lot by its share of a ball, used up yarn not", worth.worth === 16.83 && worth.unpriced === 1, JSON.stringify(worth));
 
   const patterns = [{ id: "p", title: "Riddari", price: 6.5, addedAt: new Date(2028, 1, 10).getTime() }, { id: "q", title: "Free one", price: null, addedAt: 0 }] as unknown as Pattern[];
   const spends = spending(yarns, patterns);
-  check(results, "what was spent: each lot with a price, dated when bought or else when the yarn was added, used up or not; patterns with one", spends.length === 3 && spends[0].amount === 14.85 && /Drops Air, 3 balls/.test(spends[0].name) && spends.some((s) => s.kind === "pattern" && s.amount === 6.5), JSON.stringify(spends));
+  check(results, "what was spent: each lot of a yarn with a price, dated when bought or else when the yarn was added, used up or not; patterns with one", spends.length === 3 && spends[0].amount === 14.85 && /Drops Air, 3 balls/.test(spends[0].name) && spends.some((s) => s.kind === "pattern" && s.amount === 6.5), JSON.stringify(spends));
   const months = spentByMonth(spends, new Date(2028, 2, 15).getTime());
   check(results, "…month by month for twelve, the oldest first", months.length === 12 && months[11].yarn === 14.85 && months[10].patterns === 6.5 && months[9].yarn === 50 && months[11].items.length === 1, JSON.stringify(months.slice(9).map((m) => [m.yarn, m.patterns])));
 
   const project = { id: "pr", patternId: "p", yarns: [{ id: "e1", yarnId: "a", yarnName: "Air", lotId: "a1", plannedGrams: 100 }, { id: "e2", yarnId: "b", yarnName: "Kid-Silk", lotId: null, plannedGrams: 25 }] } as unknown as Project;
   const planned = projectCost(project, yarns, patterns, []);
-  check(results, "a project's cost: the grams it plans at its lot's price a ball, and its pattern", planned.yarn === 9.9 && planned.pattern === 6.5 && planned.total === 16.4 && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
+  check(results, "a project's cost: the grams it plans at the yarn's price a ball, and its pattern", planned.yarn === 9.9 && planned.pattern === 6.5 && planned.total === 16.4 && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
   const used = [{ projectId: "pr", yarnId: "a", grams: 150, source: "finished" }] as unknown as YarnUse[];
   check(results, "…what it used, once finished, before what it planned", projectCost(project, yarns, patterns, used).yarn === 14.85);
 }
@@ -81,6 +83,7 @@ export async function verifyPrices() {
   const pattern = store.patterns.find((p) => !(p as { removedAt?: number }).removedAt)!;
   const was = { price: pattern.price, addedAt: pattern.addedAt };
   let yarnId = "";
+  let otherColour = "";
   let projectId = "";
 
   try {
@@ -99,29 +102,58 @@ export async function verifyPrices() {
     await waitFor(() => !modal(), "settings saved");
     check(results, "…and the one chosen is kept", store.currency === "GBP", String(store.currency));
 
-    // ---------- a lot's price a ball, from the yarn form ----------
+    // ---------- a yarn's price a ball, from the yarn form ----------
     tab("stash");
     await waitFor(() => !!document.querySelector('.stash [data-act="add"]'), "the stash");
-    document.querySelector<HTMLElement>('.stash [data-act="add"]')!.click();
-    await waitFor(() => !!modal()?.querySelector('.lot-row [data-lf="price"]'), "the yarn form");
+    const addYarn = async () => {
+      document.querySelector<HTMLElement>('.stash [data-act="add"]')!.click();
+      await waitFor(() => !!modal()?.querySelector('.yarn-price [data-f="price"]'), "the yarn form");
+    };
     const set = (sel: string, value: string) => {
       const el = modal()!.querySelector<HTMLInputElement>(sel);
       if (!el) throw new Error(`no field ${sel} in the yarn form`);
       el.value = value;
     };
-    check(results, "a lot row asks for its price a ball", modal()!.querySelector<HTMLInputElement>('.lot-row [data-lf="price"]')!.placeholder === "Price a ball");
+    const listed = () => invoke<Yarn[]>("list_yarns", { filter: { used: "all" } });
+    await addYarn();
+    check(results, "a lot row has no price of its own: the yarn has one, a ball's", !modal()!.querySelector('.lot-row [data-lf="price"]') && /Price a ball/.test(modal()!.querySelector(".yarn-price")!.textContent ?? ""));
     set('[data-f="name"]', "Price Check");
     set('[data-f="brand"]', "Drops");
+    set('[data-f="colourway"]', "Rust");
     set('[data-f="yarnWeight"]', "DK");
     set('[data-f="metresPerBall"]', "150");
     set('[data-f="gramsPerBall"]', "50");
     set('.lot-row [data-lf="balls"]', "3");
-    set('.lot-row [data-lf="price"]', "4,95");
+    set('[data-f="price"]', "4,95 a ball");
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     const added = () => store.yarns.find((y) => y.name === "Price Check");
     await waitFor(() => !!added() && !modal(), "the yarn added");
     yarnId = added()!.id;
-    check(results, "the lot's price a ball is kept, typed with a comma", added()!.lots[0]?.price === 4.95, JSON.stringify(added()!.lots));
+    const kept = (await listed()).find((y) => y.id === yarnId)?.details;
+    check(results, "the yarn's price a ball is kept, typed with a comma and words", kept?.price === 4.95, JSON.stringify(kept));
+
+    // Another colour of it starts at that price; changed there, it changes for both.
+    await addYarn();
+    set('[data-f="name"]', "Price Check");
+    // The stash's yarns come in just after the form opens: the name is
+    // picked again until they have.
+    const priceNow = () => modal()!.querySelector<HTMLInputElement>('[data-f="price"]')!.value;
+    await waitFor(() => {
+      modal()!.querySelector('[data-f="name"]')!.dispatchEvent(new Event("change", { bubbles: true }));
+      return priceNow() !== "";
+    }, "the yarn known", 3000).catch(() => {});
+    const start = priceNow();
+    check(results, "another colour of the yarn starts at its price a ball", start === "4.95", start);
+    set('[data-f="colourway"]', "Moss");
+    set('[data-f="price"]', "5.20");
+    modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
+    await waitFor(() => store.yarns.filter((y) => y.name === "Price Check").length === 2 && !modal(), "the second colour");
+    otherColour = store.yarns.find((y) => y.name === "Price Check" && y.id !== yarnId)!.id;
+    const both = (await listed()).filter((y) => y.name === "Price Check").map((y) => y.details?.price);
+    check(results, "…and a new price on one colour is every colour's", both.length === 2 && both.every((x) => x === 5.2), JSON.stringify(both));
+    // The first colour stays, at 5.20, for Statistics and the project.
+    await invoke("delete_yarn", { id: otherColour });
+    otherColour = "";
 
     // ---------- a pattern's price, from its form ----------
     tab("patterns");
@@ -149,11 +181,11 @@ export async function verifyPrices() {
     const spentTile = document.querySelector('[data-el="spent"]')!.textContent!.replace(/\s+/g, " ");
     check(results, "…and what was spent in twelve months, on yarn and on patterns", /on yarn/.test(spentTile) && spentTile.includes(money(6.5, "GBP")), spentTile);
     const month = document.querySelector('[data-el="spent-month"]')!.textContent!.replace(/\s+/g, " ");
-    check(results, "…this month's buying listed: the lot, and the pattern", /Drops Price Check, 3 balls/.test(month) && month.includes(money(14.85, "GBP")) && month.includes(pattern.title), month);
+    check(results, "…this month's buying listed: the lot, and the pattern", /Drops Price Check \(Rust\), 3 balls/.test(month) && month.includes(money(15.6, "GBP")) && month.includes(pattern.title), month);
     check(results, "…and a Spent column in the months' table", [...document.querySelectorAll(".usage-table th")].some((th) => th.textContent === "Spent"));
 
     // ---------- a project's cost ----------
-    const other = store.yarns.find((y) => y.id !== yarnId && !y.usedUpAt && y.lots.every((l) => l.price == null))!;
+    const other = (await listed()).find((y) => y.id !== yarnId && !y.usedUpAt && y.details?.price == null)!;
     const p = await invoke<Project>("add_project", {
       input: { name: "Priced cowl", patternId: pattern.id, notes: "", startedAt: null, toolIds: [], yarns: [{ id: null, yarnId, lotId: null, plannedGrams: 100 }, { id: null, yarnId: other.id, lotId: null, plannedGrams: 20 }] },
     });
@@ -163,7 +195,7 @@ export async function verifyPrices() {
     document.querySelector<HTMLElement>(".projects")!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: p.id }));
     await waitFor(() => !!document.querySelector('.project-page [data-el="cost"]'), "the project's cost");
     const cost = document.querySelector<HTMLElement>(".project-cost-field")!.textContent!.replace(/\s+/g, " ");
-    check(results, "a project's page says what it cost: 2 balls' worth and the pattern", document.querySelector('[data-el="cost"] b')?.textContent === money(16.4, "GBP") && cost.includes(money(9.9, "GBP")) && cost.includes(money(6.5, "GBP")), cost);
+    check(results, "a project's page says what it cost: 2 balls' worth and the pattern", document.querySelector('[data-el="cost"] b')?.textContent === money(16.9, "GBP") && cost.includes(money(10.4, "GBP")) && cost.includes(money(6.5, "GBP")), cost);
     check(results, "…and which yarn it could not count", new RegExp(`Not counted.*${other.name}`).test(cost), cost);
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
@@ -171,6 +203,7 @@ export async function verifyPrices() {
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="cancel"]')?.click();
     if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
     if (yarnId) await invoke("delete_yarn", { id: yarnId }).catch(() => {});
+    if (otherColour) await invoke("delete_yarn", { id: otherColour }).catch(() => {});
     const kept = store.patterns.find((x) => x.id === pattern.id);
     if (kept) Object.assign(kept, was);
     store.currency = before.currency;

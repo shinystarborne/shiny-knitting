@@ -1054,7 +1054,7 @@ const CARE_SYMBOLS = [
 
 function yarnDetailsOf(brand, name) {
   const row = store.yarnDetails.find((d) => d.key === detailsKey(brand, name));
-  return row ? { gaugeSts: row.gaugeSts, gaugeRows: row.gaugeRows, needleFrom: row.needleFrom, needleTo: row.needleTo, care: [...row.care] } : { ...NO_DETAILS, care: [] };
+  return row ? { gaugeSts: row.gaugeSts, gaugeRows: row.gaugeRows, needleFrom: row.needleFrom, needleTo: row.needleTo, care: [...row.care], price: row.price ?? null } : { ...NO_DETAILS, care: [], price: null };
 }
 
 /** As db::set_yarn_details: checked, a range turned the right way, all 0 gone. */
@@ -1072,8 +1072,8 @@ function setYarnDetails(brand, name, d) {
   const care = CARE_SYMBOLS.filter((c) => (d.care || []).includes(c));
   const key = detailsKey(brand, name);
   store.yarnDetails = store.yarnDetails.filter((x) => x.key !== key);
-  const row = { key, gaugeSts: tenth(d.gaugeSts), gaugeRows: tenth(d.gaugeRows), needleFrom: from, needleTo: to, care };
-  if (row.gaugeSts || row.gaugeRows || row.needleFrom || row.needleTo || care.length) store.yarnDetails.push(row);
+  const row = { key, gaugeSts: tenth(d.gaugeSts), gaugeRows: tenth(d.gaugeRows), needleFrom: from, needleTo: to, care, price: cents(d.price) };
+  if (row.gaugeSts || row.gaugeRows || row.needleFrom || row.needleTo || care.length || row.price != null) store.yarnDetails.push(row);
 }
 
 function withYarnTotals(yarn) {
@@ -2698,7 +2698,6 @@ const handlers = {
         location: lot.location || "",
         boughtAt: lot.boughtAt ?? null,
         leftover: !!lot.leftover,
-        price: cents(lot.price),
       })),
     };
     if (input.details) setYarnDetails(y.brand, y.name, input.details);
@@ -2721,7 +2720,6 @@ const handlers = {
       location: lot.location || "",
       boughtAt: lot.boughtAt ?? null,
       leftover: !!lot.leftover,
-      price: cents(lot.price),
     }));
     const next = {
       ...clone(yarn),

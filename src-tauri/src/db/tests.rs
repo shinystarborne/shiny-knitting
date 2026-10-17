@@ -1878,7 +1878,6 @@ fn updating_a_yarn_reconciles_its_lots() {
             location: String::new(),
             bought_at: None,
             leftover: false,
-            price: Some(4.955),
         },
     ];
 
@@ -1898,9 +1897,6 @@ fn updating_a_yarn_reconciles_its_lots() {
 
     // The dropped lot is gone, and the new one was inserted with a fresh id.
     assert!(by_id(&y.lots[2].id).is_none(), "the dropped lot must go");
-    // Its price a ball, kept to the cent; the others not said.
-    assert_eq!(saved.lots.iter().find(|l| l.dye_lot == "D4").unwrap().price, Some(4.96));
-    assert_eq!(still_there.price, None);
     let added = saved
         .lots
         .iter()
@@ -2085,7 +2081,7 @@ fn a_yarn_round_trips_every_field() {
             bought_at: Some(1_700_000_000_000),
             ..YarnLotInput::default()
         }],
-        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()] }),
+        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()], price: Some(6.2) }),
     };
     let id = uuid::Uuid::new_v4().to_string();
     let y = insert_yarn(&conn, &id, &input).unwrap();
@@ -2156,6 +2152,40 @@ fn a_yarns_details_are_shared_by_every_colour_of_it() {
     let mut wild = get_yarn(&conn, "sky").unwrap();
     wild.details = Some(YarnDetails { gauge_sts: 220.0, ..YarnDetails::default() });
     assert!(update_yarn(&conn, &wild).is_err());
+}
+
+#[test]
+fn a_yarns_price_a_ball_is_the_same_for_every_colour_and_lot() {
+    use crate::models::YarnDetails;
+    let conn = test_db();
+    let colour = |id: &str, name: &str, details: Option<YarnDetails>| {
+        insert_yarn(&conn, id, &YarnInput { name: name.into(), brand: "Drops".into(), details, ..YarnInput::default() }).unwrap()
+    };
+    colour("rost", "Air", Some(YarnDetails { price: Some(4.955), ..YarnDetails::default() }));
+    assert_eq!(colour("wald", "air", None).details.unwrap().price, Some(4.96), "to the cent, for another colour too");
+    assert_eq!(colour("sky", "Sky", None).details.unwrap().price, None, "another yarn has its own");
+    // A price alone is kept; cleared, it is gone for every colour.
+    let mut cleared = get_yarn(&conn, "wald").unwrap();
+    cleared.details = Some(YarnDetails::default());
+    update_yarn(&conn, &cleared).unwrap();
+    assert_eq!(get_yarn(&conn, "rost").unwrap().details.unwrap().price, None);
+    cleared.details = Some(YarnDetails { price: Some(-2.0), ..YarnDetails::default() });
+    assert!(update_yarn(&conn, &cleared).is_err());
+}
+
+#[test]
+fn a_lots_price_from_before_becomes_its_yarns() {
+    let conn = test_db();
+    let lot = |balls: f64, bought: i64| crate::models::YarnLotInput { balls, bought_at: Some(bought), ..Default::default() };
+    let air = insert_yarn(&conn, "rost", &YarnInput { name: "Air".into(), brand: "Drops".into(), lots: vec![lot(3.0, 1), lot(2.0, 2)], ..YarnInput::default() }).unwrap();
+    insert_yarn(&conn, "wald", &YarnInput { name: "Air".into(), brand: "Drops".into(), lots: vec![lot(1.0, 3)], ..YarnInput::default() }).unwrap();
+    // As 0.3.86 kept it: on the lots, the last bought one said differently.
+    conn.execute_batch("ALTER TABLE yarn_details DROP COLUMN price").unwrap();
+    conn.execute("UPDATE yarn_lots SET price = 4.5 WHERE yarn_id = 'rost'", []).unwrap();
+    conn.execute("UPDATE yarn_lots SET price = 5.25 WHERE yarn_id = 'wald'", []).unwrap();
+    migrate(&conn).unwrap();
+    assert_eq!(get_yarn(&conn, &air.id).unwrap().details.unwrap().price, Some(5.25), "the price said last");
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM yarn_lots WHERE price IS NOT NULL", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
 }
 
 #[test]

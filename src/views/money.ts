@@ -47,28 +47,32 @@ export function pricePerBall(text: string, balls: number): number | null {
   return each || !(balls > 1) ? n : Math.round((n / balls) * 100) / 100;
 }
 
-/** What a lot cost: its balls at its price; null when its price is not said. */
-export function lotCost(lot: YarnLot): number | null {
-  return lot.price == null ? null : Math.round(lot.price * (lot.balls || 0) * 100) / 100;
+/** What a ball of a yarn costs: the same for every colour and lot of it, by brand and name. */
+export function ballPrice(y: Yarn): number | null {
+  return y.details?.price ?? null;
+}
+
+/** What a lot cost: its balls at its yarn's price; null when that is not said. */
+export function lotCost(lot: YarnLot, y: Yarn): number | null {
+  const price = ballPrice(y);
+  return price == null ? null : Math.round(price * (lot.balls || 0) * 100) / 100;
 }
 
 /** What is left of a lot is worth: its balls whole, or the share of a ball weighed. */
 export function lotWorth(lot: YarnLot, y: Yarn): number | null {
-  if (lot.price == null) return null;
+  const price = ballPrice(y);
+  if (price == null) return null;
   const balls = lot.weighed ? (y.gramsPerBall ? lot.gramsLeft / y.gramsPerBall : lot.balls) : lot.balls;
-  return lot.price * (balls || 0);
+  return price * (balls || 0);
 }
 
-/** What the yarn in the stash is worth now, and how many of its lots have no price. */
+/** What the yarn in the stash is worth now, and how many of its yarns have no price. */
 export function stashWorth(yarns: Yarn[]): { worth: number; unpriced: number } {
   let worth = 0;
   let unpriced = 0;
-  for (const y of yarns.filter((x) => !x.usedUpAt)) {
-    for (const lot of y.lots) {
-      const w = lotWorth(lot, y);
-      if (w === null) unpriced++;
-      else worth += w;
-    }
+  for (const y of yarns.filter((x) => !x.usedUpAt && x.lots.length)) {
+    if (ballPrice(y) == null) unpriced++;
+    for (const lot of y.lots) worth += lotWorth(lot, y) ?? 0;
   }
   return { worth: Math.round(worth * 100) / 100, unpriced };
 }
@@ -87,7 +91,7 @@ export function spending(yarns: Yarn[], patterns: Pattern[]): Spend[] {
   for (const y of yarns) {
     const name = [y.brand, y.name].filter(Boolean).join(" ") + (y.colourway ? ` (${y.colourway})` : "");
     for (const lot of y.lots) {
-      const cost = lotCost(lot);
+      const cost = lotCost(lot, y);
       if (cost) out.push({ at: lot.boughtAt ?? y.addedAt, kind: "yarn", name: `${name}${lot.balls ? `, ${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : ""}`, amount: cost });
     }
   }
@@ -109,7 +113,7 @@ export function spentByMonth(spends: Spend[], now = Date.now(), count = 12): { s
 
 /**
  * What a project cost: its pattern, and its yarn by what it took -- what a
- * finished one used, else what it plans to take -- at its lot's price a
+ * finished one used, else what it plans to take -- at the yarn's price a
  * ball. Tools are not counted. Says what is not known.
  */
 export function projectCost(p: Project, yarns: Yarn[], patterns: Pattern[], uses: YarnUse[]): { yarn: number; pattern: number; total: number; unknown: string[] } {
@@ -117,14 +121,14 @@ export function projectCost(p: Project, yarns: Yarn[], patterns: Pattern[], uses
   let yarn = 0;
   for (const py of p.yarns) {
     const y = yarns.find((x) => x.id === py.yarnId);
-    const lot = y?.lots.find((l) => l.id === py.lotId) ?? y?.lots.find((l) => l.price != null);
+    const price = y ? ballPrice(y) : null;
     const used = uses.filter((u) => u.projectId === p.id && u.yarnId === py.yarnId && u.source === "finished").reduce((n, u) => n + u.grams, 0);
     const grams = used || py.plannedGrams || 0;
-    if (!y || lot?.price == null || !y.gramsPerBall || !grams) {
+    if (!y || price == null || !y.gramsPerBall || !grams) {
       unknown.push(py.yarnName);
       continue;
     }
-    yarn += (grams / y.gramsPerBall) * lot.price;
+    yarn += (grams / y.gramsPerBall) * price;
   }
   const pattern = p.patternId ? (patterns.find((x) => x.id === p.patternId)?.price ?? 0) : 0;
   const round = (n: number) => Math.round(n * 100) / 100;
