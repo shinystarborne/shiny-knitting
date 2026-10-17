@@ -29,8 +29,6 @@ under the list.
   where they are in a pattern. See below.
 - [ ] **Calculator steps as a checklist**: steps saved to a project, ticked
   off as knitted, a counter for a step that repeats. See below.
-- [ ] **Knitting time**: a timer on a project; hours per project, and what
-  it cost an hour. See below.
 - [ ] **The yarn form filled from a photo of the ball band**, read by the
   model. See below.
 - [ ] **Colours from a photo**: a palette for a chart, and the nearest
@@ -64,12 +62,6 @@ own added to it.
 A calculator's steps saved to a project as a checklist, not a text: each
 step ticked when done, the one being knitted marked, and a step that
 repeats ("decrease every other round 10 times") given its own counter.
-
-### Knitting time
-
-A timer on a project's page: started and stopped, or typed in. Hours per
-project, in Statistics too; with its cost (Prices), what it came to an
-hour.
 
 ### The ball band, from a photo
 
@@ -352,6 +344,13 @@ calculators.
   ("100 (110, 120)", a dash for none) its number marked, the others dimmed
   (pdf.ts paintSizes, through annotations.findTextParts). Not yet: scans,
   size tables, "100/110/120", EPUBs. *0.3.93*
+- **Knitting time:** spells of knitting on a project (knit_sessions), timed
+  or typed in: one timer at a time, kept while the app is closed, stopped
+  by finishing or frogging; on the project's page (Start, Stop and its
+  clock, Add time by hand, the sittings to change or remove, the total, what
+  it came to an hour), in the tab bar while one runs (⏱, opening its
+  project), and the hours of the last 12 months in Statistics
+  (views/knit-time.ts). *0.3.94*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with

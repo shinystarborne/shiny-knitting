@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.94](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.94)** —
+  a timer for your knitting: on a project's page and in the tab bar, with the hours in Statistics. The one to test.
 - **[v0.3.0-beta.93](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.93)** —
-  your size marked in a pattern, the other sizes dimmed. The one to test.
+  your size marked in a pattern, the other sizes dimmed. Superseded by `beta.94`.
 - **[v0.3.0-beta.92](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.92)** —
   the foot's measurements named plainly and drawn; how to measure, beside People's table. Superseded by `beta.93`.
 - **[v0.3.0-beta.91](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.91)** —
