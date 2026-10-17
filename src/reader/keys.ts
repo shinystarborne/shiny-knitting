@@ -6,6 +6,7 @@
  * a counter is counted down -- and the same physical key on any keyboard
  * layout, where the character under it may be something else entirely.
  */
+import { clickedOn } from "../dom";
 
 /** Keys the reader already needs for something else, so none can be chosen. */
 const RESERVED = new Set([
@@ -134,7 +135,7 @@ export function captureKey(title: string, current: string): Promise<string | nul
     clear.addEventListener("click", () => finish(""));
     cancel.addEventListener("click", () => finish(null));
     overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) finish(null);
+      if (clickedOn(e, overlay)) finish(null);
     });
     capturing = true;
     document.addEventListener("keydown", onKey, true);

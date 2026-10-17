@@ -21,7 +21,7 @@
  * anywhere — a reader layer deep in the document, a counter, a card floating
  * over a pattern — without any of them having to be handed a dialog host.
  */
-import { dom } from "./dom";
+import { clickedOn, dom } from "./dom";
 
 /** What a dialog is offering, and what its buttons should say. */
 export interface AskOptions {
@@ -382,7 +382,7 @@ function show(
   overlay.append(card);
   overlay.addEventListener("click", (e) => {
     // Only a click on the backdrop itself, not one that bubbled up from inside.
-    if (e.target === overlay) onCancel?.();
+    if (clickedOn(e, overlay)) onCancel?.();
   });
   stack.push({ overlay, cancel: () => onCancel?.() });
   listenForKeys();

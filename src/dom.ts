@@ -33,3 +33,18 @@ export function dom<K extends keyof HTMLElementTagNameMap>(
   }
   return el;
 }
+
+/**
+ * Where the last press began. A click's target is the nearest element both
+ * the press and the release were in, so a press inside a dialog let go on
+ * its backdrop -- a list that closed under the pointer as it was picked
+ * from, text selected out past the edge -- "clicks" the backdrop, and would
+ * close the dialog with what was being done in it.
+ */
+let pressedAt: EventTarget | null = null;
+if (typeof window !== "undefined") window.addEventListener("pointerdown", (e) => (pressedAt = e.target), true);
+
+/** Whether a click on a backdrop was one: pressed and let go there, not dragged out to it. */
+export function clickedOn(e: MouseEvent, backdrop: HTMLElement): boolean {
+  return e.target === backdrop && (pressedAt === null || pressedAt === backdrop);
+}

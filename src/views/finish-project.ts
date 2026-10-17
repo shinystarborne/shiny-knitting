@@ -1,5 +1,5 @@
 import { api, type Pattern, type Project, type Tool, type Yarn } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { fromDateInput, toDateInput } from "./project-form";
 import { describe } from "./tool-filter";
 import { allOf } from "./yarn-picker";
@@ -164,7 +164,7 @@ export class FinishProjectDialog {
   }
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) {
+    if (clickedOn(e, this.root)) {
       this.close();
       return;
     }

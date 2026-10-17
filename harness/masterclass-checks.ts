@@ -187,11 +187,31 @@ export async function verifyMasterclasses() {
     check(results, "adding a video asks, besides its link and name, the pattern it goes with, if any", /optional: the one it goes with/.test(dialog()!.textContent ?? ""));
     dialog()!.querySelector<HTMLInputElement>('[data-f="link"]')!.value = "https://youtu.be/ccccccccccc";
     dialog()!.querySelector<HTMLInputElement>('[data-f="name"]')!.value = "Riddari yoke, step by step";
-    dialog()!.querySelector<HTMLInputElement>('[data-el="pattern"] [data-f="pattern"]')!.value = pattern.id;
+    // Picked as a hand picks it: pressed on the pattern in the list, which
+    // closes under the pointer, so the release -- and so the click -- lands
+    // on the backdrop behind. The dialog stays, with the pattern chosen.
+    const patternBox = dialog()!.querySelector<HTMLInputElement>('[data-el="pattern"] .pattern-pick-input')!;
+    patternBox.focus();
+    patternBox.value = pattern.title.split(" ")[0];
+    patternBox.dispatchEvent(new Event("input", { bubbles: true }));
+    const option = [...dialog()!.querySelectorAll<HTMLElement>(".pattern-pick-item")].find((li) => li.textContent?.includes(pattern.title))!;
+    const overlay = dialog()!.parentElement!;
+    option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    option.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+    overlay.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    await wait(100);
+    check(results, "picking a pattern from the list, let go on the backdrop, does not close the dialog", !!dialog() && dialog()!.querySelector<HTMLInputElement>('[data-el="pattern"] [data-f="pattern"]')!.value === pattern.id && patternBox.value === pattern.title, `${!!dialog()} ${patternBox.value}`);
     dialog()!.querySelector<HTMLElement>('[data-act="keep"]')!.click();
     await waitFor(() => store.masterclasses.some((m) => m.title === "Riddari yoke, step by step") && !!view()!.querySelector('[data-act="open-pattern"]'), "kept with its pattern");
     const withPattern = store.masterclasses.find((m) => m.title === "Riddari yoke, step by step")!;
     check(results, "…kept with it, the pattern shown on it with Open ↗", (withPattern as unknown as { patternId: string }).patternId === pattern.id && view()!.querySelector<HTMLInputElement>(".mc-pattern .pattern-pick-input")!.value === pattern.title);
+    act("add")!.click();
+    await waitFor(() => !!dialog(), "the add dialog again");
+    const backdrop = dialog()!.parentElement!;
+    backdrop.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    backdrop.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
+    await waitFor(() => !dialog(), "the dialog closed by its backdrop");
+    check(results, "…while a click on the backdrop itself still closes it", true);
     act("start")!.click();
     await waitFor(() => !!document.querySelector(".modal.project-form"), "the form");
     document.querySelector<HTMLElement>('.modal.project-form [data-act="save"]')!.click();

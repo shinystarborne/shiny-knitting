@@ -1,5 +1,5 @@
 import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { longDate, toDateInput } from "./project-form";
 
 /**
@@ -291,7 +291,7 @@ export class SettingsDialog {
 
     // Clicking the backdrop dismisses; a click inside the form does not.
     this.root.addEventListener("click", (e) => {
-      if (e.target === this.root) this.close();
+      if (clickedOn(e, this.root)) this.close();
     });
 
     this.modelPicker.addEventListener("change", () => {

@@ -1,6 +1,6 @@
 import { api, isLive, isRecord, projectStatusLabel, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
 import { askYesNo } from "../dialogs";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { mountPatternPicker } from "./pattern-picker";
 import { describe } from "./tool-filter";
 import { ToolPicker } from "./tool-picker";
@@ -218,7 +218,7 @@ export class ProjectForm {
   };
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) {
+    if (clickedOn(e, this.root)) {
       this.close();
       return;
     }

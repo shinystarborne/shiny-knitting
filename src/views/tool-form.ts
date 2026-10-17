@@ -9,7 +9,7 @@ import {
   type ToolInput,
   type ToolKind,
 } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import {
   canonical,
@@ -356,7 +356,7 @@ export class ToolForm {
   }
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) {
+    if (clickedOn(e, this.root)) {
       this.close();
       return;
     }

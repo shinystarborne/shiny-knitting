@@ -1,7 +1,7 @@
 import { api, isLive, toBytes, WISH_KINDS, type LinkPreview, type Project, type Shop, type Wish, type WishInput, type WishKind } from "../api";
 import { forgetWishPhoto, prepareChosenImage, wishPhotoUrl } from "../covers";
 import { askText } from "../dialogs";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { shopForUrl, siteOf } from "./shopping";
 
 /** The shop picker's "no shop" choice, and the one that adds a shop. */
@@ -382,7 +382,7 @@ export class WishForm {
   // ---------- saving ----------
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) return this.close();
+    if (clickedOn(e, this.root)) return this.close();
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
     if (act === "cancel") this.close();
     if (act === "save") void this.save(false);

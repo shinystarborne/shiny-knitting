@@ -1,7 +1,7 @@
 import { api, isLive, type MeasureUnit, type Project, type Swatch, type SwatchInput, type Tool, type Yarn } from "../api";
 import { forgetSwatchPhoto, swatchPhotoUrl } from "../covers";
 import { askYesNo } from "../dialogs";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { describeFibres } from "./fibres";
 import { blockingText, gaugeSpan, readGauge, showGauge } from "./measure";
@@ -220,7 +220,7 @@ export class SwatchForm {
   };
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) return this.close();
+    if (clickedOn(e, this.root)) return this.close();
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
     if (act === "cancel") this.close();
     if (act === "save") void this.save(false);

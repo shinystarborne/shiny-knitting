@@ -7,7 +7,7 @@ import {
   YARN_WEIGHT_OPTIONS,
   type Pattern,
 } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import {
   coverUrl,
   extractFromDocument,
@@ -195,7 +195,7 @@ export class PatternForm {
 
     const onClick = (e: MouseEvent) => {
       // Clicking the backdrop dismisses, but not a stray click inside the form.
-      if (e.target === this.root) {
+      if (clickedOn(e, this.root)) {
         this.close();
         return;
       }

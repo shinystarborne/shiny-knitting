@@ -1,5 +1,5 @@
 import { api, type Shop, type ShopInput } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { looksLikeAddress, siteOf } from "./shopping";
 
@@ -162,7 +162,7 @@ export class ShopForm {
   }
 
   private onClick = (e: MouseEvent): void => {
-    if (e.target === this.root) return this.close();
+    if (clickedOn(e, this.root)) return this.close();
     const btn = closestEl(e.target, "button[data-act]");
     const act = btn?.dataset.act;
     if (act === "cancel") this.close();

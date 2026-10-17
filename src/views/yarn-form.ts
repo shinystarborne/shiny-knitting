@@ -11,7 +11,7 @@ import {
   type YarnLotInput,
   type YarnPlan,
 } from "../api";
-import { closestEl } from "../dom";
+import { clickedOn, closestEl } from "../dom";
 import {
   forgetYarnPhoto,
   prepareChosenImage,
@@ -589,7 +589,7 @@ export class YarnForm {
 
   private onClick = (e: MouseEvent): void => {
     // Clicking the backdrop dismisses, but not a stray click inside the form.
-    if (e.target === this.root) {
+    if (clickedOn(e, this.root)) {
       this.close();
       return;
     }
