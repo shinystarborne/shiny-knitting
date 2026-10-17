@@ -100,12 +100,12 @@ round one). Which heels exactly is to be settled before building.
     into the stash: it needs the file, so it would open Add pattern.
 - **Fibre content on patterns.** A pattern's recommended yarn given its fibres
   too, so "could I knit this in something I have?" can match on them.
-- **Sign in with Ravelry (OAuth 2.0).** The Ravelry tab wants a personal
-  read-only key, made on Ravelry's developer page. For others using the
-  app, an OAuth 2.0 app registered once lets each sign in in the browser
-  instead; the app catches Ravelry's answer (a redirect to a port of its
-  own). One shared key built into the app is not an option: it would be
-  public, and Ravelry's terms forbid sharing it.
+- **Ravelry sign-in on OAuth 2.1, without a secret.** Signing in is OAuth
+  2.0 (0.3.85): Ravelry wants the client id and secret in the token request,
+  so the secret is built into the installers (from src-tauri/.env.ravelry,
+  never in Git), where it can be dug out. Ravelry's docs (Oct 2026) say
+  OAuth 2.1 comes in Q4 2026: with PKCE required and a public client, the
+  secret can go. PKCE is already sent; Ravelry's 2.0 docs don't mention it.
 - **Ravelry import.** Ravelry can export your library and stash; a one-time
   import would fill both tabs.
 - **Needles a plan needs.** Plans take no needles yet; a plan could warn that
