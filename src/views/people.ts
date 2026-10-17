@@ -1,4 +1,5 @@
 import { api, MEASUREMENTS, type MeasureUnit, type MeasurementSet, type Person, type Project } from "../api";
+import { measureFigure } from "./measure-figures";
 import { askText, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { fromDateInput, longDate, toDateInput } from "./project-form";
@@ -210,7 +211,10 @@ export class PersonPage {
             <span class="spacer"></span>
             <button class="primary" data-act="measure">+ Measure again</button>
           </div>
-          <div class="measure-wrap" data-el="table"></div>
+          <div class="measure-area">
+            <div class="measure-wrap" data-el="table"></div>
+            <aside class="measure-how" data-el="how" aria-live="polite">${howHtml(null)}</aside>
+          </div>
           <button class="ghost" data-act="add-extra">+ Add a measurement of their own</button>
         </main>
       </div>
@@ -218,6 +222,16 @@ export class PersonPage {
     this.screen.appendChild(this.root);
     this.root.addEventListener("click", (e) => void this.onClick(e));
     this.root.addEventListener("change", (e) => void this.onChange(e));
+    // How to take the measurement being typed, or the one whose name is clicked.
+    const how = (key: string | undefined) => {
+      const box = this.root.querySelector<HTMLElement>('[data-el="how"]');
+      if (box && key && key !== "date" && box.dataset.key !== key) {
+        box.dataset.key = key;
+        box.innerHTML = howHtml(key);
+      }
+    };
+    this.root.addEventListener("focusin", (e) => how((e.target as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key));
+    this.root.addEventListener("click", (e) => how((e.target as HTMLElement).closest<HTMLElement>("[data-how]")?.dataset.how));
     this.root.addEventListener("input", (e) => {
       const f = (e.target as HTMLElement).dataset.f;
       if (f !== "name" && f !== "notes") return;
@@ -313,7 +327,7 @@ export class PersonPage {
       .join("");
     const row = (key: string) => {
       const standard = MEASUREMENTS.find((m) => m.key === key);
-      const label = `<th class="measure-label" title="${esc(standard?.hint ?? "One of their own")}">
+      const label = `<th class="measure-label" data-how="${esc(key)}" title="${esc(standard?.hint ?? "One of their own")}">
           ${esc(measurementLabel(key))}
           ${standard ? `<span class="measure-help" aria-hidden="true">?</span>` : `<button class="ghost measure-remove" data-act="remove-extra" data-name="${esc(key.slice(2))}" title="Remove this measurement, from every date">×</button>`}
         </th>`;
@@ -417,4 +431,12 @@ export class PersonPage {
 
 function esc(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** How a measurement is taken, for the panel beside the table: its drawing, if it has one, and its hint. */
+function howHtml(key: string | null): string {
+  if (!key) return `<h3>How to measure</h3><p class="hint">Click into a measurement to see how it is taken.</p>`;
+  if (key === "shoe") return `<h3>Shoe size</h3><p>As you buy them: EU 39, or US 8.</p>`;
+  const standard = MEASUREMENTS.find((m) => m.key === key);
+  return `<h3>${esc(measurementLabel(key))}</h3>${measureFigure(key, 170)}<p>${esc(standard?.hint ?? "One of their own: measured as you decided.")}</p>`;
 }

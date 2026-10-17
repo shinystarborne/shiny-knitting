@@ -1202,8 +1202,8 @@ export const MEASUREMENTS = [
   { key: "back_length", label: "Back length", hint: "From the bone at the nape of the neck down to the waist." },
   { key: "head", label: "Head", hint: "Around the forehead, just above the ears." },
   { key: "hand", label: "Hand", hint: "Around the knuckles, without the thumb." },
-  { key: "foot_length", label: "Foot length", hint: "From the back of the heel to the longest toe." },
-  { key: "foot_around", label: "Foot", hint: "Around the ball of the foot, where it is widest." },
+  { key: "foot_length", label: "Foot length", hint: "From the back of the heel to the tip of the longest toe, standing." },
+  { key: "foot_around", label: "Around the foot", hint: "A tape round the widest part of the foot, just behind the toes, standing." },
 ] as const;
 
 export type MeasurementKey = (typeof MEASUREMENTS)[number]["key"];

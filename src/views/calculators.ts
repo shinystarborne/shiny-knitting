@@ -8,6 +8,7 @@ import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, show
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
 import { familyByMetres } from "./yarn-weight";
+import { figureCaption, measureFigure } from "./measure-figures";
 import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
 
 type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts";
@@ -47,8 +48,8 @@ const RAGLAN_FIELDS: { key: keyof RaglanInput; label: string; hint?: string; fro
 ];
 /** The socks' fields a person's measurements fill. */
 const SOCK_FIELDS: { key: string; label: string; hint?: string; from?: string; start?: number }[] = [
-  { key: "footAround", label: "Foot", hint: "Around the ball of the foot, where it is widest", from: "foot_around" },
-  { key: "footLength", label: "Foot length", hint: "From the back of the heel to the longest toe", from: "foot_length" },
+  { key: "footAround", label: "Around the foot", hint: "A tape round the widest part of the foot, just behind the toes", from: "foot_around" },
+  { key: "footLength", label: "Foot length", hint: "From the back of the heel to the tip of the longest toe", from: "foot_length" },
 ];
 
 /** A heel that is worked one way only, and its fellow the other way. */
@@ -366,7 +367,10 @@ export class CalculatorsView {
           <p class="hint calc-person-note" data-el="person-note">${esc(this.personNote())}</p>
           ${this.gaugeBlock()}
           <h3>The foot</h3>
-          <div class="calc-fields">${SOCK_FIELDS.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+          <p class="hint">Measured standing, with the weight on it.</p>
+          <div class="calc-foot">
+            ${SOCK_FIELDS.map((f) => `<div class="calc-foot-one" data-figure="${f.from}">${measureFigure(f.from!, 104)}<div>${this.lengthField(f.key, f.label, f.hint, f.start)}<p class="hint">${esc(figureCaption(f.from!))}</p></div></div>`).join("")}
+          </div>
           <div class="calc-person-save">
             <button class="ghost" data-act="save-measurements" title="Keep the foot in People, dated today: for the person chosen, or someone new">Save to People…</button>
             <span class="hint" data-el="people-saved"></span>
@@ -784,7 +788,7 @@ export class CalculatorsView {
 
   private sockResult(): string {
     const lengths = { footAround: this.num("footAround"), footLength: this.num("footLength"), shorter: this.num("sockShorter"), leg: this.num("sockLeg"), cuff: this.num("sockCuff") };
-    for (const [k, v] of Object.entries(lengths)) this.need(!Number.isNaN(v), `The ${k === "footAround" ? "foot round" : k === "footLength" ? "foot length" : k === "shorter" ? "shortening" : k} is not a length.`);
+    for (const [k, v] of Object.entries(lengths)) this.need(!Number.isNaN(v), `The ${k === "footAround" ? "measurement around the foot" : k === "footLength" ? "foot length" : k === "shorter" ? "shortening" : k} is not a length.`);
     const input: SockInput = {
       gauge: this.gauge(),
       ...lengths,

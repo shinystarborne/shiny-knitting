@@ -111,7 +111,7 @@ export async function verifySocks() {
     check(results, "Socks is among the calculators, after the round yoke", view()!.querySelector('[data-calc="yoke"] + [data-calc="socks"]') !== null);
     type("person", dana.id);
     check(results, "a person's foot fills in, round and long", field("footAround")!.value === "22" && field("footLength")!.value === "24", `${field("footAround")!.value} ${field("footLength")!.value}`);
-    check(results, "…and the note says so", /From Dana's measurements of .+: foot, foot length\./.test(view()!.querySelector('[data-el="person-note"]')?.textContent ?? ""), view()!.querySelector('[data-el="person-note"]')?.textContent ?? "");
+    check(results, "…and the note says so", /From Dana's measurements of .+: around the foot, foot length\./.test(view()!.querySelector('[data-el="person-note"]')?.textContent ?? ""), view()!.querySelector('[data-el="person-note"]')?.textContent ?? "");
     type("swatch", "");
     type("sts", "32");
     type("rows", "44");
@@ -129,16 +129,27 @@ export async function verifySocks() {
     type("sockToe", "round");
     check(results, "a round toe, toe-up, starts from 8", /Toe 8 → 64/.test(out()), out());
     type("footAround", "");
-    check(results, "without the foot it says what is missing", /foot round/.test(out()), out());
+    check(results, "without the foot it says what is missing", /around the foot/.test(out()), out());
+    check(results, "the foot's two measurements are drawn, each saying how it is taken", !!view()!.querySelector('[data-figure="foot_around"] svg') && /widest part, just behind the toes/.test(view()!.querySelector('[data-figure="foot_around"]')?.textContent ?? "") && /back of the heel to the tip of the longest toe/.test(view()!.querySelector('[data-figure="foot_length"]')?.textContent ?? ""));
     type("footAround", "22.5");
 
     // The foot kept in People.
     view()!.querySelector<HTMLElement>('[data-act="save-measurements"]')!.click();
     await waitFor(() => /Keep in Dana's measurements/.test(dialog()?.textContent ?? ""), "the question");
-    check(results, "Save to People keeps the foot that changed", /foot 22\.5 cm \(was 22 cm\)/.test(dialog()!.textContent ?? "") && !/foot length/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
+    check(results, "Save to People keeps the foot that changed", /around the foot 22\.5 cm \(was 22 cm\)/.test(dialog()!.textContent ?? "") && !/foot length/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
     dialog()!.querySelector<HTMLElement>("button.primary")!.click();
     await waitFor(() => store.measurementSets.some((s) => s.personId === dana.id && s.values.foot_around === 22.5), "kept");
     check(results, "…dated today", true);
+
+    // People: how to take the measurement being typed, beside the table.
+    view()!.dispatchEvent(new CustomEvent("open-person", { bubbles: true, detail: dana.id }));
+    const how = () => document.querySelector<HTMLElement>('[data-el="how"]');
+    await waitFor(() => !!how() && !!document.querySelector('input[data-key="foot_around"]'), "Dana's page");
+    check(results, "People says to click into a measurement to see how it is taken", /Click into a measurement/.test(how()!.textContent ?? ""));
+    document.querySelector<HTMLInputElement>('input[data-key="foot_around"]')!.focus();
+    check(results, "…and typing around the foot draws it, saying how", !!how()!.querySelector("svg.measure-figure") && /widest part of the foot, just behind the toes/.test(how()!.textContent ?? ""), how()!.textContent ?? "");
+    document.querySelector<HTMLElement>('[data-how="chest"]')!.click();
+    check(results, "…a measurement with no drawing says how in words", /Chest/.test(how()!.textContent ?? "") && !how()!.querySelector("svg") && /fullest part of the chest/.test(how()!.textContent ?? ""), how()!.textContent ?? "");
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

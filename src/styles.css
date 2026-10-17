@@ -4079,3 +4079,21 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 /* A picture that opens big says so. */
 .project-cover.filled { cursor: zoom-in; }
 .log-photo, .gallery-big img { cursor: zoom-in; }
+/* How a measurement is taken, drawn (measure-figures.ts). */
+.measure-figure { flex-shrink: 0; overflow: visible; }
+.measure-figure .mf-body { fill: var(--bg-raised); stroke: var(--text-dim); stroke-width: 1.4; }
+.measure-figure .mf-tape { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; }
+.measure-figure .mf-behind { stroke-dasharray: 3 3; opacity: 0.7; }
+.measure-figure .mf-guide { fill: none; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.8; }
+.measure-figure .mf-tip { fill: var(--accent); }
+.calc-foot { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.calc-foot-one { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.calc-foot-one > div { flex: 1; min-width: 0; }
+.calc-foot-one .hint { margin: 4px 0 0; }
+/* People: the table, and how to take the measurement being typed beside it. */
+.measure-area { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.measure-area .measure-wrap { flex: 0 1 auto; min-width: 0; }
+.measure-how { position: sticky; top: 12px; width: 240px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); display: grid; justify-items: center; gap: 10px; text-align: center; }
+.measure-how h3 { margin: 0; font-size: 15px; }
+.measure-how p { margin: 0; font-size: 13px; }
+.measure-label[data-how] { cursor: help; }
