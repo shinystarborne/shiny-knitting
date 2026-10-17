@@ -4117,3 +4117,6 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .timer-pill { align-self: center; margin-bottom: 6px; }
 .knit-worth { margin: 2px 0 4px; font-size: 13px; }
 .knit-worth b { font-variant-numeric: tabular-nums; }
+.knit-rate-field { margin: 6px 0 4px; }
+.knit-rate-field input { max-width: 120px; }
+.knit-rate-field .link { font-style: normal; color: var(--accent); text-decoration: underline; padding: 0; }

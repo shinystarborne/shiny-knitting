@@ -1162,6 +1162,10 @@ pub struct Project {
     /// The size knitted, as said: "M", "2nd size", "chest 96 cm".
     #[serde(default)]
     pub size: String,
+    /// What an hour of knitting it is worth, when it has its own; None
+    /// follows the standard in Settings.
+    #[serde(default)]
+    pub hour_rate: Option<f64>,
     /// The masterclass it is knitted along with, or empty; and its title.
     #[serde(default)]
     pub masterclass_id: String,

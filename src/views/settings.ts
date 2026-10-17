@@ -143,7 +143,7 @@ export class SettingsDialog {
         <label class="field">
           <span>Your hour is worth</span>
           <input data-f="hourRate" inputmode="decimal" placeholder="e.g. 15" />
-          <em class="hint">What an hour of your knitting is worth, in the currency above. A project's page then adds its knitting time at this to what its yarn and pattern cost: what it really costs. Empty for none.</em>
+          <em class="hint">The standard for every project, in the currency above: a project's page adds its knitting time at this to what its yarn and pattern cost, for what it really costs. A project can have its own, on its page.</em>
         </label>
 
         <h3>Describe patterns with a model</h3>

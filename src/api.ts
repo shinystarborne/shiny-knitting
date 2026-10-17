@@ -803,6 +803,8 @@ export interface Project {
   chartStart?: number;
   /** The size knitted, as said: "M", "2nd size". */
   size: string;
+  /** What an hour of knitting it is worth, its own; null (or absent) follows the standard in Settings. */
+  hourRate?: number | null;
   /** The masterclass it is knitted along with ("" for none), and its title. */
   masterclassId: string;
   masterclassTitle: string;
@@ -1518,6 +1520,8 @@ export const api = {
   /** A finished project hidden from the gallery or shown, and the photos it leaves out. */
   setProjectGallery: (id: string, hidden: boolean, skip: string[]) => invoke<Project>("set_project_gallery", { id, hidden, skip }),
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
+  /** What an hour of knitting a project is worth, its own; null follows the standard in Settings. */
+  setProjectHourRate: (id: string, rate: number | null) => invoke<Project>("set_project_hour_rate", { id, rate }),
   /** What a pattern cost, in the settings' currency; null for not said. */
   setPatternPrice: (id: string, price: number | null) => invoke<Pattern>("set_pattern_price", { id, price }),
   /** What an hour of your knitting is worth, in the settings' currency; null when not said. */

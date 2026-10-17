@@ -31,6 +31,12 @@ pub fn set_project_masterclass(state: State<'_, AppState>, id: String, mastercla
     db::set_project_masterclass(&state.db(), &id, masterclass_id.trim())
 }
 
+/// What an hour of knitting it is worth, its own; None follows the standard.
+#[tauri::command]
+pub fn set_project_hour_rate(state: State<'_, AppState>, id: String, rate: Option<f64>) -> CmdResult<Project> {
+    db::set_project_hour_rate(&state.db(), &id, rate)
+}
+
 /// The size it is knitted in, as said.
 #[tauri::command]
 pub fn set_project_size(state: State<'_, AppState>, id: String, size: String) -> CmdResult<Project> {

@@ -8,7 +8,7 @@ import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
-import { money, projectCost } from "./money";
+import { money, parsePrice, projectCost } from "./money";
 import { clock, hoursText, perHour, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
 import { openLightbox } from "../lightbox";
 import { projectPictures } from "./project-photos";
@@ -68,7 +68,7 @@ export class ProjectPage {
   private currency = "EUR";
   /** This project's spells of knitting, the latest first. */
   private sessions: KnitSession[] = [];
-  /** What an hour of knitting is worth, from Settings; null when not said. */
+  /** The standard hour's worth, from Settings; null when not said. */
   private hourRate: number | null = null;
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
@@ -444,6 +444,7 @@ ${plan ? "" : `      <div class="project-side-dates">
         <h3>Knitting time</h3>
         <p class="knit-total"><b data-el="knit-total">${n ? hoursText(total) : "Not timed yet"}</b>${n ? ` <span class="hint">in ${n} sitting${n === 1 ? "" : "s"}</span>` : ""}</p>
         ${rate !== null ? `<p class="hint" data-el="knit-rate">${esc(money(rate, this.currency))} an hour, by what it cost</p>` : ""}
+        ${this.rateHtml()}
         ${this.worthHtml(cost, total)}
         <div class="knit-actions">
           ${
@@ -472,16 +473,53 @@ ${plan ? "" : `      <div class="project-side-dates">
       </div>`;
   }
 
+  /** The hour's worth for this project: its own, else the standard; null when neither is said. */
+  private rate(): number | null {
+    return this.project.hourRate ?? this.hourRate;
+  }
+
+  /**
+   * The hour's worth, always shown: the standard from Settings, or the one of
+   * its own typed over it, with a way back to the standard.
+   */
+  private rateHtml(): string {
+    const own = this.project.hourRate != null;
+    const shown = this.rate();
+    const standard = this.hourRate === null ? "none set in Settings yet" : `the standard is ${esc(money(this.hourRate, this.currency))}`;
+    return `
+      <label class="field knit-rate-field">
+        <span>Your hour on it is worth</span>
+        <input data-rate inputmode="decimal" value="${shown === null ? "" : esc(String(shown))}" placeholder="e.g. 15" />
+        <em class="hint" data-el="rate-hint">${
+          own
+            ? `Its own: ${standard}. <button type="button" class="link" data-act="rate-standard">Back to the standard</button>`
+            : this.hourRate === null
+              ? "Say your standard in Settings, under Prices, or type one for this project."
+              : "The standard, from Settings. Type another for this project only."
+        }</em>
+      </label>`;
+  }
+
   /**
    * What it really costs: what it cost and its knitting time at what an hour
-   * is worth. A hint to say what an hour is worth, once there is time to count.
+   * is worth, once there is time to count.
    */
   private worthHtml(cost: number, ms: number): string {
-    if (!ms) return "";
-    if (this.hourRate === null) return `<p class="hint" data-el="knit-worth">Say what your hour is worth in Settings, under Prices, to see what it really costs with your time.</p>`;
-    const time = trueCost(0, ms, this.hourRate);
-    const all = trueCost(cost, ms, this.hourRate);
-    return `<p class="knit-worth" data-el="knit-worth">With your time at ${esc(money(this.hourRate, this.currency))} an hour: <b>${esc(money(all, this.currency))}</b> <span class="hint">(${cost ? `${esc(money(cost, this.currency))} + ` : ""}${esc(money(time, this.currency))} for your time)</span></p>`;
+    const rate = this.rate();
+    if (!ms || rate === null) return "";
+    const time = trueCost(0, ms, rate);
+    const all = trueCost(cost, ms, rate);
+    return `<p class="knit-worth" data-el="knit-worth">With your time at ${esc(money(rate, this.currency))} an hour: <b>${esc(money(all, this.currency))}</b> <span class="hint">(${cost ? `${esc(money(cost, this.currency))} + ` : ""}${esc(money(time, this.currency))} for your time)</span></p>`;
+  }
+
+  /** Keeps this project's hour's worth -- null for the standard -- and draws the time again. */
+  private async setRate(rate: number | null): Promise<void> {
+    try {
+      this.project = await api.setProjectHourRate(this.projectId, rate);
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
+    }
+    this.paintTime();
   }
 
   /** Draws the knitting time again, the sittings left open if they were. */
@@ -620,6 +658,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       this.root.dispatchEvent(new CustomEvent("open-person", { bubbles: true, detail: this.project.personId }));
     }
     if (act === "finish") this.hooks.finish(this.project);
+    if (act === "rate-standard") return this.setRate(null);
     if (act === "knit-start" || act === "knit-stop") {
       try {
         if (act === "knit-start") await api.startKnitting(this.projectId);
@@ -708,6 +747,14 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   /** Every detail saves as soon as it is changed. */
   private async onChange(e: Event): Promise<void> {
+    // This project's hour's worth: its own, or the standard again when it is that, or nothing.
+    const rateInput = (e.target as HTMLElement).closest<HTMLInputElement>("[data-rate]");
+    if (rateInput) {
+      const typed = rateInput.value.trim();
+      const rate = typed ? parsePrice(typed) : null;
+      if (typed && rate === null) return void (await say("What your hour is worth is a number: 15, or 12,50.", "Knitting time"));
+      return this.setRate(rate === null || rate === this.hourRate ? null : rate);
+    }
     const f = (e.target as HTMLElement).dataset.f;
     if (!f) return;
     if (f === "status") return void (await this.changeStatus((e.target as HTMLSelectElement).value as ProjectStatus));

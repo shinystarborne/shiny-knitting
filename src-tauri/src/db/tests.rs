@@ -3721,6 +3721,18 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
 }
 
 #[test]
+fn a_project_has_its_own_hour_s_worth_or_the_standard() {
+    let conn = test_db();
+    let p = insert_project(&conn, "rate", &crate::models::ProjectInput { name: "Commission".into(), ..Default::default() }).unwrap();
+    assert_eq!(p.hour_rate, None, "the standard to start with");
+    assert_eq!(set_project_hour_rate(&conn, &p.id, Some(22.499)).unwrap().hour_rate, Some(22.5));
+    assert_eq!(get_project(&conn, &p.id).unwrap().hour_rate, Some(22.5), "kept");
+    assert_eq!(set_project_hour_rate(&conn, &p.id, None).unwrap().hour_rate, None, "back to the standard");
+    assert!(set_project_hour_rate(&conn, &p.id, Some(-3.0)).is_err());
+    assert!(set_project_hour_rate(&conn, "nowhere", Some(3.0)).is_err());
+}
+
+#[test]
 fn knitting_is_timed_one_project_at_a_time() {
     let conn = test_db();
     let project = |name: &str| insert_project(&conn, name, &crate::models::ProjectInput { name: name.into(), ..Default::default() }).unwrap();

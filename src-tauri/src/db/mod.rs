@@ -835,6 +835,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "tools", "set_id")? {
         conn.execute("ALTER TABLE tools ADD COLUMN set_id TEXT REFERENCES tool_sets(id) ON DELETE SET NULL", [])?;
     }
+    // A project's own hour's worth, when not the standard.
+    if !column_exists(conn, "projects", "hour_rate")? {
+        conn.execute("ALTER TABLE projects ADD COLUMN hour_rate REAL", [])?;
+    }
     // Time spent knitting a project: spells of it, one timed at a time.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS knit_sessions (
@@ -2964,6 +2968,7 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         chart_id: row.get("chart_id")?,
         chart_start: row.get("chart_start")?,
         size: row.get("size")?,
+        hour_rate: row.get("hour_rate")?,
         masterclass_id: row.get("masterclass_id")?,
         masterclass_title: row.get("masterclass_title")?,
     })
@@ -3007,6 +3012,16 @@ pub fn set_pattern_size(conn: &Connection, id: &str, index: Option<i64>) -> AppR
 pub fn set_project_size(conn: &Connection, id: &str, size: &str) -> AppResult<Project> {
     let size: String = size.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(100).collect();
     let changed = conn.execute("UPDATE projects SET size = ?2 WHERE id = ?1", params![id, size])?;
+    if changed == 0 {
+        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+    }
+    get_project(conn, id)
+}
+
+/// What an hour of knitting a project is worth, its own; None follows the
+/// standard in Settings.
+pub fn set_project_hour_rate(conn: &Connection, id: &str, rate: Option<f64>) -> AppResult<Project> {
+    let changed = conn.execute("UPDATE projects SET hour_rate = ?2 WHERE id = ?1", params![id, price(rate)?])?;
     if changed == 0 {
         return Err(AppError::NotFound("That project is no longer there.".to_string()));
     }

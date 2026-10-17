@@ -2124,6 +2124,13 @@ const handlers = {
     p.chartStart = Math.max(1, Math.round(start) || 1);
     return projectOut(p);
   },
+  // As db::set_project_hour_rate: its own, to the cent, or null for the standard.
+  set_project_hour_rate: ({ id, rate }) => {
+    const p = store.projects.find((x) => x.id === id);
+    if (!p) throw new Error("That project is no longer there.");
+    p.hourRate = cents(rate);
+    return projectOut(p);
+  },
   // As db::set_project_size: one line, trimmed.
   set_project_size: ({ id, size }) => {
     const p = store.projects.find((x) => x.id === id);

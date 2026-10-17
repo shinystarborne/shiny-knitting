@@ -151,6 +151,7 @@ pub fn run() {
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,
+            projects::set_project_hour_rate,
             projects::set_project_masterclass,
             ravelry::ravelry_account,
             ravelry::sign_in_ravelry,
