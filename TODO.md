@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Your size highlighted in a pattern**: pick a size once, and every
-  "100 (110, 120, 130)" in it shows that size's number. See below.
 - [ ] **How much yarn it will take**: the calculators' metres and grams
   from the swatch, checked against the stash. See below.
 - [ ] **Restoring a backup**: reading a backup back in (from the ideas).
@@ -40,15 +38,6 @@ under the list.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Your size in a pattern
-
-A pattern gives every size at once: "Cast on 100 (110, 120, 130) sts". A
-size chosen for the pattern (kept with it, or with a project knitted from
-it) is shown wherever such a run of numbers is in its text: the number for
-that size marked, the others dimmed. The sizes read from the pattern's own
-list ("XS (S, M, L)") where it gives one. Text layers vary: numbers split
-over lines, or in a table, are the hard part.
 
 ### How much yarn
 
@@ -356,6 +345,13 @@ calculators.
   pieces ticked. Needles & hooks' header says what they all cost
   (toolsCost), and they are in Statistics' Spent. A price the same brand and
   kind has is offered for another bought alone. *0.3.88*
+- **Your size in a pattern:** a PDF's sizes read from its text (named after
+  Sizes, else by their place, counted from its runs; reader/sizes.ts); the
+  size knitted chosen in the reader's Size picker and kept with the pattern
+  (patterns.size_index); in every run of as many numbers as there are sizes
+  ("100 (110, 120)", a dash for none) its number marked, the others dimmed
+  (pdf.ts paintSizes, through annotations.findTextParts). Not yet: scans,
+  size tables, "100/110/120", EPUBs. *0.3.93*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with

@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.93](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.93)** —
+  your size marked in a pattern, the other sizes dimmed. The one to test.
 - **[v0.3.0-beta.92](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.92)** —
-  the foot's measurements named plainly and drawn; how to measure, beside People's table. The one to test.
+  the foot's measurements named plainly and drawn; how to measure, beside People's table. Superseded by `beta.93`.
 - **[v0.3.0-beta.91](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.91)** —
   a socks calculator: cuff-down or toe-up, six heels, a wedge or round toe. Superseded by `beta.92`.
 - **[v0.3.0-beta.90](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.90)** —
