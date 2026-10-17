@@ -100,6 +100,13 @@ round one). Which heels exactly is to be settled before building.
     into the stash: it needs the file, so it would open Add pattern.
 - **Fibre content on patterns.** A pattern's recommended yarn given its fibres
   too, so "could I knit this in something I have?" can match on them.
+- **A website of my own, in place of GitHub Pages.** Ravelry's sign-in comes
+  back to an https page (Ravelry takes no http address), for now
+  https://shinystarborne.github.io/shiny-knitting/ravelry/ (docs/ravelry/
+  in the repository), which passes the answer to the app on localhost.
+  Once there is a site of my own: the same page there, its address
+  registered with Ravelry as the redirect URI and put in ravelry.rs
+  (RETURN), and GitHub Pages turned off.
 - **Ravelry sign-in on OAuth 2.1, without a secret.** Signing in is OAuth
   2.0 (0.3.85): Ravelry wants the client id and secret in the token request,
   so the secret is built into the installers (from src-tauri/.env.ravelry,
