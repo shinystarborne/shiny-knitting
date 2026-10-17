@@ -1,4 +1,4 @@
-import { pricePerBall } from "./money";
+import { parsePrice, pricePerBall } from "./money";
 import { WISH_KINDS, type Shop, type ToolInput, type ToolKind, type Wish } from "../api";
 
 /**
@@ -251,6 +251,8 @@ export function toolStart(w: Wish): Partial<ToolInput> {
     cableCm: longCable ? length : 0,
     brand: w.brand.trim(),
     notes: w.notes,
+    // What it cost as typed: one needle's, or a set's when several sizes are typed for it.
+    price: parsePrice(w.price),
   };
 }
 

@@ -1,4 +1,4 @@
-import { api, type Tool } from "../api";
+import { api, type Tool, type ToolSet } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import {
@@ -18,6 +18,7 @@ import {
   type ToolFilter,
 } from "./tool-filter";
 import { paintLazily } from "./lazy";
+import { money, toolsCost } from "./money";
 
 type Group = "use" | "kind" | "size" | "material" | "cableSize" | "connector" | "brand";
 
@@ -43,6 +44,8 @@ export class ToolsView {
   private screen: HTMLElement;
   private root!: HTMLElement;
   private tools: Tool[] = [];
+  private sets: ToolSet[] = [];
+  private currency = "EUR";
   private filter: ToolFilter = {};
   private results!: HTMLElement;
   private searchBox!: HTMLInputElement;
@@ -56,9 +59,10 @@ export class ToolsView {
     this.root.className = "library tools";
     this.root.innerHTML = `
       <header class="lib-bar">
-        <h1>Needles &amp; hooks</h1>
+        <div class="lib-title"><h1>Needles &amp; hooks</h1><span class="stash-total" data-el="total"></span></div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search size, brand, project..." />
+          <button data-act="sets" class="ghost" title="Needles and hooks bought together, for one price">Sets</button>
           <button data-act="add" class="primary">+ Add needle or hook</button>
         </div>
       </header>
@@ -103,9 +107,26 @@ export class ToolsView {
   }
 
   private async reload(): Promise<void> {
-    this.tools = await api.listTools();
+    [this.tools, this.sets, this.currency] = await Promise.all([
+      api.listTools(),
+      api.listToolSets().catch(() => [] as ToolSet[]),
+      api.getCurrency().catch(() => "EUR"),
+    ]);
+    this.renderTotal();
     this.renderFacets();
     this.paint();
+  }
+
+  /** What all the needles and hooks cost: each alone, and each set once. */
+  private renderTotal(): void {
+    const el = this.root.querySelector<HTMLElement>('[data-el="total"]');
+    if (!el) return;
+    const cost = toolsCost(this.tools, this.sets);
+    const count = this.tools.length === 1 ? "1 needle or hook" : `${this.tools.length} needles &amp; hooks`;
+    const said = cost.total || !cost.unpriced ? ` · cost ${money(cost.total, this.currency)}` : "";
+    const missing = cost.unpriced && cost.total ? ` (${cost.unpriced} without a price)` : "";
+    el.innerHTML = this.tools.length ? `${count}${said}${missing}` : "";
+    el.title = "Each bought alone at its price, and each set once at its, whatever is in it";
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
@@ -113,6 +134,7 @@ export class ToolsView {
     if (btn) {
       const act = btn.dataset.act;
       if (act === "add") this.root.dispatchEvent(new CustomEvent("add-tool", { bubbles: true }));
+      if (act === "sets") this.root.dispatchEvent(new CustomEvent("open-tool-sets", { bubbles: true }));
       if (act === "clear") {
         this.filter = {};
         this.searchBox.value = "";
@@ -160,7 +182,7 @@ export class ToolsView {
         </div>`;
       return;
     }
-    paintLazily(this.results, shown, cardHtml);
+    paintLazily(this.results, shown, (t) => cardHtml(t, this.currency));
   }
 
   /** Frees a tool from its project, from the card, without opening the form. */
@@ -202,7 +224,7 @@ function facetHtml(group: Group, f: Facet, checked: boolean): string {
     </label>`;
 }
 
-function cardHtml(t: Tool): string {
+function cardHtml(t: Tool, currency: string): string {
   const free = isFree(t);
   const dims = measurements(t);
   const make = [t.brand, t.material ? materialLabel(t.material) : ""].filter(Boolean).join(" · ");
@@ -224,6 +246,13 @@ function cardHtml(t: Tool): string {
       </div>
       <p class="tool-dims">${dims ? escapeHtml(dims) : "&nbsp;"}</p>
       <p class="tool-make">${make ? escapeHtml(make) : "No brand"}</p>
+      ${
+        t.setId
+          ? `<p class="tool-set" title="Bought as a set: its price is the set's">In the set ${escapeHtml(t.setName ?? "")}</p>`
+          : t.price != null
+            ? `<p class="tool-set">${money(t.price, currency)}</p>`
+            : ""
+      }
       <div class="tool-use">${use}</div>
       <div class="card-tools-row">
         ${uses.length ? `<button class="card-remove tool-free-btn" data-act="free" data-id="${t.id}" title="Take it off ${uses.length > 1 ? "both projects" : "this project"}">Free it</button>` : ""}

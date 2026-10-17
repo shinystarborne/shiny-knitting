@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::{
     Annotation, AnnotationInput, AnnotationKind, AppError, AppResult, Bookmark, Counter,
     CounterInput, HighlightSettings, PageRotation, Pattern, PatternInput, Pin, PinInput, PinPlacement, Progress,
-    Tool, ToolInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
+    Tool, ToolInput, ToolSet, ToolSetInput, Yarn, YarnInput, YarnLot, DIFFICULTIES, FinishInput, Project,
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
@@ -814,6 +814,22 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     if !column_exists(conn, "patterns", "price")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
+    }
+    // Needles and hooks: what one cost alone, and the set it came in, a set
+    // having one price for all its pieces.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS tool_sets (
+            id       TEXT PRIMARY KEY,
+            name     TEXT NOT NULL,
+            price    REAL,
+            added_at INTEGER NOT NULL
+        );",
+    )?;
+    if !column_exists(conn, "tools", "price")? {
+        conn.execute("ALTER TABLE tools ADD COLUMN price REAL", [])?;
+    }
+    if !column_exists(conn, "tools", "set_id")? {
+        conn.execute("ALTER TABLE tools ADD COLUMN set_id TEXT REFERENCES tool_sets(id) ON DELETE SET NULL", [])?;
     }
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
@@ -2503,8 +2519,10 @@ pub fn delete_annotation(conn: &Connection, id: &str) -> AppResult<()> {
 /// A tool with the active project it is on, if any. A tool is on at most one
 /// active project -- `link_tool` keeps it that way -- and the subquery takes
 /// one regardless, so a stray second link could never list a tool twice.
-const TOOL_SELECT: &str = "SELECT t.*, pr.id AS active_project_id, COALESCE(pr.name, '') AS active_project_name
+const TOOL_SELECT: &str = "SELECT t.*, pr.id AS active_project_id, COALESCE(pr.name, '') AS active_project_name,
+            COALESCE(ts.name, '') AS set_name
      FROM tools t
+     LEFT JOIN tool_sets ts ON ts.id = t.set_id
      LEFT JOIN projects pr ON pr.id = (
          SELECT pt.project_id FROM project_tools pt
          JOIN projects p2 ON p2.id = pt.project_id
@@ -2528,6 +2546,9 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
         notes: row.get("notes")?,
         added_at: row.get("added_at")?,
         uses: Vec::new(),
+        price: row.get("price")?,
+        set_id: row.get("set_id")?,
+        set_name: row.get("set_name")?,
     })
 }
 
@@ -2563,8 +2584,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     tx.execute(
         "INSERT INTO tools
          (id, kind, size_mm, length_cm, cable_cm, cable_size, brand, material,
-          notes, added_at, connector, adapter_to)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+          notes, added_at, connector, adapter_to, price)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![
             id,
             input.kind,
@@ -2577,7 +2598,8 @@ pub fn insert_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.notes,
             now_ms(),
             input.connector,
-            input.adapter_to
+            input.adapter_to,
+            price(input.price)?
         ],
     )?;
     place_tool(&tx, id, input.project_id.as_deref())?;
@@ -2590,7 +2612,7 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
     let tx = conn.unchecked_transaction()?;
     let changed = tx.execute(
         "UPDATE tools SET kind = ?2, size_mm = ?3, length_cm = ?4, cable_cm = ?5,
-         cable_size = ?6, brand = ?7, material = ?8, notes = ?9, connector = ?10, adapter_to = ?11
+         cable_size = ?6, brand = ?7, material = ?8, notes = ?9, connector = ?10, adapter_to = ?11, price = ?12
          WHERE id = ?1",
         params![
             id,
@@ -2603,7 +2625,8 @@ pub fn update_tool(conn: &Connection, id: &str, input: &ToolInput) -> AppResult<
             input.material,
             input.notes,
             input.connector,
-            input.adapter_to
+            input.adapter_to,
+            price(input.price)?
         ],
     )?;
     if changed == 0 {
@@ -2733,6 +2756,73 @@ pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
+    Ok(())
+}
+
+// ---------- sets of needles and hooks ----------
+
+/// Every set, the newest first, each with its pieces smallest first.
+pub fn list_tool_sets(conn: &Connection) -> AppResult<Vec<ToolSet>> {
+    let mut sets: Vec<ToolSet> = conn
+        .prepare("SELECT id, name, price, added_at FROM tool_sets ORDER BY added_at DESC, rowid DESC")?
+        .query_map([], |r| Ok(ToolSet { id: r.get(0)?, name: r.get(1)?, price: r.get(2)?, added_at: r.get(3)?, tool_ids: Vec::new() }))?
+        .collect::<Result<_, _>>()?;
+    let pieces: Vec<(String, String)> = conn
+        .prepare("SELECT set_id, id FROM tools WHERE set_id IS NOT NULL ORDER BY size_mm, kind, added_at")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (set, tool) in pieces {
+        if let Some(s) = sets.iter_mut().find(|s| s.id == set) {
+            s.tool_ids.push(tool);
+        }
+    }
+    Ok(sets)
+}
+
+/// Adds a set or changes one: its name and price, and its pieces exactly
+/// those given -- a piece left out is in no set now, and one taken from
+/// another set is in this one.
+pub fn save_tool_set(conn: &Connection, input: &ToolSetInput) -> AppResult<ToolSet> {
+    let name: String = input.name.trim().chars().take(120).collect();
+    if name.is_empty() {
+        return Err(AppError::Message("Give the set a name, e.g. ChiaoGoo Twist Lace.".to_string()));
+    }
+    let cost = price(input.price)?;
+    let tx = conn.unchecked_transaction()?;
+    let id = match input.id.as_deref().filter(|i| !i.is_empty()) {
+        Some(id) => {
+            if tx.execute("UPDATE tool_sets SET name = ?2, price = ?3 WHERE id = ?1", params![id, name, cost])? == 0 {
+                return Err(AppError::NotFound(format!("No set with id {id}.")));
+            }
+            id.to_string()
+        }
+        None => {
+            let id = uuid::Uuid::new_v4().to_string();
+            tx.execute("INSERT INTO tool_sets (id, name, price, added_at) VALUES (?1, ?2, ?3, ?4)", params![id, name, cost, now_ms()])?;
+            id
+        }
+    };
+    tx.execute("UPDATE tools SET set_id = NULL WHERE set_id = ?1", params![id])?;
+    for tool in &input.tool_ids {
+        if tx.execute("UPDATE tools SET set_id = ?2 WHERE id = ?1", params![tool, id])? == 0 {
+            return Err(AppError::Message("A piece of the set is no longer in Needles & hooks.".to_string()));
+        }
+    }
+    tx.commit()?;
+    list_tool_sets(conn)?
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("No set with id {id}.")))
+}
+
+/// Removes a set; its pieces stay, each in no set.
+pub fn delete_tool_set(conn: &Connection, id: &str) -> AppResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("UPDATE tools SET set_id = NULL WHERE set_id = ?1", params![id])?;
+    if tx.execute("DELETE FROM tool_sets WHERE id = ?1", params![id])? == 0 {
+        return Err(AppError::NotFound(format!("No set with id {id}.")));
+    }
+    tx.commit()?;
     Ok(())
 }
 

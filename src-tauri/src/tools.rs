@@ -10,7 +10,7 @@
 use tauri::State;
 
 use crate::db;
-use crate::models::{AppError, Tool, ToolInput, CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS};
+use crate::models::{AppError, Tool, ToolInput, ToolSet, ToolSetInput, CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS};
 
 use super::state::AppState;
 
@@ -175,6 +175,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
         material,
         project_id,
         notes: input.notes,
+        price: db::price(input.price)?,
     })
 }
 
@@ -211,6 +212,24 @@ pub fn set_tool_project(
 #[tauri::command]
 pub fn delete_tool(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     db::delete_tool(&state.db(), &id)
+}
+
+/// The sets needles and hooks came in, each with its pieces.
+#[tauri::command]
+pub fn list_tool_sets(state: State<'_, AppState>) -> CmdResult<Vec<ToolSet>> {
+    db::list_tool_sets(&state.db())
+}
+
+/// Adds a set, or changes one: its name, its price and its pieces.
+#[tauri::command]
+pub fn save_tool_set(state: State<'_, AppState>, input: ToolSetInput) -> CmdResult<ToolSet> {
+    db::save_tool_set(&state.db(), &input)
+}
+
+/// Removes a set; its pieces stay, in no set.
+#[tauri::command]
+pub fn delete_tool_set(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    db::delete_tool_set(&state.db(), &id)
 }
 
 #[cfg(test)]

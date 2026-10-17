@@ -1008,6 +1008,42 @@ pub struct Tool {
     /// can be on two, one tip each.
     #[serde(default)]
     pub uses: Vec<ToolUse>,
+    /// What it cost alone, in the currency of the settings; None when not
+    /// said. A piece of a set costs nothing of its own: the set has the price.
+    #[serde(default)]
+    pub price: Option<f64>,
+    /// The set it came in, if any, and that set's name for display.
+    #[serde(default)]
+    pub set_id: Option<String>,
+    #[serde(default)]
+    pub set_name: String,
+}
+
+/// Needles and hooks bought together, for one price: an interchangeable set,
+/// a box of hooks. Its pieces are tools of their own, each with its set.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolSet {
+    pub id: String,
+    pub name: String,
+    /// What the set cost, in the currency of the settings; None when not said.
+    pub price: Option<f64>,
+    pub added_at: i64,
+    /// Its pieces, as the tools' ids.
+    pub tool_ids: Vec<String>,
+}
+
+/// A set as its form sends it: with no id it is new.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolSetInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+    #[serde(default)]
+    pub price: Option<f64>,
+    #[serde(default)]
+    pub tool_ids: Vec<String>,
 }
 
 /// A tool on an active project: the pair, or one tip of it.
@@ -1046,6 +1082,9 @@ pub struct ToolInput {
     pub project_id: Option<String>,
     #[serde(default)]
     pub notes: String,
+    /// What it cost alone; None when not said.
+    #[serde(default)]
+    pub price: Option<f64>,
 }
 
 // ---------- projects ----------

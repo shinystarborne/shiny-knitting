@@ -1,4 +1,4 @@
-import { api, type Pattern, type Yarn, type YarnUse } from "../api";
+import { api, type Pattern, type Tool, type ToolSet, type Yarn, type YarnUse } from "../api";
 import { closestEl } from "../dom";
 import { stashModeSwitch } from "./swatches";
 import { money, spending, spentByMonth, stashWorth, type Spend } from "./money";
@@ -40,15 +40,17 @@ export class StashStatsView {
     `;
     this.screen.appendChild(this.root);
     this.wire();
-    const [yarns, uses, patterns, currency] = await Promise.all([
+    const [yarns, uses, patterns, currency, tools, sets] = await Promise.all([
       api.listYarns({ used: "all" }),
       api.listYarnUsage().catch(() => [] as YarnUse[]),
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.getCurrency().catch(() => "EUR"),
+      api.listTools().catch(() => [] as Tool[]),
+      api.listToolSets().catch(() => [] as ToolSet[]),
     ]);
     this.yarns = yarns;
     this.currency = currency;
-    this.spends = spending(yarns, patterns);
+    this.spends = spending(yarns, patterns, tools, sets);
     this.months = flowByMonth(additions(yarns), uses);
     this.paint();
   }
@@ -63,7 +65,8 @@ export class StashStatsView {
     const spent = spentByMonth(this.spends);
     const spentYarn = spent.reduce((n, x) => n + x.yarn, 0);
     const spentPatterns = spent.reduce((n, x) => n + x.patterns, 0);
-    const spentTotal = spentYarn + spentPatterns;
+    const spentTools = spent.reduce((n, x) => n + x.tools, 0);
+    const spentTotal = spentYarn + spentPatterns + spentTools;
     const bought = spent[this.chosen];
     const unitSwitch = `
       <div class="seg" role="group" aria-label="Counted in">
@@ -75,7 +78,7 @@ export class StashStatsView {
         <div class="stat-tile"><span>Added in the last 12 months</span><b>${fmt(sum(this.months, "added", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "added", other(kept.unit)))} ${other(kept.unit)}</small></div>
         <div class="stat-tile"><span>Used in the last 12 months</span><b>${fmt(sum(this.months, "used", kept.unit))} ${kept.unit}</b><small>${fmt(sum(this.months, "used", other(kept.unit)))} ${other(kept.unit)}</small></div>
         <div class="stat-tile" data-el="worth"><span>The stash is worth</span><b>${money(worth.worth, this.currency)}</b><small>${worth.unpriced ? `${worth.unpriced} yarn${worth.unpriced === 1 ? "" : "s"} without a price` : "what is left, at what it cost"}</small></div>
-        <div class="stat-tile" data-el="spent"><span>Spent in the last 12 months</span><b>${money(spentTotal, this.currency)}</b><small>${money(spentYarn, this.currency)} on yarn, ${money(spentPatterns, this.currency)} on patterns</small></div>
+        <div class="stat-tile" data-el="spent"><span>Spent in the last 12 months</span><b>${money(spentTotal, this.currency)}</b><small>${money(spentYarn, this.currency)} on yarn, ${money(spentPatterns, this.currency)} on patterns, ${money(spentTools, this.currency)} on needles &amp; hooks</small></div>
       </section>
       <section class="usage-panel">
         <div class="usage-head">
@@ -92,17 +95,17 @@ export class StashStatsView {
           </div>
         </div>
         <div class="spent-month" data-el="spent-month">
-          <h3>Spent in ${esc(bought.label)}: ${money(bought.yarn + bought.patterns, this.currency)}</h3>
+          <h3>Spent in ${esc(bought.label)}: ${money(bought.total, this.currency)}</h3>
           ${
             bought.items.length
-              ? `<ul class="usage-list">${bought.items.map((x) => `<li><span>${esc(x.name)}</span><b>${money(x.amount, this.currency)}</b><em>${x.kind === "yarn" ? "yarn" : "pattern"} · ${day(x.at)}</em></li>`).join("")}</ul>`
-              : `<p class="hint">Nothing bought with a price this month. A yarn's price a ball, and a pattern's price, are in their forms.</p>`
+              ? `<ul class="usage-list">${bought.items.map((x) => `<li><span>${esc(x.name)}</span><b>${money(x.amount, this.currency)}</b><em>${x.kind === "tool" ? "needles &amp; hooks" : x.kind} · ${day(x.at)}</em></li>`).join("")}</ul>`
+              : `<p class="hint">Nothing bought with a price this month. A yarn's price a ball, a pattern's price and a needle's or a set's are in their forms.</p>`
           }
         </div>
         <details class="usage-table"><summary>The months as a table</summary>
           <table class="calc-table"><thead><tr><th>Month</th><th>Added, m</th><th>Added, g</th><th>Used, m</th><th>Used, g</th><th>Spent</th></tr></thead><tbody>
             ${this.months
-              .map((x, i) => ({ x, money: spent[i].yarn + spent[i].patterns }))
+              .map((x, i) => ({ x, money: spent[i].total }))
               .reverse()
               .map(({ x, money: paid }) => `<tr><td>${esc(x.label)}</td><td>${fmt(x.added.metres)}</td><td>${fmt(x.added.grams)}</td><td>${fmt(x.used.metres)}</td><td>${fmt(x.used.grams)}</td><td>${paid ? money(paid, this.currency) : "–"}</td></tr>`)
               .join("")}

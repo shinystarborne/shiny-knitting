@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { clickedOn, closestEl } from "../dom";
 import { makeCombo } from "./combo";
+import { parsePrice } from "./money";
 import {
   canonical,
   connectorFor,
@@ -51,6 +52,24 @@ const SPLIT = "__split__";
 /** The project picker's "free" choice. */
 const FREE = "";
 
+/** A set of each kind, as its name says it: "ChiaoGoo interchangeable tips, 2.75–5 mm". */
+const SET_WORDS: Record<string, string> = {
+  straight: "straight needles",
+  circular: "circular needles",
+  dpn: "double-pointed needles",
+  tips: "interchangeable tips",
+  cable: "cables",
+  hook: "crochet hooks",
+  adapter: "adapters",
+};
+
+/** The name a set added from the form starts with: its brand, kind and sizes. */
+export function setName(brand: string, kind: string, sizes: number[]): string {
+  const what = `${brand.trim() ? `${brand.trim()} ` : ""}${SET_WORDS[kind] ?? kind}`;
+  const span = sizes.length ? `, ${Math.min(...sizes)}–${Math.max(...sizes)} mm` : "";
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)}${span}`;
+}
+
 /**
  * The add/edit dialog for a needle or hook.
  *
@@ -67,6 +86,8 @@ export class ToolForm {
   private projects: Project[] = [];
   private brands: string[] = [];
   private materials: string[] = [];
+  /** Everything in the box, for a price the same brand and kind already has. */
+  private tools: Tool[] = [];
   /** A set's connector changes, while "Changes with size…" is chosen. */
   private steps: ConnectorStep[] = [];
 
@@ -86,6 +107,7 @@ export class ToolForm {
       api.listTools().catch(() => [] as Tool[]),
     ]);
     this.projects = projects.filter((p) => isLive(p.status));
+    this.tools = tools;
     this.brands = knownBrands(tools);
     this.materials = knownMaterials(tools);
 
@@ -161,6 +183,18 @@ export class ToolForm {
           </div>
         </div>
 
+        ${
+          e?.setId
+            ? `<p class="hint tool-in-set" data-el="in-set">Part of the set <b>${escapeHtml(e.setName ?? "")}</b>: the set has the price, under <em>Sets</em>.</p>`
+            : `<div class="field-row">
+          <label class="field tool-price">
+            <span data-el="price-label">Price</span>
+            <input data-f="price" inputmode="decimal" value="${v?.price != null ? escapeAttr(String(v.price)) : ""}" placeholder="e.g. 12,50" />
+            <em class="hint" data-el="price-hint" hidden></em>
+          </label>
+        </div>`
+        }
+
         <div class="field-row" data-el="project-row">
           <label class="field">
             <span>In use for</span>
@@ -194,6 +228,11 @@ export class ToolForm {
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("change", this.onChange);
     this.root.querySelector('[data-f="sizeMm"]')?.addEventListener("input", () => this.previewSet());
+    // A price typed is the one: no other tool's replaces it.
+    this.root.querySelector<HTMLElement>('[data-f="price"]')?.addEventListener("input", (ev) => {
+      delete (ev.target as HTMLElement).dataset.kin;
+      this.root.querySelector<HTMLElement>('[data-el="price-hint"]')!.hidden = true;
+    });
     // Both take anything typed, and offer what is already in the box.
     makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="brand"]')!, () => this.brands);
     makeCombo(this.root.querySelector<HTMLInputElement>('[data-f="material"]')!, () => this.materials);
@@ -211,6 +250,7 @@ export class ToolForm {
       const said = connectorOfBrand(this.value("brand"));
       if (system && !system.value && said) system.value = said;
     }
+    if (f === "brand" || f === "kind") this.priceFromKin();
     if (f === "cableSize") this.previewSet();
     const step = target.dataset.step;
     if (step !== undefined) {
@@ -343,11 +383,41 @@ export class ToolForm {
     this.renderSteps();
     if (set) {
       const connectors = this.splitting() ? ` Cable size: ${connectorSummary(sizes, this.steps)}.` : "";
-      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes.${connectors} Each is added free; put one on a project from its card, or from the pattern.`;
+      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes, kept together as a set with one price.${connectors} Each is added free; put one on a project from its card, or from the pattern.`;
     }
     const projectRow = this.root.querySelector<HTMLElement>('[data-el="project-row"]');
     if (projectRow) projectRow.hidden = set;
+    // A set has one price, for all of it.
+    const priceLabel = this.root.querySelector<HTMLElement>('[data-el="price-label"]');
+    if (priceLabel) priceLabel.textContent = set ? `Price of the set of ${sizes.length}` : "Price";
+    // One needle's price, from another like it, is not a set's.
+    const priceInput = this.root.querySelector<HTMLInputElement>('[data-f="price"]');
+    if (set && priceInput?.dataset.kin) {
+      priceInput.value = "";
+      delete priceInput.dataset.kin;
+      this.root.querySelector<HTMLElement>('[data-el="price-hint"]')!.hidden = true;
+    }
     if (!this.editing) add.textContent = set ? `Add ${sizes.length}` : "Add";
+  }
+
+  /**
+   * A price, while none is typed, from another of the same brand and kind
+   * bought alone: the same brand's tips cost the same, whatever the size.
+   */
+  private priceFromKin(): void {
+    const input = this.root.querySelector<HTMLInputElement>('[data-f="price"]');
+    const hint = this.root.querySelector<HTMLElement>('[data-el="price-hint"]');
+    if (!input || !hint || this.editing || this.isSet() || (input.value.trim() && !input.dataset.kin)) return;
+    const brand = this.value("brand").trim().toLowerCase();
+    const kind = this.value("kind");
+    const kin = brand
+      ? this.tools.filter((t) => t.price != null && !t.setId && t.kind === kind && t.brand.trim().toLowerCase() === brand).sort((a, b) => b.addedAt - a.addedAt)[0]
+      : undefined;
+    input.value = kin ? String(kin.price) : "";
+    if (kin) input.dataset.kin = "1";
+    else delete input.dataset.kin;
+    hint.textContent = kin ? `As your other ${kin.brand} ${(SET_WORDS[kind] ?? kind)} cost.` : "";
+    hint.hidden = !kin;
   }
 
   /** Whether several sizes are typed for a new tool, which makes it a set. */
@@ -392,8 +462,13 @@ export class ToolForm {
   private input(): ToolInput {
     const kind = this.value("kind") as ToolKind;
     const choice = this.value("project");
+    const typed = this.value("price").trim();
+    const price = typed ? parsePrice(typed) : null;
+    if (typed && price === null) throw new Error("The price is a number: 12,50 or 12.50.");
     return {
       kind,
+      // A piece of a set keeps what it had: the set has the price.
+      price: this.editing?.setId ? (this.editing.price ?? null) : price,
       // The first size; a set's others are added by save() from the same input.
       sizeMm: HAS.size(kind) ? (parseSizes(this.value("sizeMm")).sizes[0] ?? 0) : 0,
       lengthCm: HAS.length(kind) ? num(this.value("lengthCm")) : 0,
@@ -416,7 +491,9 @@ export class ToolForm {
     try {
       const set = this.isSet();
       // A set is added free: its sizes do not share a project (see previewSet).
-      const input = set ? { ...this.input(), projectId: null } : this.input();
+      // Its price is the set's, not each piece's.
+      const typed = this.input();
+      const input = set ? { ...typed, projectId: null, price: null } : typed;
       const { sizes, bad } = HAS.size(input.kind) ? parseSizes(this.value("sizeMm")) : { sizes: [0], bad: [] };
       if (bad.length) throw new Error(`“${bad[0]}” is not a size. Give sizes in millimetres, e.g. 4, or 2.5, 3, 3.5 for a set.`);
       if (!sizes.length) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
@@ -431,14 +508,18 @@ export class ToolForm {
         const steps = this.splitting() ? this.steps : null;
         const one = (mm: number) => ({ ...input, sizeMm: mm, cableSize: steps ? connectorFor(mm, steps) : input.cableSize });
         saved = await api.addTool(one(sizes[0]));
+        const added = [saved.id];
         for (const size of sizes.slice(1)) {
           try {
             saved = await api.addTool(one(size));
+            added.push(saved.id);
           } catch (err) {
             this.onDone(saved);
             throw new Error(`Added up to ${saved.sizeMm} mm, then stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+        // Kept together, as bought: one set, its price the one typed.
+        if (set) await api.saveToolSet({ name: setName(input.brand, input.kind, sizes), price: typed.price ?? null, toolIds: added });
       }
       const what = saved.kind === "cable" ? "the cable" : saved.kind === "adapter" ? "the adapter" : sizes.length > 1 ? `${sizes.length}: ${sizes.join(", ")} mm` : `the ${saved.sizeMm} mm`;
       if (another) {

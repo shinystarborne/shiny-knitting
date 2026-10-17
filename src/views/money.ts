@@ -1,8 +1,10 @@
-import type { Pattern, Project, Yarn, YarnLot, YarnUse } from "../api";
+import type { Pattern, Project, Tool, ToolSet, Yarn, YarnLot, YarnUse } from "../api";
+import { describe } from "./tool-filter";
 
 /**
- * Prices: what yarn and patterns cost, and the sums -- what the stash is
- * worth now, what was spent month by month, what a project cost. A price is
+ * Prices: what yarn, patterns and needles cost, and the sums -- what the
+ * stash is worth now, what the needles and hooks cost, what was spent month
+ * by month, what a project cost. A price is
  * a plain number in the one currency of the settings, so they add up.
  * Pure functions, so the harness checks them directly.
  */
@@ -77,16 +79,39 @@ export function stashWorth(yarns: Yarn[]): { worth: number; unpriced: number } {
   return { worth: Math.round(worth * 100) / 100, unpriced };
 }
 
+/** Whether a tool's price is its set's: it is a piece of a set there is. */
+function inSet(t: Tool, sets: ToolSet[]): boolean {
+  return !!t.setId && sets.some((s) => s.id === t.setId);
+}
+
+/**
+ * What the needles and hooks cost: each bought alone at its price, and each
+ * set once at its, whatever it has in it. How many of them -- tools alone
+ * and sets -- have no price.
+ */
+export function toolsCost(tools: Tool[], sets: ToolSet[]): { total: number; unpriced: number } {
+  let total = 0;
+  let unpriced = 0;
+  for (const price of [...tools.filter((t) => !inSet(t, sets)).map((t) => t.price), ...sets.map((s) => s.price)]) {
+    if (price == null) unpriced++;
+    else total += price;
+  }
+  return { total: Math.round(total * 100) / 100, unpriced };
+}
+
 /** One thing bought, as the spending lists it. */
 export interface Spend {
   at: number;
-  kind: "yarn" | "pattern";
+  kind: "yarn" | "pattern" | "tool";
   name: string;
   amount: number;
 }
 
-/** Everything bought with a price: the yarn by its lots, dated when bought; patterns when added. */
-export function spending(yarns: Yarn[], patterns: Pattern[]): Spend[] {
+/**
+ * Everything bought with a price: the yarn by its lots, dated when bought;
+ * patterns, needles and hooks, and sets of them, when added.
+ */
+export function spending(yarns: Yarn[], patterns: Pattern[], tools: Tool[] = [], sets: ToolSet[] = []): Spend[] {
   const out: Spend[] = [];
   for (const y of yarns) {
     const name = [y.brand, y.name].filter(Boolean).join(" ") + (y.colourway ? ` (${y.colourway})` : "");
@@ -96,18 +121,22 @@ export function spending(yarns: Yarn[], patterns: Pattern[]): Spend[] {
     }
   }
   for (const p of patterns) if (p.price) out.push({ at: p.addedAt, kind: "pattern", name: p.title, amount: p.price });
+  for (const t of tools) if (t.price && !inSet(t, sets)) out.push({ at: t.addedAt, kind: "tool", name: describe(t), amount: t.price });
+  for (const s of sets) if (s.price) out.push({ at: s.addedAt, kind: "tool", name: s.name, amount: s.price });
   return out.sort((a, b) => b.at - a.at);
 }
 
 /** What was spent in each of the last `count` calendar months, the oldest first. */
-export function spentByMonth(spends: Spend[], now = Date.now(), count = 12): { start: number; label: string; yarn: number; patterns: number; items: Spend[] }[] {
+export function spentByMonth(spends: Spend[], now = Date.now(), count = 12): { start: number; label: string; yarn: number; patterns: number; tools: number; total: number; items: Spend[] }[] {
   const today = new Date(now);
   return Array.from({ length: count }, (_, i) => {
     const from = new Date(today.getFullYear(), today.getMonth() - (count - 1 - i), 1);
     const to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
     const items = spends.filter((s) => s.at >= from.getTime() && s.at < to.getTime());
     const sum = (kind: Spend["kind"]) => Math.round(items.filter((s) => s.kind === kind).reduce((n, s) => n + s.amount, 0) * 100) / 100;
-    return { start: from.getTime(), label: from.toLocaleDateString(undefined, { month: "long", year: "numeric" }), yarn: sum("yarn"), patterns: sum("pattern"), items };
+    const [yarn, patterns, tools] = [sum("yarn"), sum("pattern"), sum("tool")];
+    const total = Math.round((yarn + patterns + tools) * 100) / 100;
+    return { start: from.getTime(), label: from.toLocaleDateString(undefined, { month: "long", year: "numeric" }), yarn, patterns, tools, total, items };
   });
 }
 

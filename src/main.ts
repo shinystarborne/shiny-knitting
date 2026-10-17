@@ -4,6 +4,7 @@ import { api, toBytes, type AiSettingsView, type Pattern, type Project, type Sca
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
 import { ToolsView } from "./views/tools";
+import { ToolSetsDialog } from "./views/tool-sets";
 import { ToolForm } from "./views/tool-form";
 import { WishlistView } from "./views/wishlist";
 import { WishForm, type WishTemplate } from "./views/wish-form";
@@ -230,6 +231,9 @@ class App {
       void this.editProject((e as CustomEvent<string>).detail);
     });
     this.screen.addEventListener("add-tool", () => void this.openToolForm(null));
+    this.screen.addEventListener("open-tool-sets", () => {
+      void new ToolSetsDialog(this.freshModal(), () => void this.showTools()).open();
+    });
     this.screen.addEventListener("edit-tool", (e) => {
       void this.openToolForm((e as CustomEvent<Tool>).detail);
     });

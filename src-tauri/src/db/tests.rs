@@ -2174,6 +2174,45 @@ fn a_yarns_price_a_ball_is_the_same_for_every_colour_and_lot() {
 }
 
 #[test]
+fn a_needle_has_a_price_and_a_set_has_one_for_its_pieces() {
+    use crate::models::{ToolInput, ToolSetInput};
+    let conn = test_db();
+    let tips = |id: &str, mm: f64| insert_tool(&conn, id, &ToolInput { kind: "tips".into(), size_mm: mm, brand: "ChiaoGoo".into(), ..Default::default() }).unwrap();
+    let hook = insert_tool(&conn, "hook", &ToolInput { kind: "hook".into(), size_mm: 4.0, price: Some(7.499), ..Default::default() }).unwrap();
+    assert_eq!(hook.price, Some(7.5), "to the cent");
+    assert_eq!((hook.set_id.clone(), hook.set_name.as_str()), (None, ""));
+    let mut edited = ToolInput { kind: "hook".into(), size_mm: 4.0, price: None, ..Default::default() };
+    assert_eq!(update_tool(&conn, "hook", &edited).unwrap().price, None, "a price taken away");
+    edited.price = Some(-1.0);
+    assert!(update_tool(&conn, "hook", &edited).is_err());
+    for (id, mm) in [("t3", 3.0), ("t4", 4.0), ("t5", 5.0)] {
+        tips(id, mm);
+    }
+
+    // A set of three, for one price.
+    let set = save_tool_set(&conn, &ToolSetInput { id: None, name: " Twist Lace ".into(), price: Some(120.0), tool_ids: vec!["t5".into(), "t3".into(), "t4".into()] }).unwrap();
+    assert_eq!((set.name.as_str(), set.price, set.tool_ids.clone()), ("Twist Lace", Some(120.0), vec!["t3".to_string(), "t4".into(), "t5".into()]), "its pieces smallest first");
+    let piece = get_tool(&conn, "t4").unwrap();
+    assert_eq!((piece.set_id.as_deref(), piece.set_name.as_str()), (Some(set.id.as_str()), "Twist Lace"));
+
+    // Changed: a piece left out is in no set; one taken from another set moves.
+    let other = save_tool_set(&conn, &ToolSetInput { id: None, name: "Odds".into(), price: None, tool_ids: vec!["hook".into()] }).unwrap();
+    let set = save_tool_set(&conn, &ToolSetInput { id: Some(set.id.clone()), name: "Twist Lace small".into(), price: Some(99.5), tool_ids: vec!["t3".into(), "t4".into(), "hook".into()] }).unwrap();
+    assert_eq!((set.price, set.tool_ids.len()), (Some(99.5), 3));
+    assert_eq!(get_tool(&conn, "t5").unwrap().set_id, None);
+    assert_eq!(list_tool_sets(&conn).unwrap().iter().find(|s| s.id == other.id).unwrap().tool_ids.len(), 0, "the hook moved");
+    assert!(save_tool_set(&conn, &ToolSetInput { name: "  ".into(), ..Default::default() }).is_err(), "a set has a name");
+    assert!(save_tool_set(&conn, &ToolSetInput { name: "Gone".into(), tool_ids: vec!["nowhere".into()], ..Default::default() }).is_err());
+
+    // Removed, its pieces stay; a piece removed leaves the set.
+    delete_tool(&conn, "t3").unwrap();
+    assert_eq!(list_tool_sets(&conn).unwrap().iter().find(|s| s.id == set.id).unwrap().tool_ids, vec!["hook".to_string(), "t4".into()]);
+    delete_tool_set(&conn, &set.id).unwrap();
+    assert_eq!(get_tool(&conn, "t4").unwrap().set_id, None);
+    assert!(delete_tool_set(&conn, &set.id).is_err());
+}
+
+#[test]
 fn a_lots_price_from_before_becomes_its_yarns() {
     let conn = test_db();
     let lot = |balls: f64, bought: i64| crate::models::YarnLotInput { balls, bought_at: Some(bought), ..Default::default() };

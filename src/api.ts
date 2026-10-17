@@ -682,6 +682,29 @@ export interface Tool {
   addedAt: number;
   /** Every active project it is on, and which tip: interchangeable tips can be on two, one tip each. */
   uses: ToolUse[];
+  /** What it cost alone, in the settings' currency; null when not said. A set's piece has the set's price instead. */
+  price?: number | null;
+  /** The set it came in, and that set's name; null and empty when none. */
+  setId?: string | null;
+  setName?: string;
+}
+
+/** Needles and hooks bought together for one price. Mirrors `models.rs::ToolSet`. */
+export interface ToolSet {
+  id: string;
+  name: string;
+  price: number | null;
+  addedAt: number;
+  /** Its pieces, smallest first. */
+  toolIds: string[];
+}
+
+/** A set as its form sends it: no id is a new one. */
+export interface ToolSetInput {
+  id?: string | null;
+  name: string;
+  price: number | null;
+  toolIds: string[];
 }
 
 /** A tool on an active project: the pair ("" tip), or one tip of it ("one"). Mirrors `models.rs::ToolUse`. */
@@ -691,7 +714,7 @@ export interface ToolUse {
   tip: "" | "one";
 }
 
-export type ToolInput = Omit<Tool, "id" | "projectName" | "addedAt" | "uses">;
+export type ToolInput = Omit<Tool, "id" | "projectName" | "addedAt" | "uses" | "setId" | "setName">;
 
 // ---------- projects ----------
 
@@ -1440,6 +1463,12 @@ export const api = {
   setToolProject: (id: string, projectId: string | null) =>
     invoke<Tool>("set_tool_project", { id, projectId }),
   deleteTool: (id: string) => invoke<void>("delete_tool", { id }),
+  /** The sets needles and hooks came in, the newest first. */
+  listToolSets: () => invoke<ToolSet[]>("list_tool_sets"),
+  /** Adds or changes a set: its pieces are exactly those given. */
+  saveToolSet: (input: ToolSetInput) => invoke<ToolSet>("save_tool_set", { input }),
+  /** Removes a set; its pieces stay, in no set. */
+  deleteToolSet: (id: string) => invoke<void>("delete_tool_set", { id }),
 
   // Projects: what puts needles and yarn in use.
   /** The plans in the order given, as dragged. */

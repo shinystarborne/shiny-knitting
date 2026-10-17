@@ -29,6 +29,8 @@ const store = {
   // Needles and hooks. `patternTitle` is not stored; it is joined in on read,
   // as the backend's LEFT JOIN does.
   tools: [],
+  // Sets of needles and hooks, as tool_sets: a tool's setId says its set.
+  toolSets: [],
   // Projects and what is on them, as the backend's three tables.
   projects: [],
   projectTools: [],
@@ -497,6 +499,7 @@ function cleanTool(input) {
     adapterTo: kind === "adapter" ? adapterEnd(input) : "",
     brand: String(input.brand || "").trim().slice(0, 80),
     material: toolMaterial(input.material),
+    price: cents(input.price),
     projectId,
     notes: String(input.notes || ""),
   };
@@ -678,11 +681,20 @@ function setOwner(id) {
 }
 
 /** A stored tool as the backend returns it: the active projects it is on joined in, and which tip. */
+/** A set with its pieces, smallest first, as db::list_tool_sets gives it. */
+function toolSetOut(set) {
+  const pieces = store.tools
+    .filter((t) => t.setId === set.id)
+    .sort((a, b) => a.sizeMm - b.sizeMm || a.kind.localeCompare(b.kind) || a.addedAt - b.addedAt);
+  return clone({ ...set, toolIds: pieces.map((t) => t.id) });
+}
+
 function toolOut(t) {
   const links = store.projectTools.filter((l) => l.toolId === t.id && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status));
   const uses = links.map((l) => ({ projectId: l.projectId, projectName: store.projects.find((x) => x.id === l.projectId)?.name ?? "", tip: l.tip ?? "" }));
   const { projectId: _ignored, ...rest } = t;
-  return clone({ ...rest, projectId: uses[0]?.projectId ?? null, projectName: uses[0]?.projectName ?? "", uses });
+  const set = t.setId ? store.toolSets.find((x) => x.id === t.setId) : null;
+  return clone({ ...rest, price: t.price ?? null, setId: set ? set.id : null, setName: set ? set.name : "", projectId: uses[0]?.projectId ?? null, projectName: uses[0]?.projectName ?? "", uses });
 }
 
 /** As db::place_tip: the whole takes it from every other active project; a tip shares it with one other tip. */
@@ -2002,6 +2014,30 @@ const handlers = {
     store.tools = store.tools.filter((t) => t.id !== id);
     if (store.tools.length === before) throw new Error(`No needle or hook with id ${id}.`);
     store.projectTools = store.projectTools.filter((l) => l.toolId !== id);
+  },
+  // As db::list_tool_sets: the newest first, their pieces smallest first.
+  list_tool_sets: () => store.toolSets.slice().reverse().map(toolSetOut),
+  // As db::save_tool_set: its pieces exactly those given.
+  save_tool_set: ({ input }) => {
+    const name = String(input.name || "").trim().slice(0, 120);
+    if (!name) throw new Error("Give the set a name, e.g. ChiaoGoo Twist Lace.");
+    const price = cents(input.price);
+    let set = input.id ? store.toolSets.find((x) => x.id === input.id) : null;
+    if (input.id && !set) throw new Error(`No set with id ${input.id}.`);
+    if ((input.toolIds || []).some((id) => !store.tools.some((t) => t.id === id))) throw new Error("A piece of the set is no longer in Needles & hooks.");
+    if (!set) {
+      set = { id: `set-${store.nextId++}`, name, price, addedAt: Date.now() };
+      store.toolSets.push(set);
+    }
+    Object.assign(set, { name, price });
+    for (const t of store.tools) if (t.setId === set.id) t.setId = null;
+    for (const id of input.toolIds || []) store.tools.find((t) => t.id === id).setId = set.id;
+    return toolSetOut(set);
+  },
+  delete_tool_set: ({ id }) => {
+    if (!store.toolSets.some((x) => x.id === id)) throw new Error(`No set with id ${id}.`);
+    store.toolSets = store.toolSets.filter((x) => x.id !== id);
+    for (const t of store.tools) if (t.setId === id) t.setId = null;
   },
 
   // ---------- projects ----------
