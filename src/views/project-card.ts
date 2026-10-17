@@ -16,7 +16,7 @@ import { copyPng } from "../copy-picture";
 import { showNotice } from "../notice";
 import { photosOf, photoUrl, shownPhotos, type Photo } from "./gallery";
 import { longDate } from "./project-form";
-import { describe } from "./tool-filter";
+import { describe, tipLabel } from "./tool-filter";
 
 export const SHAPES = [
   { key: "square", label: "Square", w: 1080, h: 1080, photoH: 560 },
@@ -100,7 +100,7 @@ export function cardText(d: CardData, o: CardOptions): Block[] {
     blocks.push({ kind: "fact", label: "Yarn", lines: [...new Set(lines)] });
   }
   if (on("needles")) {
-    const lines = p.toolIds.map((id) => d.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t).map((t) => describe(t));
+    const lines = p.toolIds.map((id) => d.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t).map((t) => `${describe(t)}${p.toolTips?.[t.id] ? `, ${tipLabel(p.toolTips[t.id])}` : ""}`);
     if (lines.length) blocks.push({ kind: "fact", label: "Needles", lines });
   }
   if (on("size") && p.size.trim()) blocks.push({ kind: "fact", label: "Size", lines: [p.size.trim()] });

@@ -997,6 +997,20 @@ pub struct Tool {
     pub project_name: String,
     pub notes: String,
     pub added_at: i64,
+    /// Every active project it is on, and which tip: interchangeable tips
+    /// can be on two, one tip each.
+    #[serde(default)]
+    pub uses: Vec<ToolUse>,
+}
+
+/// A tool on an active project: the pair, or one tip of it.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUse {
+    pub project_id: String,
+    pub project_name: String,
+    /// "" for the pair (or anything not interchangeable tips), "right" or "left" for one tip.
+    pub tip: String,
 }
 
 /// A tool as the form sends it, for adding or for replacing one's details.
@@ -1058,6 +1072,9 @@ pub struct Project {
     pub person_name: String,
     /// The tools on it: while active, those in use; once finished, those it used.
     pub tool_ids: Vec<String>,
+    /// The interchangeable tips it has one of, by the tool's id: "right" or "left".
+    #[serde(default)]
+    pub tool_tips: std::collections::BTreeMap<String, String>,
     pub yarns: Vec<ProjectYarn>,
     /// A plan's time as said ("autumn", "before the baby comes"); empty when none.
     #[serde(default)]
@@ -1152,6 +1169,9 @@ pub struct ProjectInput {
     pub finished_at: Option<i64>,
     #[serde(default)]
     pub tool_ids: Vec<String>,
+    /// The interchangeable tips it takes one of, by the tool's id: "right" or "left". The rest are the whole thing.
+    #[serde(default)]
+    pub tool_tips: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub yarns: Vec<ProjectYarnInput>,
     /// Made as a plan: not started, its yarn only meant for it.

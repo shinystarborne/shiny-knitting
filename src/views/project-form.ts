@@ -2,7 +2,7 @@ import { api, isLive, isRecord, projectStatusLabel, type Pattern, type Project, 
 import { askYesNo } from "../dialogs";
 import { clickedOn, closestEl } from "../dom";
 import { mountPatternPicker } from "./pattern-picker";
-import { describe } from "./tool-filter";
+import { describe, tipLabel } from "./tool-filter";
 import { ToolPicker } from "./tool-picker";
 import { YarnPicker, type ChosenYarn } from "./yarn-picker";
 
@@ -42,6 +42,8 @@ export class ProjectForm {
   private tools: Tool[] = [];
   private yarns: Yarn[] = [];
   private chosenTools = new Set<string>();
+  /** Interchangeable tips it takes one of: "right" or "left", by the tool's id. */
+  private chosenTips = new Map<string, "right" | "left">();
   private chosenYarns: ChosenYarn[] = [];
   private toolPicker: ToolPicker | null = null;
   private yarnPicker: YarnPicker | null = null;
@@ -64,6 +66,7 @@ export class ProjectForm {
     this.yarns = yarns;
     const e = this.editing;
     this.chosenTools = new Set(e?.toolIds ?? []);
+    this.chosenTips = new Map(Object.entries(e?.toolTips ?? {}));
     this.chosenYarns = (e?.yarns ?? []).map((y) => ({ id: y.id, yarnId: y.yarnId, lotId: y.lotId, plannedGrams: y.plannedGrams }));
     // A plan made from a stash yarn starts with that yarn on it.
     const presetYarn = !e && this.preset.yarnId ? yarns.find((y) => y.id === this.preset.yarnId) : undefined;
@@ -147,11 +150,20 @@ export class ProjectForm {
         toolHost,
         (id) => {
           this.chosenTools.add(id);
+          // A pair with one tip on another project: this one takes the other tip.
+          const t = this.tools.find((x) => x.id === id);
+          const other = t?.kind === "tips" ? (t.uses ?? []).find((u) => u.tip && u.projectId !== this.editing?.id) : undefined;
+          if (other) this.chosenTips.set(id, other.tip === "right" ? "left" : "right");
           this.renderTools();
         },
         (id) => {
           this.chosenTools.delete(id);
+          this.chosenTips.delete(id);
           this.renderTools();
+        },
+        (id, tip) => {
+          if (tip) this.chosenTips.set(id, tip);
+          else this.chosenTips.delete(id);
         },
       );
       this.yarnPicker = new YarnPicker(
@@ -181,10 +193,13 @@ export class ProjectForm {
    */
   private renderTools(): void {
     const id = this.editing?.id;
-    const view = this.tools.map((t) =>
-      id && t.projectId === id && !this.chosenTools.has(t.id) ? { ...t, projectId: null, projectName: "" } : t,
-    );
-    this.toolPicker?.render(view, this.chosenTools, "None chosen yet.");
+    const view = this.tools.map((t) => {
+      if (!id || this.chosenTools.has(t.id) || !(t.uses ?? []).some((u) => u.projectId === id)) return t;
+      // Taken off this project and not saved yet: shown as the rest of its uses.
+      const uses = t.uses.filter((u) => u.projectId !== id);
+      return { ...t, uses, projectId: uses[0]?.projectId ?? null, projectName: uses[0]?.projectName ?? "" };
+    });
+    this.toolPicker?.render(view, this.chosenTools, "None chosen yet.", this.chosenTips);
   }
 
   private renderYarns(): void {
@@ -196,7 +211,7 @@ export class ProjectForm {
     const e = this.editing!;
     const tools = e.toolIds.map((id) => this.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t);
     this.root.querySelector('[data-el="tools"]')!.innerHTML = tools.length
-      ? `<ul class="tool-list record">${tools.map((t) => `<li><span>${escapeHtml(describe(t))}</span></li>`).join("")}</ul>`
+      ? `<ul class="tool-list record">${tools.map((t) => `<li><span>${escapeHtml(describe(t))}${e.toolTips?.[t.id] ? ` — ${tipLabel(e.toolTips[t.id])}` : ""}</span></li>`).join("")}</ul>`
       : `<p class="hint">None recorded.</p>`;
     this.root.querySelector('[data-el="yarns"]')!.innerHTML = e.yarns.length
       ? `<ul class="tool-list record">${e.yarns
@@ -246,6 +261,7 @@ export class ProjectForm {
       notes: this.value("notes"),
       startedAt: started ? fromDateInput(started) : null,
       toolIds: [...this.chosenTools],
+      toolTips: Object.fromEntries([...this.chosenTips].filter(([tool]) => this.chosenTools.has(tool))),
       yarns: this.chosenYarns.map((y) => ({ id: y.id ?? null, yarnId: y.yarnId, lotId: y.lotId, plannedGrams: y.plannedGrams ?? null })),
     };
   }

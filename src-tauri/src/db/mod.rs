@@ -781,6 +781,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
          WHERE NOT EXISTS (SELECT 1 FROM masterclass_videos v WHERE v.masterclass_id = m.id)",
         [],
     )?;
+    // One tip of a pair of interchangeable tips on a project: which.
+    if !column_exists(conn, "project_tools", "tip")? {
+        conn.execute("ALTER TABLE project_tools ADD COLUMN tip TEXT NOT NULL DEFAULT ''", [])?;
+    }
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
         conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -2492,6 +2496,7 @@ fn row_to_tool(row: &rusqlite::Row) -> rusqlite::Result<Tool> {
         project_name: row.get("active_project_name")?,
         notes: row.get("notes")?,
         added_at: row.get("added_at")?,
+        uses: Vec::new(),
     })
 }
 
@@ -2501,17 +2506,23 @@ pub fn list_tools(conn: &Connection) -> AppResult<Vec<Tool>> {
         "{TOOL_SELECT} ORDER BY t.size_mm ASC, t.kind ASC, t.added_at ASC"
     ))?;
     let rows = stmt.query_map([], row_to_tool)?;
+    let mut uses = tool_uses(conn)?;
     let mut out = Vec::new();
     for r in rows {
-        out.push(r?);
+        let mut t = r?;
+        t.uses = uses.remove(&t.id).unwrap_or_default();
+        out.push(t);
     }
     Ok(out)
 }
 
 pub fn get_tool(conn: &Connection, id: &str) -> AppResult<Tool> {
-    conn.query_row(&format!("{TOOL_SELECT} WHERE t.id = ?1"), params![id], row_to_tool)
+    let mut t = conn
+        .query_row(&format!("{TOOL_SELECT} WHERE t.id = ?1"), params![id], row_to_tool)
         .optional()?
-        .ok_or_else(|| AppError::NotFound(format!("No needle or hook with id {id}.")))
+        .ok_or_else(|| AppError::NotFound(format!("No needle or hook with id {id}.")))?;
+    t.uses = tool_uses(conn)?.remove(id).unwrap_or_default();
+    Ok(t)
 }
 
 /// Stores a new tool. The input is expected to have been through
@@ -2594,6 +2605,67 @@ pub fn set_tool_project(conn: &Connection, id: &str, project_id: Option<&str>) -
 /// removes it from that project altogether -- it was moved or freed, not used
 /// to the end -- and putting it on one takes it off any other active one,
 /// since a needle is in one project at a time.
+/// Puts a tool on an active project, the whole of it or one tip of a pair of
+/// interchangeable tips ("right" or "left"). The whole takes it from every
+/// other active project. One tip takes it from one that has the whole, and
+/// shares it with one that has the other tip; a third is refused.
+fn place_tip(conn: &Connection, tool_id: &str, project_id: &str, tip: &str) -> AppResult<()> {
+    if tip.is_empty() {
+        place_tool(conn, tool_id, Some(project_id))?;
+        conn.execute("UPDATE project_tools SET tip = '' WHERE project_id = ?1 AND tool_id = ?2", params![project_id, tool_id])?;
+        return Ok(());
+    }
+    if tip != "right" && tip != "left" {
+        return Err(AppError::Message("A tip is the right one or the left one.".to_string()));
+    }
+    let kind: String = conn.query_row("SELECT kind FROM tools WHERE id = ?1", params![tool_id], |r| r.get(0))?;
+    if kind != "tips" {
+        return Err(AppError::Message("Only interchangeable tips are used one at a time.".to_string()));
+    }
+    let status: Option<String> = conn.query_row("SELECT status FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
+    match status.as_deref() {
+        None => return Err(AppError::Message("That project is no longer there.".to_string())),
+        Some(s) if is_live(s) => {}
+        Some(_) => return Err(AppError::Message("That project is finished or frogged, so nothing more can go on it.".to_string())),
+    }
+    // Off one that has the whole pair: it has one tip fewer now.
+    conn.execute(
+        "DELETE FROM project_tools WHERE tool_id = ?1 AND project_id <> ?2 AND tip = ''
+         AND project_id IN (SELECT id FROM projects WHERE status IN ('active', 'paused'))",
+        params![tool_id, project_id],
+    )?;
+    let others: Vec<String> = conn
+        .prepare(
+            "SELECT p.name FROM project_tools pt JOIN projects p ON p.id = pt.project_id
+             WHERE pt.tool_id = ?1 AND pt.project_id <> ?2 AND p.status IN ('active', 'paused')",
+        )?
+        .query_map(params![tool_id, project_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    if others.len() >= 2 {
+        return Err(AppError::Message(format!("Both its tips are in use already: on {} and {}.", others[0], others[1])));
+    }
+    conn.execute(
+        "INSERT INTO project_tools (project_id, tool_id, added_at, tip) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(project_id, tool_id) DO UPDATE SET tip = excluded.tip",
+        params![project_id, tool_id, now_ms(), tip],
+    )?;
+    Ok(())
+}
+
+/// Every active project each tool is on, and which tip, by tool.
+fn tool_uses(conn: &Connection) -> AppResult<std::collections::HashMap<String, Vec<crate::models::ToolUse>>> {
+    let mut stmt = conn.prepare(
+        "SELECT pt.tool_id, pt.project_id, p.name, pt.tip FROM project_tools pt JOIN projects p ON p.id = pt.project_id
+         WHERE p.status IN ('active', 'paused') ORDER BY pt.added_at, pt.rowid",
+    )?;
+    let mut out: std::collections::HashMap<String, Vec<crate::models::ToolUse>> = Default::default();
+    for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)))? {
+        let (tool, project_id, project_name, tip) = row?;
+        out.entry(tool).or_default().push(crate::models::ToolUse { project_id, project_name, tip });
+    }
+    Ok(out)
+}
+
 fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> AppResult<()> {
     if let Some(p) = project_id {
         let status: Option<String> = conn
@@ -2650,6 +2722,7 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
         person_id: row.get("person_id")?,
         person_name: row.get("person_name")?,
         tool_ids: Vec::new(),
+        tool_tips: Default::default(),
         yarns: Vec::new(),
         plan_when: row.get("plan_when")?,
         plan_date: row.get("plan_date")?,
@@ -2699,11 +2772,13 @@ const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_titl
 /// Fills in a project's tools and yarns.
 fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
     let mut stmt = conn.prepare(
-        "SELECT tool_id FROM project_tools WHERE project_id = ?1 ORDER BY added_at, rowid",
+        "SELECT tool_id, tip FROM project_tools WHERE project_id = ?1 ORDER BY added_at, rowid",
     )?;
-    project.tool_ids = stmt
-        .query_map(params![project.id], |r| r.get::<_, String>(0))?
+    let links: Vec<(String, String)> = stmt
+        .query_map(params![project.id], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
+    project.tool_tips = links.iter().filter(|(_, tip)| !tip.is_empty()).cloned().collect();
+    project.tool_ids = links.into_iter().map(|(id, _)| id).collect();
     let mut stmt = conn.prepare(
         "SELECT py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams, py.planned_grams
          FROM project_yarns py
@@ -2943,14 +3018,22 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
             params![id, tool],
         )?;
     }
-    for tool in input.tool_ids.iter().filter(|t| !current.contains(t)) {
+    for tool in &input.tool_ids {
+        let tip = input.tool_tips.get(tool).map(String::as_str).unwrap_or("");
+        let had: Option<String> = conn
+            .query_row("SELECT tip FROM project_tools WHERE project_id = ?1 AND tool_id = ?2", params![id, tool], |r| r.get(0))
+            .optional()?;
+        // On it already, as it is: nothing to do.
+        if had.as_deref() == Some(tip) {
+            continue;
+        }
         let found: Option<i64> = conn
             .query_row("SELECT 1 FROM tools WHERE id = ?1", params![tool], |r| r.get(0))
             .optional()?;
         if found.is_none() {
             return Err(AppError::Message("One of those needles or hooks is no longer there.".to_string()));
         }
-        place_tool(conn, tool, Some(id))?;
+        place_tip(conn, tool, id, tip)?;
     }
 
     let kept: Vec<&str> = input.yarns.iter().filter_map(|y| y.id.as_deref()).collect();

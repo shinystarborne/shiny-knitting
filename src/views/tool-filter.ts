@@ -11,8 +11,23 @@ import { CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "
 /** Whether a kind has a size in mm: a cable and an adapter have none. */
 export const hasSize = (kind: string): boolean => kind !== "cable" && kind !== "adapter";
 
-/** Whether a tool is free: on no active project. */
-export const isFree = (t: Tool): boolean => !t.projectId;
+/**
+ * How many of a pair of interchangeable tips are free: 2, 1 or 0. A project
+ * with the pair has both; one with a tip, one.
+ */
+export function tipsFree(t: Tool): number {
+  const uses = t.uses ?? [];
+  if (uses.some((u) => !u.tip)) return 0;
+  return Math.max(0, 2 - uses.length);
+}
+
+/** Whether a tool is free: on no active project, or for tips, one of them still free. */
+export const isFree = (t: Tool): boolean => (t.kind === "tips" ? tipsFree(t) > 0 : !t.projectId);
+
+/** "right tip", "left tip", or "" for the pair. */
+export function tipLabel(tip: string | undefined): string {
+  return tip === "right" ? "right tip" : tip === "left" ? "left tip" : "";
+}
 
 /**
  * Ticked boxes per group. Within a group they are OR (4 mm or 4.5 mm), and

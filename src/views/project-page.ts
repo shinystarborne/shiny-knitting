@@ -12,7 +12,7 @@ import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
 import { fromDateInput, toDateInput } from "./project-form";
-import { describe } from "./tool-filter";
+import { describe, tipLabel } from "./tool-filter";
 import { latestShoeSize, latestValue, measurementLabel, showLengthWithUnit } from "./measure";
 import { longDate } from "./project-form";
 
@@ -305,7 +305,7 @@ ${plan ? "" : `      <div class="project-side-dates">
 
       <div class="side-section">
         <h3>Needles, hooks &amp; cables</h3>
-        ${tools.length ? `<ul class="tool-list record">${tools.map((t) => `<li><span>${esc(describe(t))}</span></li>`).join("")}</ul>` : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`}
+        ${tools.length ? `<ul class="tool-list record">${tools.map((t) => `<li><span>${esc(describe(t))}${p.toolTips?.[t.id] ? ` — ${tipLabel(p.toolTips[t.id])}` : ""}</span></li>`).join("")}</ul>` : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`}
         <h3>Yarn</h3>
         ${
           p.yarns.length

@@ -677,14 +677,33 @@ function setOwner(id) {
   return s;
 }
 
-/** A stored tool as the backend returns it: the active project it is on joined in. */
+/** A stored tool as the backend returns it: the active projects it is on joined in, and which tip. */
 function toolOut(t) {
-  const link = store.projectTools.find(
-    (l) => l.toolId === t.id && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status),
-  );
-  const pr = link ? store.projects.find((x) => x.id === link.projectId) : null;
+  const links = store.projectTools.filter((l) => l.toolId === t.id && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status));
+  const uses = links.map((l) => ({ projectId: l.projectId, projectName: store.projects.find((x) => x.id === l.projectId)?.name ?? "", tip: l.tip ?? "" }));
   const { projectId: _ignored, ...rest } = t;
-  return clone({ ...rest, projectId: pr ? pr.id : null, projectName: pr ? pr.name : "" });
+  return clone({ ...rest, projectId: uses[0]?.projectId ?? null, projectName: uses[0]?.projectName ?? "", uses });
+}
+
+/** As db::place_tip: the whole takes it from every other active project; a tip shares it with one other tip. */
+function placeTip(toolId, projectId, tip) {
+  if (!tip) {
+    placeTool(toolId, projectId);
+    for (const l of store.projectTools) if (l.toolId === toolId && l.projectId === projectId) l.tip = "";
+    return;
+  }
+  if (tip !== "right" && tip !== "left") throw new Error("A tip is the right one or the left one.");
+  if (store.tools.find((t) => t.id === toolId)?.kind !== "tips") throw new Error("Only interchangeable tips are used one at a time.");
+  const pr = store.projects.find((x) => x.id === projectId);
+  if (!pr) throw new Error("That project is no longer there.");
+  if (!isLive(pr.status)) throw new Error("That project is finished or frogged, so nothing more can go on it.");
+  const live = (l) => isLive(store.projects.find((x) => x.id === l.projectId)?.status);
+  store.projectTools = store.projectTools.filter((l) => !(l.toolId === toolId && l.projectId !== projectId && !l.tip && live(l)));
+  const others = store.projectTools.filter((l) => l.toolId === toolId && l.projectId !== projectId && live(l));
+  if (others.length >= 2) throw new Error(`Both its tips are in use already: on ${others.map((l) => store.projects.find((x) => x.id === l.projectId)?.name).join(" and ")}.`);
+  const mine = store.projectTools.find((l) => l.toolId === toolId && l.projectId === projectId);
+  if (mine) mine.tip = tip;
+  else store.projectTools.push({ projectId, toolId, addedAt: Date.now(), releasedAt: null, tip });
 }
 
 /** `place_tool`: on an active project (off any other), or free with null. */
@@ -871,6 +890,7 @@ function projectOut(pr) {
     personId: store.people.some((p) => p.id === pr.personId) ? pr.personId : null,
     personName: store.people.find((p) => p.id === pr.personId)?.name ?? "",
     toolIds: store.projectTools.filter((l) => l.projectId === pr.id).map((l) => l.toolId),
+    toolTips: Object.fromEntries(store.projectTools.filter((l) => l.projectId === pr.id && l.tip).map((l) => [l.toolId, l.tip])),
     yarns: store.projectYarns
       .filter((e) => e.projectId === pr.id)
       .map((e) => {
@@ -894,8 +914,11 @@ function syncLinks(id, input) {
   const want = [...new Set((input.toolIds || []).filter(Boolean))];
   store.projectTools = store.projectTools.filter((l) => l.projectId !== id || want.includes(l.toolId));
   for (const toolId of want) {
+    const tip = (input.toolTips || {})[toolId] || "";
+    const had = store.projectTools.find((l) => l.projectId === id && l.toolId === toolId);
+    if (had && (had.tip ?? "") === tip) continue;
     if (!store.tools.some((t) => t.id === toolId)) throw new Error("One of those needles or hooks is no longer there.");
-    placeTool(toolId, id);
+    placeTip(toolId, id, tip);
   }
   const keep = (input.yarns || []).map((y) => y.id).filter(Boolean);
   store.projectYarns = store.projectYarns.filter((e) => e.projectId !== id || keep.includes(e.id));

@@ -5,7 +5,7 @@ import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { longDate } from "./project-form";
-import { describe } from "./tool-filter";
+import { describe, tipLabel } from "./tool-filter";
 
 /**
  * The finished gallery: every finished project, by itself, with its photos --
@@ -95,7 +95,7 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
       const left = y.leftoverGrams == null ? "" : y.leftoverGrams === 0 ? " · used up" : ` · ${y.leftoverGrams} g left`;
       return `<li>${esc(`${y.yarnName}${colourway ? ` · ${colourway}` : ""}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}`)}<em>${esc(left)}</em></li>`;
     });
-    const toolLines = p.toolIds.map((id) => tools.find((t) => t.id === id)).filter((t): t is Tool => !!t).map((t) => `<li>${esc(describe(t))}</li>`);
+    const toolLines = p.toolIds.map((id) => tools.find((t) => t.id === id)).filter((t): t is Tool => !!t).map((t) => `<li>${esc(describe(t))}${p.toolTips?.[t.id] ? ` — ${tipLabel(p.toolTips[t.id])}` : ""}</li>`);
     const written = log.filter((e) => e.text.trim());
     return `
       <p class="gallery-dates">Finished ${esc(longDate(p.finishedAt ?? p.startedAt))} · started ${esc(longDate(p.startedAt))}</p>

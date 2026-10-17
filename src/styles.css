@@ -3995,3 +3995,5 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 /* The pattern a masterclass goes with: the picker, and Open beside it. */
 .mc-pattern-row { display: flex; gap: 8px; align-items: flex-start; }
 .mc-pattern-row > [data-el="mc-pattern"] { flex: 1; min-width: 0; }
+/* A tool on more than one project: a pair of tips, a tip each. */
+.tool-use-one { display: block; }

@@ -3609,6 +3609,40 @@ fn a_masterclass_kept_as_one_video_is_that_video() {
 }
 
 #[test]
+fn a_pair_of_tips_is_shared_a_tip_each() {
+    use crate::models::{ProjectInput, ToolInput};
+    let conn = test_db();
+    insert_tool(&conn, "t5", &ToolInput { kind: "tips".into(), size_mm: 5.0, ..Default::default() }).unwrap();
+    insert_tool(&conn, "hook", &ToolInput { kind: "hook".into(), size_mm: 5.0, ..Default::default() }).unwrap();
+    let project = |id: &str, tip: Option<&str>| ProjectInput {
+        name: id.into(),
+        tool_ids: vec!["t5".into()],
+        tool_tips: tip.map(|t| [("t5".to_string(), t.to_string())].into_iter().collect()).unwrap_or_default(),
+        ..Default::default()
+    };
+    let uses = |conn: &Connection| get_tool(conn, "t5").unwrap().uses.iter().map(|u| format!("{}:{}", u.project_id, u.tip)).collect::<Vec<_>>().join(" ");
+
+    insert_project(&conn, "a", &project("a", None)).unwrap();
+    assert_eq!(uses(&conn), "a:", "the pair");
+    // A tip of it for another: the first has it no more, as a pair.
+    let b = insert_project(&conn, "b", &project("b", Some("right"))).unwrap();
+    assert_eq!(uses(&conn), "b:right");
+    assert_eq!(b.tool_tips.get("t5").map(String::as_str), Some("right"));
+    // The other tip for a third: they share it.
+    insert_project(&conn, "c", &project("c", Some("left"))).unwrap();
+    assert_eq!(uses(&conn), "b:right c:left");
+    // A fourth wanting a tip: both are in use.
+    let err = insert_project(&conn, "d", &project("d", Some("right"))).unwrap_err().to_string();
+    assert!(err.contains("Both its tips are in use already: on b and c"), "{err}");
+    // The pair taken back: from both.
+    update_project(&conn, "a", &project("a", None)).unwrap();
+    assert_eq!(uses(&conn), "a:");
+    // One tip of a hook is not a thing.
+    let hook = ProjectInput { name: "h".into(), tool_ids: vec!["hook".into()], tool_tips: [("hook".to_string(), "left".to_string())].into_iter().collect(), ..Default::default() };
+    assert!(insert_project(&conn, "h", &hook).is_err());
+}
+
+#[test]
 fn a_project_says_the_size_knitted() {
     let conn = test_db();
     let p = insert_project(&conn, "pr-size", &crate::models::ProjectInput { name: "Cardigan".into(), ..Default::default() }).unwrap();

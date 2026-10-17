@@ -1,5 +1,5 @@
 import type { Tool } from "../api";
-import { describe, fitOnProject, isFree, kindLabel, projectName } from "./tool-filter";
+import { describe, fitOnProject, isFree, kindLabel, projectName, tipsFree } from "./tool-filter";
 
 /**
  * Choosing a project's needles and hooks: the ones on it, each with ✕, and a
@@ -19,11 +19,14 @@ export class ToolPicker {
   private host: HTMLElement;
   private onAdd: (id: string) => void;
   private onRemove: (id: string) => void;
+  /** Interchangeable tips on it: the pair (""), or the right or left tip only. */
+  private onTip: (id: string, tip: "" | "right" | "left") => void;
 
-  constructor(host: HTMLElement, onAdd: (id: string) => void, onRemove: (id: string) => void) {
+  constructor(host: HTMLElement, onAdd: (id: string) => void, onRemove: (id: string) => void, onTip: (id: string, tip: "" | "right" | "left") => void = () => {}) {
     this.host = host;
     this.onAdd = onAdd;
     this.onRemove = onRemove;
+    this.onTip = onTip;
     host.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-act]");
       if (!btn || !host.contains(btn)) return;
@@ -39,6 +42,7 @@ export class ToolPicker {
     });
     host.addEventListener("change", (e) => {
       const select = e.target as HTMLSelectElement;
+      if (select.dataset.tip !== undefined) return this.onTip(select.dataset.tip, select.value as "" | "right" | "left");
       if (select.dataset.el !== "tool-add") return;
       const use = host.querySelector<HTMLButtonElement>('[data-act="tool-use"]');
       if (use) use.disabled = !select.value;
@@ -50,7 +54,7 @@ export class ToolPicker {
    * on another project by their own `patternId` and `project`, so a caller
    * that has not saved yet passes copies showing what they will be.
    */
-  render(tools: Tool[], chosen: Set<string>, emptyHint: string): void {
+  render(tools: Tool[], chosen: Set<string>, emptyHint: string, tips: Map<string, string> = new Map()): void {
     const mine = tools.filter((t) => chosen.has(t.id));
     // Tips the project's cable does not take, or a cable its tips do not, are not offered.
     const others = tools.filter((t) => !chosen.has(t.id));
@@ -70,7 +74,9 @@ export class ToolPicker {
       // Said when it only fits through an adapter, and whether that is on it yet.
       const via = fit.get(t.id)?.via;
       const through = via ? `with the ${describe(via).replace(/^Adapter/, "adapter")}${chosen.has(via.id) ? "" : ": add it too"}` : "";
-      const notes = [note, through].filter(Boolean).join("; ");
+      // A pair with one tip on another project: the other is free.
+      const half = t.kind === "tips" && tipsFree(t) === 1 && !chosen.has(t.id) ? `one tip free, the other on ${t.uses.find((u) => u.projectId)?.projectName ?? "a project"}` : "";
+      const notes = [note, half, through].filter(Boolean).join("; ");
       return `<option value="${t.id}">${escapeHtml(describe(t))}${notes ? ` — ${escapeHtml(notes)}` : ""}</option>`;
     };
     this.host.innerHTML = `
@@ -81,6 +87,13 @@ export class ToolPicker {
                 (t) => `
                 <li>
                   <span>${escapeHtml(describe(t))}</span>
+                  ${
+                    t.kind === "tips"
+                      ? `<select data-tip="${t.id}" aria-label="Both tips, or one" title="Both tips, or only one: the other stays free for another project">
+                          ${(["", "right", "left"] as const).map((v) => `<option value="${v}" ${(tips.get(t.id) ?? "") === v ? "selected" : ""}>${v === "" ? "Both tips" : v === "right" ? "Right tip only" : "Left tip only"}</option>`).join("")}
+                        </select>`
+                      : ""
+                  }
                   <button type="button" class="ghost" data-act="tool-free" data-id="${t.id}"
                     title="Take it off this project; it goes back to free">✕</button>
                 </li>`,

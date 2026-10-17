@@ -11,6 +11,8 @@ import {
   materialLabel,
   measurements,
   projectName,
+  tipLabel,
+  tipsFree,
   toolFacets,
   type Facet,
   type ToolFilter,
@@ -204,12 +206,16 @@ function cardHtml(t: Tool): string {
   const free = isFree(t);
   const dims = measurements(t);
   const make = [t.brand, t.material ? materialLabel(t.material) : ""].filter(Boolean).join(" · ");
-  const project = projectName(t);
-  const use = free
-    ? `<span class="pill tool-free">Free</span>`
-    : `<span class="tool-use-label">On</span>
-       <button class="link tool-project" data-act="open-project" data-project="${escapeHtml(t.projectId ?? "")}"
-         title="Open this project">${escapeHtml(project)}</button>`;
+  // Every project it is on: a pair of tips can be on two, a tip each.
+  const uses = t.uses?.length ? t.uses : t.projectId ? [{ projectId: t.projectId, projectName: projectName(t), tip: "" }] : [];
+  const on = uses
+    .map(
+      (u) => `<span class="tool-use-one"><span class="tool-use-label">On</span>
+       <button class="link tool-project" data-act="open-project" data-project="${escapeHtml(u.projectId)}"
+         title="Open this project">${escapeHtml(u.projectName || "A project")}</button>${u.tip ? ` <span class="hint">${escapeHtml(tipLabel(u.tip))}</span>` : ""}</span>`,
+    )
+    .join("");
+  const use = !uses.length ? `<span class="pill tool-free">Free</span>` : `${on}${t.kind === "tips" && tipsFree(t) === 1 ? `<span class="pill tool-free">One tip free</span>` : ""}`;
   return `
     <article class="tool-card${free ? " free" : " in-use"}" data-open="${t.id}" title="${escapeHtml(t.notes)}">
       <div class="tool-head">
@@ -220,7 +226,7 @@ function cardHtml(t: Tool): string {
       <p class="tool-make">${make ? escapeHtml(make) : "No brand"}</p>
       <div class="tool-use">${use}</div>
       <div class="card-tools-row">
-        ${free ? "" : `<button class="card-remove tool-free-btn" data-act="free" data-id="${t.id}" title="Take it off this project">Free it</button>`}
+        ${uses.length ? `<button class="card-remove tool-free-btn" data-act="free" data-id="${t.id}" title="Take it off ${uses.length > 1 ? "both projects" : "this project"}">Free it</button>` : ""}
         <button class="card-remove" data-act="remove" data-id="${t.id}" title="Remove this from your box">Remove</button>
       </div>
     </article>`;

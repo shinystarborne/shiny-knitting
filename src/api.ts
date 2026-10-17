@@ -676,9 +676,18 @@ export interface Tool {
   projectName: string;
   notes: string;
   addedAt: number;
+  /** Every active project it is on, and which tip: interchangeable tips can be on two, one tip each. */
+  uses: ToolUse[];
 }
 
-export type ToolInput = Omit<Tool, "id" | "projectName" | "addedAt">;
+/** A tool on an active project: the pair ("" tip), or one tip of it. Mirrors `models.rs::ToolUse`. */
+export interface ToolUse {
+  projectId: string;
+  projectName: string;
+  tip: "" | "right" | "left";
+}
+
+export type ToolInput = Omit<Tool, "id" | "projectName" | "addedAt" | "uses">;
 
 // ---------- projects ----------
 
@@ -739,6 +748,8 @@ export interface Project {
   personName: string;
   /** While active, the tools in use on it; once finished, those it used. */
   toolIds: string[];
+  /** The interchangeable tips it has one of, by the tool's id. */
+  toolTips: Record<string, "right" | "left">;
   yarns: ProjectYarn[];
   /** A plan's time as said ("autumn"); empty when none. */
   planWhen: string;
@@ -807,6 +818,8 @@ export interface ProjectInput {
   patternId: string | null;
   notes: string;
   startedAt: number | null;
+  /** The interchangeable tips it takes one of, by the tool's id; the rest are the whole thing. */
+  toolTips?: Record<string, "right" | "left">;
   /** Kept only once finished; an active project has no end yet. */
   finishedAt?: number | null;
   toolIds: string[];
