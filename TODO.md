@@ -393,6 +393,12 @@ round one). Which heels exactly is to be settled before building.
   pointer or the element instead.
 - **Click handlers go most specific first.** The card's Remove button has to be
   checked before the card itself, or Remove opens the pattern.
+- **A backdrop closes a dialog only on a click that began on it** (`clickedOn`
+  in `dom.ts`). A click's target is the nearest element both the press and
+  the release were in, so a press inside the dialog let go on the backdrop
+  -- a list that closes under the pointer as it is picked from -- is a
+  "click" on the backdrop. That closed the add-a-video dialog as a pattern
+  was picked.
 - **A dialog must own the keyboard.** Use one document listener and a stack,
   and `stopImmediatePropagation`: plain `stopPropagation` let Escape close a
   dialog and leave the pattern too.
