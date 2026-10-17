@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **Describing with a model fails on some patterns**: the model uses its
-  whole reply on reasoning and returns no answer. See below.
 - [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
   from a person's foot and a swatch. **Decide first:** which heels. See
   below.
@@ -32,14 +30,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### Describing with a model fails on some patterns
-
-The reply is capped at 4000 tokens (`ai/openai_compat.rs`). A reasoning
-model can spend all of it thinking about a long pattern and answer with
-nothing, and the run shows an error. To do: send less of a long pattern,
-ask again once with more room (or less reasoning) when the reply comes
-back empty, and in a run over the library, note the pattern and go on.
 
 ### Pictures opened big
 
@@ -115,7 +105,13 @@ round one). Which heels exactly is to be settled before building.
   Find it….
 - **Describing with a model:** off unless switched on; a robot icon; only the
   first pages are sent; a run over the library keeps going in the background,
-  behind a panel that minimises and closes.
+  behind a panel that minimises and closes. A reasoning model that thinks
+  through its whole reply (or is cut off) is asked again, lighter: 8000
+  tokens first (4000 from a server that cannot), then 12000 with a low
+  effort, `chat_template_kwargs.enable_thinking: false` (left out for a
+  server that refuses it), `/no_think`, and half the excerpt or pages;
+  `<think>` in a reply is left out (ai::complete, openai_compat::Attempt).
+  Checked against a stand-in server only. *0.3.89*
 - **Reading:** PDF and EPUB, zoom (remembered per pattern), turning a page,
   contents, bookmarks, search, links, highlight line, row counter with named
   counters and your own keys, highlights, notes, drawings, pins (brought to
@@ -423,4 +419,6 @@ round one). Which heels exactly is to be settled before building.
   a beta label. The update check reads the version from the installer's file
   name, not the tag.
 - The model server at `gen2.zeroval.eu` returned **502 for every request** as
-  of 26 Sep 2026, so the model path could not be checked live.
+  of 26 Sep 2026, and **530** on 17 Oct 2026, so the model path could not be
+  checked live. `cargo test reaches_a_live -- --ignored` checks it, the
+  lighter second ask included, once it answers.
