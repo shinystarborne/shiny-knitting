@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.97](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.97)** —
+  how much yarn it will take, in the calculators, checked against the stash. The one to test.
 - **[v0.3.0-beta.96](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.96)** —
-  your hour's worth per project: the standard shown, typed over for one project. The one to test.
+  your hour's worth per project: the standard shown, typed over for one project. Superseded by `beta.97`.
 - **[v0.3.0-beta.95](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.95)** —
   what a project really costs: your hour's worth, in Settings, added to its cost. Superseded by `beta.96`.
 - **[v0.3.0-beta.94](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.94)** —

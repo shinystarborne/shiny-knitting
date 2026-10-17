@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **How much yarn it will take**: the calculators' metres and grams
-  from the swatch, checked against the stash. See below.
 - [ ] **Restoring a backup**: reading a backup back in (from the ideas).
   See below.
 - [ ] **Abbreviations explained**: ssk, m1l, w&t and the like, explained
@@ -36,13 +34,6 @@ under the list.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### How much yarn
-
-The raglan, round yoke and socks say about how much yarn: the stitches
-knitted, by the swatch's metres (a swatch weighed, or its yarn's metres per
-gram), with a margin. Then the stash: which yarns of that weight have
-enough, and how far short the others are, in balls.
 
 ### Restoring a backup
 
@@ -354,6 +345,11 @@ calculators.
   setting hour_rate), and a project's real cost with its time at it. *0.3.95*
   A project's own hour's worth over the standard (projects.hour_rate, null
   for the standard, which is always shown). *0.3.96*
+- **How much yarn:** the raglan, cardigan, round yoke and socks say the
+  metres by the gauge (a stitch's yarn by Munden's constants, the fabric
+  from the garment's shape), a tenth to spare; in the swatch's own yarn,
+  grams and balls; and the stash's yarns of the weight, enough or how many
+  balls short (views/yarn-need.ts). *0.3.97*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
