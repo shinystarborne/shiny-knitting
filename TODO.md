@@ -352,6 +352,8 @@ calculators.
   project), and the hours of the last 12 months in Statistics
   (views/knit-time.ts). *0.3.94* What your hour is worth (Settings, Prices;
   setting hour_rate), and a project's real cost with its time at it. *0.3.95*
+  A project's own hour's worth over the standard (projects.hour_rate, null
+  for the standard, which is always shown). *0.3.96*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
