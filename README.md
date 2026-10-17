@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.95](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.95)** —
+  what a project really costs: your hour's worth, in Settings, added to its cost. The one to test.
 - **[v0.3.0-beta.94](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.94)** —
-  a timer for your knitting: on a project's page and in the tab bar, with the hours in Statistics. The one to test.
+  a timer for your knitting: on a project's page and in the tab bar, with the hours in Statistics. Superseded by `beta.95`.
 - **[v0.3.0-beta.93](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.93)** —
   your size marked in a pattern, the other sizes dimmed. Superseded by `beta.94`.
 - **[v0.3.0-beta.92](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.92)** —

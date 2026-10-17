@@ -350,7 +350,8 @@ calculators.
   clock, Add time by hand, the sittings to change or remove, the total, what
   it came to an hour), in the tab bar while one runs (⏱, opening its
   project), and the hours of the last 12 months in Statistics
-  (views/knit-time.ts). *0.3.94*
+  (views/knit-time.ts). *0.3.94* What your hour is worth (Settings, Prices;
+  setting hour_rate), and a project's real cost with its time at it. *0.3.95*
 - **Inspiration:** named boards of pictures, patterns, yarn, links, colours and
   notes.
 - **Wishlist:** yarn, needles & hooks, patterns and anything else to get, with
