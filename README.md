@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.83](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.83)** —
+  interchangeable tips on a project: both, or one tip, the other free for another. The one to test.
 - **[v0.3.0-beta.82](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.82)** —
-  one tip of a pair on a project: the right or the left, the other free for another. The one to test.
+  one tip of a pair on a project: the right or the left, the other free for another. Superseded by `beta.83`.
 - **[v0.3.0-beta.81](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.81)** —
   a masterclass's pattern at its top, to choose or change any time, and shown in the list. Superseded by `beta.82`.
 - **[v0.3.0-beta.80](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.80)** —

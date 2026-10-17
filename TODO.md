@@ -223,7 +223,8 @@ round one). Which heels exactly is to be settled before building.
   *0.3.74* Adapters (kind "adapter": tip end cable_size, cable end
   adapter_to): tips and a cable of two sizes offered through one, the
   project's or one owned, naming it (adapterFor). *0.3.75* One tip of a
-  pair on a project (project_tools.tip: right or left), the other free for
+  pair on a project (project_tools.tip: "one"; right and left, once, are
+  one), the other free for
   another: a pair on two projects, a tip each (place_tip; Tool.uses).
   *0.3.82*
 - **Project log:** a diary on each project's page (Board | Log), the newest
