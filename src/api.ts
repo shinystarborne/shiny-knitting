@@ -771,6 +771,51 @@ export interface Project {
   masterclassTitle: string;
 }
 
+/** Whether Ravelry's API can be used, and as whom. Mirrors `ravelry.rs::RavelryAccount`. */
+export interface RavelryAccount {
+  connected: boolean;
+  username: string;
+}
+
+/** A Ravelry search: words, craft ("knitting", "crochet" or "" for any), free only, order ("", "popular", "date"), page. */
+export interface RavelryQuery {
+  query: string;
+  craft?: string;
+  free?: boolean;
+  sort?: string;
+  page?: number;
+}
+
+/** A pattern as Ravelry's search lists it. Mirrors `ravelry.rs::RavelryPattern`. */
+export interface RavelryPattern {
+  id: number;
+  name: string;
+  designer: string;
+  url: string;
+  photo: string;
+  free: boolean;
+}
+
+export interface RavelrySearch {
+  patterns: RavelryPattern[];
+  page: number;
+  pages: number;
+  results: number;
+}
+
+/** One pattern on Ravelry, as much as is said of it. Mirrors `ravelry.rs::RavelryPatternDetail`. */
+export interface RavelryPatternDetail extends Omit<RavelryPattern, "photo"> {
+  photos: string[];
+  price: string;
+  craft: string;
+  yarnWeight: string;
+  yardage: string;
+  needles: string;
+  gauge: string;
+  categories: string[];
+  notes: string;
+}
+
 /** Something kept to learn from, as its videos in order. Mirrors `models.rs::Masterclass`. */
 export interface Masterclass {
   id: string;
@@ -1430,6 +1475,13 @@ export const api = {
   setProjectSize: (id: string, size: string) => invoke<Project>("set_project_size", { id, size }),
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
+  /** Whether Ravelry's API can be used, and as whom. */
+  ravelryAccount: () => invoke<RavelryAccount>("ravelry_account"),
+  /** Keeps a personal API key, once Ravelry has said whose it is. */
+  connectRavelry: (access: string, personal: string) => invoke<RavelryAccount>("connect_ravelry", { access, personal }),
+  disconnectRavelry: () => invoke<void>("disconnect_ravelry"),
+  searchRavelry: (query: RavelryQuery) => invoke<RavelrySearch>("search_ravelry", { query }),
+  ravelryPattern: (id: number) => invoke<RavelryPatternDetail>("ravelry_pattern", { id }),
   /** A YouTube link asks YouTube for its title, channel and picture; any other is kept as it is. */
   addMasterclass: (input: { url: string; title?: string; notes?: string; patternId?: string }) => invoke<Masterclass>("add_masterclass", { input }),
   updateMasterclass: (masterclass: Masterclass) => invoke<Masterclass>("update_masterclass", { masterclass }),

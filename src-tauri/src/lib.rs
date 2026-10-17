@@ -15,6 +15,7 @@ mod needle_size;
 mod people;
 mod state;
 mod projects;
+mod ravelry;
 mod shopping;
 mod swatches;
 mod tools;
@@ -142,6 +143,11 @@ pub fn run() {
             projects::set_project_gallery,
             projects::set_project_size,
             projects::set_project_masterclass,
+            ravelry::ravelry_account,
+            ravelry::connect_ravelry,
+            ravelry::disconnect_ravelry,
+            ravelry::search_ravelry,
+            ravelry::ravelry_pattern,
             masterclasses::list_masterclasses,
             masterclasses::add_masterclass,
             masterclasses::add_masterclass_part,

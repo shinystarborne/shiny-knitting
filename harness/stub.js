@@ -848,6 +848,16 @@ function stubVideo(typedUrl, typedTitle) {
     addedAt: Date.now(),
   };
 }
+/** Ravelry's patterns, as the stub has them: thirty, three of them named. */
+function ravelryPatterns() {
+  const named = [
+    { id: 1, name: "Riddari", designer: "Védís Jónsdóttir", free: false },
+    { id: 2, name: "Afmæli - Anniversary", designer: "Védís Jónsdóttir", free: true },
+    { id: 3, name: "Hitchhiker", designer: "Martina Behm", free: false },
+  ];
+  const more = Array.from({ length: 27 }, (_, i) => ({ id: 100 + i, name: `Lopapeysa no. ${i + 1}`, designer: "A designer", free: i % 3 === 0 }));
+  return [...named, ...more].map((p) => ({ ...p, url: `https://www.ravelry.com/patterns/library/${p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, photo: "" }));
+}
 function findMasterclass(id) {
   const m = store.masterclasses.find((x) => x.id === id);
   if (!m) throw new Error("That masterclass is no longer there.");
@@ -1513,6 +1523,36 @@ const handlers = {
   // ---------- opening outside the app ----------
   //
   // Recorded rather than opened, so a test can see what would have been.
+  // ---------- Ravelry ----------
+  //
+  // As ravelry.rs, with a Ravelry of its own: a key whose access part is
+  // "refused" is not accepted; a search finds by name or designer among a
+  // few patterns, twenty-four to a page, the free ones alone when asked.
+  ravelry_account: () => ({ connected: !!store.ravelryKey, username: store.ravelryKey?.username ?? "" }),
+  connect_ravelry: ({ access, personal }) => {
+    if (!String(access ?? "").trim() || !String(personal ?? "").trim()) throw new Error("Paste both parts of the key: the access key and the personal key.");
+    if (String(access).trim() === "refused") throw new Error("Ravelry didn't accept the key. Check it, and paste it again in the Ravelry tab.");
+    store.ravelryKey = { username: "shinyknits" };
+    return { connected: true, username: "shinyknits" };
+  },
+  disconnect_ravelry: () => {
+    store.ravelryKey = null;
+  },
+  search_ravelry: ({ query }) => {
+    if (!store.ravelryKey) throw new Error("Connect your Ravelry account first: paste your personal API key in the Ravelry tab.");
+    const all = ravelryPatterns();
+    const words = String(query.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+    const found = all.filter((p) => words.every((w) => `${p.name} ${p.designer}`.toLowerCase().includes(w)) && (!query.free || p.free));
+    const page = Math.max(1, query.page ?? 1);
+    const pages = Math.max(1, Math.ceil(found.length / 24));
+    return clone({ patterns: found.slice((page - 1) * 24, page * 24), page, pages, results: found.length });
+  },
+  ravelry_pattern: ({ id }) => {
+    const p = ravelryPatterns().find((x) => x.id === id);
+    if (!p) throw new Error("Ravelry has no such pattern.");
+    return clone({ ...p, photos: p.photo ? [p.photo] : [], price: p.free ? "" : "6.00 EUR", craft: "Knitting", yarnWeight: "Aran", yardage: "1200–1500 yards", needles: "US 6 - 4.0 mm, US 8 - 5.0 mm", gauge: "18 sts and 24 rows = 10 cm", categories: ["Pullover"], notes: "Knitted bottom up, the yoke in the round." });
+  },
+
   // ---------- masterclasses ----------
   //
   // As masterclasses.rs, without asking YouTube: a YouTube link is named

@@ -9,7 +9,8 @@ const NO_SHOP = "";
 const NEW_SHOP = "__new__";
 
 /** What a wish can be started with, from wherever it is added. */
-export type WishTemplate = Partial<Pick<WishInput, "kind" | "shopId" | "projectId">>;
+/** What a new wish starts with: its kind, shop or project, or a link to read the rest from, and what is known of it already. */
+export type WishTemplate = Partial<Pick<WishInput, "kind" | "shopId" | "projectId" | "url" | "name" | "brand" | "price">>;
 
 /**
  * The add/edit dialog for something on the wishlist.
@@ -68,7 +69,7 @@ export class WishForm {
         <label class="field">
           <span>Link</span>
           <div class="wish-link-row">
-            <input data-f="url" value="${escapeAttr(e?.url ?? "")}" placeholder="Paste the page from the shop: the rest fills itself in" autocomplete="off" spellcheck="false" />
+            <input data-f="url" value="${escapeAttr(e?.url ?? this.template.url ?? "")}" placeholder="Paste the page from the shop: the rest fills itself in" autocomplete="off" spellcheck="false" />
             <button class="ghost" type="button" data-act="fetch" title="Read the name, brand, price and picture from the page">Fetch details</button>
           </div>
           <span class="hint" data-el="fetch-status" hidden></span>
@@ -93,13 +94,13 @@ export class WishForm {
               </label>
               <label class="field">
                 <span>What</span>
-                <input data-f="name" value="${escapeAttr(e?.name ?? "")}" placeholder="e.g. Alpaca, light grey mix" />
+                <input data-f="name" value="${escapeAttr(e?.name ?? this.template.name ?? "")}" placeholder="e.g. Alpaca, light grey mix" />
               </label>
             </div>
             <div class="field-row wish-three">
               <label class="field">
                 <span>Brand</span>
-                <input data-f="brand" value="${escapeAttr(e?.brand ?? "")}" placeholder="e.g. DROPS" />
+                <input data-f="brand" value="${escapeAttr(e?.brand ?? this.template.brand ?? "")}" placeholder="e.g. DROPS" />
               </label>
               <label class="field">
                 <span>How much</span>
@@ -107,7 +108,7 @@ export class WishForm {
               </label>
               <label class="field">
                 <span>Price</span>
-                <input data-f="price" value="${escapeAttr(e?.price ?? "")}" placeholder="e.g. €3.95 a ball" />
+                <input data-f="price" value="${escapeAttr(e?.price ?? this.template.price ?? "")}" placeholder="e.g. €3.95 a ball" />
               </label>
             </div>
           </div>
@@ -153,6 +154,11 @@ export class WishForm {
     // A pasted link is read at once; a typed one when it is left.
     url.addEventListener("paste", () => window.setTimeout(() => void this.fetchDetails(false), 0));
     url.addEventListener("change", () => void this.fetchDetails(false));
+    // Started from a link (Ravelry's page): read it at once.
+    if (!e && this.template.url) {
+      this.shopFromLink();
+      void this.fetchDetails(false);
+    }
     this.bindPhotoBox();
     void this.paintPhoto();
     (e ? this.field("name") : url).focus();
