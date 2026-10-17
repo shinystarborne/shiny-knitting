@@ -8,12 +8,14 @@ import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, show
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
 import { familyByMetres } from "./yarn-weight";
+import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
 
-type Calc = "raglan" | "yoke" | "size" | "evenly" | "regauge" | "held" | "charts";
+type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "raglan", label: "Raglan sweater", hint: "Top-down, bottom-up, or a cardigan" },
   { key: "yoke", label: "Round yoke (lopapeysa)", hint: "Top-down, in the round" },
+  { key: "socks", label: "Socks", hint: "Cuff-down or toe-up, with the heel you like" },
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
   { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
@@ -43,6 +45,15 @@ const RAGLAN_FIELDS: { key: keyof RaglanInput; label: string; hint?: string; fro
   { key: "armLength", label: "Arm length", hint: "Underarm to wrist, cuff included", from: "arm_length" },
   { key: "bodyLength", label: "Body length", hint: "Underarm to hem, hem rib included", start: 35 },
 ];
+/** The socks' fields a person's measurements fill. */
+const SOCK_FIELDS: { key: string; label: string; hint?: string; from?: string; start?: number }[] = [
+  { key: "footAround", label: "Foot", hint: "Around the ball of the foot, where it is widest", from: "foot_around" },
+  { key: "footLength", label: "Foot length", hint: "From the back of the heel to the longest toe", from: "foot_length" },
+];
+
+/** A heel that is worked one way only, and its fellow the other way. */
+const HEEL_OTHER_WAY: Partial<Record<HeelKey, HeelKey>> = { flap: "gusset-up", "gusset-up": "flap" };
+
 /** The ribs a garment's counts are fitted to, by the stitches in a repeat. */
 const RIBS = [
   { sts: 2, label: "1x1 (k1, p1)" },
@@ -239,6 +250,7 @@ export class CalculatorsView {
     kept.calc = calc;
     for (const b of this.root.querySelectorAll<HTMLElement>(".calc-pick")) b.classList.toggle("on", b.dataset.calc === calc);
     if (calc === "raglan" || calc === "yoke") this.main.innerHTML = this.garmentForm(calc);
+    if (calc === "socks") this.main.innerHTML = this.sockForm();
     if (calc === "size") this.main.innerHTML = this.sizeForm();
     if (calc === "evenly") this.main.innerHTML = this.evenlyForm();
     if (calc === "regauge") this.main.innerHTML = this.regaugeForm();
@@ -321,6 +333,61 @@ export class CalculatorsView {
             <select data-k="rib">${RIBS.map((r) => `<option value="${r.sts}" ${String(r.sts) === (kept.values.rib ?? "2") ? "selected" : ""}>${r.label}</option>`).join("")}</select>
           </label>
           <div class="calc-fields">${EASE_FIELDS.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+        </section>
+        <section class="calc-results" data-el="results"></section>
+      </div>`;
+  }
+
+  /** The socks' form: which way, the foot, the gauge, the heel and toe, the leg. */
+  private sockForm(): string {
+    const dir: SockDirection = kept.values.sockDir === "up" ? "up" : "down";
+    const heels = HEELS.filter((h) => h.ways.includes(dir));
+    const heel = heels.find((h) => h.key === kept.values.sockHeel) ?? heels[0];
+    kept.values.sockHeel = heel.key;
+    const toe = kept.values.sockToe ?? "wedge";
+    return `
+      <div class="calc-grid">
+        <section class="calc-inputs">
+          <h2>Socks <span class="hint">${dir === "up" ? "toe-up" : "cuff-down"}, in the round</span></h2>
+          <label class="field">
+            <span>Worked</span>
+            <select data-k="sockDir">
+              <option value="down" ${dir === "down" ? "selected" : ""}>Cuff-down: from the cuff to the toe</option>
+              <option value="up" ${dir === "up" ? "selected" : ""}>Toe-up: from the toe to the cuff</option>
+            </select>
+          </label>
+          <label class="field" title="Someone in People: their foot fills the measurements below">
+            <span>For</span>
+            <select data-k="person">
+              <option value="">Measurements typed in</option>
+              ${this.people.map((p) => `<option value="${esc(p.id)}" ${kept.values.person === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
+            </select>
+          </label>
+          <p class="hint calc-person-note" data-el="person-note">${esc(this.personNote())}</p>
+          ${this.gaugeBlock()}
+          <h3>The foot</h3>
+          <div class="calc-fields">${SOCK_FIELDS.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+          <div class="calc-person-save">
+            <button class="ghost" data-act="save-measurements" title="Keep the foot in People, dated today: for the person chosen, or someone new">Save to People…</button>
+            <span class="hint" data-el="people-saved"></span>
+          </div>
+          <h3>The sock</h3>
+          <label class="field">
+            <span>Heel</span>
+            <select data-k="sockHeel">${heels.map((h) => `<option value="${h.key}" ${h.key === heel.key ? "selected" : ""}>${esc(h.label)}</option>`).join("")}</select>
+          </label>
+          <p class="hint" data-el="heel-hint">${esc(heel.hint)}</p>
+          <div class="calc-fields">
+            <label class="field calc-field"><span>Toe</span>
+              <select data-k="sockToe">${TOES.map((t) => `<option value="${t.key}" ${t.key === toe ? "selected" : ""} title="${esc(t.hint)}">${esc(t.label)}</option>`).join("")}</select></label>
+            <label class="field calc-field"><span>Rib</span>
+              <select data-k="sockRib">${RIBS.filter((r) => r.sts).map((r) => `<option value="${r.sts}" ${String(r.sts) === (kept.values.sockRib ?? "4") ? "selected" : ""}>${r.label}</option>`).join("")}</select></label>
+            <label class="field calc-field" title="How much smaller round than the foot the sock is, so it hugs it: 10% is usual, less for a thick yarn"><span>Negative ease <em class="hint">%</em></span>
+              <input data-k="sockEase" inputmode="decimal" value="${esc(kept.values.sockEase ?? "10")}" /></label>
+            ${this.lengthField("sockShorter", "Shorter than the foot", "The sock's foot is a little shorter than the foot, so it does not bag at the toe", 1)}
+            ${this.lengthField("sockLeg", "Leg", "From the top of the heel to the cuff's edge, the cuff included", 15)}
+            ${this.lengthField("sockCuff", "Cuff", "The rib's depth", 3)}
+          </div>
         </section>
         <section class="calc-results" data-el="results"></section>
       </div>`;
@@ -477,6 +544,7 @@ export class CalculatorsView {
     try {
       if (calc === "raglan") out.innerHTML = this.raglanResult();
       if (calc === "yoke") out.innerHTML = this.yokeResult();
+      if (calc === "socks") out.innerHTML = this.sockResult();
       if (calc === "size") out.innerHTML = this.sizeResult();
       if (calc === "evenly") out.innerHTML = this.evenlyResult();
       if (calc === "regauge") out.innerHTML = this.regaugeResult();
@@ -714,6 +782,69 @@ export class CalculatorsView {
       ${this.actions()}`;
   }
 
+  private sockResult(): string {
+    const lengths = { footAround: this.num("footAround"), footLength: this.num("footLength"), shorter: this.num("sockShorter"), leg: this.num("sockLeg"), cuff: this.num("sockCuff") };
+    for (const [k, v] of Object.entries(lengths)) this.need(!Number.isNaN(v), `The ${k === "footAround" ? "foot round" : k === "footLength" ? "foot length" : k === "shorter" ? "shortening" : k} is not a length.`);
+    const input: SockInput = {
+      gauge: this.gauge(),
+      ...lengths,
+      ease: this.num("sockEase"),
+      direction: kept.values.sockDir === "up" ? "up" : "down",
+      heel: (kept.values.sockHeel ?? "flap") as HeelKey,
+      toe: (kept.values.sockToe ?? "wedge") as ToeKey,
+      rib: Number(kept.values.sockRib ?? "4"),
+    };
+    const r = sock(input);
+    if ("error" in r) throw new Error(r.error);
+    const steps = sockSteps(r, input, this.len);
+    const h = r.heel;
+    const heelName = HEELS.find((x) => x.key === h.key)!.label;
+    const up = input.direction === "up";
+    const toeRow = up ? `${r.toe.end} → ${r.sts}` : `${r.sts} → ${r.toe.end}`;
+    const heelRows: (string | number)[][] =
+      h.key === "flap"
+        ? [
+            ["Heel flap", `${h.sts} sts`, `${h.flapRows} rows`],
+            ["Heel turn", `${h.sts} → ${h.turnSts}`, `${h.turnRows} rows`],
+            ["Gusset", `${h.pickUp} picked up each side`, `${h.gusset} decrease rounds, every other round`],
+          ]
+        : h.key === "gusset-up"
+          ? [
+              ["Gusset", `${r.half} → ${r.half + 2 * h.gusset} on the sole`, `${h.gusset} increase rounds, every other round`],
+              ["Heel turn", `${h.sts} sts`, `${h.sides} double stitches each side, ${h.middle} between`],
+              ["Heel flap", `${h.flapRows} rows`, `back to ${r.sts}`],
+            ]
+          : h.key === "afterthought"
+            ? [["Heel", `${h.pickedUp} → ${h.shaping!.end}`, `waste yarn over ${h.sts}; shaped as a wedge toe, ${this.len(h.cm)}`]]
+            : [["Heel", `${h.sts} sts`, `${h.sides} ${h.key === "fish-lips" ? "twin" : "double"} stitches each side, ${h.middle} between${h.between ? `, ${h.between} round${h.between > 1 ? "s" : ""} between the halves` : ""}`]];
+    const person = this.people.find((p) => p.id === kept.values.person);
+    const title = `Socks${person ? ` for ${person.name}` : ""}, ${longDate(Date.now())}`;
+    const g = input.gauge;
+    this.plan = {
+      title,
+      text: [
+        title,
+        `${up ? "Toe-up" : "Cuff-down"}, ${heelName.toLowerCase()}, ${TOES.find((t) => t.key === input.toe)!.label.toLowerCase()}. Gauge ${showGauge(g.sts, this.unit)} sts × ${showGauge(g.rows, this.unit)} rows per ${gaugeSpan(this.unit)}. ${r.sts} stitches: ${this.len(r.finished.around)} round, for a foot of ${this.len(input.footAround)}.`,
+        "",
+        ...steps.map((s, i) => `${i + 1}. ${s}`),
+      ].join("\n"),
+    };
+    return `
+      ${this.resultHead("The numbers")}
+      ${table([
+        ["Stitches", `${r.sts}`, `${this.len(r.finished.around)} round, ${Math.round(input.ease)}% smaller than the foot`],
+        ["Heel and instep", `${r.half} and ${r.half}`, "half each"],
+        ...(up ? [["Toe", toeRow, `${r.toe.rounds} rounds, ${this.len(r.toe.cm)}`]] : [["Cuff", `${r.cuffRounds} rounds`, this.len(input.cuff)], ["Leg", `${r.legRounds} rounds`, `${this.len(input.leg)} with the cuff`]]),
+        ...heelRows,
+        ["Foot", this.len(r.footCm), `knit to ${this.len(r.footToCm)} ${up ? "from the toe's tip" : h.key === "afterthought" ? "from the waste yarn" : "from the back of the heel"}`],
+        ...(up ? [["Leg", `${r.legRounds} rounds`, `then ${r.cuffRounds} rounds of rib: ${this.len(input.leg)}`]] : [["Toe", toeRow, `${r.toe.rounds} rounds, ${this.len(r.toe.cm)}`]]),
+      ])}
+      ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
+      <h3>Steps</h3>
+      <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
+      ${this.actions()}`;
+  }
+
   private sizeResult(): string {
     const g = this.gauge();
     const width = this.num("width");
@@ -875,7 +1006,7 @@ export class CalculatorsView {
     }
     if (key === "person") {
       const person = this.people.find((p) => p.id === el.value);
-      for (const f of RAGLAN_FIELDS) {
+      for (const f of this.personFields()) {
         if (!person || !f.from) continue;
         const v = latestValue(person, f.from);
         // A round yoke reaches a little higher than the armhole: it covers the shoulders.
@@ -907,6 +1038,17 @@ export class CalculatorsView {
       const field = this.main.querySelector<HTMLElement>('[data-el="repeat-field"]');
       if (field) field.hidden = !!el.value;
     }
+    // Another way, or another heel: the heels on offer and the hint are the way's.
+    if (key === "sockDir") {
+      const heel = kept.values.sockHeel as HeelKey;
+      const ways = HEELS.find((h) => h.key === heel)?.ways ?? [];
+      if (!ways.includes(el.value as SockDirection)) kept.values.sockHeel = HEEL_OTHER_WAY[heel] ?? "";
+      return this.show("socks");
+    }
+    if (key === "sockHeel") {
+      const hint = this.main.querySelector<HTMLElement>('[data-el="heel-hint"]');
+      if (hint) hint.textContent = HEELS.find((h) => h.key === el.value)?.hint ?? "";
+    }
     if (key === "direction") {
       const hint = this.main.querySelector<HTMLElement>(".calc-inputs h2 .hint");
       if (hint) hint.textContent = workedHint(el.value);
@@ -923,7 +1065,7 @@ export class CalculatorsView {
   private personNote(): string {
     const person = this.people.find((p) => p.id === kept.values.person);
     if (!person) return this.people.length ? "Pick someone from People to fill in their measurements." : "Add the people you knit for in People, to fill in their measurements here.";
-    const from = RAGLAN_FIELDS.filter((f) => f.from);
+    const from = this.personFields().filter((f) => f.from);
     const had = from.filter((f) => latestValue(person, f.from!));
     const lacking = from.filter((f) => !latestValue(person, f.from!));
     const newest = Math.max(0, ...had.map((f) => latestValue(person, f.from!)!.at));
@@ -943,7 +1085,7 @@ export class CalculatorsView {
    */
   private measurementsTyped(): Record<string, number> {
     const out: Record<string, number> = {};
-    for (const f of RAGLAN_FIELDS) {
+    for (const f of this.personFields()) {
       if (!f.from) continue;
       let cm = this.num(f.key);
       if (kept.calc === "yoke" && f.key === "yokeDepth") cm -= YOKE_OVER_ARMHOLE;
@@ -960,7 +1102,7 @@ export class CalculatorsView {
   private async saveMeasurements(): Promise<void> {
     const typed = this.measurementsTyped();
     const keys = Object.keys(typed);
-    if (!keys.length) return say("Type a measurement or two first: the chest, the neck…", "Save to People");
+    if (!keys.length) return say(kept.calc === "socks" ? "Type the foot first: its round, and its length." : "Type a measurement or two first: the chest, the neck…", "Save to People");
     let person = this.people.find((p) => p.id === kept.values.person);
     if (!person) {
       const NEW = "+new";
@@ -1009,6 +1151,11 @@ export class CalculatorsView {
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Save to People");
     }
+  }
+
+  /** The fields a person's measurements fill, in the calculator shown. */
+  private personFields(): { key: string; label: string; from?: string }[] {
+    return kept.calc === "socks" ? SOCK_FIELDS : RAGLAN_FIELDS;
   }
 
   /** Makes them the one the form is for, in the list, without filling anything over what is typed. */
