@@ -4,6 +4,8 @@ import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, l
 import { describe, headline, kindLabel } from "./tool-filter";
 import { cropImage } from "./crop-dialog";
 import { copyPicture } from "../copy-picture";
+import { openLightbox } from "../lightbox";
+import { logPictures } from "./project-photos";
 import { playerHtml } from "./masterclasses";
 
 /**
@@ -547,6 +549,11 @@ export class Board {
     if (act === "remove") await this.remove(id);
     if (act === "crop") await this.crop(id);
     if (act === "copy") await copyPicture(boardImageUrl(id));
+    if (act === "view") this.view_(id);
+    if (act === "log-view" && btn.dataset.entry) {
+      const all = logPictures(this.logEntries);
+      openLightbox(all.map((x) => x.picture), Math.max(0, all.findIndex((x) => x.id === btn.dataset.entry)), "The photo");
+    }
     if (act === "open") this.open(id);
     if (act === "edit-link") await this.editLink(id);
     if (act === "log-add") await this.addToLog(id);
@@ -581,6 +588,7 @@ export class Board {
     const item = this.items.find((i) => i.id === el.dataset.id);
     if (!item) return;
     if (item.kind === "note" || item.kind === "text") this.startEditing(item.id);
+    else if (item.kind === "image" && item.hasImage) this.view_(item.id);
     else if (item.kind === "swatch") el.querySelector<HTMLInputElement>('input[type="color"]')?.click();
     else if (item.kind === "log") this.hooks.openLog?.();
     else this.open(item.id);
@@ -607,6 +615,15 @@ export class Board {
     if ((e.key === "Delete" || e.key === "Backspace") && this.selected) {
       e.preventDefault();
       await this.remove(this.selected);
+    }
+    // Space opens a picture selected big.
+    if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.altKey && this.selected) {
+      const item = this.items.find((i) => i.id === this.selected);
+      if (item?.hasImage && (item.kind === "image" || item.kind === "pin")) {
+        e.preventDefault();
+        this.view_(item.id);
+        return;
+      }
     }
     // Ctrl+C copies a picture selected, to paste anywhere.
     if ((e.key === "c" || e.key === "C") && (e.ctrlKey || e.metaKey) && !e.altKey && this.selected) {
@@ -947,6 +964,15 @@ export class Board {
     this.root.focus();
   }
 
+  /** The board's pictures opened big, at this one: the next is the next on the board. */
+  private view_(id: string): void {
+    const pictures = this.items.filter((i) => i.hasImage && (i.kind === "image" || i.kind === "pin"));
+    openLightbox(
+      pictures.map((i) => ({ url: () => boardImageUrl(i.id), caption: typeof i.data.title === "string" ? i.data.title : "" })),
+      Math.max(0, pictures.findIndex((i) => i.id === id)),
+    );
+  }
+
   private open(id: string): void {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
@@ -985,7 +1011,7 @@ export class Board {
     // A picture, or a pin, can be cropped and copied: labelled buttons as it is pointed at or selected, or C and Ctrl+C.
     const crop =
       item.hasImage && (item.kind === "image" || item.kind === "pin")
-        ? `<span class="board-pic-tools"><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
+        ? `<span class="board-pic-tools"><button class="board-crop" data-act="view" title="See it big (double-click it, or Space with it selected)">⤢ View</button><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
         : "";
     const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
@@ -1083,7 +1109,7 @@ export class Board {
         <div class="board-log-entry${e.milestone ? " milestone" : ""}">
           <span class="board-log-when">${esc(when(e.at))}</span>
           ${e.text ? (e.milestone ? `<b>${esc(e.text)}</b>` : `<p>${esc(e.text)}</p>`) : ""}
-          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><span class="board-pic-tools"><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button><button class="board-crop" data-act="log-copy" data-entry="${esc(e.id)}" title="Copy this photo, to paste anywhere">⧉ Copy</button></span></div>` : ""}
+          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><span class="board-pic-tools"><button class="board-crop" data-act="log-view" data-entry="${esc(e.id)}" title="See this photo big">⤢ View</button><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button><button class="board-crop" data-act="log-copy" data-entry="${esc(e.id)}" title="Copy this photo, to paste anywhere">⧉ Copy</button></span></div>` : ""}
         </div>`,
       )
       .join("");

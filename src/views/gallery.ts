@@ -3,6 +3,7 @@ import { coverUrl, logPhotoUrl, projectCoverUrl } from "../covers";
 import { customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
+import { openLightbox } from "../lightbox";
 import { openProjectCard } from "./project-card";
 import { longDate } from "./project-form";
 import { describe, tipLabel } from "./tool-filter";
@@ -163,6 +164,11 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
   };
 
   card.addEventListener("click", (e) => {
+    // The big photo opens bigger still, the others a step away.
+    if (closestEl(e.target, ".gallery-big img")) {
+      const shown = visible().map((x) => ({ url: () => photoUrl(p, x.key), caption: x.caption || (x.key === "cover" ? "The cover" : longDate(x.at)) }));
+      return openLightbox(shown, at, "The photo");
+    }
     const btn = closestEl(e.target, "button");
     if (!btn) return;
     const act = btn.dataset.act;

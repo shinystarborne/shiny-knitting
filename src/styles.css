@@ -3891,7 +3891,6 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .log-milestone { font-weight: 600; color: #8fdca0; }
 .log-milestone::before { content: "● "; }
 .log-photo { max-width: 260px; max-height: 200px; border-radius: 8px; cursor: zoom-in; object-fit: cover; align-self: flex-start; }
-.log-photo.big { max-width: 100%; max-height: none; cursor: zoom-out; }
 /* Remove photo only when there is one. */
 .log-photo-box:not(.filled) ~ [data-act="photo-remove"],
 .log-photo-box:not(.filled) ~ [data-act="edit-photo-remove"] { display: none; }
@@ -4057,3 +4056,26 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .tool-set-kind legend { font-size: 12px; color: var(--text-dim); padding: 0 4px; }
 .tool-set-kind .check { display: flex; gap: 8px; align-items: center; }
 .tool-set-kind .check em { margin-left: auto; }
+/* A picture opened big, over everything (lightbox.ts). */
+.lightbox { position: fixed; inset: 0; z-index: 250; background: rgba(6, 6, 8, 0.97); backdrop-filter: blur(8px); outline: none; }
+.lightbox-stage { position: absolute; inset: 0 0 52px 0; overflow: hidden; touch-action: none; }
+.lightbox-stage img { position: absolute; left: 0; top: 0; max-width: none; max-height: none; user-select: none; -webkit-user-drag: none; cursor: zoom-in; }
+.lightbox-stage.can-drag img { cursor: grab; }
+.lightbox-stage.can-drag img:active { cursor: grabbing; }
+.lightbox-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #ddd; font-size: 14px; pointer-events: none; }
+.lightbox-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 52px; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: #0d0d0f; border-top: 1px solid rgba(255, 255, 255, 0.08); color: #eee; font-size: 13px; }
+.lightbox-count { font-variant-numeric: tabular-nums; color: #bbb; white-space: nowrap; }
+.lightbox-caption { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lightbox-tools { display: flex; gap: 6px; margin-left: auto; }
+.lightbox-tools button { background: rgba(255, 255, 255, 0.08); color: #eee; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 6px; padding: 5px 10px; min-width: 34px; cursor: pointer; }
+.lightbox-tools button:hover { background: rgba(255, 255, 255, 0.18); }
+.lightbox-zoom { min-width: 58px; font-variant-numeric: tabular-nums; }
+.lightbox-nav { position: absolute; top: calc(50% - 26px); transform: translateY(-50%); width: 46px; height: 76px; font-size: 38px; line-height: 1; background: rgba(0, 0, 0, 0.45); color: #fff; border: none; border-radius: 8px; cursor: pointer; z-index: 1; }
+.lightbox-nav:hover { background: rgba(0, 0, 0, 0.7); }
+.lightbox-nav.prev { left: 12px; }
+.lightbox-nav.next { right: 12px; }
+/* What a lightbox's Copy says, over it. */
+.lightbox ~ .dialog-backdrop, .lightbox ~ .undo-toast { z-index: 260; }
+/* A picture that opens big says so. */
+.project-cover.filled { cursor: zoom-in; }
+.log-photo, .gallery-big img { cursor: zoom-in; }

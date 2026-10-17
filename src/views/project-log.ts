@@ -3,6 +3,8 @@ import { forgetLogPhoto, logPhotoUrl } from "../covers";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { PhotoBox } from "./photo-box";
+import { openLightbox } from "../lightbox";
+import { logPictures } from "./project-photos";
 import { cropImage } from "./crop-dialog";
 import { copyPicture } from "../copy-picture";
 
@@ -126,13 +128,17 @@ export class ProjectLog {
           <button class="card-remove" data-act="remove" data-id="${esc(e.id)}" title="Take it out of the log">Remove</button>
         </div>
         ${!e.milestone && e.text ? `<p class="log-text">${esc(e.text)}</p>` : ""}
-        ${e.photoPath ? `<img class="log-photo" data-photo data-id="${esc(e.id)}" alt="" title="Click to see it bigger" />` : ""}
+        ${e.photoPath ? `<img class="log-photo" data-photo data-id="${esc(e.id)}" alt="" title="Click to see it big" />` : ""}
       </article>`;
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
+    // A photo opens big, the log's others a step away.
     const photo = closestEl(e.target, ".log-photo");
-    if (photo) return void photo.classList.toggle("big");
+    if (photo) {
+      const all = logPictures(this.entries);
+      return openLightbox(all.map((x) => x.picture), Math.max(0, all.findIndex((x) => x.id === photo.dataset.id)), "The photo");
+    }
     const btn = closestEl(e.target, "button[data-act]");
     const act = btn?.dataset.act;
     if (act === "add") await this.add();

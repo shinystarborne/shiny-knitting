@@ -93,7 +93,10 @@ export async function verifyLog() {
     await waitFor(() => !!log()!.querySelector<HTMLImageElement>(".log-photo")?.src, "the photo shown");
     const img = log()!.querySelector<HTMLImageElement>(".log-photo")!;
     img.click();
-    check(results, "a photo shows bigger when clicked", img.classList.contains("big"));
+    await waitFor(() => !!document.querySelector(".lightbox img"), "the photo opened big");
+    check(results, "a photo opens big when clicked", true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await waitFor(() => !document.querySelector(".lightbox"), "the photo closed");
     check(results, "nothing is added with nothing given", (act("add"), true) && entries().length === 3);
 
     // Changing an entry: its words and its day.

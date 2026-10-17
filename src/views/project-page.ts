@@ -1,4 +1,4 @@
-import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
+import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type LogEntry, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
 import { askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ProjectChart } from "./project-chart";
@@ -9,6 +9,8 @@ import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
 import { money, projectCost } from "./money";
+import { openLightbox } from "../lightbox";
+import { projectPictures } from "./project-photos";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -252,7 +254,7 @@ export class ProjectPage {
     side.innerHTML = `
       <button class="ghost back" data-act="back">← Projects</button>
 
-      <div class="project-cover" data-cover tabindex="0" title="Paste a picture here with Ctrl+V, drop one, or choose one">
+      <div class="project-cover" data-cover tabindex="0" title="Click to see it big; paste a picture here with Ctrl+V, drop one, or choose one">
         <span class="project-cover-empty">Cover — click here and paste, drop a picture, or choose one</span>
       </div>
       <div class="project-cover-actions">
@@ -474,6 +476,11 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   private async onClick(e: MouseEvent): Promise<void> {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-act]");
+    // The cover, clicked, opens big, the log's photos after it.
+    if (!btn && (e.target as HTMLElement).closest("[data-cover].filled")) {
+      const entries = await api.listProjectLog(this.projectId).catch(() => [] as LogEntry[]);
+      return openLightbox(projectPictures(this.projectId, true, entries), 0, "The photo");
+    }
     if (!btn) return;
     const act = btn.dataset.act;
     if (act === "back") this.hooks.back();
