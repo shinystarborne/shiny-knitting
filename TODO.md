@@ -19,23 +19,7 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-**Asked for 16 Oct 2026**
-
-- [ ] **A socks calculator**, with different heels: cuff-down and toe-up,
-  from a person's foot and a swatch, several heels to choose from. See
-  below.
-
-### Socks
-
-A calculator of its own, as the raglan and the round yoke are: from a
-person's foot (around the ball of the foot, its length, in People) and a
-swatch's gauge, with negative ease, as socks are knitted. Cuff-down and
-toe-up. The heel chosen from several, each with its own counts and steps:
-a heel flap and gusset, a short-row heel (German short rows), an
-afterthought heel, the Fish Lips Kiss heel, a gusset heel worked toe-up,
-and the boomerang heel. The leg's length, the cuff's rib, and the toe (a wedge toe, or a
-round one). *Decided (17 Oct 2026):* several heels to choose from, these
-six to start with.
+Nothing on it now: the next comes from the ideas below, or anything new.
 
 ---
 
@@ -139,6 +123,14 @@ six to start with.
   symbols, drawn and named (views/care.ts, models::CARE_SYMBOLS). A card
   says what there is now (whole balls by grams per ball, started ones
   weighed); what was bought is for the Statistics.
+- **Socks (Calculators):** cuff-down or toe-up, from a person's foot (round
+  and length, kept in People) and a swatch, with negative ease (10%) and the
+  sock a little shorter than the foot; the stitches a multiple of 4, halved
+  for heel and instep. Six heels with their counts and steps: heel flap and
+  gusset (cuff-down), the gusset heel toe-up, German short rows, Fish Lips
+  Kiss (a round between its halves), boomerang (two), afterthought (picked
+  up round waste yarn, shaped as a wedge toe); a wedge or a round toe; the
+  leg and its cuff (views/socks.ts). *0.3.91*
 - **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase
   rounds fitted to the colourwork's repeat; and a raglan, top-down or
   bottom-up, in the round or flat as a cardigan (bands and buttonholes picked
