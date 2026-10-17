@@ -130,7 +130,10 @@ Nothing on it now: the next comes from the ideas below, or anything new.
   gusset (cuff-down), the gusset heel toe-up, German short rows, Fish Lips
   Kiss (a round between its halves), boomerang (two), afterthought (picked
   up round waste yarn, shaped as a wedge toe); a wedge or a round toe; the
-  leg and its cuff (views/socks.ts). *0.3.91*
+  leg and its cuff (views/socks.ts). *0.3.91* The foot's measurements named
+  plainly (Around the foot, Foot length) and drawn beside their fields
+  (measure-figures.ts); in People, how to take the measurement being typed,
+  beside the table. *0.3.92*
 - **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase
   rounds fitted to the colourwork's repeat; and a raglan, top-down or
   bottom-up, in the round or flat as a cardigan (bands and buttonholes picked
