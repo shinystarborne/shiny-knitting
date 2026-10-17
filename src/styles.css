@@ -3984,3 +3984,11 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .mc-part-add { margin-top: 6px; }
 .mc-bundle-list { display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
 .mc-order { color: var(--accent); }
+/* A video on a board: moved by its bar, the player filling the rest. */
+.board-item.kind-video { display: flex; flex-direction: column; background: #000; border-radius: 8px; overflow: hidden; }
+.board-video-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 36px 0 10px; background: var(--bg-raised); color: var(--text); font-size: 12px; cursor: grab; }
+.board-video-bar span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-video-bar button { padding: 2px 8px; font-size: 12px; }
+.board-video { flex: 1; width: 100%; min-height: 0; border: 0; }
+/* While a card is moved or sized, the player is not to take the pointer. */
+.board.dragging .board-video { pointer-events: none; }

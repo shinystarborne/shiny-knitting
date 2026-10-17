@@ -7,7 +7,7 @@ import { blobBytes, forgetProjectCover, prepareBoardImage, projectCoverUrl } fro
 import { closestEl } from "../dom";
 import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
-import { partShown, playerHtml, showPart } from "./masterclasses";
+import { partShown, showPart } from "./masterclasses";
 import { mountPatternPicker } from "./pattern-picker";
 import { Board } from "./board";
 import { ProjectLog } from "./project-log";
@@ -58,8 +58,6 @@ export class ProjectPage {
   /** The people a project can be for, and how their measurements are shown. */
   private people: Person[] = [];
   private masterclasses: Masterclass[] = [];
-  /** The masterclass played on the page, beside its details. */
-  private watching = false;
   private unit: MeasureUnit = "cm";
   private board: Board | null = null;
   private teardown: (() => void)[] = [];
@@ -400,10 +398,9 @@ ${plan ? "" : `      <div class="project-side-dates">
           : ""
       }
       <div class="project-pattern-links">
-        ${part.videoId ? `<button class="ghost" data-act="mc-watch" title="Play it here, under its name">${this.watching ? "▾ Hide the video" : "▶ Watch here"}</button>` : ""}
+        ${part.videoId ? `<button class="ghost" data-act="mc-board" title="Play it on the board, as big as you make it">🎬 Put it on the board</button>` : ""}
         <button class="link" data-act="mc-open" title="Open it in your browser">Open it ↗</button>
-      </div>
-      ${this.watching && part.videoId ? playerHtml(part, "mc-player project-mc-player") : ""}`;
+      </div>`;
   }
 
   private personMeasures(): string {
@@ -480,9 +477,12 @@ ${plan ? "" : `      <div class="project-side-dates">
       input.click();
     }
     if (act === "cover-copy") await copyPicture(projectCoverUrl(this.projectId), "The cover");
-    if (act === "mc-watch") {
-      this.watching = !this.watching;
-      return this.renderSide();
+    if (act === "mc-board") {
+      const m = this.masterclasses.find((x) => x.id === this.project.masterclassId);
+      if (m) {
+        if (shownOf.get(this.projectId) !== "board") await this.show("board");
+        await this.board?.addVideo(m.id, partShown(m, `project:${this.projectId}`));
+      }
     }
     if (act === "mc-open") {
       const m = this.masterclasses.find((x) => x.id === this.project.masterclassId);
@@ -534,7 +534,6 @@ ${plan ? "" : `      <div class="project-side-dates">
       } catch (err) {
         await say(err instanceof Error ? err.message : String(err), "Project");
       }
-      this.watching = false;
       return this.renderSide();
     }
     // The size is saved on its own, as who it is for is.

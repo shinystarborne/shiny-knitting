@@ -4,6 +4,7 @@ import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, l
 import { describe, headline, kindLabel } from "./tool-filter";
 import { cropImage } from "./crop-dialog";
 import { copyPicture } from "../copy-picture";
+import { playerHtml } from "./masterclasses";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -83,6 +84,8 @@ const SIZES: Record<BoardKind, [number, number]> = {
   swatch: [150, 180],
   log: [340, 440],
   pin: [420, 300],
+  // 16:9, and the bar it is moved by.
+  video: [480, 302],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -113,6 +116,7 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>` },
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
+  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
 ];
 
 const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
@@ -356,6 +360,32 @@ export class Board {
     this.saveView();
   }
 
+  /**
+   * Moves the board, if need be, so an item is wholly in view: clear of the
+   * toolbar down the left, the Board | Log switch above and the zoom below.
+   * A big one put down near a small one can land half out of sight.
+   */
+  private reveal(item: BoardItem): void {
+    const { scale } = this.view;
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    if (!w || !h) return;
+    const left = 100;
+    const top = 60;
+    const right = w - 20;
+    const bottom = h - 60;
+    let { x, y } = this.view;
+    const sx = item.x * scale + x;
+    const sy = item.y * scale + y;
+    const ex = sx + item.w * scale;
+    const ey = sy + item.h * scale;
+    if (sx < left) x += left - sx;
+    else if (ex > right) x -= Math.min(ex - right, sx - left);
+    if (sy < top) y += top - sy;
+    else if (ey > bottom) y -= Math.min(ey - bottom, sy - top);
+    if (x !== this.view.x || y !== this.view.y) this.setView({ ...this.view, x, y });
+  }
+
   /** Where a new item goes: the free space nearest the middle of the view. */
   private placeFor(kind: BoardKind, size: [number, number] = SIZES[kind]): { x: number; y: number } {
     const mid = toBoard(this.view, this.root.clientWidth / 2, this.root.clientHeight / 2);
@@ -429,6 +459,8 @@ export class Board {
         h: item.h,
         moved: false,
       };
+      // A video's player is not to take the pointer while its card moves.
+      this.root.classList.add("dragging");
       this.root.setPointerCapture(e.pointerId);
       return;
     }
@@ -475,7 +507,7 @@ export class Board {
     const d = this.drag;
     if (!d || d.pointer !== e.pointerId) return;
     this.drag = null;
-    this.root.classList.remove("panning");
+    this.root.classList.remove("panning", "dragging");
     if (d.mode === "pan") {
       this.saveView();
       return;
@@ -745,6 +777,18 @@ export class Board {
       if (!choices.length) return void (await say("There are no needles or hooks yet.", "Add a needle"));
       const id = await askChoice("Which needle, hook or cable?", choices, { title: "Add a needle" });
       if (id) await this.add("tool", at, { toolId: id });
+    } else if (kind === "video") {
+      const classes = await api.listMasterclasses().catch(() => []);
+      const own = this.hooks.project()?.masterclassId ?? "";
+      const choices: Choice[] = classes
+        .flatMap((m) => m.parts.map((p, i) => ({ value: p.id, label: m.parts.length > 1 ? `${i + 1}. ${p.title}` : p.title, group: m.id === own ? `This project's: ${m.title}` : m.title, own: m.id === own })))
+        .sort((a, b) => Number(b.own) - Number(a.own))
+        .map(({ value, label, group }) => ({ value, label, group }));
+      if (!choices.length) return void (await say("There are no videos yet: keep them in the Masterclasses tab.", "Add a video"));
+      const id = await askChoice("Which video?", choices, { title: "Add a video" });
+      const m = classes.find((x) => x.parts.some((p) => p.id === id));
+      const part = m?.parts.find((p) => p.id === id);
+      if (m && part) await this.addVideo(m.id, part);
     } else if (kind === "log") {
       // One log is enough: a second card would show the same.
       const there = this.items.find((i) => i.kind === "log");
@@ -758,12 +802,23 @@ export class Board {
     }
   }
 
+  /**
+   * A masterclass's video, playing on the board: the one there already, if
+   * it is, picked rather than a second put down.
+   */
+  async addVideo(masterclassId: string, part: { id: string; videoId: string; title: string; url: string }): Promise<void> {
+    const there = this.items.find((i) => i.kind === "video" && i.data.partId === part.id);
+    if (there) return this.select(there.id);
+    await this.add("video", this.placeFor("video"), { masterclassId, partId: part.id, videoId: part.videoId, title: part.title, url: part.url });
+  }
+
   private async add(kind: BoardKind, at: { x: number; y: number }, data: Record<string, unknown>, size = SIZES[kind]): Promise<BoardItem | null> {
     try {
       const item = await api.addBoardItem(this.boardId, { kind, x: at.x, y: at.y, w: size[0], h: size[1], data });
       this.items.push(item);
       this.render();
       this.select(item.id);
+      this.reveal(item);
       return item;
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Board");
@@ -896,7 +951,7 @@ export class Board {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
     if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
-    if (item.kind === "link" && typeof item.data.url === "string") {
+    if ((item.kind === "link" || item.kind === "video") && typeof item.data.url === "string") {
       void api.openLink(item.data.url).catch((e) => say(e instanceof Error ? e.message : String(e), "Link"));
     }
   }
@@ -997,6 +1052,14 @@ export class Board {
       case "log":
         body = this.logHtml();
         break;
+      case "video": {
+        // Moved by its bar: the player takes the presses on itself.
+        const videoId = String(d.videoId ?? "");
+        body = `
+          <div class="board-video-bar" title="Drag here to move it"><span>🎬 ${esc(String(d.title ?? ""))}</span><button data-act="open" title="Open it in your browser">↗</button></div>
+          ${videoId ? playerHtml({ videoId, title: String(d.title ?? "") }, "board-video") : `<div class="board-caption missing">Only YouTube videos play on the board: ↗ opens it.</div>`}`;
+        break;
+      }
       case "swatch": {
         const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour)) ? String(d.colour) : "#c94c6d";
         body = `
@@ -1074,6 +1137,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   swatch: "colour",
   log: "log card",
   pin: "pin",
+  video: "video",
 };
 
 /**

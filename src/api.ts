@@ -816,7 +816,8 @@ export interface ProjectInput {
 
 /** What can go on a board, a project's or an inspiration board. */
 /** "pin" is a picture of a pattern's pin, with `{ patternId, page, title }`. */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin";
+/** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`. */
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {

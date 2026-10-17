@@ -4,8 +4,9 @@
  * here, or in the browser or a window), another site's kept as it is,
  * searched, renamed and noted; a course in several videos (one added, the
  * ones there bundled, ticked as watched, put in order, one taken out); a
- * project started from one, or chosen on a project's page and watched
- * there; removed, the project going on without it.
+ * project started from one, or chosen on a project's page and put on its
+ * board to watch, as a card of its own (or from the board's Video); removed,
+ * the project going on without it.
  *
  * Run with the harness open:
  *   window.__masterclassChecks()
@@ -164,14 +165,14 @@ export async function verifyMasterclasses() {
     document.querySelector<HTMLElement>('.modal.project-form [data-act="save"]')!.click();
     await waitFor(() => !!page() && store.projects.some((p) => p.name === "Cast-on swatches"), "the project's page");
     const started = store.projects.find((p) => p.name === "Cast-on swatches")!;
-    check(results, "…saved, knitted along with it, its page opened", started.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-watch"]'));
+    check(results, "…saved, knitted along with it, its page opened", started.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-board"]'));
     const partPick = page()!.querySelector<HTMLSelectElement>('[data-f="mc-part"]');
     check(results, "…its videos to choose from there, the first not watched first", !!partPick && partPick.options.length === 2 && partPick.selectedIndex === 0 && /Part two/.test(partPick.options[0].textContent ?? ""), [...(partPick?.options ?? [])].map((o) => o.textContent).join(" | "));
     partPick!.value = partPick!.options[1].value;
     partPick!.dispatchEvent(new Event("change", { bubbles: true }));
-    page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
-    await waitFor(() => !!page()!.querySelector("iframe.project-mc-player"), "the chosen video playing");
-    check(results, "…the one chosen played there", page()!.querySelector("iframe.project-mc-player")!.getAttribute("src")!.includes("dQw4w9WgXcQ"));
+    page()!.querySelector<HTMLElement>('[data-act="mc-board"]')!.click();
+    await waitFor(() => !!page()!.querySelector(".board-item.kind-video iframe.board-video"), "the chosen video on the board");
+    check(results, "…the one chosen put on the board to play", page()!.querySelector(".board-item.kind-video iframe.board-video")!.getAttribute("src")!.includes("dQw4w9WgXcQ"));
     await invoke("delete_project", { id: started.id });
     tab("masterclasses");
     await waitFor(() => items().length === 2, "the tab again");
@@ -186,14 +187,29 @@ export async function verifyMasterclasses() {
     check(results, "a project's page offers the masterclasses", [...select.options].some((o) => /The cast-on course \(A channel\)/.test(o.textContent ?? "")));
     select.value = kept.id;
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    await waitFor(() => store.projects.find((p) => p.id === projectId)?.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-watch"]'), "chosen");
-    check(results, "…chosen, it is kept on the project, with ▶ Watch here and Open it ↗", !!page()!.querySelector('[data-act="mc-open"]'));
-    page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
-    await waitFor(() => !!page()!.querySelector("iframe.project-mc-player"), "the video on the page");
-    check(results, "▶ Watch here plays it on the project's page, the first not watched", page()!.querySelector("iframe.project-mc-player")!.getAttribute("src")!.includes("aaaaaaaaaaa"));
-    page()!.querySelector<HTMLElement>('[data-act="mc-watch"]')!.click();
-    await waitFor(() => !page()!.querySelector("iframe.project-mc-player"), "the video put away");
-    check(results, "…and again hides it", true);
+    await waitFor(() => store.projects.find((p) => p.id === projectId)?.masterclassId === kept.id && !!page()!.querySelector('[data-act="mc-board"]'), "chosen");
+    check(results, "…chosen, it is kept on the project, with Put it on the board and Open it ↗, and no tiny player", !!page()!.querySelector('[data-act="mc-open"]') && !page()!.querySelector(".project-masterclass iframe"));
+    const cards = () => [...page()!.querySelectorAll<HTMLElement>(".board-item.kind-video")];
+    page()!.querySelector<HTMLElement>('[data-act="mc-board"]')!.click();
+    await waitFor(() => cards().length === 1, "the video on the board");
+    const card = cards()[0];
+    check(results, "Put it on the board plays the first not watched there, in a card of its own, moved by its bar", card.querySelector("iframe.board-video")!.getAttribute("src")!.includes("aaaaaaaaaaa") && /Part two: the rib/.test(card.querySelector(".board-video-bar")!.textContent ?? "") && card.offsetWidth >= 400);
+    page()!.querySelector<HTMLElement>('[data-act="mc-board"]')!.click();
+    await wait(200);
+    check(results, "…put on it again, the one there is picked, not a second put down", cards().length === 1 && cards()[0].classList.contains("selected"));
+    card.querySelector<HTMLElement>('.board-video-bar [data-act="open"]')!.click();
+    await wait(100);
+    check(results, "…its ↗ opens it in the browser", (w.__opened ?? []).at(-1) === "https://www.youtube.com/watch?v=aaaaaaaaaaa");
+    // The board's own Video: any masterclass's, the project's first.
+    page()!.querySelector<HTMLElement>('.board-tools [data-add="video"]')!.click();
+    await waitFor(() => !!dialog()?.querySelector("select.dialog-choices"), "which video");
+    const groups = [...dialog()!.querySelectorAll("optgroup")].map((g) => g.label);
+    check(results, "the board's Video offers the masterclasses' videos, the project's own first", groups[0] === "This project's: The cast-on course" && groups.length === 2, groups.join(" | "));
+    const pick = dialog()!.querySelector<HTMLSelectElement>("select.dialog-choices")!;
+    pick.value = [...pick.options].find((o) => /dQw4w9WgXcQ/.test(o.textContent ?? ""))!.value;
+    dialog()!.querySelector<HTMLElement>("button.primary")!.click();
+    await waitFor(() => cards().length === 2, "a second video");
+    check(results, "…the one chosen put on the board", cards().some((c) => c.querySelector("iframe")!.getAttribute("src")!.includes("dQw4w9WgXcQ")));
     page()!.querySelector<HTMLElement>('[data-act="mc-open"]')!.click();
     await wait(100);
     check(results, "Open it ↗ opens it in the browser", (w.__opened ?? []).at(-1) === kept.parts[0].url);
