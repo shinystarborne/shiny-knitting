@@ -4120,3 +4120,10 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .knit-rate-field { margin: 6px 0 4px; }
 .knit-rate-field input { max-width: 120px; }
 .knit-rate-field .link { font-style: normal; color: var(--accent); text-decoration: underline; padding: 0; }
+/* A garment's yarn in the calculators: the stash's yarns of its weight, enough or short. */
+.calc-stash { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.calc-stash li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; padding: 4px 8px; border-radius: 6px; background: var(--bg-input); }
+.calc-stash li b { font-variant-numeric: tabular-nums; }
+.calc-stash li em { font-style: normal; font-size: 12px; }
+.calc-stash li.enough em { color: var(--ok); }
+.calc-stash li.short em { color: var(--accent); }

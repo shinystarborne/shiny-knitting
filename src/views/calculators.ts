@@ -7,7 +7,8 @@ import { drawRing } from "./chart-draw";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
-import { familyByMetres } from "./yarn-weight";
+import { familyByMetres, grouped, weightLabel } from "./yarn-weight";
+import { familyByGauge, inYarn, metresForArea, socksArea, stashFor, sweaterArea } from "./yarn-need";
 import { figureCaption, measureFigure } from "./measure-figures";
 import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
 
@@ -127,6 +128,8 @@ export class CalculatorsView {
   private projects: Project[] = [];
   /** The stash's yarns with metres and grams per ball, to add as strands. */
   private yarns: Yarn[] = [];
+  /** Every yarn in the stash, for what would do for a garment's yarn. */
+  private stash: Yarn[] = [];
   private unit: MeasureUnit = "cm";
   /** The latest result as text, for Copy and Save. */
   private plan: { title: string; text: string } | null = null;
@@ -151,6 +154,7 @@ export class CalculatorsView {
       api.listCharts().catch(() => [] as Chart[]),
     ]);
     this.charts = charts.filter((c) => c.data.kind === "yoke");
+    this.stash = yarns;
     if (kept.values.chart && !this.charts.some((c) => c.id === kept.values.chart)) kept.values.chart = "";
     // One of each yarn, by brand and name: its colours are the same thickness.
     const seen = new Set<string>();
@@ -630,6 +634,7 @@ export class CalculatorsView {
         ["Body", `${p.body}`, `chest ${this.len(r.finished.chest)}`],
         ["Sleeve", `${p.upperArmSts} → ${p.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
       ])}
+      ${this.yarnHtml(metresForArea(sweaterArea(r.finished, input), input.gauge), input.gauge)}
       ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       ${chart && this.yokeFit ? this.yokeChartHtml(chart, this.yokeFit) : ""}
       <h3>Steps</h3>
@@ -752,6 +757,7 @@ export class CalculatorsView {
         ["Body", `${r.body}`, `chest ${this.len(r.finished.chest)}`],
         ["Sleeve", `${r.upperArmSts} → ${r.wristSts}`, `${this.len(r.finished.upperArm)} → ${this.len(r.finished.wrist)}`],
       ])}
+      ${this.yarnHtml(metresForArea(sweaterArea(r.finished, input), input.gauge), input.gauge)}
       ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       <h3>Steps</h3>
       <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
@@ -780,6 +786,7 @@ export class CalculatorsView {
         ["Front bands", `${c.bandPickUp} each`, `${c.bandRows} rows; ${c.buttons ? `${c.buttons} buttonholes` : "no buttonholes"}`],
         ["Neckband", `${c.neckPickUp}`, `${r.neckRibRounds} rows`],
       ])}
+      ${this.yarnHtml(metresForArea(sweaterArea(r.finished, { ...input, bandWidth: band }), input.gauge), input.gauge)}
       ${c.warnings.length ? `<ul class="calc-warnings">${c.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       <h3>Steps</h3>
       <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
@@ -843,6 +850,7 @@ export class CalculatorsView {
         ["Foot", this.len(r.footCm), `knit to ${this.len(r.footToCm)} ${up ? "from the toe's tip" : h.key === "afterthought" ? "from the waste yarn" : "from the back of the heel"}`],
         ...(up ? [["Leg", `${r.legRounds} rounds`, `then ${r.cuffRounds} rounds of rib: ${this.len(input.leg)}`]] : [["Toe", toeRow, `${r.toe.rounds} rounds, ${this.len(r.toe.cm)}`]]),
       ])}
+      ${this.yarnHtml(metresForArea(socksArea(r, input), input.gauge), input.gauge)}
       ${r.warnings.length ? `<ul class="calc-warnings">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}
       <h3>Steps</h3>
       <ol class="calc-steps">${steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
@@ -913,6 +921,45 @@ export class CalculatorsView {
       )}
       <p class="hint">Knit your count for the pattern's size. Knitted as written at your gauge, it comes out the size in the last column.</p>
       ${this.actions()}`;
+  }
+
+  /**
+   * How much yarn it takes, by the gauge, with a tenth to spare: in the
+   * swatch's own yarn, when it is from the stash, in grams and balls; and the
+   * stash's yarns of its weight, which have enough and how many balls short
+   * the others are. Said in the plan to copy or save, too.
+   */
+  private yarnHtml(metres: number, g: Gauge): string {
+    const swatch = this.swatches.find((s) => s.id === kept.values.swatch);
+    const own = swatch?.yarnId ? (this.stash.find((y) => y.id === swatch.yarnId) ?? null) : null;
+    const need = inYarn(metres, own);
+    const family = own?.yarnWeightFamily || familyByGauge(g.sts);
+    const label = weightLabel(family);
+    const fits = stashFor(need.metres, this.stash, family).slice(0, 6);
+    const name = (y: Yarn) => `${[y.brand, y.name].filter(Boolean).join(" ")}${y.colourway ? ` (${y.colourway})` : ""}`;
+    const balls = (n: number) => `${n} ball${n === 1 ? "" : "s"}`;
+    const inOwn = own && need.balls !== null ? `${need.grams !== null ? `${grouped(need.grams)} g, ` : ""}${balls(need.balls)} of ${name(own)}` : "";
+    if (this.plan) this.plan.text += `\n\nYarn: about ${grouped(need.metres)} m, with a tenth to spare${inOwn ? `: ${inOwn}` : ""}.`;
+    return `
+      <h3>Yarn</h3>
+      <p class="calc-big" data-el="yarn-need"><b>About ${grouped(need.metres)} m</b> <span class="hint">by your gauge, with a tenth to spare</span></p>
+      ${
+        inOwn
+          ? `<p data-el="yarn-own">In your swatch's yarn: <b>${esc(inOwn)}</b>${own!.metresLeft ? ` <span class="hint">(${grouped(Math.round(own!.metresLeft))} m of it in the stash)</span>` : ""}</p>`
+          : `<p class="hint">Pick the swatch you knitted for it, in a yarn from the stash, to have it in grams and balls.</p>`
+      }
+      <p class="hint">${esc(label)} in your stash:</p>
+      ${
+        fits.length
+          ? `<ul class="calc-stash" data-el="yarn-stash">${fits
+              .map(
+                (f) => `<li class="${f.enough ? "enough" : "short"}"><span>${esc(name(f.yarn))}</span><b>${grouped(Math.round(f.metres))} m</b><em>${
+                  f.enough ? "enough" : f.ballsShort !== null ? `${balls(f.ballsShort)} short` : `${grouped(f.metresShort)} m short`
+                }</em></li>`,
+              )
+              .join("")}</ul>`
+          : `<p class="hint" data-el="yarn-stash">No ${esc(label.toLowerCase())} yarn in the stash.</p>`
+      }`;
   }
 
   private resultHead(title: string): string {
