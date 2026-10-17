@@ -109,7 +109,7 @@ export class RavelryView {
           <p>Ravelry is searched through its API, which wants a key of your own. It is made once, in a minute:</p>
           <ol>
             <li>Open Ravelry's developer page, signed in: <button class="link" data-act="developer">ravelry.com/pro/developer ↗</button></li>
-            <li>Make a new app there, of the <b>personal</b> kind (basic authentication), read-only.</li>
+            <li>Under <b>My Apps</b>, choose <b>Basic Auth: read only access</b>, and <b>create app</b>. A free Ravelry account is enough.</li>
             <li>Ravelry shows its key in two parts: an access key (a username) and a personal key (a password). Paste both below.</li>
           </ol>
           <form class="rav-keys" data-el="connect">

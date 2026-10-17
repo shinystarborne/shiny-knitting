@@ -51,7 +51,7 @@ export async function verifyRavelry() {
   try {
     tab("ravelry");
     await waitFor(() => !!view()?.querySelector('[data-el="connect"]'), "the Ravelry tab");
-    check(results, "a tab of its own, beside Masterclasses, asking first for a personal API key, saying how to make one", document.querySelector('.tab-bar [data-tab="masterclasses"] + [data-tab="ravelry"]') !== null && /Connect your Ravelry account/.test(view()!.textContent ?? "") && /personal/.test(view()!.textContent ?? ""));
+    check(results, "a tab of its own, beside Masterclasses, asking first for a personal API key, saying how to make one", document.querySelector('.tab-bar [data-tab="masterclasses"] + [data-tab="ravelry"]') !== null && /Connect your Ravelry account/.test(view()!.textContent ?? "") && /Basic Auth: read only access/.test(view()!.textContent ?? ""));
     view()!.querySelector<HTMLElement>('[data-act="developer"]')!.click();
     await wait(100);
     check(results, "…its developer page opened in the browser from there", (w.__opened ?? []).at(-1) === "https://www.ravelry.com/pro/developer");
