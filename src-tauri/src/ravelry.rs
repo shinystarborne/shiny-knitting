@@ -7,8 +7,10 @@
 //! Ravelry once, its client id and secret built into the installers from a
 //! file kept out of the repository (`src-tauri/.env.ravelry`, read by
 //! build.rs). Signing in opens Ravelry in the browser; approved there,
-//! Ravelry sends the browser back to a port the app listens on, for that
-//! moment only, on this computer, with a code the app exchanges for tokens.
+//! Ravelry sends the browser, with a code, to a page of the app's on GitHub
+//! Pages (Ravelry takes only https addresses back), which passes it at once
+//! to a port the app listens on, for that moment only, on this computer.
+//! The app exchanges the code for tokens.
 //! Those are kept in the settings encrypted for this Windows account
 //! (DPAPI), as the model's key is, and renewed as they run out.
 //!
@@ -31,7 +33,10 @@ type CmdResult<T> = Result<T, AppError>;
 const API: &str = "https://api.ravelry.com";
 const AUTHORIZE: &str = "https://www.ravelry.com/oauth2/auth";
 const TOKEN: &str = "https://www.ravelry.com/oauth2/token";
-/// The port Ravelry sends the browser back to, as registered with Ravelry.
+/// The page Ravelry sends the browser back to, as registered with Ravelry:
+/// static, on GitHub Pages (docs/ravelry/), passing the answer to PORT.
+const RETURN: &str = "https://shinystarborne.github.io/shiny-knitting/ravelry/";
+/// The port on this computer the page passes the answer to.
 const PORT: u16 = 47851;
 const SIGNED_IN: &str = "ravelry_oauth";
 
@@ -40,7 +45,7 @@ const CLIENT_ID: Option<&str> = option_env!("RAVELRY_CLIENT_ID");
 const CLIENT_SECRET: Option<&str> = option_env!("RAVELRY_CLIENT_SECRET");
 
 fn redirect() -> String {
-    format!("http://localhost:{PORT}/ravelry")
+    RETURN.to_string()
 }
 
 fn client() -> Option<(&'static str, &'static str)> {
@@ -479,7 +484,7 @@ mod tests {
         let url = authorize_address("my app", "s1", "shinyknittingverifier0123456789abcdefghijklmnopqrstuv");
         assert_eq!(
             url,
-            "https://www.ravelry.com/oauth2/auth?response_type=code&client_id=my%20app&redirect_uri=http%3A%2F%2Flocalhost%3A47851%2Fravelry&scope=offline&state=s1&code_challenge=bPJyBI9_JeTzWv1Dop8RNkn7z1HPkNr20fDj29yAq7I&code_challenge_method=S256"
+            "https://www.ravelry.com/oauth2/auth?response_type=code&client_id=my%20app&redirect_uri=https%3A%2F%2Fshinystarborne.github.io%2Fshiny-knitting%2Fravelry%2F&scope=offline&state=s1&code_challenge=bPJyBI9_JeTzWv1Dop8RNkn7z1HPkNr20fDj29yAq7I&code_challenge_method=S256"
         );
         assert_eq!(callback("GET /ravelry?code=abc&state=s1 HTTP/1.1", "s1").unwrap().unwrap(), "abc");
         assert!(callback("GET /favicon.ico HTTP/1.1", "s1").is_none(), "another request is not the answer");

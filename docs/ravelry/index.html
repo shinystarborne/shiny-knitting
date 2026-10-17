@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Shiny Knitting · Ravelry</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 48px 20px; font: 16px/1.5 system-ui, "Segoe UI", sans-serif; background: #1c1b1f; color: #eee; }
+    main { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    p { margin: 0 0 12px; color: #c9c4bc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Shiny Knitting</h1>
+    <p id="said">This page passes Ravelry's sign-in on to Shiny Knitting, on your computer.</p>
+  </main>
+  <script>
+    // Ravelry sends the browser here (it takes only https addresses) with
+    // the sign-in's answer. It goes straight on to the app, which listens on
+    // this computer while it is signing in; only the answer's own parts go,
+    // and nothing is kept here: this is a static page.
+    (function () {
+      var asked = new URLSearchParams(window.location.search);
+      var passed = new URLSearchParams();
+      ["code", "state", "error"].forEach(function (key) {
+        var value = asked.get(key);
+        if (value) passed.set(key, value);
+      });
+      if (!passed.has("state")) return;
+      document.getElementById("said").textContent = "Passing your Ravelry sign-in to Shiny Knitting…";
+      window.location.replace("http://localhost:47851/ravelry?" + passed.toString());
+    })();
+  </script>
+</body>
+</html>
