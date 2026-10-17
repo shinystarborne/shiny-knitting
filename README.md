@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.82](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.82)** —
+  one tip of a pair on a project: the right or the left, the other free for another. The one to test.
 - **[v0.3.0-beta.81](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.81)** —
-  a masterclass's pattern at its top, to choose or change any time, and shown in the list. The one to test.
+  a masterclass's pattern at its top, to choose or change any time, and shown in the list. Superseded by `beta.82`.
 - **[v0.3.0-beta.80](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.80)** —
   fixed: choosing a pattern for a masterclass video closed the dialog; no dialog or form closes that way now. Superseded by `beta.81`.
 - **[v0.3.0-beta.79](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.79)** —

@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 16 Oct 2026**
 
-- [ ] **One needle of a pair**: a project takes one tip of a set's size (a
-  5 mm right needle with a 4.5 or 4 mm left), not the pair. See below.
 - [ ] **Ravelry in the app**: a tab to search Ravelry for a pattern without
   leaving the app. **Check first** whether it can be shown in a frame. See
   below.
@@ -40,13 +38,6 @@ under the list.
 - [ ] **Pictures opened big, to zoom**: a lightbox for a project's
   pictures (its cover, its board's, its log's), finished projects' and the
   gallery's. See below.
-
-### One needle of a pair
-
-Interchangeable tips come as a pair of one size, but a project can want
-two sizes: a 5 mm right needle and a 4.5 or 4 mm left one. A project takes
-a single tip from a set, so the other is still free for another project,
-and its needles say which is which.
 
 ### Ravelry in the app
 
@@ -231,7 +222,10 @@ round one). Which heels exactly is to be settled before building.
   takes (fitsOnProject), saying what it leaves out; a System filter.
   *0.3.74* Adapters (kind "adapter": tip end cable_size, cable end
   adapter_to): tips and a cable of two sizes offered through one, the
-  project's or one owned, naming it (adapterFor). *0.3.75*
+  project's or one owned, naming it (adapterFor). *0.3.75* One tip of a
+  pair on a project (project_tools.tip: right or left), the other free for
+  another: a pair on two projects, a tip each (place_tip; Tool.uses).
+  *0.3.82*
 - **Project log:** a diary on each project's page (Board | Log), the newest
   first by day: entries dated by themselves, a photo each, changed or removed,
   and milestones the project writes (started, paused, frogged, finished, a new
