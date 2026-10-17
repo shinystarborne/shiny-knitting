@@ -32,10 +32,10 @@ person's foot (around the ball of the foot, its length, in People) and a
 swatch's gauge, with negative ease, as socks are knitted. Cuff-down and
 toe-up. The heel chosen from several, each with its own counts and steps:
 a heel flap and gusset, a short-row heel (German short rows), an
-afterthought heel, the Fish Lips Kiss heel, and a gusset heel worked
-toe-up. The leg's length, the cuff's rib, and the toe (a wedge toe, or a
+afterthought heel, the Fish Lips Kiss heel, a gusset heel worked toe-up,
+and the boomerang heel. The leg's length, the cuff's rib, and the toe (a wedge toe, or a
 round one). *Decided (17 Oct 2026):* several heels to choose from, these
-five to start with.
+six to start with.
 
 ---
 
