@@ -83,7 +83,11 @@ Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
   effort, `chat_template_kwargs.enable_thinking: false` (left out for a
   server that refuses it), `/no_think`, and half the excerpt or pages;
   `<think>` in a reply is left out (ai::complete, openai_compat::Attempt).
-  Checked against a stand-in server only. *0.3.89*
+  Checked against a stand-in server only. *0.3.89* An EPUB read on past
+  chapters that are only pictures (up to 15); one with no text at all sent
+  its first pictures, its cover first (EPUB 2 or 3), none under 300 px; a
+  PDF's pages drawn with intent "print", not waiting on frames, which do not
+  come with the window hidden (ai/excerpt.ts). *0.3.109*
 - **Reading:** PDF and EPUB, zoom (remembered per pattern), turning a page,
   contents, bookmarks, search, links, highlight line, row counter with named
   counters and your own keys, highlights, notes, drawings, pins (brought to

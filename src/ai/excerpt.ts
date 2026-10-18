@@ -6,8 +6,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** How many pages of a PDF to read before giving up. */
 const MAX_PDF_PAGES = 4;
-/** How many EPUB chapters to read. */
-const MAX_EPUB_CHAPTERS = 3;
+/**
+ * How many EPUB chapters to look through for text. A book's first ones are
+ * often its cover, title page and copyright page, as pictures: read on past
+ * them, as far as this.
+ */
+const MAX_EPUB_CHAPTERS = 15;
 
 /**
  * Pulls a short, readable excerpt out of a pattern file, for the AI to read.
@@ -76,17 +80,72 @@ export async function excerptImages(
   format: "pdf" | "epub",
   bytes: Uint8Array,
 ): Promise<string[]> {
-  if (format !== "pdf") {
-    // An EPUB's text is HTML, so a missing text layer means an empty or
-    // image-only document, and rendering a chapter as a picture would mean
-    // screenshotting an iframe. There is nothing useful to hand over.
+  try {
+    // An EPUB with no text is its pictures: a book made of scanned pages, or
+    // a cover and title page before anything else. Those are sent instead.
+    return format === "epub" ? await epubImages(bytes) : await pdfPageImages(bytes);
+  } catch {
+    // A file that will not even open has no pages to show either.
     return [];
   }
+}
+
+/** An EPUB's first pictures, as they come in its chapters (its cover first), smaller ones (icons, rules) left out. */
+async function epubImages(bytes: Uint8Array): Promise<string[]> {
+  const book = readEpub(bytes);
+  if (!book) return [];
+  const paths: string[] = [];
+  const add = (path: string | null | undefined) => {
+    if (path && !paths.includes(path) && book.files.has(path)) paths.push(path);
+  };
+  add(book.cover);
+  for (const chapter of book.order.slice(0, MAX_EPUB_CHAPTERS)) {
+    const data = book.files.get(normalize(chapter));
+    if (!data) continue;
+    const doc = new DOMParser().parseFromString(strFromU8(data), "text/html");
+    const dir = chapter.includes("/") ? chapter.slice(0, chapter.lastIndexOf("/") + 1) : "";
+    doc.querySelectorAll("img[src], image").forEach((el) => {
+      const href = el.getAttribute("src") ?? el.getAttribute("xlink:href") ?? el.getAttribute("href");
+      if (href && !/^(data|https?):/i.test(href)) add(normalize(resolvePath(dir, decodeHref(href.split("#")[0]))));
+    });
+    if (paths.length >= VISION_PAGES * 2) break;
+  }
+  const out: string[] = [];
+  for (const path of paths) {
+    const url = await pictureForModel(new Blob([book.files.get(path)!.slice()], { type: mimeOf(path) }));
+    if (url) out.push(url);
+    if (out.length >= VISION_PAGES) break;
+  }
+  return out;
+}
+
+function mimeOf(path: string): string {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : ext === "webp" ? "image/webp" : ext === "svg" ? "image/svg+xml" : "image/jpeg";
+}
+
+/** A picture as the model is sent a page: at most VISION_PAGE_WIDTH wide, as JPEG; null when it is too small to be a page, or cannot be read. */
+async function pictureForModel(blob: Blob): Promise<string | null> {
+  let bitmap: ImageBitmap;
   try {
-    return await pdfPageImages(bytes);
+    bitmap = await createImageBitmap(blob);
   } catch {
-    // A PDF that will not even open has no pages to show either.
-    return [];
+    return null;
+  }
+  try {
+    if (Math.max(bitmap.width, bitmap.height) < 300) return null;
+    const scale = Math.min(1, VISION_PAGE_WIDTH / bitmap.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", VISION_QUALITY);
+  } finally {
+    bitmap.close();
   }
 }
 
@@ -110,7 +169,9 @@ async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
       // a scan's white page is what the model needs to read.
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      // Drawn as for printing: not waiting on the screen's frames, which do
+      // not come while the app's window is behind another or minimised.
+      await page.render({ canvasContext: ctx, viewport, intent: "print" }).promise;
 
       const dataUrl = canvas.toDataURL("image/jpeg", VISION_QUALITY);
       // toDataURL on a blank or failed render still returns a valid but
@@ -148,22 +209,29 @@ async function excerptFromPdf(bytes: Uint8Array, maxChars: number): Promise<stri
   }
 }
 
-function excerptFromEpub(bytes: Uint8Array, maxChars: number): string {
+/** An EPUB opened: its files, its chapters in reading order, and its cover picture. */
+function readEpub(bytes: Uint8Array): { files: Map<string, Uint8Array>; order: string[]; cover: string | null } | null {
   const files = new Map<string, Uint8Array>();
   for (const [name, data] of Object.entries(unzipSync(bytes))) {
     files.set(normalize(name), data);
   }
 
   const opfPath = findOpf(files);
-  if (!opfPath) return "";
+  if (!opfPath) return null;
   const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
   const doc = new DOMParser().parseFromString(strFromU8(files.get(opfPath)!), "application/xml");
 
   const manifest = new Map<string, string>();
+  let cover: string | null = null;
+  // The cover: an item said to be it (EPUB 3), or the one a <meta name="cover"> names (EPUB 2).
+  const coverId = doc.querySelector('metadata > meta[name="cover"]')?.getAttribute("content");
   doc.querySelectorAll("manifest > item").forEach((node) => {
     const id = node.getAttribute("id");
     const href = node.getAttribute("href");
     if (id && href) manifest.set(id, href);
+    if (href && /^image\//.test(node.getAttribute("media-type") ?? "") && (/\bcover-image\b/.test(node.getAttribute("properties") ?? "") || id === coverId)) {
+      cover = normalize(resolvePath(opfDir, decodeHref(href.split("#")[0])));
+    }
   });
 
   // Follow the spine, which is the reading order.
@@ -178,7 +246,16 @@ function excerptFromEpub(bytes: Uint8Array, maxChars: number): string {
       if (/\.x?html?$/i.test(href)) order.push(resolvePath(opfDir, decodeHref(href.split("#")[0])));
     }
   }
+  return { files, order, cover };
+}
 
+function excerptFromEpub(bytes: Uint8Array, maxChars: number): string {
+  const book = readEpub(bytes);
+  if (!book) return "";
+  const { files, order } = book;
+
+  // Chapters until there is enough to read: past a cover, title page or
+  // copyright page that are only pictures.
   const parts: string[] = [];
   let budget = maxChars;
   for (const path of order.slice(0, MAX_EPUB_CHAPTERS)) {
