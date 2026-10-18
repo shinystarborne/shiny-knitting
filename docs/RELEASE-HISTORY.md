@@ -1,5 +1,12 @@
 # Release history
 
+## Toward 1.1.0
+
+- **[v1.1.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.1)** —
+  charts and calculators on a project's board: a chart drawn as it is now, a calculator opened for the project.
+
+## Toward 1.0.0
+
 The betas that led to 1.0.0, newest first. 1.0.0 is everything in them, as one release. Each one's installers and notes are on the
 [releases page](https://github.com/shinystarborne/shiny-knitting/releases).
 
