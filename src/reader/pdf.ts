@@ -1,6 +1,7 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { findTextMatches, findTextParts, pageSearchText, rectsForRanges } from "../annotations";
+import { addressUrl, findAddresses } from "./links";
 import { runOf, sizeRuns, type SizeItem } from "./sizes";
 import { fitTextToPdfFonts } from "./text-fonts";
 import { boxToView, normalRotation, type Rotation } from "./rotation";
@@ -853,6 +854,43 @@ export class PdfView implements RenderedDoc {
     // matches too; and the size knitted, once there is one.
     if (this.search) this.paintSearch(n);
     if (this.sizes) this.paintSizes(n);
+    this.paintTextLinks(n);
+  }
+
+  /**
+   * Addresses written on the page but not made links in the PDF, clickable
+   * as a PDF reader makes them: a box over each, opened as a link out is.
+   * Under the PDF's own links, which win where both are.
+   */
+  private paintTextLinks(n: number): void {
+    const page = this.pages[n - 1];
+    if (!page) return;
+    page.querySelector(".text-links")?.remove();
+    const text = this.textLayerFor(n);
+    if (!text) return;
+    const found = findTextParts(text, (t) => findAddresses(t).map((a) => [a]));
+    const layer = document.createElement("div");
+    layer.className = "text-links";
+    for (const [ranges] of found) {
+      const url = addressUrl(ranges.map((r) => r.toString()).join(""));
+      if (!url) continue;
+      for (const r of rectsForRanges(ranges, page)) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.title = url.replace(/^mailto:/, "");
+        a.rel = "noopener noreferrer nofollow";
+        a.style.left = `${r.x * 100}%`;
+        a.style.top = `${r.y * 100}%`;
+        a.style.width = `${r.w * 100}%`;
+        a.style.height = `${r.h * 100}%`;
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          this.onExternalLink?.(url);
+        });
+        layer.appendChild(a);
+      }
+    }
+    if (layer.childElementCount) page.appendChild(layer);
   }
 
   /**

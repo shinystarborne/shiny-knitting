@@ -1,0 +1,68 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Annots [7 0 R] /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 534 >>
+stream
+BT
+/F2 18 Tf
+1 0 0 1 72 720 Tm
+(Sunday Shawl) Tj
+/F1 12 Tf
+1 0 0 1 72 688 Tm
+() Tj
+/F1 12 Tf
+1 0 0 1 72 670 Tm
+(Shop: www.real-link.com) Tj
+/F1 12 Tf
+1 0 0 1 72 652 Tm
+(Yarn from www.wollshop.de/garn/merino.) Tj
+/F1 12 Tf
+1 0 0 1 72 634 Tm
+(Find me on ravelry.com/designers/shiny) Tj
+/F1 12 Tf
+1 0 0 1 72 616 Tm
+(Questions: hello@shiny-knits.com) Tj
+/F1 12 Tf
+1 0 0 1 72 598 Tm
+(Video: https://example.com/patterns/) Tj
+/F1 12 Tf
+1 0 0 1 72 580 Tm
+(sunday-shawl) Tj
+/F1 12 Tf
+1 0 0 1 72 562 Tm
+(Knit 2.5 cm, e.g. k2tog, fig. 3.) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Link /Rect [105 667 220 681] /Border [0 0 0] /A << /S /URI /URI (https://real-link.com/annotated) >> >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000260 00000 n 
+0000000412 00000 n 
+0000000997 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1142
+%%EOF

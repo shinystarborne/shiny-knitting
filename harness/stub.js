@@ -1469,6 +1469,7 @@ const handlers = {
     if (p.fileName === "sized-pattern.pdf") return fetchFixture("sized-pattern.pdf");
     if (p.fileName === "wide-sizes.pdf") return fetchFixture("wide-sizes.pdf");
     if (p.fileName === "book-length.pdf") return fetchFixture("book-length.pdf");
+    if (p.fileName === "links-pattern.pdf") return fetchFixture("links-pattern.pdf");
     return fetchFixture(p.format === "epub" ? "sample-pattern.epub" : "sample-pattern.pdf");
   },
   // ---------- counters ----------

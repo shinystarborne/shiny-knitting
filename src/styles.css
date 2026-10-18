@@ -780,8 +780,25 @@ kbd {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  z-index: 2;
+  z-index: 3;
+  /* Only its links answer: the page between them is the text's, to select. */
+  pointer-events: none;
 }
+/* Addresses written on the page but not links in the PDF (pdf.ts
+   paintTextLinks): over the text, under the PDF's own links. */
+.text-links {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.text-links a {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.text-links a:hover { background: rgba(255, 255, 0, 0.18); }
+.doc-scroller:not(.mark-tool-pick) .text-links a { pointer-events: none; }
 /* A turned page. pdf.js lays its text and link layers out upright, at the
    page's upright size, tags them with the turn, and leaves the turning to its
    viewer stylesheet -- which this app does not load. These are that
