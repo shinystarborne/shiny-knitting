@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.108](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.108)** —
+  books filed as books again: a PDF of 50 pages or more, and the ones already described. The one to test.
 - **[v0.3.0-beta.107](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.107)** —
-  your size marked on its number, in wide fonts and in patterns of many sizes. The one to test.
+  your size marked on its number, in wide fonts and in patterns of many sizes. Superseded by `beta.108`.
 - **[v0.3.0-beta.106](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.106)** —
   every People measurement drawn, in People and beside the calculators' fields. Superseded by `beta.107`.
 - **[v0.3.0-beta.105](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.105)** —
