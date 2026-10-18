@@ -133,6 +133,12 @@ export async function verifyYarnStash() {
       modal().querySelectorAll(".lot-row").length === 1,
       `${modal().querySelectorAll(".lot-row").length} rows`,
     );
+    const today = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    })();
+    const dateOf = (row) => row.querySelector('[data-lf="boughtAt"]')?.value;
+    check(results, "…bought today, to change if need be", dateOf(modal().querySelector(".lot-row")) === today, String(dateOf(modal().querySelector(".lot-row"))));
 
     const set = (sel, value) => {
       const el = modal().querySelector(sel);
@@ -157,6 +163,8 @@ export async function verifyYarnStash() {
       qtyOf(added().id) === qtyLine(added()),
       `got "${qtyOf(added().id)}", want "${qtyLine(added())}"`,
     );
+    const boughtDay = added().lots[0]?.boughtAt != null ? new Date(added().lots[0].boughtAt).toDateString() : "none";
+    check(results, "…its lot kept as bought today", boughtDay === new Date().toDateString(), boughtDay);
 
     // --- editing grams left moves the metres line ---
     cardFor(added().id).click();
@@ -218,6 +226,7 @@ export async function verifyYarnStash() {
       modal().querySelectorAll(".lot-row").length === 2,
       `${modal().querySelectorAll(".lot-row").length} rows`,
     );
+    check(results, "…bought today too", dateOf(modal().querySelectorAll(".lot-row")[1]) === today, String(dateOf(modal().querySelectorAll(".lot-row")[1])));
     const rows = modal().querySelectorAll(".lot-row");
     rows[1].querySelector('[data-lf="dyeLot"]').value = "B9";
     rows[1].querySelector('[data-lf="balls"]').value = "1";
@@ -237,6 +246,14 @@ export async function verifyYarnStash() {
       added().lots.length === 2 && dyeLots() === ",B9",
       `${added().lots.length} lots, dye lots "${dyeLots()}"`,
     );
+    // A row added and left as it started, with only its date, is not a lot.
+    cardFor(added().id).click();
+    await waitFor(() => modal()?.querySelectorAll(".lot-row").length === 2, "the edit form with two lots");
+    modal().querySelector('[data-act="add-lot"]').click();
+    saveModal();
+    await waitFor(() => !modal(), "saved with an untouched row");
+    check(results, "a lot row left with only today's date is not saved", added().lots.length === 2, `${added().lots.length} lots`);
+
     // 30 + 25 = 55 g of a 25 g / 210 m ball is 462 m, over 4 balls.
     check(
       results,

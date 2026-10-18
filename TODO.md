@@ -337,6 +337,9 @@ calculators.
   card says Deadstock and the m/100 g. Or priced by the cone, as bought
   (yarn_details.per_cone): the cone's grams make it so much per 100 g
   (per100gPrice), and the sums count it by the cone's weight. *0.3.98*
+- **A new lot is bought today:** a new yarn's lot row, and one added with
+  Add lot, start at today's date, to change if need be; a new row with
+  only that date is still empty and not saved. *0.3.99*
 - **Your size in a pattern:** a PDF's sizes read from its text (named after
   Sizes, else by their place, counted from its runs; reader/sizes.ts); the
   size knitted chosen in the reader's Size picker and kept with the pattern

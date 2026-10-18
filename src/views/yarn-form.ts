@@ -1073,9 +1073,10 @@ export class YarnForm {
           boughtAt: lot.boughtAt ? Date.parse(lot.boughtAt) : null,
           leftover: lot.leftover,
         }))
+        // A new row with only the date it starts with is an empty one.
         .filter(
           (lot) =>
-            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || lot.boughtAt != null,
+            lot.dyeLot || lot.balls > 0 || lot.gramsLeft > 0 || lot.location || (lot.id && lot.boughtAt != null),
         );
 
       this.readDetails(true);
@@ -1179,8 +1180,9 @@ function priceHint(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
   return d.perCone ? `${same} A lot costs its grams at this, by the cone's weight.` : `${same} A lot costs its grams at this.`;
 }
 
+/** A new lot row: bought today, as near as it matters; the date can be changed. */
 function emptyLot(): LotRow {
-  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: "", leftover: false };
+  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: toDateInput(Date.now()), leftover: false };
 }
 
 function field(row: HTMLElement, name: string): string {
