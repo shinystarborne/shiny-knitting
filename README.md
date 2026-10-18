@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.106](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.106)** —
+  every People measurement drawn, in People and beside the calculators' fields. The one to test.
 - **[v0.3.0-beta.105](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.105)** —
-  yearly goals in Statistics: projects finished, stash used, or your own. The one to test.
+  yearly goals in Statistics: projects finished, stash used, or your own. Superseded by `beta.106`.
 - **[v0.3.0-beta.104](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.104)** —
   colours from a photo for a chart, with the stash yarns nearest them. Superseded by `beta.105`.
 - **[v0.3.0-beta.103](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.103)** —
