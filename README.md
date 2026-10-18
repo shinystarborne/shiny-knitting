@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.111](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.111)** —
+  chart symbols explained: in Cheatsheets, and on a lace chart when pointed at. The one to test.
 - **[v0.3.0-beta.110](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.110)** —
-  lace charts: stitches in their symbols, rows in words, every row's stitches checked. The one to test.
+  lace charts: stitches in their symbols, rows in words, every row's stitches checked. Superseded by `beta.111`.
 - **[v0.3.0-beta.109](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.109)** —
   files with no text described from their pictures: EPUBs read on past their picture pages, or sent their pictures. Superseded by `beta.110`.
 - **[v0.3.0-beta.108](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.108)** —
