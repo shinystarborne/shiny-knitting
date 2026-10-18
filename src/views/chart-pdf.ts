@@ -1,5 +1,5 @@
 /**
- * A colourwork chart as a PDF, drawn as shapes rather than a picture: every
+ * A chart (colourwork or lace) as a PDF, drawn as shapes rather than a picture: every
  * square is a filled rectangle a set size in millimetres, so the print is
  * sharp at any zoom and measures what it says. "As knitted" makes each square
  * the size of a stitch at the chart's gauge, so the printed chart is the

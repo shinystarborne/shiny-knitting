@@ -1133,7 +1133,7 @@ export type SwatchInput = Pick<
   "yarnId" | "yarnText" | "toolId" | "needleMm" | "stitch" | "sts" | "rows" | "stsBlocked" | "rowsBlocked" | "projectId" | "notes"
 > & { madeAt: number | null };
 
-// ---------- colourwork charts ----------
+// ---------- charts: colourwork and lace ----------
 
 /** One colour of a chart. Mirrors `models.rs::ChartColour`. */
 export interface ChartColour {
@@ -1184,6 +1184,8 @@ export interface ChartData {
   gauge: { sts: number; rows: number };
   /** Symbols on the squares as well as colours. */
   symbols: boolean;
+  /** A round yoke in lace: its squares are stitches (its colours each a stitch), as a lace chart's. */
+  lace?: boolean;
   /** Floats longer than this many stitches are pointed out; 0 for never. */
   floatLimit: number;
   notes: string;
@@ -1657,7 +1659,7 @@ export const api = {
   getSwatchPhoto: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_swatch_photo", { id }),
   removeSwatchPhoto: (id: string) => invoke<void>("remove_swatch_photo", { id }),
 
-  // Colourwork charts. Listed whole, squares and all: the list draws them.
+  // Charts, colourwork and lace. Listed whole, squares and all: the list draws them.
   listCheatsheets: () => invoke<Cheatsheet[]>("list_cheatsheets"),
   addCheatsheet: (input: CheatsheetInput) => invoke<Cheatsheet>("add_cheatsheet", { input }),
   updateCheatsheet: (sheet: Cheatsheet) => invoke<Cheatsheet>("update_cheatsheet", { sheet }),

@@ -297,7 +297,7 @@ export async function verifyCharts() {
     await waitFor(() => !!calc(), "the calculators");
     click(calc(), '[data-calc="charts"]');
     await waitFor(() => !!calc()?.querySelector(".chart-list-head"), "the charts list");
-    check(results, "Colourwork charts are listed in the Calculators tab", /No charts yet/.test(calc()!.textContent ?? ""));
+    check(results, "Charts are listed in the Calculators tab", /No charts yet/.test(calc()!.textContent ?? ""));
 
     // ---------- a new round yoke ----------
     click(calc(), '[data-act="new-chart"]');
@@ -339,7 +339,7 @@ export async function verifyCharts() {
     check(results, "a fill takes the whole run it is in", [0, 1, 2, 3, 4, 5].every((x) => square(x, 4) === "0"), stored().data.cells.slice(48, 60));
     click(page(), '[data-tool="draw"]');
     click(page(), '[data-act="add-colour"]');
-    check(results, "+ Colour adds the next colour and picks it", page()!.querySelectorAll(".chart-chip").length === 3 && !!page()!.querySelector('.chart-chip.on[data-colour="2"]'));
+    check(results, "+ Colour adds the next colour and picks it", page()!.querySelectorAll(".chart-chip[data-colour]").length === 3 && !!page()!.querySelector('.chart-chip.on[data-colour="2"]'));
 
     // ---------- a colour's yarn ----------
     const yarnPick = () => page()!.querySelector<HTMLSelectElement>('[data-f="colour-yarn"]')!;

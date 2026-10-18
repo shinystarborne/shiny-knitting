@@ -1190,7 +1190,7 @@ function cleanChart({ name, data }) {
   };
   if (!["standard", "yoke", "lace"].includes(d.kind)) fail("A chart is a standard one, a round yoke, or lace.");
   if (![d.width, d.height].every((v) => Number.isInteger(v) && v >= 1 && v <= 400)) fail("A chart is 1 to 400 squares each way.");
-  if (!d.colours.length || d.colours.length > 16) fail("A chart has 1 to 16 colours.");
+  if (!d.colours.length || d.colours.length > 36) fail("A chart has 1 to 36 colours.");
   d.colours.forEach((c, i) => {
     if (!/^#[0-9a-f]{6}$/i.test(c.hex.trim())) fail(`“${c.hex}” is not a colour.`);
     c.hex = c.hex.trim().toLowerCase();
@@ -1202,15 +1202,16 @@ function cleanChart({ name, data }) {
       delete c.yarn;
       delete c.yarnId;
     }
-    // As charts.rs: a lace chart's colours are its stitches, each once; another chart's have none.
-    if (d.kind === "lace") {
+    // As charts.rs: a lace chart's colours (or a lace yoke's) are its stitches, each once; another chart's have none.
+    if (d.kind === "lace" || (d.kind === "yoke" && d.lace)) {
       c.stitch = String(c.stitch ?? "").trim();
       if (!c.stitch) fail("Each of a lace chart's squares is a stitch.");
-    } else delete c.stitch;
+    } else if (c.stitch !== "none") delete c.stitch;
   });
-  if (d.kind === "lace" && new Set(d.colours.map((c) => c.stitch)).size !== d.colours.length) fail("A stitch is in a lace chart's list once.");
+  d.lace = d.kind === "yoke" && !!d.lace;
+  if ((d.kind === "lace" || d.lace) && new Set(d.colours.map((c) => c.stitch)).size !== d.colours.length) fail("A stitch is in a lace chart's list once.");
   if (d.cells.length !== d.width * d.height) fail("The chart's squares do not match its size.");
-  if (![...d.cells].every((ch) => /^[0-9a-f]$/.test(ch) && parseInt(ch, 16) < d.colours.length)) fail("A square is in a colour the chart does not have.");
+  if (![...d.cells].every((ch) => /^[0-9a-z]$/.test(ch) && parseInt(ch, 36) < d.colours.length)) fail("A square is in a colour the chart does not have.");
   if (d.kind !== "yoke") {
     d.sections = [];
     d.repeats = 1;

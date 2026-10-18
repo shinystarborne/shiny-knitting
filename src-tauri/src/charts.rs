@@ -25,7 +25,9 @@ type CmdResult<T> = Result<T, AppError>;
 /// The most squares a side can have: a blanket's worth of stitches.
 pub const MAX_SIDE: i64 = 400;
 /// Colours a chart can have, one hex digit each.
-pub const MAX_COLOURS: usize = 16;
+/// A square's colour is one character, 0-9 then a-z (charts from before
+/// had 0-f, which read the same): 36 colours, or a lace chart's stitches.
+pub const MAX_COLOURS: usize = 36;
 /// The most repeats around a yoke: a fine-gauge yoke of 2-stitch repeats.
 const MAX_REPEATS: i64 = 300;
 /// The most stitches or rows in 10 cm, as for swatches.
@@ -66,7 +68,9 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
         "yoke" => true,
         _ => return refuse("A chart is a standard one, a round yoke, or lace."),
     };
-    let lace = d.kind == "lace";
+    // A lace chart, or a round yoke in lace: its colours are its stitches.
+    d.lace = yoke && d.lace;
+    let lace = d.kind == "lace" || d.lace;
     if !(1..=MAX_SIDE).contains(&d.width) || !(1..=MAX_SIDE).contains(&d.height) {
         return refuse(&format!("A chart is 1 to {MAX_SIDE} squares each way."));
     }
@@ -82,8 +86,12 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
         }
         c.yarn = line(&c.yarn, 120);
         c.yarn_id = line(&c.yarn_id, 60);
-        // A lace chart's colours are its stitches, each a stitch once; another chart's have none.
-        c.stitch = if lace { line(&c.stitch, 20) } else { String::new() };
+        // A lace chart's colours are its stitches, each a stitch once; another
+        // chart's are colours, or the one "no stitch" (a grey square).
+        c.stitch = line(&c.stitch, 20);
+        if !lace && c.stitch != "none" {
+            c.stitch.clear();
+        }
         if lace && c.stitch.is_empty() {
             return refuse("Each of a lace chart's squares is a stitch.");
         }
@@ -106,7 +114,7 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
         return refuse("The chart's squares do not match its size.");
     }
     let colours = d.colours.len() as u32;
-    if !d.cells.chars().all(|c| c.to_digit(16).is_some_and(|i| i < colours)) {
+    if !d.cells.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) || !d.cells.chars().all(|c| c.to_digit(36).is_some_and(|i| i < colours)) {
         return refuse("A square is in a colour the chart does not have.");
     }
 
@@ -333,13 +341,33 @@ mod tests {
         let mut none = input.clone();
         none.data.colours[1].stitch = " ".into();
         assert!(clean(none).is_err(), "each a stitch");
-        // A colour chart keeps no stitches.
+        // A colour chart keeps no stitches, but a colour can be no stitch.
         let mut colour = standard(4, 3);
         colour.data.colours[0].stitch = "yo".into();
-        assert!(clean(colour).unwrap().data.colours[0].stitch.is_empty());
+        colour.data.colours[1].stitch = "none".into();
+        let c = clean(colour).unwrap();
+        assert!(c.data.colours[0].stitch.is_empty() && c.data.colours[1].stitch == "none");
+        // Squares past f: 36 colours, 0-9 then a-z.
+        let mut many = standard(2, 1);
+        many.data.colours = colours(36);
+        many.data.cells = "z0".into();
+        assert!(clean(many.clone()).is_ok());
+        many.data.cells = "Z0".into();
+        assert!(clean(many).is_err(), "lower case only");
         let mut odd = standard(4, 3);
         odd.data.kind = "tapestry".into();
         assert!(clean(odd).is_err());
+        // A round yoke in lace: its stitches checked as a lace chart's.
+        let mut lace_yoke = yoke(false);
+        lace_yoke.data.lace = true;
+        assert!(clean(lace_yoke.clone()).is_err(), "its colours have no stitches");
+        lace_yoke.data.colours = vec![stitch("knit"), stitch("yo")];
+        let c = clean(lace_yoke).unwrap();
+        assert!(c.data.lace && c.data.kind == "yoke");
+        // Only a yoke is one: a standard chart is not lace by a flag.
+        let mut flagged = standard(4, 3);
+        flagged.data.lace = true;
+        assert!(!clean(flagged).unwrap().data.lace);
     }
 
     #[test]
@@ -383,7 +411,7 @@ mod tests {
         assert!(clean(standard(0, 3)).is_err());
         assert!(clean(standard(401, 1)).is_err());
         let mut many = standard(2, 2);
-        many.data.colours = colours(17);
+        many.data.colours = colours(37);
         assert!(clean(many).is_err());
         let mut not_colour = standard(2, 2);
         not_colour.data.colours[0].hex = "red".into();

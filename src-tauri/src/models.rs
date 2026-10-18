@@ -1789,6 +1789,9 @@ pub struct ChartData {
     /// Symbols drawn on the squares as well as colours.
     #[serde(default)]
     pub symbols: bool,
+    /// A round yoke in lace: its squares are stitches, as a lace chart's are.
+    #[serde(default)]
+    pub lace: bool,
     /// Floats longer than this many stitches are pointed out; 0 for never.
     #[serde(default)]
     pub float_limit: i64,

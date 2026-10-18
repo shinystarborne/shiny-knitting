@@ -5,7 +5,7 @@ import { chartPlace, colourLabel, decode, normalize, rowInWords, stitchMask, wri
 import { CanvasPainter, drawChart, margins, PAPER, sizeCanvas } from "./chart-draw";
 
 /**
- * A colourwork chart knitted from on a project's page: the chart, the row to
+ * A chart (colourwork or lace) knitted from on a project's page: the chart, the row to
  * knit next marked on it and written out, moving as the project's rows are
  * counted. The chart's first row is knitted on one of the project's rows
  * (after a rib, say), and a standard chart repeats up the work from there.
@@ -68,7 +68,7 @@ export class ProjectChart {
             <option value="">No chart</option>
             ${this.charts.map((c) => `<option value="${esc(c.id)}" ${c.id === p.chartId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
           </select></label>`
-          : `<p class="hint">Draw a colourwork chart under Calculators, to knit from it here: the row to knit marked, as the rows are counted.</p>`
+          : `<p class="hint">Draw a chart under Calculators, to knit from it here: the row to knit marked, as the rows are counted.</p>`
       }
       ${
         chosen

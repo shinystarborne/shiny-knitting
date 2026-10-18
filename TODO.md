@@ -141,6 +141,15 @@ and 111).
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Charts, not colourwork charts:** renamed (Calculators). A round yoke in
+  lace (ChartData.lace, a yoke only): its stitches as a lace chart's, its
+  shaping worked into them (a square gone a stitch knitted together, a new
+  one made; laceRows counts them, writeOutLaceYoke). Every lace stitch shown
+  to draw with, taken into the chart when chosen (no + Stitch); no stitch
+  third. A square's colour is base 36 now (0-9, a-z; 0-f read the same), so
+  36 colours or stitches. No stitch as a colour on colourwork charts
+  (ChartColour.stitch "none"): grey, left out of the words, no part of a
+  float, its legend once. *0.3.112*
 - **Chart symbols explained:** Chart symbols, second in Cheatsheets
   (abbreviations.ts SymbolsPanel): each stitch drawn, its meaning from its
   abbreviation in the glossary (yours first), its wrong-side stitch, and a

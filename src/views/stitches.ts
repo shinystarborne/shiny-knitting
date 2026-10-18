@@ -48,6 +48,7 @@ export const STITCHES: Stitch[] = [
     key: "purl", abbr: "p", name: "Purl", ws: "k", takes: 1, makes: 1, glossary: "p",
     draw: (p, cx, cy, s, ink) => p.poly(circle(cx, cy, s * 0.11, 12), ink, true),
   },
+  { key: NO_STITCH_KEY, abbr: "no stitch", name: "No stitch", ws: "no stitch", takes: 0, makes: 0, draw: () => {} },
   {
     key: "yo", abbr: "yo", name: "Yarn over", ws: "yo", takes: 0, makes: 1, glossary: "yo",
     draw: (p, cx, cy, s, ink) => p.poly(circle(cx, cy, s * 0.27), ink, false, pen(s).w),
@@ -152,7 +153,6 @@ export const STITCHES: Stitch[] = [
     key: "bobble", abbr: "MB", name: "Make bobble", ws: "MB", takes: 1, makes: 1, glossary: "MB",
     draw: (p, cx, cy, s, ink) => p.poly(circle(cx, cy, s * 0.27, 6), ink, true),
   },
-  { key: NO_STITCH_KEY, abbr: "no stitch", name: "No stitch", ws: "no stitch", takes: 0, makes: 0, draw: () => {} },
 ];
 
 const BY_KEY = new Map(STITCHES.map((s) => [s.key, s]));
@@ -161,8 +161,11 @@ export function stitchOf(key: string | undefined): Stitch | undefined {
   return key ? BY_KEY.get(key) : undefined;
 }
 
-/** The stitches a new lace chart starts with: the ones nearly every lace chart has. */
-export const LACE_START = ["knit", "purl", "yo", "k2tog", "ssk", "sk2p", NO_STITCH_KEY];
+/**
+ * The stitches a new lace chart starts with: knit, its background. The
+ * others are all shown to draw with, and taken in as they are chosen.
+ */
+export const LACE_START = ["knit"];
 
 // ---------- as SVG ----------
 

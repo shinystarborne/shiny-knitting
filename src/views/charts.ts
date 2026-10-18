@@ -13,6 +13,8 @@ import {
   fillArea,
   flipped,
   isLace,
+  isNoStitch,
+  NO_STITCH_COLOUR,
   laceColour,
   laceMismatches,
   laceRows,
@@ -59,7 +61,7 @@ import { colourName, likeness, mainColours, nearestYarns, pixelsOf, yarnColour, 
 // ---------- the list, in the Calculators tab ----------
 
 /**
- * The colourwork charts, in the Calculators tab: a card each, drawn from the
+ * The charts, colourwork and lace, in the Calculators tab: a card each, drawn from the
  * chart itself, and a new one, standard or a round yoke. A chart opens on a
  * page of its own.
  */
@@ -84,7 +86,7 @@ export class ChartList {
     this.root.innerHTML = `
       <header class="chart-list-head">
         <div>
-          <h2>Colourwork charts</h2>
+          <h2>Charts</h2>
           <p class="hint">A grid where a square is a stitch: a standard chart, worked flat or in the round, or a round yoke's repeat, with its shaping, as a lopapeysa's.</p>
         </div>
         <button class="primary" data-act="new-chart">+ New chart</button>
@@ -143,7 +145,7 @@ function open(from: HTMLElement, id: string): void {
 }
 
 function cardHtml(c: Chart): string {
-  const kind = c.data.kind === "yoke" ? "Round yoke" : `${c.data.kind === "lace" ? "Lace, " : ""}${c.data.flat ? "flat" : "in the round"}`.replace(/^./, (x) => x.toUpperCase());
+  const kind = c.data.kind === "yoke" ? (c.data.lace ? "Round yoke, lace" : "Round yoke") : `${c.data.kind === "lace" ? "Lace, " : ""}${c.data.flat ? "flat" : "in the round"}`.replace(/^./, (x) => x.toUpperCase());
   const size = c.data.kind === "yoke" ? `${c.data.width}-st repeat × ${c.data.repeats}, ${c.data.height} rounds` : `${c.data.width} × ${c.data.height}`;
   return `
     <article class="chart-card" data-open-chart="${esc(c.id)}">
@@ -151,7 +153,7 @@ function cardHtml(c: Chart): string {
       <div class="chart-card-body">
         <h3>${esc(c.name)}</h3>
         <p>${esc(`${kind} · ${size}`)}</p>
-        <p>${esc(`${c.data.colours.length} ${c.data.kind === "lace" ? "stitches" : "colours"} · changed ${longDate(c.updatedAt)}`)}</p>
+        <p>${esc(`${c.data.colours.length} ${c.data.kind === "lace" || c.data.lace ? "stitches" : "colours"} · changed ${longDate(c.updatedAt)}`)}</p>
       </div>
       <div class="chart-card-actions">
         <button class="ghost" data-act="copy-chart" data-id="${esc(c.id)}" title="Make a copy to change">Copy</button>
@@ -191,6 +193,8 @@ function newChartDialog(): Promise<{ name: string; grid: Grid } | null> {
         <label class="dialog-field"><span class="dialog-label">Stitches in the repeat</span><input class="dialog-input" data-f="rw" inputmode="numeric" value="12" /></label>
         <label class="dialog-field"><span class="dialog-label">Rounds</span><input class="dialog-input" data-f="rh" inputmode="numeric" value="45" /></label>
         <label class="dialog-field"><span class="dialog-label">Repeats around</span><input class="dialog-input" data-f="reps" inputmode="numeric" value="18" /></label>
+        <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="yoke-lace" />
+          <span><span class="dialog-label">Lace</span><span class="dialog-hint">Stitches, not colours: yarn overs and decreases, each square drawn in its symbol.</span></span></label>
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="shaped" checked />
           <span><span class="dialog-label">Start with the usual shaping</span><span class="dialog-hint">Three decrease rounds, to about two fifths of the repeat at the neck. Change them as you like.</span></span></label>
       </div>
@@ -222,7 +226,7 @@ function newChartDialog(): Promise<{ name: string; grid: Grid } | null> {
         error.hidden = false;
         return;
       }
-      const grid = newGrid({ kind: kind(), width: w, height: h, repeats: num("reps"), shaped: field("shaped").checked, flat: field("flat").value === "flat" });
+      const grid = newGrid({ kind: kind(), width: w, height: h, repeats: num("reps"), shaped: field("shaped").checked, flat: field("flat").value === "flat", lace: yoke && field("yoke-lace").checked });
       finish({ name: field("name").value.trim() || (yoke ? "Yoke" : kind() === "lace" ? "Lace" : "Chart"), grid });
     };
     card.addEventListener("click", (e) => {
@@ -461,6 +465,8 @@ export class ChartPage {
       kept.side = side;
       return this.paintSide();
     }
+    const stitch = closestEl(e.target, "[data-stitch]");
+    if (stitch) return this.chooseStitch(stitch.dataset.stitch!);
     const chip = closestEl(e.target, "[data-colour]");
     if (chip) {
       this.colour = Number(chip.dataset.colour);
@@ -479,6 +485,16 @@ export class ChartPage {
       return this.refresh();
     }
     if (act === "add-colour") return this.addColour();
+    if (act === "no-stitch") {
+      // No stitch, chosen as a colour is: taken in the first time.
+      let i = this.g.colours.findIndex(isNoStitch);
+      if (i < 0) {
+        this.change(() => this.g.colours.push({ ...NO_STITCH_COLOUR }));
+        i = this.g.colours.length - 1;
+      }
+      this.colour = i;
+      return this.paintPalette();
+    }
     if (act === "photo-colours") return void (await this.fromPhoto());
     if (act === "remove-colour") return void (await this.removeColour());
     if (act === "remove") return void (await this.remove());
@@ -1032,6 +1048,8 @@ export class ChartPage {
     // 1 to 9 pick a colour; 0 the tenth.
     if (/^[0-9]$/.test(k)) {
       const i = k === "0" ? 9 : Number(k) - 1;
+      // On a lace chart, the stitches as the palette shows them.
+      if (isLace(this.g)) return this.chooseStitch(STITCHES[i].key);
       if (i < this.g.colours.length) {
         this.colour = i;
         this.paintPalette();
@@ -1067,6 +1085,12 @@ export class ChartPage {
               <span class="chart-chip-sw" style="background:${esc(col.hex)}"></span><span class="chart-chip-name">${esc(col.name)}</span></button>`,
           )
           .join("")}
+        ${
+          this.g.colours.some(isNoStitch) || this.g.colours.length >= MAX_COLOURS
+            ? ""
+            : `<button class="chart-chip" data-act="no-stitch" title="A grey square: no stitch there, left out when knitting (a shaped edge, a gap in a motif)">
+              <span class="chart-chip-sw" style="background:${NO_STITCH_COLOUR.hex}"></span><span class="chart-chip-name">No stitch</span></button>`
+        }
         ${this.g.colours.length < MAX_COLOURS ? `<button class="ghost chart-add-colour" data-act="add-colour" title="Another colour">+ Colour</button>` : ""}
         <button class="ghost chart-add-colour" data-act="photo-colours" title="A photo's main colours, as the chart's, with the yarns in your stash nearest them">🎨 From a photo…</button>
       </div>
@@ -1084,37 +1108,56 @@ export class ChartPage {
         }
         ${this.colour ? `<button class="ghost danger-text" data-act="remove-colour" title="Its squares go to the background colour">Remove</button>` : `<span class="hint">Background</span>`}
       </div>`;
+    // No stitch has no colour, name or yarn to choose.
+    if (isNoStitch(c)) {
+      el.querySelector<HTMLElement>(".chart-colour-edit")!.innerHTML = `
+        <span class="hint">No stitch: a grey square, nothing knitted there; left out of the rows in words.</span>
+        ${this.colour ? `<button class="ghost danger-text" data-act="remove-colour" title="Its squares go to the background colour">Remove</button>` : ""}`;
+    }
   }
 
   /**
-   * A lace chart's stitches, each its symbol and how it is written, to draw
-   * with; the one chosen said in full, and changed for another stitch.
+   * A lace chart's stitches: every one there is, each its symbol and how it
+   * is written, to draw with; the one chosen said in a line.
    */
   private paintStitches(): void {
     const counts = usage(this.g, this.mask);
     const chosen = stitchAt(this.g, this.colour);
+    const squares = (key: string) => {
+      const i = this.g.colours.findIndex((c) => c.stitch === key);
+      return i < 0 ? 0 : counts[i];
+    };
     const el = this.root.querySelector<HTMLElement>('[data-el="palette"]')!;
-    const inChart = new Set(this.g.colours.map((c) => c.stitch));
     el.innerHTML = `
-      <div class="chart-chips">
-        ${this.g.colours
-          .map((_, i) => {
-            const s = stitchAt(this.g, i);
-            return `<button class="chart-chip stitch-chip${i === this.colour ? " on" : ""}" data-colour="${i}" title="${esc(`${s.name}: ${counts[i]} squares${i < 10 ? ` (key ${i === 9 ? 0 : i + 1})` : ""}${i ? "" : ". The background: right-click draws it"}`)}">
-              ${symbolSvg(s.key, 20)}<span class="chart-chip-name">${esc(s.abbr)}</span></button>`;
-          })
-          .join("")}
-        ${this.g.colours.length < MAX_COLOURS ? `<button class="ghost chart-add-colour" data-act="add-colour" title="Another stitch">+ Stitch</button>` : ""}
+      <div class="chart-chips stitch-chips">
+        ${STITCHES.map(
+          (s, i) => `<button class="chart-chip stitch-chip${s.key === chosen.key ? " on" : ""}" data-stitch="${s.key}" title="${esc(`${s.name}: ${squares(s.key)} squares${i < 10 ? ` (key ${i === 9 ? 0 : i + 1})` : ""}${i ? "" : ". The background: right-click draws it"}`)}">
+              ${symbolSvg(s.key, 20)}<span class="chart-chip-name">${esc(s.abbr)}</span></button>`,
+        ).join("")}
       </div>
       <div class="chart-colour-edit">
-        <select data-f="stitch" aria-label="The stitch" title="Change it for another stitch: its squares change with it">
-          ${STITCHES.filter((s) => s.key === chosen.key || !inChart.has(s.key))
-            .map((s) => `<option value="${s.key}" ${s.key === chosen.key ? "selected" : ""}>${esc(s.key === NO_STITCH_KEY ? "No stitch (grey)" : `${s.abbr}: ${s.name}`)}</option>`)
-            .join("")}
-        </select>
-        <span class="hint stitch-line">${esc(chosen.key === NO_STITCH_KEY ? "A gap in the row: no stitch is worked." : `${chosen.name}: ${chosen.takes === chosen.makes ? "the same stitches after" : chosen.makes > chosen.takes ? `${chosen.makes - chosen.takes} more` : `${chosen.takes - chosen.makes} fewer`}${this.g.flat && chosen.ws !== chosen.abbr ? `; on a wrong-side row, ${chosen.ws}` : ""}.`)}</span>
-        ${this.colour ? `<button class="ghost danger-text" data-act="remove-colour" title="Its squares go to knit">Remove</button>` : `<span class="hint">Background</span>`}
+        <span class="hint stitch-line">${esc(chosen.key === NO_STITCH_KEY ? "No stitch: a gap in the row, nothing worked." : `${chosen.abbr}, ${chosen.name.toLowerCase()}: ${chosen.takes === chosen.makes ? "the same stitches after" : chosen.makes > chosen.takes ? `${chosen.makes - chosen.takes} more` : `${chosen.takes - chosen.makes} fewer`}${this.g.flat && chosen.ws !== chosen.abbr ? `; on a wrong-side row, ${chosen.ws}` : ""}.`)}</span>
       </div>`;
+  }
+
+  /**
+   * Chooses a lace stitch to draw with: the chart takes it in the first time
+   * (a chart has room for 16; full, those not drawn anywhere make room).
+   */
+  private chooseStitch(key: string): void {
+    let i = this.g.colours.findIndex((c) => c.stitch === key);
+    if (i < 0) {
+      if (this.g.colours.length >= MAX_COLOURS) {
+        const counts = usage(this.g, this.mask);
+        for (let k = this.g.colours.length - 1; k > 0; k--) if (!counts[k] && k !== this.colour) removeColour(this.g, k);
+        this.colour = Math.min(this.colour, this.g.colours.length - 1);
+      }
+      if (this.g.colours.length >= MAX_COLOURS) return void say(`A chart can have ${MAX_COLOURS} different stitches, and this one has them all drawn.`, "Stitches");
+      this.g.colours.push(laceColour(key));
+      i = this.g.colours.length - 1;
+    }
+    this.colour = i;
+    this.paintPalette();
   }
 
   /**
@@ -1224,7 +1267,7 @@ export class ChartPage {
     this.change(() => {
       const counts = usage(this.g, this.mask);
       // The chart's colours, the most used first: the background first when it is.
-      const order = this.g.colours.map((_, i) => i).sort((a, b) => counts[b] - counts[a] || a - b);
+      const order = this.g.colours.map((_, i) => i).filter((i) => !isNoStitch(this.g.colours[i])).sort((a, b) => counts[b] - counts[a] || a - b);
       chosen.forEach((c, k) => {
         let i: number;
         if (recolour && k < order.length) i = order[k];
@@ -1330,11 +1373,21 @@ export class ChartPage {
   /** A lace chart's stitches: those each row leaves, where the rows do not add up, and how many of each stitch. */
   private laceHtml(): string {
     const g = this.g;
-    const rows = laceRows(g);
+    const rows = laceRows(g, this.mask);
     const off = laceMismatches(g);
     const word = g.flat ? "Row" : "Round";
     const counts = usage(g, this.mask);
+    const sections =
+      g.kind === "yoke"
+        ? `<table class="calc-table">${g.sections
+            .map((s, i) => {
+              const end = i + 1 < g.sections.length ? g.sections[i + 1].row : g.height;
+              return `<tr><th>Rounds ${s.row + 1}–${end}</th><td>${s.sts} × ${g.repeats} = ${totalInRow(g, s.row)} sts</td></tr>`;
+            })
+            .join("")}</table>`
+        : "";
     return `
+      ${sections}
       ${
         off.length
           ? `<div class="calc-warnings-p">${off.map((o) => `<p>${word} ${o.row + 1} works ${o.takes} stitches, but ${word.toLowerCase()} ${o.row} left ${o.had}: ${o.takes > o.had ? "a decrease too many, or a yarn over missing" : "a yarn over too many, or a decrease missing"}.</p>`).join("")}</div>`

@@ -1,12 +1,12 @@
 /**
- * Drawing colourwork charts. One routine draws a chart through a `Painter`,
+ * Drawing charts, colourwork and lace. One routine draws a chart through a `Painter`,
  * so the editor's canvas, a PNG and a PDF's vector pages are the same
  * drawing: squares, symbols, the grid with a heavier line every 10, numbers,
  * a yoke's shaping rounds and long floats. The previews -- the chart tiled,
  * and a yoke seen from above -- are for the screen only, and draw on a
  * canvas directly.
  */
-import { colourLabel, inkOn, isLace, range, stitchAt, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
+import { colourLabel, inkOn, isLace, isNoStitch, range, stitchAt, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
 import { NO_STITCH_KEY } from "./stitches";
 
 /** Draws in a box whose origin is top left, y going down, in whatever unit the painter uses. */
@@ -103,7 +103,7 @@ export function drawChart(p: Painter, g: Grid, l: Layout): void {
     for (let r = r0; r < r1; r++) {
       for (let c = c0; c < c1; c++) {
         const i = r * g.width + c;
-        if (!mask[i] || !g.cells[i]) continue;
+        if (!mask[i] || !g.cells[i] || isNoStitch(g.colours[g.cells[i]])) continue;
         const colour = g.colours[g.cells[i]];
         drawSymbol(p, g.cells[i], xOf(c) + l.cw / 2, yOf(r) + l.ch / 2, s, inkOn(colour.hex));
       }
@@ -205,8 +205,9 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
   let cx = x;
   let cy = y;
   if (isLace(g)) {
-    // Each stitch's symbol, what it is, and on a wrong-side row what it is worked as.
+    // Each stitch used: its symbol, what it is, and on a wrong-side row what it is worked as.
     g.colours.forEach((c, i) => {
+      if (!counts[i]) return;
       const s = stitchAt(g, i);
       const label = s.key === NO_STITCH_KEY ? "No stitch: go on to the next" : `${s.abbr}: ${s.name.toLowerCase()}${g.flat && s.ws !== s.abbr ? `; on a WS row ${s.ws}` : ""}`;
       const itemW = box + gap + p.measure(label, size) + size * 2;
@@ -220,11 +221,15 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
       p.text(cx + box + gap, cy + box / 2, label, size, "#1a1a1a", "left");
       cx += itemW;
     });
-    return cy + lineH - y;
+    // A yoke's shaping too, as a colourwork yoke's legend says it.
+    if (g.kind !== "yoke" || g.sections.length < 2) return cy + lineH - y;
   }
-  g.colours.forEach((c, i) => {
+  const shapingSaysIt = g.kind === "yoke" && g.sections.length > 1;
+  if (!isLace(g)) g.colours.forEach((c, i) => {
+    // No stitch is said once: with a yoke's shaping, there.
+    if (isNoStitch(c) && shapingSaysIt) return;
     const name = colourLabel(c);
-    const label = `${name}  ${counts[i] ?? 0} sts`;
+    const label = isNoStitch(c) ? name : `${name}  ${counts[i] ?? 0} sts`;
     const itemW = box + gap + p.measure(label, size) + size * 2;
     if (cx > x && cx + itemW > x + width) {
       cx = x;
@@ -232,9 +237,9 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
     }
     p.rect(cx, cy, box, box, c.hex);
     p.poly([[cx, cy], [cx + box, cy], [cx + box, cy + box], [cx, cy + box]], HEAVY, false, Math.max(0.5, size / 14));
-    if (g.symbols && i) drawSymbol(p, i, cx + box / 2, cy + box / 2, box, inkOn(c.hex));
+    if (g.symbols && i && !isNoStitch(c)) drawSymbol(p, i, cx + box / 2, cy + box / 2, box, inkOn(c.hex));
     p.text(cx + box + gap, cy + box / 2, name, size, "#1a1a1a", "left");
-    p.text(cx + box + gap + p.measure(`${name}  `, size), cy + box / 2, `${counts[i] ?? 0} sts`, size * 0.9, NUMBERS, "left");
+    if (!isNoStitch(c)) p.text(cx + box + gap + p.measure(`${name}  `, size), cy + box / 2, `${counts[i] ?? 0} sts`, size * 0.9, NUMBERS, "left");
     cx += itemW;
   });
   if (g.kind === "yoke" && g.sections.length > 1) {

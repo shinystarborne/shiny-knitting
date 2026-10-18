@@ -23,7 +23,7 @@ const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
   { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
   { key: "held", label: "Yarns held together", hint: "Two strands or more, as one yarn" },
-  { key: "charts", label: "Colourwork charts", hint: "Standard, or a round yoke's" },
+  { key: "charts", label: "Charts", hint: "Colourwork or lace, or a round yoke's" },
 ];
 
 /** A round yoke's depth over the armhole's, in cm: it covers the shoulders too. */
@@ -119,7 +119,7 @@ export function yokeFitOf(r: RoundYokeResult, gauge: Gauge): YokeFit | null {
  * The Calculators tab: a top-down raglan from someone's measurements and a
  * swatch, and the small sums of every day -- stitches for a size, increasing
  * evenly, a pattern at another gauge. Results come as numbers and as written
- * steps, which copy, or go onto a project's board. The colourwork charts are
+ * steps, which copy, or go onto a project's board. The charts (colourwork and lace) are
  * listed here too (see charts.ts).
  */
 export class CalculatorsView {
@@ -333,11 +333,11 @@ export class CalculatorsView {
           <div class="calc-fields">
             <label class="field calc-field" title="Three is the classic; more makes a rounder yoke"><span>Increase rounds</span>
               <select data-k="increases">${[3, 4, 5, 6].map((n) => `<option value="${n}" ${String(n) === increases ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-            <label class="field calc-field" title="The colourwork's repeat, so every count fits it: 1 for none" data-el="repeat-field" ${this.yokeChart() ? "hidden" : ""}><span>Pattern repeat</span>
+            <label class="field calc-field" title="The yoke pattern's repeat, so every count fits it: 1 for none" data-el="repeat-field" ${this.yokeChart() ? "hidden" : ""}><span>Pattern repeat</span>
               <input data-k="repeat" inputmode="numeric" value="${esc(kept.values.repeat ?? "1")}" /></label>
           </div>
           <div class="calc-yoke-chart">
-            <label class="field" title="A round yoke chart: its repeat goes round the yoke, narrowing to the neck, and the counts are fitted to it"><span>Colourwork chart</span>
+            <label class="field" title="A round yoke chart: its repeat goes round the yoke, narrowing to the neck, and the counts are fitted to it"><span>Yoke chart</span>
               <select data-k="chart">
                 <option value="">None: a pattern repeat typed in</option>
                 ${this.charts.map((c) => `<option value="${esc(c.id)}" ${c.id === kept.values.chart ? "selected" : ""}>${esc(`${c.name}: a ${c.data.width}-stitch repeat`)}</option>`).join("")}
@@ -665,7 +665,7 @@ export class CalculatorsView {
     const fitted = fitsYoke(g, fit);
     const neck = fit.sections[0].sts;
     return `
-      <h3>Colourwork chart</h3>
+      <h3>Yoke chart</h3>
       <div class="calc-chart">
         <canvas class="calc-chart-ring" data-el="yoke-ring" title="The yoke from above, knitted from the chart fitted to it"></canvas>
         <div class="calc-chart-text">
