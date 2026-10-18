@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.110](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.110)** —
+  lace charts: stitches in their symbols, rows in words, every row's stitches checked. The one to test.
 - **[v0.3.0-beta.109](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.109)** —
-  files with no text described from their pictures: EPUBs read on past their picture pages, or sent their pictures. The one to test.
+  files with no text described from their pictures: EPUBs read on past their picture pages, or sent their pictures. Superseded by `beta.110`.
 - **[v0.3.0-beta.108](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.108)** —
   books filed as books again: a PDF of 50 pages or more, and the ones already described. Superseded by `beta.109`.
 - **[v0.3.0-beta.107](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.107)** —
