@@ -23,7 +23,7 @@ import { makeCombo } from "./combo";
 import { dialogOpen } from "../dialogs";
 import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
-import { WEIGHTS, coneCount, familyByMetres, familyOf, grouped, metresPer100g, weightLabel } from "./yarn-weight";
+import { WEIGHTS, byWeight, coneCount, familyByMetres, familyOf, grouped, metresPer100g, per100gOf, readPer100g, weightLabel } from "./yarn-weight";
 import type { YarnStart } from "./shopping";
 import { parsePrice } from "./money";
 import { gaugeSpan, readGauge, showGauge, swatchLine } from "./measure";
@@ -66,6 +66,8 @@ export class YarnForm {
    * than typed, so it may follow them when they change. Typing in it stops that.
    */
   private weightAuto = false;
+  /** Deadstock's metres per 100 g were filled in from a count typed as the weight, not typed. */
+  private metresAuto = false;
 
   private onDone: (yarn: Yarn) => void;
   /**
@@ -193,14 +195,18 @@ export class YarnForm {
         </div>
         <div class="field-row">
           <label class="field">
-            <span>Metres per ball</span>
+            <span data-el="metres-label">Metres per ball</span>
             <input data-f="metresPerBall" type="number" min="0" value="${base?.metresPerBall || ""}" placeholder="e.g. 175" />
           </label>
           <label class="field">
-            <span>Grams per ball</span>
+            <span data-el="grams-label">Grams per ball</span>
             <input data-f="gramsPerBall" type="number" min="0" value="${base?.gramsPerBall || ""}" placeholder="e.g. 50" />
           </label>
         </div>
+        <label class="check deadstock">
+          <input type="checkbox" data-f="deadstock" ${this.details.deadstock ? "checked" : ""} />
+          <span>Deadstock or cone yarn <em class="hint">sold by weight: its metres and its price per 100 g, and a count such as 2/28 read</em></span>
+        </label>
         <p class="hint weight-hint" data-el="weight-hint" hidden></p>
         <div class="weight-help" data-el="weight-help" hidden>
           <table>
@@ -229,10 +235,6 @@ export class YarnForm {
           <label class="yarn-price-input">
             <span data-el="price-label">${priceLabel(!!this.details.deadstock)}</span>
             <input data-f="price" inputmode="decimal" value="${this.details.price != null ? escapeAttr(String(this.details.price)) : ""}" placeholder="e.g. 4,95" />
-          </label>
-          <label class="check deadstock">
-            <input type="checkbox" data-f="deadstock" ${this.details.deadstock ? "checked" : ""} />
-            <span>Deadstock or cone yarn <em class="hint">sold by weight, so its price is for 100 g</em></span>
           </label>
           <em class="hint" data-el="price-hint">${priceHint(!!this.details.deadstock)}</em>
         </div>
@@ -290,6 +292,7 @@ export class YarnForm {
     `;
 
     this.bind();
+    this.figuresBy(!!this.details.deadstock);
     this.renderDetails();
     this.renderCare();
     void api
@@ -431,9 +434,13 @@ export class YarnForm {
       filled.push(what);
     };
     fill("brand", (y) => y.brand, "brand");
+    // Deadstock, as the yarn is, before its figures: they are then per 100 g.
+    const priceTyped = this.root.querySelector<HTMLInputElement>('[data-f="price"]')?.value.trim();
+    if (from.details?.deadstock && !this.details.deadstock && !priceTyped) this.setDeadstock(true);
+    const w = !!this.details.deadstock;
     fill("yarnWeight", (y) => y.yarnWeight, "weight");
-    fill("metresPerBall", (y) => y.metresPerBall, "metres");
-    fill("gramsPerBall", (y) => y.gramsPerBall, "grams per ball");
+    fill("metresPerBall", (y) => (w ? per100gOf(y) : y.metresPerBall), w ? "metres per 100 g" : "metres");
+    fill("gramsPerBall", (y) => (w ? (y.gramsPerBall === 100 ? 0 : y.gramsPerBall) : y.gramsPerBall), w ? "grams per cone" : "grams per ball");
     // What its band says, when nothing of it is typed yet: every colour has the same.
     this.readDetails();
     const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom || d.care.length);
@@ -449,9 +456,7 @@ export class YarnForm {
     const priceInput = this.root.querySelector<HTMLInputElement>('[data-f="price"]');
     if (priced?.price != null && priceInput && !priceInput.value.trim()) {
       priceInput.value = String(priced.price);
-      const box = this.root.querySelector<HTMLInputElement>('[data-f="deadstock"]');
-      if (box) box.checked = !!priced.deadstock;
-      this.priceUnit(!!priced.deadstock);
+      if (!!priced.deadstock !== !!this.details.deadstock) this.setDeadstock(!!priced.deadstock);
       filled.push(priced.deadstock ? "price per 100 g" : "price a ball");
     }
     // Its fibres and superwash too, when none are typed yet.
@@ -532,19 +537,58 @@ export class YarnForm {
   private onInput = (e: Event): void => {
     const f = (e.target as HTMLElement).dataset.f;
     if (f === "yarnWeight") this.weightAuto = false;
+    if (f === "metresPerBall") this.metresAuto = false;
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
     if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
     if (f === "superwash" || f === "name" || f === "brand" || (e.target as HTMLElement).closest(".fibre-row")) this.shareHint();
-    if (f === "deadstock") this.priceUnit((e.target as HTMLInputElement).checked);
+    if (f === "deadstock") this.setDeadstock((e.target as HTMLInputElement).checked);
   };
 
-  /** The price said a ball's, or 100 g's for deadstock and cone yarn. */
-  private priceUnit(deadstock: boolean): void {
+  /**
+   * Deadstock or cone yarn, or not: its price a ball's or 100 g's, and its
+   * figures per ball or per 100 g.
+   */
+  private setDeadstock(deadstock: boolean): void {
     this.details = { ...this.details, deadstock };
+    const box = this.root.querySelector<HTMLInputElement>('[data-f="deadstock"]');
+    if (box) box.checked = deadstock;
     const label = this.root.querySelector<HTMLElement>('[data-el="price-label"]');
     const hint = this.root.querySelector<HTMLElement>('[data-el="price-hint"]');
     if (label) label.textContent = priceLabel(deadstock);
     if (hint) hint.textContent = priceHint(deadstock);
+    this.figuresBy(deadstock);
+    this.weightHint();
+  }
+
+  /**
+   * Metres and grams per ball; or, for deadstock, metres per 100 g (a count
+   * such as 2/1400 can be typed) and a cone's grams, none when it is bought
+   * by weight. What is typed is turned from the one to the other.
+   */
+  private figuresBy(deadstock: boolean): void {
+    const metres = this.root.querySelector<HTMLInputElement>('[data-f="metresPerBall"]');
+    const grams = this.root.querySelector<HTMLInputElement>('[data-f="gramsPerBall"]');
+    if (!metres || !grams) return;
+    const was = metres.dataset.byWeight === "1";
+    if (deadstock && !was) {
+      const per100 = per100gOf({ metresPerBall: num(metres.value), gramsPerBall: num(grams.value) });
+      metres.type = "text";
+      metres.inputMode = "decimal";
+      if (per100) metres.value = String(per100);
+      // 100 g "balls" are how a yarn bought by weight is kept: no cone.
+      if (num(grams.value) === 100) grams.value = "";
+    } else if (!deadstock && was) {
+      const f = byWeight(readPer100g(metres.value) ?? 0, num(grams.value));
+      metres.type = "number";
+      metres.value = f.metresPerBall ? String(f.metresPerBall) : "";
+      if (f.gramsPerBall) grams.value = String(f.gramsPerBall);
+    }
+    metres.dataset.byWeight = deadstock ? "1" : "";
+    metres.placeholder = deadstock ? "e.g. 700, or 2/1400" : "e.g. 175";
+    grams.placeholder = deadstock ? "e.g. 500, if on cones" : "e.g. 50";
+    this.root.querySelector('[data-el="metres-label"]')!.textContent = deadstock ? "Metres per 100 g" : "Metres per ball";
+    this.root.querySelector('[data-el="grams-label"]')!.textContent = deadstock ? "Grams per cone" : "Grams per ball";
+    this.root.querySelectorAll<HTMLInputElement>('[data-lf="balls"]').forEach((b) => (b.placeholder = deadstock ? "Cones bought" : "Balls bought"));
   }
 
   /**
@@ -562,6 +606,10 @@ export class YarnForm {
     const grams = num(this.value("gramsPerBall"));
     const typed = weight.value.trim();
     const parts: string[] = [];
+    if (this.details.deadstock) {
+      this.weightHintByWeight(weight, metresField, typed);
+      return;
+    }
 
     const cone = !metresPer100g(typed) ? coneCount(typed) : null;
     if (cone) {
@@ -579,6 +627,45 @@ export class YarnForm {
         const stated = familyOf(typed);
         // The ball band and the stated weight disagree -- common at the edges:
         // Drops Paris is sold as Aran at 150 m/100 g. The stated one is kept.
+        if (stated && stated !== family.key) parts.push(`It stays filed as ${weightLabel(stated)}, as you wrote it.`);
+      }
+    } else if (this.weightAuto) {
+      weight.value = "";
+    }
+    hint.textContent = parts.join(" ");
+    hint.hidden = !parts.length;
+  }
+
+  /**
+   * The weight hint for deadstock and cone yarn: what metres per 100 g the
+   * figure or count makes, and which weight; a count typed as the weight
+   * fills the metres in. With a cone's grams, its metres too.
+   */
+  private weightHintByWeight(weight: HTMLInputElement, metresField: HTMLInputElement, typed: string): void {
+    const hint = this.root.querySelector<HTMLElement>('[data-el="weight-hint"]')!;
+    const parts: string[] = [];
+    const count = !metresPer100g(typed) ? coneCount(typed) : null;
+    if (count && (!metresField.value.trim() || this.metresAuto)) {
+      metresField.value = String(count);
+      this.metresAuto = true;
+    } else if (!count && this.metresAuto) {
+      metresField.value = "";
+      this.metresAuto = false;
+    }
+    const said = metresField.value.trim();
+    const per100 = readPer100g(said);
+    const cone = num(this.value("gramsPerBall"));
+    if (per100 === null) parts.push("Metres per 100 g is a figure, or a count such as 2/28 or 2/1400.");
+    else if (per100) {
+      const family = familyByMetres(per100);
+      const from = said.includes("/") ? said : this.metresAuto ? typed : "";
+      parts.push(`${from ? `${from} is about ` : ""}${grouped(per100)} m/100 g: ${family.label}.`);
+      if (cone) parts.push(`A ${grouped(cone)} g cone is about ${grouped((per100 * cone) / 100)} m.`);
+      if (!typed || this.weightAuto) {
+        weight.value = family.label;
+        this.weightAuto = true;
+      } else {
+        const stated = familyOf(typed);
         if (stated && stated !== family.key) parts.push(`It stays filed as ${weightLabel(stated)}, as you wrote it.`);
       }
     } else if (this.weightAuto) {
@@ -692,7 +779,7 @@ export class YarnForm {
         (lot, i) => `
           <div class="lot-row" data-lot="${i}">
             <input data-lf="dyeLot" value="${escapeAttr(lot.dyeLot)}" placeholder="Dye lot" />
-            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="Balls bought" title="Balls bought, for the Statistics. What there is now is the grams left, once balls are started." />
+            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="${this.details.deadstock ? "Cones bought" : "Balls bought"}" title="Balls bought, for the Statistics. What there is now is the grams left, once balls are started." />
             <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />
@@ -954,6 +1041,13 @@ export class YarnForm {
       const typed = this.value("price").trim();
       const price = typed ? parsePrice(typed) : null;
       if (typed && price === null) throw new Error(`The ${priceLabel(!!this.details.deadstock).toLowerCase()} is a number: 4,95 or 4.95.`);
+      // Deadstock's metres per 100 g and cone, kept as figures per ball.
+      let figures = { metresPerBall: num(this.value("metresPerBall")), gramsPerBall: num(this.value("gramsPerBall")) };
+      if (this.details.deadstock) {
+        const per100 = readPer100g(this.value("metresPerBall"));
+        if (per100 === null) throw new Error("Metres per 100 g is a figure, or a count such as 2/28 or 2/1400.");
+        figures = byWeight(per100, num(this.value("gramsPerBall")));
+      }
       const shared = {
         // The same brand or yarn typed in another case files with the one
         // already there, so the lists do not fill with near-twins.
@@ -961,8 +1055,7 @@ export class YarnForm {
         brand: canonical(this.value("brand"), mostUsedSpellings(this.known.map((y) => y.brand))),
         colourway: this.value("colourway").trim(),
         yarnWeight: this.value("yarnWeight").trim(),
-        metresPerBall: num(this.value("metresPerBall")),
-        gramsPerBall: num(this.value("gramsPerBall")),
+        ...figures,
         notes: this.value("notes"),
         fibres: this.fibreValues(),
         superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,

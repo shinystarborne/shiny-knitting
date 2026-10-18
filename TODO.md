@@ -331,7 +331,10 @@ calculators.
   cone yarn (yarn_details.deadstock, beside the price): its price is for
   100 g, and the sums count it by grams; a lot bought as its cones at
   grams per ball, else as weighed. A wishlist price "per 100 g" starts the
-  yarn so. *0.3.98*
+  yarn so. Its figures are then metres per 100 g (a count such as 2/1400
+  typed there or as the weight: 700) and a cone's grams, kept per ball (a
+  cone, or 100 g when bought by weight; byWeight in yarn-weight.ts); its
+  card says Deadstock and the m/100 g. *0.3.98*
 - **Your size in a pattern:** a PDF's sizes read from its text (named after
   Sizes, else by their place, counted from its runs; reader/sizes.ts); the
   size knitted chosen in the reader's Size picker and kept with the pattern

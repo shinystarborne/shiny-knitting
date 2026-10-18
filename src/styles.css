@@ -4038,8 +4038,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .spent-month h3 { margin: 0 0 6px; font-size: 14px; }
 .project-cost { margin: 0; font-size: 13px; }
 .project-cost b { font-variant-numeric: tabular-nums; }
-/* A yarn's price, a ball's or 100 g's: a short figure, and the deadstock box under it. */
-.yarn-price { gap: 6px; }
+/* A yarn's price, a ball's or 100 g's: a short figure; the deadstock box under the figures. */
+.yarn-form .check.deadstock { margin: 2px 0 6px; }
 .yarn-price-input { display: flex; flex-direction: column; }
 .yarn-price-input input { max-width: 160px; }
 /* A tool's price, or the set it came in, on its card. */

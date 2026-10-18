@@ -13,6 +13,7 @@
 import type { Pattern, Project, Wish, Yarn, YarnLot, YarnUse } from "../src/api";
 import { money, parsePrice, pricePerBall, projectCost, spending, spentByMonth, stashWorth } from "../src/views/money";
 import { yarnStart } from "../src/views/shopping";
+import { byWeight, per100gOf, readPer100g } from "../src/views/yarn-weight";
 
 interface CheckResult {
   name: string;
@@ -75,10 +76,10 @@ function pure(results: CheckResult[]): void {
 
   // Deadstock and cone yarn: the price is for 100 g. Two cones of 500 g, one
   // started (320 g left), and a lot bought by weight with no cones counted.
-  const byWeight = (price: number | null) => ({ ...priced(price), deadstock: true });
+  const soldByWeight = (price: number | null) => ({ ...priced(price), deadstock: true });
   const cones = [
-    yarn({ id: "d", name: "Cashmere 2/28", gramsPerBall: 500, metresPerBall: 7000, details: byWeight(8), lots: [lot({ id: "d1", balls: 2, boughtAt: new Date(2028, 2, 5).getTime() }), lot({ id: "d2", balls: 1, weighed: true, gramsLeft: 320 })] }),
-    yarn({ id: "e", name: "Merino ends", gramsPerBall: 0, metresPerBall: 0, details: byWeight(5.5), lots: [lot({ id: "e1", weighed: true, gramsLeft: 400 })] }),
+    yarn({ id: "d", name: "Cashmere 2/28", gramsPerBall: 500, metresPerBall: 7000, details: soldByWeight(8), lots: [lot({ id: "d1", balls: 2, boughtAt: new Date(2028, 2, 5).getTime() }), lot({ id: "d2", balls: 1, weighed: true, gramsLeft: 320 })] }),
+    yarn({ id: "e", name: "Merino ends", gramsPerBall: 0, metresPerBall: 0, details: soldByWeight(5.5), lots: [lot({ id: "e1", weighed: true, gramsLeft: 400 })] }),
   ];
   const coneWorth = stashWorth(cones);
   check(results, "deadstock is worth its grams at its price per 100 g: 1000 g + 320 g + 400 g", coneWorth.worth === 80 + 25.6 + 22 && coneWorth.unpriced === 0, JSON.stringify(coneWorth));
@@ -87,6 +88,8 @@ function pure(results: CheckResult[]): void {
   const coneProject = { id: "pc", patternId: null, yarns: [{ id: "e3", yarnId: "e", yarnName: "Merino ends", lotId: null, plannedGrams: 250 }] } as unknown as Project;
   const coneCost = projectCost(coneProject, cones, [], []);
   check(results, "…and a project takes it by the grams, with no weight per ball needed", coneCost.yarn === 13.75 && !coneCost.unknown.length, JSON.stringify(coneCost));
+  check(results, "deadstock's metres per 100 g read from a figure or a count: 700, 2/1400, 2/28", readPer100g("700") === 700 && readPer100g("2/1400") === 700 && readPer100g("2/28") === 1400 && readPer100g("") === 0 && readPer100g("lots") === null);
+  check(results, "…kept per ball: a 500 g cone, or 100 g when bought by weight; and read back", JSON.stringify(byWeight(700, 500)) === '{"metresPerBall":3500,"gramsPerBall":500}' && JSON.stringify(byWeight(700, 0)) === '{"metresPerBall":700,"gramsPerBall":100}' && per100gOf({ metresPerBall: 3500, gramsPerBall: 500 }) === 700 && byWeight(0, 0).gramsPerBall === 0);
   check(results, "a wishlist price per 100 g starts the yarn as deadstock, at that price", yarnStart(wish("€8,50 / 100 g", "500 g")).price === 8.5 && yarnStart(wish("12.90 per 100g", "")).deadstock === true && yarnStart(wish("12.90 per 100g", "")).price === 12.9 && !yarnStart(wish("€4.95 a ball", "6 balls")).deadstock);
 }
 
@@ -176,20 +179,37 @@ export async function verifyPrices() {
     // ---------- deadstock and cone yarn: a price per 100 g ----------
     await addYarn();
     set('[data-f="name"]', "Cone Check");
+    set('[data-f="metresPerBall"]', "3500");
     set('[data-f="gramsPerBall"]', "500");
     set('.lot-row [data-lf="balls"]', "2");
+    const figureLabels = () => [...modal()!.querySelectorAll('[data-el="metres-label"], [data-el="grams-label"]')].map((e) => e.textContent).join(" / ");
     const box = modal()!.querySelector<HTMLInputElement>('[data-f="deadstock"]');
     check(results, "the yarn form has a deadstock or cone yarn box, not ticked", !!box && !box.checked && /Deadstock or cone yarn/.test(box.closest("label")!.textContent ?? ""));
     box!.checked = true;
     box!.dispatchEvent(new Event("input", { bubbles: true }));
     const label = modal()!.querySelector('[data-el="price-label"]')!.textContent;
     check(results, "…ticked, the price is said per 100 g", label === "Price per 100 g" && /grams/.test(modal()!.querySelector('[data-el="price-hint"]')!.textContent ?? ""), String(label));
+    const metresNow = () => modal()!.querySelector<HTMLInputElement>('[data-f="metresPerBall"]')!.value;
+    check(results, "…and the figures are metres per 100 g and a cone's grams, what was typed turned: 3500 m a 500 g ball is 700", figureLabels() === "Metres per 100 g / Grams per cone" && metresNow() === "700", `${figureLabels()} ${metresNow()}`);
+    const weightField = modal()!.querySelector<HTMLInputElement>('[data-f="yarnWeight"]')!;
+    set('[data-f="metresPerBall"]', "");
+    weightField.value = "2/1400";
+    weightField.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "…a count typed as the weight fills them in: 2/1400 is 700 m/100 g", metresNow() === "700" && /700 m\/100 g: Lace/.test(modal()!.querySelector('[data-el="weight-hint"]')!.textContent ?? ""), `${metresNow()} ${modal()!.querySelector('[data-el="weight-hint"]')!.textContent}`);
+    set('[data-f="metresPerBall"]', "2/28");
+    modal()!.querySelector('[data-f="metresPerBall"]')!.dispatchEvent(new Event("input", { bubbles: true }));
+    const countHint = modal()!.querySelector('[data-el="weight-hint"]')!.textContent ?? "";
+    check(results, "…and a count typed there is read: 2/28 is 1 400 m/100 g, a 500 g cone 7 000 m", /2\/28 is about 1 400 m\/100 g/.test(countHint) && /500 g cone is about 7 000 m/.test(countHint), countHint);
     set('[data-f="price"]', "8,50");
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     await waitFor(() => !!store.yarns.find((y) => y.name === "Cone Check") && !modal(), "the cone yarn added");
     coneId = store.yarns.find((y) => y.name === "Cone Check")!.id;
     const cone = (await listed()).find((y) => y.id === coneId)?.details;
+    const coneYarn = (await listed()).find((y) => y.id === coneId);
     check(results, "…and kept: deadstock, 8.50 per 100 g", cone?.deadstock === true && cone.price === 8.5, JSON.stringify(cone));
+    check(results, "…its 2/28 on 500 g cones kept as 7 000 m a cone", coneYarn?.metresPerBall === 7000 && coneYarn.gramsPerBall === 500, JSON.stringify([coneYarn?.metresPerBall, coneYarn?.gramsPerBall]));
+    const coneCard = document.querySelector(`.stash [data-open="${coneId}"] .yarn-deadstock`)?.textContent;
+    check(results, "…and its card says deadstock and its metres per 100 g", coneCard === "Deadstock · 1 400 m/100 g", String(coneCard));
     await addYarn();
     set('[data-f="name"]', "Cone Check");
     const coneLabel = () => modal()!.querySelector('[data-el="price-label"]')!.textContent;
@@ -198,6 +218,12 @@ export async function verifyPrices() {
       return priceNow() !== "";
     }, "the cone yarn known", 3000).catch(() => {});
     check(results, "…another colour of it starts as deadstock at that price", priceNow() === "8.5" && coneLabel() === "Price per 100 g" && modal()!.querySelector<HTMLInputElement>('[data-f="deadstock"]')!.checked, `${priceNow()} ${coneLabel()}`);
+    const gramsNow = () => modal()!.querySelector<HTMLInputElement>('[data-f="gramsPerBall"]')!.value;
+    check(results, "…with its metres per 100 g and its cone", metresNow() === "1400" && gramsNow() === "500" && figureLabels() === "Metres per 100 g / Grams per cone", `${metresNow()} ${gramsNow()} ${figureLabels()}`);
+    const box2 = modal()!.querySelector<HTMLInputElement>('[data-f="deadstock"]')!;
+    box2.checked = false;
+    box2.dispatchEvent(new Event("input", { bubbles: true }));
+    check(results, "…unticked, the figures are a ball's again: 7 000 m, 500 g", metresNow() === "7000" && gramsNow() === "500" && figureLabels() === "Metres per ball / Grams per ball", `${metresNow()} ${gramsNow()}`);
     modal()!.querySelector<HTMLElement>('[data-act="cancel"]')!.click();
     await waitFor(() => !modal(), "the form closed");
 

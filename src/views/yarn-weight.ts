@@ -114,6 +114,34 @@ export function coneCount(text: string): number | null {
   return null;
 }
 
+/**
+ * Metres per 100 g as typed for deadstock and cone yarn: a figure, or a count
+ * such as "2/1400" or "2/28" (700 and 1400). 0 when nothing is typed, null
+ * when it cannot be read.
+ */
+export function readPer100g(text: string): number | null {
+  const t = text.trim();
+  if (!t) return 0;
+  if (t.includes("/")) return coneCount(t);
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+/** A yarn's metres per 100 g, from its figures per ball; 0 when they are not known. */
+export function per100gOf(y: { metresPerBall: number; gramsPerBall: number }): number {
+  return y.metresPerBall > 0 && y.gramsPerBall > 0 ? Math.round((y.metresPerBall * 100) / y.gramsPerBall) : 0;
+}
+
+/**
+ * Deadstock's metres per 100 g and its cone's grams as figures per ball, as
+ * the stash keeps them: the cone is the ball, or 100 g is when it is bought
+ * by weight and no cone is said.
+ */
+export function byWeight(per100g: number, coneGrams: number): { metresPerBall: number; gramsPerBall: number } {
+  const grams = coneGrams > 0 ? Math.round(coneGrams) : per100g > 0 ? 100 : 0;
+  return { metresPerBall: Math.round((per100g * grams) / 100), gramsPerBall: grams };
+}
+
 /** The family a weight as written falls in, as the backend will file it; "" when none. */
 export function familyOf(text: string): string {
   const named = familyByName(text);

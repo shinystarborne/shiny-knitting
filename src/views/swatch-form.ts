@@ -4,6 +4,7 @@ import { askYesNo } from "../dialogs";
 import { clickedOn, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { describeFibres } from "./fibres";
+import { per100gOf } from "./yarn-weight";
 import { blockingText, gaugeSpan, readGauge, showGauge } from "./measure";
 import { PhotoBox } from "./photo-box";
 import { fromDateInput, toDateInput } from "./project-form";
@@ -196,7 +197,7 @@ export class SwatchForm {
     const info = this.root.querySelector<HTMLElement>('[data-el="yarn-info"]')!;
     info.hidden = !yarn;
     if (yarn) {
-      const facts = [yarn.yarnWeight, yarn.fibres.length ? describeFibres(yarn.fibres) : "", yarn.metresPerBall && yarn.gramsPerBall ? `${yarn.metresPerBall} m / ${yarn.gramsPerBall} g` : ""].filter(Boolean);
+      const facts = [yarn.yarnWeight, yarn.fibres.length ? describeFibres(yarn.fibres) : "", yarn.metresPerBall && yarn.gramsPerBall ? (yarn.details?.deadstock ? `${per100gOf(yarn)} m / 100 g` : `${yarn.metresPerBall} m / ${yarn.gramsPerBall} g`) : ""].filter(Boolean);
       info.innerHTML = `
         <span>${esc(facts.join(" · ") || "No details recorded for this yarn.")}</span>
         <button class="link" type="button" data-act="open-yarn">Open the yarn ↗</button>`;

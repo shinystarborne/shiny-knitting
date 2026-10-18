@@ -8,6 +8,7 @@ import { mostUsedSpellings } from "./tool-filter";
 import { detailsParts, swatchLine } from "./measure";
 import { careIcon, careSymbol } from "./care";
 import { stashModeSwitch } from "./swatches";
+import { grouped, per100gOf } from "./yarn-weight";
 
 /**
  * The stash screen: every yarn you own, with what is left of it.
@@ -364,6 +365,7 @@ export class StashView {
           <p class="designer">${where ? escapeHtml(where) : "No brand"}</p>
           <div class="card-meta">
             ${yarnPill(y)}
+            ${y.details?.deadstock ? `<span class="pill yarn-deadstock" title="Deadstock or cone yarn, sold by weight: its price is for 100 g">Deadstock${per100gOf(y) ? ` · ${grouped(per100gOf(y))} m/100 g` : ""}</span>` : ""}
             ${y.lots.some((l) => l.leftover) ? `<span class="pill yarn-leftover" title="What a finished project left over">Leftover</span>` : ""}
             ${y.superwash ? `<span class="pill" title="Can go in the washing machine">Superwash</span>` : ""}
           </div>
