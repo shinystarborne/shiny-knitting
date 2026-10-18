@@ -843,6 +843,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "tools", "set_id")? {
         conn.execute("ALTER TABLE tools ADD COLUMN set_id TEXT REFERENCES tool_sets(id) ON DELETE SET NULL", [])?;
     }
+    // Abbreviations of your own, for the glossary.
+    crate::abbreviations::migrate(conn)?;
     // A project's own hour's worth, when not the standard.
     if !column_exists(conn, "projects", "hour_rate")? {
         conn.execute("ALTER TABLE projects ADD COLUMN hour_rate REAL", [])?;

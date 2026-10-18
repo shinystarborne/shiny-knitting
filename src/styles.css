@@ -4129,3 +4129,39 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .calc-stash li em { font-style: normal; font-size: 12px; }
 .calc-stash li.enough em { color: var(--ok); }
 .calc-stash li.short em { color: var(--accent); }
+
+/* Abbreviations: the glossary in Cheatsheets, and the tip in a pattern's text. */
+.abbr-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.abbr-title { margin: 0; font-size: 18px; }
+.abbr-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; overflow: auto; }
+.abbr-search { max-width: 360px; }
+.abbr-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.abbr-add [data-f="abbr-term"] { width: 140px; }
+.abbr-add [data-f="abbr-meaning"] { flex: 1; min-width: 200px; }
+.abbr-add-hint { margin: -4px 0 0; }
+.abbr-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.abbr-table th, .abbr-table td { text-align: left; vertical-align: top; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+.abbr-table th { width: 170px; font-weight: 600; overflow-wrap: anywhere; }
+.abbr-also { display: block; font-weight: 400; font-size: 11px; }
+.abbr-video { display: block; margin-top: 3px; text-align: left; }
+.abbr-tools { white-space: nowrap; width: 1%; text-align: right; }
+.abbr-tools .ghost { padding: 2px 8px; font-size: 12px; }
+.abbr-row.own th { color: var(--accent); }
+.abbr-tip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.abbr-tip[hidden] { display: none; }
+.abbr-tip-video { text-align: left; }

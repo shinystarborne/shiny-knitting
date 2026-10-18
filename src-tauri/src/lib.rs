@@ -1,3 +1,4 @@
+mod abbreviations;
 mod ai;
 mod annotations;
 mod backup;
@@ -150,6 +151,9 @@ pub fn run() {
             backup::last_backup,
             backup::restore_backup,
             backup::restart_app,
+            abbreviations::list_abbreviations,
+            abbreviations::save_abbreviation,
+            abbreviations::remove_abbreviation,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,

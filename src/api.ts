@@ -877,6 +877,14 @@ export interface Masterclass {
   addedAt: number;
 }
 
+/** An abbreviation of your own, for the glossary. Mirrors `abbreviations.rs::Abbreviation`. */
+export interface Abbreviation {
+  id: string;
+  term: string;
+  meaning: string;
+  addedAt: number;
+}
+
 /** One video of a masterclass. Mirrors `models.rs::MasterclassPart`. */
 export interface MasterclassPart {
   id: string;
@@ -1559,6 +1567,11 @@ export const api = {
   saveCurrency: (code: string) => invoke<string>("save_currency", { code }),
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
+  /** Your own abbreviations, for the glossary. */
+  listAbbreviations: () => invoke<Abbreviation[]>("list_abbreviations"),
+  /** Adds one of yours, or changes the one with that id (or that term). */
+  saveAbbreviation: (input: { id: string | null; term: string; meaning: string }) => invoke<Abbreviation>("save_abbreviation", { input }),
+  removeAbbreviation: (id: string) => invoke<void>("remove_abbreviation", { id }),
   /** Whether Ravelry's API can be used, and as whom. */
   ravelryAccount: () => invoke<RavelryAccount>("ravelry_account"),
   /** Signs in with Ravelry, in the browser; resolves once Ravelry has answered, or says why not. */

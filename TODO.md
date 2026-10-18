@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Abbreviations explained**: ssk, m1l, w&t and the like, explained
-  where they are in a pattern. See below.
 - [ ] **Calculator steps as a checklist**: steps saved to a project, ticked
   off as knitted, a counter for a step that repeats. See below.
 - [ ] **The yarn form filled from a photo of the ball band**, read by the
@@ -32,13 +30,6 @@ under the list.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Abbreviations
-
-A glossary of the common abbreviations (ssk, k2tog, m1l, m1r, w&t, sl1
-wyif, kfb, psso, …), each with what it means; one in a pattern's text shown
-when pointed at, and a masterclass video linked where one covers it. Your
-own added to it.
 
 ### Steps as a checklist
 
@@ -385,6 +376,14 @@ calculators.
   s, and the library's Bin (restore, delete for good, empty). Deleted for
   good at start after 30 days (commands::purge_bin). Every library query
   says removed_at IS NULL; adding a file that is in the Bin restores it.
+- **Abbreviations:** a glossary (views/abbreviations.ts: about 60 known, with
+  other spellings; counted ones read too, k3, p12, C6F) as the first entry
+  of Cheatsheets, looked up by typing; your own (abbreviations table,
+  abbreviations.rs) added, changed, removed, one with a known one's letters
+  shown in its place. In a PDF's text, resting the pointer on one shows it
+  (reader/abbr-tips.ts: caretRangeFromPoint on the text layer), with a
+  masterclass video whose title names it. An EPUB's text not yet: its
+  chapters are frames. *0.3.101*
 - **Backup:** Make a backup in Settings: the database (a VACUUM INTO copy)
   and every file of the library folder in one zip, stored, zip64; written as
   .part and renamed when whole; progress polled (backup_progress); the last

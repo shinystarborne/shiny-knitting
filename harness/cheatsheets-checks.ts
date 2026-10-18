@@ -50,7 +50,8 @@ export async function verifyCheatsheets() {
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const view = () => document.querySelector<HTMLElement>(".cheatsheets");
   const dialog = () => document.querySelector<HTMLElement>(".dialog-card");
-  const items = () => [...document.querySelectorAll<HTMLElement>(".cheatsheets [data-sheet]")];
+  // The sheets kept, not the glossary always first.
+  const items = () => [...document.querySelectorAll<HTMLElement>('.cheatsheets [data-sheet]:not([data-sheet="abbreviations"])')];
   const act = (name: string) => view()!.querySelector<HTMLElement>(`[data-act="${name}"]`);
   /** Fills a form dialog's boxes in order, and answers it. */
   const answer = async (values: string[]) => {

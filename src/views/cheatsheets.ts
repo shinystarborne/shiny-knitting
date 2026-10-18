@@ -3,6 +3,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { api, toBytes, type Cheatsheet, type Pattern, type SheetRegion } from "../api";
 import { askChoice, askForm, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { AbbreviationsPanel } from "./abbreviations";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -22,6 +23,9 @@ export function keepOpen(id: string): void {
     // Remembered for this run only.
   }
 }
+
+/** The glossary's place in the list, where a sheet's id would be. */
+const ABBREVIATIONS = "abbreviations";
 
 /** How big pages are drawn, as a share of the pane's width. */
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
@@ -71,7 +75,7 @@ export class CheatsheetsView {
     this.root.addEventListener("click", (e) => void this.onClick(e));
     this.root.addEventListener("change", (e) => void this.onChange(e));
     [this.sheets, this.patterns] = await Promise.all([api.listCheatsheets().catch(() => [] as Cheatsheet[]), api.listPatterns({}).catch(() => [] as Pattern[])]);
-    if (!this.sheets.some((s) => s.id === this.openId)) this.openId = this.sheets[0]?.id ?? "";
+    if (this.openId !== ABBREVIATIONS && !this.sheets.some((s) => s.id === this.openId)) this.openId = this.sheets[0]?.id ?? "";
     this.paintList();
     await this.paintView();
   }
@@ -108,7 +112,13 @@ export class CheatsheetsView {
 
   private paintList(): void {
     const list = this.root.querySelector<HTMLElement>('[data-el="list"]')!;
-    list.innerHTML = this.sheets.length
+    // The glossary first, always there: it is the app's, not one kept.
+    const glossary = `
+      <button class="sheet-item${this.openId === ABBREVIATIONS ? " on" : ""}" data-sheet="${ABBREVIATIONS}" title="What ssk, k2tog or w&amp;t means">
+        <span class="sheet-kind" aria-hidden="true">🔤</span>
+        <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and your own</span></span>
+      </button>`;
+    list.innerHTML = glossary + (this.sheets.length
       ? this.sheets
           .map(
             (s) => `
@@ -118,7 +128,7 @@ export class CheatsheetsView {
           </button>`,
           )
           .join("")
-      : `<p class="hint sheet-none">Nothing kept yet.</p>`;
+      : `<p class="hint sheet-none">Nothing kept yet.</p>`);
   }
 
   // ---------- the one open ----------
@@ -126,6 +136,11 @@ export class CheatsheetsView {
   private async paintView(): Promise<void> {
     this.drawToken++;
     const view = this.root.querySelector<HTMLElement>('[data-el="view"]')!;
+    if (this.openId === ABBREVIATIONS) {
+      view.innerHTML = "";
+      await new AbbreviationsPanel(view).mount();
+      return;
+    }
     const s = this.sheet();
     if (!s) {
       view.innerHTML = `

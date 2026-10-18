@@ -52,6 +52,7 @@ const store = {
   charts: [],
   // Videos kept to learn from: as the backend's masterclasses.
   masterclasses: [],
+  abbreviations: [],
   // Yarn used, when: as the backend's yarn_usage.
   yarnUsage: [],
   // What a yarn's ball band says, by brand and name: as the backend's yarn_details.
@@ -1587,6 +1588,23 @@ const handlers = {
   // As masterclasses.rs, without asking YouTube: a YouTube link is named
   // "A video, <id>" and channel "A channel" unless a name is given, and
   // gets a picture drawn here. A masterclass is its videos, in order.
+  // As abbreviations.rs: yours, by term; the same term again is that one changed.
+  list_abbreviations: () => clone([...store.abbreviations].sort((a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }))),
+  save_abbreviation: ({ input }) => {
+    const term = input.term.split(/\s+/).filter(Boolean).join(" ");
+    const meaning = input.meaning.trim();
+    if (!term || !meaning) throw new Error("An abbreviation needs both: what the pattern writes, and what it means.");
+    const same = store.abbreviations.find((a) => a.term.toLowerCase() === term.toLowerCase());
+    if (input.id && same && same.id !== input.id) throw new Error(`“${term}” is one of yours already.`);
+    const id = input.id || same?.id || `abbr-${store.nextId++}`;
+    let a = store.abbreviations.find((x) => x.id === id);
+    if (!a) store.abbreviations.push((a = { id, term, meaning, addedAt: Date.now() }));
+    Object.assign(a, { term, meaning });
+    return clone(a);
+  },
+  remove_abbreviation: ({ id }) => {
+    store.abbreviations = store.abbreviations.filter((a) => a.id !== id);
+  },
   list_masterclasses: () => [...store.masterclasses].sort((a, b) => b.addedAt - a.addedAt).map(masterclassOut),
   add_masterclass: ({ input }) => {
     const first = stubVideo(input.url, input.title);

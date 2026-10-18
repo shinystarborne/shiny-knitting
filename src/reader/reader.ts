@@ -11,6 +11,7 @@ import { ContentsPanel } from "./contents";
 import { SearchBar } from "./search";
 import { sizeLabel, sizesOf } from "./sizes";
 import { PdfView, type RenderedDoc } from "./pdf";
+import { AbbrTips } from "./abbr-tips";
 import { RowCounter } from "./counter";
 import { ProjectPanel } from "./project-panel";
 import { isCapturing } from "./keys";
@@ -64,6 +65,8 @@ export class ReaderView {
   private marks: MarkLayer | null = null;
   /** The floating pin cards. Null until the document has loaded. */
   private pins: PinLayer | null = null;
+  /** Abbreviations in the text explained when pointed at (a PDF's). */
+  private abbrTips: AbbrTips | null = null;
   /** The outline and bookmarks panel. Null until the document has loaded. */
   private contents: ContentsPanel | null = null;
   /** Search inside the PDF. Null until loaded, and for an EPUB. */
@@ -258,6 +261,8 @@ export class ReaderView {
         void this.offerSizes(searchTexts);
       }
     }
+    // An abbreviation in a PDF's text, explained when pointed at.
+    if (this.pattern.format === "pdf") this.abbrTips = new AbbrTips(this.scroller);
     this.pins = new PinLayer(this.scroller, this.pattern.id, {
       pageElement: (page) => doc.pageElement(page),
       textLayerFor: (page) => doc.textLayerFor(page),
@@ -1470,6 +1475,7 @@ export class ReaderView {
     window.removeEventListener("beforeunload", this.savePosition);
     this.marks?.detach();
     this.pins?.detach();
+    this.abbrTips?.detach();
     this.contents?.close();
     this.search?.close();
     document.removeEventListener("keydown", this.onFindKey, true);
