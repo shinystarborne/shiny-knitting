@@ -14,7 +14,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { coverUrl, ensureCover, forgetCover } from "../covers";
-import { MetadataScanner, undoPattern } from "../ai/scan";
+import { booksByLength, MetadataScanner, undoPattern } from "../ai/scan";
 import { describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
 import { changeCover } from "./cover-dialog";
 import { editTags } from "./tags-dialog";
@@ -539,11 +539,21 @@ export class LibraryView {
       return;
     }
 
+    // Described PDFs long enough to be books, filed so first: no model needed.
+    const unmeasured = MetadataScanner.unmeasured(this.patterns, this.settings);
+    let books = 0;
+    if (unmeasured.length) {
+      this.flash(`Looking at the length of ${unmeasured.length} PDF${unmeasured.length === 1 ? "" : "s"}…`);
+      books = (await booksByLength(unmeasured)).length;
+      if (books) await this.reload();
+    }
+    const said = books ? `${books} long PDF${books === 1 ? "" : "s"} filed under Books. ` : "";
     const targets = MetadataScanner.candidates(this.patterns, this.settings);
     if (!targets.length) {
-      this.flash("Every pattern here is already described.");
+      this.flash(`${said}Every pattern here is already described.`);
       return;
     }
+    if (said) this.flash(said.trim());
 
     const confirmed = await askYesNo(
       `Describe ${targets.length} pattern${targets.length === 1 ? "" : "s"} using ${

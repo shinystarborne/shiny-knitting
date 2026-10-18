@@ -1461,6 +1461,7 @@ const handlers = {
     if (p.fileName === "scanned-pattern.pdf") return fetchFixture("scanned-pattern.pdf");
     if (p.fileName === "sized-pattern.pdf") return fetchFixture("sized-pattern.pdf");
     if (p.fileName === "wide-sizes.pdf") return fetchFixture("wide-sizes.pdf");
+    if (p.fileName === "book-length.pdf") return fetchFixture("book-length.pdf");
     return fetchFixture(p.format === "epub" ? "sample-pattern.epub" : "sample-pattern.pdf");
   },
   // ---------- counters ----------
@@ -3021,8 +3022,9 @@ const handlers = {
       yarn: "Shetland wool",
       tags: ["lace", "socks", "chart"],
       summary: "A fine gauge lace sock worked from a chart.",
-      // The stub's model takes a long file for a book.
-      book: (pages ?? 0) > 30,
+      // The stub's model takes a long file for a book, unless told to say no
+      // (store.aiSaysBook); as the backend, 50 pages or more is one anyway.
+      book: (store.aiSaysBook ?? (pages ?? 0) > 30) || (pages ?? 0) >= 50,
     };
     // The merge below mirrors ai::metadata::apply_to exactly: with skipExisting
     // on, a field the user already filled in is left alone; the yarn line and

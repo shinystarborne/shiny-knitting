@@ -33,6 +33,17 @@ export class MetadataScanner {
   }
 
   /** Patterns worth scanning, given what has already been filled in. */
+  /**
+   * PDFs described already but not books, whose length has not been looked
+   * at on this computer: Describe files the long ones as books (see
+   * `booksByLength`), without asking the model.
+   */
+  static unmeasured(patterns: Pattern[], settings: AiSettingsView): Pattern[] {
+    const described = new Set(MetadataScanner.candidates(patterns, settings).map((p) => p.id));
+    const seen = measured();
+    return patterns.filter((p) => p.format === "pdf" && !described.has(p.id) && !p.tags.some((t) => t.toLowerCase() === "book") && !seen.has(measureKey(p)));
+  }
+
   static candidates(patterns: Pattern[], settings: AiSettingsView): Pattern[] {
     return patterns.filter((p) => {
       if (settings.rescanExisting) return true;
@@ -114,6 +125,50 @@ export class MetadataScanner {
       };
     }
   }
+}
+
+/** Pages from which a PDF is a book: as the backend's `ai::BOOK_PAGES`. */
+export const BOOK_PAGES = 50;
+
+const MEASURED_KEY = "describe:measured";
+
+/** A pattern as measured: its id and file, so a file replaced is measured again. */
+function measureKey(p: Pattern): string {
+  return `${p.id}:${p.fileName}`;
+}
+
+/** The PDFs whose length was looked at, on this computer. */
+function measured(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(MEASURED_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Described PDFs that are long enough to be books, filed as books: tagged
+ * "book", the model not asked. Each is measured once on this computer.
+ * Returns the ones moved.
+ */
+export async function booksByLength(patterns: Pattern[]): Promise<Pattern[]> {
+  const seen = measured();
+  const moved: Pattern[] = [];
+  for (const p of patterns) {
+    try {
+      const pages = await pageCount("pdf", toBytes(await api.readFile(p.id)));
+      if (pages >= BOOK_PAGES) moved.push(await api.updatePattern({ ...p, tags: [...p.tags, "book"].sort() }));
+      seen.add(measureKey(p));
+    } catch {
+      // A file gone missing is measured another time.
+    }
+  }
+  try {
+    localStorage.setItem(MEASURED_KEY, JSON.stringify([...seen]));
+  } catch {
+    // Measured again next time.
+  }
+  return moved;
 }
 
 /**

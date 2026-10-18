@@ -1,11 +1,13 @@
 """Builds a long PDF to test scrolling, page restore, and lazy rendering.
 
-Usage: python make-long-fixture.py
-Output: public/fixtures/long-pattern.pdf (40 pages)
+Usage: python make-long-fixture.py [pages] [name]
+Output: public/fixtures/long-pattern.pdf (40 pages); with "60 book-length.pdf",
+a 60-page one, as long as a book.
 """
 import os
+import sys
 
-PAGES = 40
+PAGES = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 
 
 def pdf_escape(s):
@@ -88,6 +90,6 @@ if __name__ == "__main__":
     here = os.path.dirname(__file__)
     out_dir = os.path.join(here, "public", "fixtures")
     os.makedirs(out_dir, exist_ok=True)
-    dest = os.path.join(out_dir, "long-pattern.pdf")
+    dest = os.path.join(out_dir, sys.argv[2] if len(sys.argv) > 2 else "long-pattern.pdf")
     build_pdf(dest)
     print("wrote", dest, os.path.getsize(dest), "bytes,", PAGES, "pages")

@@ -1053,7 +1053,12 @@ pub async fn suggest_metadata(
         }
     };
 
-    let suggestion = crate::ai::parse_suggestion(&value);
+    let mut suggestion = crate::ai::parse_suggestion(&value);
+    // A long file is a book, whatever the model says: a single pattern is
+    // rarely over 30 pages, and a model asked again in a hurry may not weigh it.
+    if pages.unwrap_or(0) >= crate::ai::BOOK_PAGES {
+        suggestion.book = true;
+    }
     if crate::ai::is_empty(&suggestion) {
         return Ok(failed(
             &before,

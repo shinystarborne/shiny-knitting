@@ -48,6 +48,9 @@ Rules:
   sizes or with several pieces. For a book, the summary says what it collects.
 "#;
 
+/// Pages from which a PDF is a book, whatever the model answers.
+pub const BOOK_PAGES: u32 = 50;
+
 /// What the prompt says of the file's length, when it is known.
 fn pages_line(pages: Option<u32>) -> String {
     match pages {
@@ -234,10 +237,11 @@ pub fn parse_suggestion(value: &serde_json::Value) -> Suggestion {
     tags.dedup();
     tags.truncate(8);
 
-    // A yes can come back as true, "true" or "yes".
+    // A yes can come back as true, "true", "yes", "y" or 1.
     let book = match value.get("book") {
         Some(serde_json::Value::Bool(b)) => *b,
-        Some(serde_json::Value::String(s)) => matches!(s.trim().to_lowercase().as_str(), "true" | "yes"),
+        Some(serde_json::Value::String(s)) => matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "y" | "1"),
+        Some(serde_json::Value::Number(n)) => n.as_f64() == Some(1.0),
         _ => false,
     };
 
@@ -265,6 +269,7 @@ pub fn is_empty(s: &Suggestion) -> bool {
         && s.yarn.is_empty()
         && s.tags.is_empty()
         && s.summary.is_empty()
+        && !s.book
 }
 
 // ---------- the provider interface ----------
@@ -569,6 +574,8 @@ mod tests {
         let yes = |json: &str| parse_suggestion(&extract_json_object(json).unwrap()).book;
         assert!(yes(r#"{"book":true}"#));
         assert!(yes(r#"{"book":"yes"}"#));
+        assert!(yes(r#"{"book":1}"#) && yes(r#"{"book":"True"}"#) && yes(r#"{"book":"Y"}"#));
+        assert!(!yes(r#"{"book":0}"#));
         assert!(!yes(r#"{"book":false}"#));
         assert!(!yes(r#"{"designer":"Someone"}"#));
     }

@@ -69,7 +69,10 @@ Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
   a pattern goes In progress by itself when a project starts from it.
   Designers and tags most used first, with a search and a full list. Two
   shelves, Patterns and Books, by the tag `book` (a file of several patterns:
-  given by Describe with its length, and every EPUB). A dropped file is sent
+  given by Describe with its length, and every EPUB; a PDF of 50 pages or
+  more is one whatever the model says, ai::BOOK_PAGES, and Describe files
+  those already described by their length first, each measured once on the
+  computer, scan.ts booksByLength; *0.3.108*). A dropped file is sent
   raw (upload_pattern). A pattern whose file has gone missing says so, with
   Find it….
 - **Describing with a model:** off unless switched on; a robot icon; only the
