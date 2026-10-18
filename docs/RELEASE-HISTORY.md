@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.2)** —
+  every web and mail address in a PDF clickable, not only the PDF's own links; Settings show on an open project straight away.
 - **[v1.1.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.1)** —
   charts and calculators on a project's board: a chart drawn as it is now, a calculator opened for the project.
 
