@@ -10,7 +10,7 @@
  *   window.__sizeChecks()
  */
 import type { Pattern } from "../src/api";
-import { sizeLabel, sizeNames, sizeRuns, sizesOf } from "../src/reader/sizes";
+import { runOf, sizeLabel, sizeNames, sizeRuns, sizesOf } from "../src/reader/sizes";
 
 interface CheckResult {
   name: string;
@@ -39,6 +39,15 @@ function pure(results: CheckResult[]): void {
   check(results, "…several on a line", said("chest 86 (96, 106) cm, length 50 (52, 54) cm").length === 2);
   check(results, "a stitch pattern in brackets, or numbers run together, are no sizes", said("rib (k2, p2) to end").length === 0 && said("cast on 100,110,120 sts").length === 0 && said("row 12a (14b)").length === 0);
 
+  // Ten sizes, as a pattern writes them past the brackets.
+  const ten = "using 5mm needles, co 84 (84, 84, 88) 96, 96 [100, 100, 100] 104 sts. join in the rnd.";
+  check(results, "a run on past its brackets: bare numbers and a group in square ones, ten sizes", JSON.stringify(said(ten)) === JSON.stringify(["84|84|84|88|96|96|100|100|100|104"]), JSON.stringify(said(ten)));
+  const both = "until collar measures 8 (8, 8, 9) 9, 9 [9, 9, 9] 9 cm / 3¼ (3¼, 3¼, 3½) 3½, 3½ [3½, 3½, 3½] 3½” from co edge.";
+  check(results, "…in centimetres and in inches, two runs of ten", said(both).length === 2 && said(both).every((r) => r.split("|").length === 10), JSON.stringify(said(both)));
+  const times = sizeRuns("decrease 4 (6, 8, 10) 2 times");
+  check(results, "…a number after the brackets that is not a size: four sizes read as four", runOf(times[0], 4)?.length === 4 && runOf(times[0], 5)?.length === 5 && runOf(times[0], 3) === null);
+  check(results, "…and ten counted as the sizes, three times met", sizesOf([ten, both, "after rnd 2, you have: 144 (156, 168, 192) 216, 228 [252, 276, 288] 300 sts."]).count === 10);
+  check(results, "names on past the brackets too, a word after them not one", JSON.stringify(sizeNames("sizes: xs (s, m, l) xl, 2xl [3xl, 4xl, 5xl] 6xl to fit chest")) === JSON.stringify(["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"]), JSON.stringify(sizeNames("sizes: xs (s, m, l) xl, 2xl [3xl, 4xl, 5xl] 6xl to fit chest")));
   check(results, "the sizes' names, after Sizes", JSON.stringify(sizeNames("sizes: xs (s, m, l, xl) to fit chest")) === JSON.stringify(["XS", "S", "M", "L", "XL"]), JSON.stringify(sizeNames("sizes: xs (s, m, l, xl) to fit chest")));
   check(results, "…numbers, and 2XL", JSON.stringify(sizeNames("size 1 (2, 3)")) === JSON.stringify(["1", "2", "3"]) && JSON.stringify(sizeNames("finished sizes: s (m, l, 2xl)")) === JSON.stringify(["S", "M", "L", "2XL"]));
   check(results, "…and none when it names none", sizeNames("a lovely shawl in one size") === null);
@@ -95,6 +104,44 @@ export async function verifySizes() {
     pick()!.dispatchEvent(new Event("change", { bubbles: true }));
     await waitFor(() => mine().length === 0 && dim().length === 0, "cleared");
     check(results, "Size: all marks nothing again, and forgets the size", store.patterns.find((p) => p.id === sized.id)?.sizeIndex === null);
+
+    // A wide font, ten sizes past their brackets: each mark on its own number.
+    const wide = { ...sized, id: "p-wide", title: "Wide", fileName: "wide-sizes.pdf", filePath: "library/originals/p-wide.pdf", sizeIndex: 2 } as Pattern;
+    store.patterns.push(wide);
+    tab("patterns");
+    await waitFor(() => !document.querySelector(".reader"), "the library again");
+    document.querySelector(".library")!.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: wide.id }));
+    await waitFor(() => !!pick() && !pick()!.hidden && mine().length >= 4, "the wide pattern marked");
+    // Painted, its text is set again in its own fonts and the marks drawn again.
+    await waitFor(() => !!document.querySelector(".reader .text-layer span[data-pdf-font]"), "its own fonts", 8000).catch(() => {});
+    await wait(800);
+    const named = [...pick()!.options].map((o) => o.textContent?.replace("Size: ", "")).join(",");
+    check(results, "ten sizes named past their brackets, ten numbers in every run", named === "all,XS,S,M,L,XL,2XL,3XL,4XL,5XL,6XL" && mine().length === 4 && dim().length === 36, `${named} / ${mine().length} marked, ${dim().length} dimmed`);
+    // The page as painted: where its letters' ink is.
+    const canvas = document.querySelector<HTMLCanvasElement>('.reader .pdf-page[data-page="1"] canvas.pdf-canvas')!;
+    const c = canvas.getBoundingClientRect();
+    const k = canvas.width / c.width;
+    const ink = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+    const inkAt = (x: number, top: number, bottom: number) => {
+      for (let y = Math.ceil(top); y < Math.floor(bottom); y++) {
+        const i = (y * canvas.width + x) * 4;
+        if (ink[i] + ink[i + 1] + ink[i + 2] < 300) return true;
+      }
+      return false;
+    };
+    const cut = mine()
+      .map((m) => m.getBoundingClientRect())
+      .filter((r) => {
+        const [left, right, top, bottom] = [Math.floor((r.left - c.left) * k), Math.ceil((r.right - c.left) * k), (r.top - c.top) * k, (r.bottom - c.top) * k];
+        let inside = false;
+        for (let x = left + 1; x < right && !inside; x++) inside = inkAt(x, top, bottom);
+        // An edge through the middle of a letter has its ink on both sides;
+        // one a pixel off a letter's side, at most on one.
+        const through = (x: number) => inkAt(x - 2, top, bottom) && inkAt(x, top, bottom) && inkAt(x + 2, top, bottom);
+        return !inside || through(left) || through(right);
+      });
+    check(results, "…in a wide font, each mark is on its number's letters, cutting none", !cut.length && mine().length === 4, `${cut.length} of ${mine().length} cut a letter or miss`);
+    store.patterns = store.patterns.filter((p) => p.id !== wide.id);
 
     // A pattern with no sizes in its text offers none.
     tab("patterns");

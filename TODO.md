@@ -319,7 +319,12 @@ Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
   (patterns.size_index); in every run of as many numbers as there are sizes
   ("100 (110, 120)", a dash for none) its number marked, the others dimmed
   (pdf.ts paintSizes, through annotations.findTextParts). Not yet: scans,
-  size tables, "100/110/120", EPUBs. *0.3.93*
+  size tables, "100/110/120", EPUBs. *0.3.93* Runs on past their brackets,
+  "84 (84, 84, 88) 96, 96 [100, 100, 100] 104", names too, each run with the
+  counts it could end at (runOf), so a "2 times" after one is not a size.
+  The text layer set in the PDF's own fonts (reader/text-fonts.ts: pdf.js
+  lays it in a stand-in font, so letters mid-line sat a letter off), so the
+  marks, search and highlights land on their letters. *0.3.107*
 - **Knitting time:** spells of knitting on a project (knit_sessions), timed
   or typed in: one timer at a time, kept while the app is closed, stopped
   by finishing or frogging; on the project's page (Start, Stop and its

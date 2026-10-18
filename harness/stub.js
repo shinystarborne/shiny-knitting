@@ -1460,6 +1460,7 @@ const handlers = {
     if (p.fileName === "long-pattern.pdf") return fetchFixture("long-pattern.pdf");
     if (p.fileName === "scanned-pattern.pdf") return fetchFixture("scanned-pattern.pdf");
     if (p.fileName === "sized-pattern.pdf") return fetchFixture("sized-pattern.pdf");
+    if (p.fileName === "wide-sizes.pdf") return fetchFixture("wide-sizes.pdf");
     return fetchFixture(p.format === "epub" ? "sample-pattern.epub" : "sample-pattern.pdf");
   },
   // ---------- counters ----------

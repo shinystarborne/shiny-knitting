@@ -1,7 +1,8 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { findTextMatches, findTextParts, pageSearchText, rectsForRanges } from "../annotations";
-import { sizeRuns } from "./sizes";
+import { runOf, sizeRuns, type SizeItem } from "./sizes";
+import { fitTextToPdfFonts } from "./text-fonts";
 import { boxToView, normalRotation, type Rotation } from "./rotation";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -146,6 +147,10 @@ export class PdfView implements RenderedDoc {
    * against. It is invisible, so it costs nothing visually.
    */
   private textLayers = new Map<number, pdfjs.TextLayer>();
+  /** Each page's text items, for the fonts its spans are in. */
+  private textItems = new Map<number, { str?: string; fontName?: string }[]>();
+  /** The latest text layer build of each page, so an older one stops. */
+  private textTokens = new Map<number, number>();
   private task: pdfjs.PDFDocumentProxy | null = null;
   private scroller: HTMLElement;
   private container: HTMLDivElement;
@@ -487,7 +492,7 @@ export class PdfView implements RenderedDoc {
     const sizes = this.sizes;
     const text = this.textLayerFor(n);
     if (!sizes || !text) return;
-    const runs = findTextParts(text, (t) => sizeRuns(t).filter((run) => run.length === sizes.count));
+    const runs = findTextParts(text, (t) => sizeRuns(t).map((run) => runOf(run, sizes.count)).filter((items): items is SizeItem[] => !!items));
     if (!runs.length) return;
     const layer = document.createElement("div");
     layer.className = "page-sizes";
@@ -684,6 +689,8 @@ export class PdfView implements RenderedDoc {
         if (this.pageTasks.get(n) === task) this.pageTasks.delete(n);
       }
       await text;
+      // Painted, the page's fonts are loaded: its text set in them.
+      this.fitFonts(n);
     } catch (e) {
       // Allow a later pass to retry this page rather than leaving a permanent
       // blank in the document.
@@ -804,6 +811,12 @@ export class PdfView implements RenderedDoc {
     pageEl: HTMLElement,
     viewport: pdfjs.PageViewport,
   ): Promise<void> {
+    // Read whole first, so each span's font is known after; a newer build of
+    // the page, begun meanwhile, is the one that goes on.
+    const token = (this.textTokens.get(page.pageNumber) ?? 0) + 1;
+    this.textTokens.set(page.pageNumber, token);
+    const content = await page.getTextContent();
+    if (this.textTokens.get(page.pageNumber) !== token) return;
     let container = pageEl.querySelector<HTMLElement>(".text-layer");
     if (!container) {
       container = document.createElement("div");
@@ -816,16 +829,30 @@ export class PdfView implements RenderedDoc {
     this.textLayers.get(page.pageNumber)?.cancel();
     container.replaceChildren();
     const layer = new pdfjs.TextLayer({
-      textContentSource: page.streamTextContent(),
+      textContentSource: content,
       container,
       viewport,
     });
     this.textLayers.set(page.pageNumber, layer);
     await layer.render();
+    this.textItems.set(page.pageNumber, content.items as { str?: string; fontName?: string }[]);
+    this.fitFonts(page.pageNumber);
+  }
+
+  /**
+   * A page's text in the PDF's own fonts, so what is marked on it lands on
+   * its letters (text-fonts.ts); its sizes and search marks drawn again on
+   * them. Done when the text is laid, and again when the page is painted,
+   * as the fonts may only be loaded by then.
+   */
+  private fitFonts(n: number): void {
+    const layer = this.textLayers.get(n);
+    const items = this.textItems.get(n);
+    if (layer && items) fitTextToPdfFonts(layer.textDivs, items);
     // A page painted after a search started, by scrolling to it, shows its
     // matches too; and the size knitted, once there is one.
-    if (this.search) this.paintSearch(page.pageNumber);
-    if (this.sizes) this.paintSizes(page.pageNumber);
+    if (this.search) this.paintSearch(n);
+    if (this.sizes) this.paintSizes(n);
   }
 
   /**
