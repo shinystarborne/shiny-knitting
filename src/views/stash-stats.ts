@@ -1,4 +1,5 @@
-import { api, type KnitSession, type Pattern, type Tool, type ToolSet, type Yarn, type YarnUse } from "../api";
+import { api, type KnitSession, type Pattern, type Project, type Tool, type ToolSet, type Yarn, type YarnUse } from "../api";
+import { GoalsPanel } from "./goals";
 import { hoursText, knittedSince } from "./knit-time";
 import { closestEl } from "../dom";
 import { stashModeSwitch } from "./swatches";
@@ -13,7 +14,7 @@ const kept: { unit: Unit } = { unit: "m" };
  * and used month by month, in metres or grams, for the last twelve calendar
  * months. Added comes from the lots (as bought, dated when bought); used from
  * what was recorded as it went: finished projects, weighed before and after,
- * and yarn marked used up.
+ * and yarn marked used up. Above them, the year's goals (goals.ts).
  */
 export class StashStatsView {
   private screen: HTMLElement;
@@ -39,11 +40,14 @@ export class StashStatsView {
       <header class="lib-bar">
         <div class="lib-title"><h1>Stash</h1>${stashModeSwitch("stats")}</div>
       </header>
-      <main class="stats-body" data-el="stats"></main>
+      <main class="stats-body">
+        <section class="usage-panel goals-panel" data-el="goals"></section>
+        <div class="stats-sections" data-el="stats"></div>
+      </main>
     `;
     this.screen.appendChild(this.root);
     this.wire();
-    const [yarns, uses, patterns, currency, tools, sets, sessions] = await Promise.all([
+    const [yarns, uses, patterns, currency, tools, sets, sessions, projects] = await Promise.all([
       api.listYarns({ used: "all" }),
       api.listYarnUsage().catch(() => [] as YarnUse[]),
       api.listPatterns({}).catch(() => [] as Pattern[]),
@@ -51,7 +55,10 @@ export class StashStatsView {
       api.listTools().catch(() => [] as Tool[]),
       api.listToolSets().catch(() => [] as ToolSet[]),
       api.listKnitSessions().catch(() => [] as KnitSession[]),
+      api.listProjects().catch(() => [] as Project[]),
     ]);
+    // The year's goals: projects finished, and yarn used, from these.
+    void new GoalsPanel(this.root.querySelector<HTMLElement>('[data-el="goals"]')!, projects, uses).load();
     this.sessions = sessions;
     this.yarns = yarns;
     this.currency = currency;

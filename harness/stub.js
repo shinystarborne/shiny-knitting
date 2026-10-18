@@ -53,6 +53,7 @@ const store = {
   // Videos kept to learn from: as the backend's masterclasses.
   masterclasses: [],
   abbreviations: [],
+  goals: [],
   // Yarn used, when: as the backend's yarn_usage.
   yarnUsage: [],
   // What a yarn's ball band says, by brand and name: as the backend's yarn_details.
@@ -1588,6 +1589,27 @@ const handlers = {
   // As masterclasses.rs, without asking YouTube: a YouTube link is named
   // "A video, <id>" and channel "A channel" unless a name is given, and
   // gets a picture drawn here. A masterclass is its videos, in order.
+  // As goals.rs: the latest year first; your own counted by hand.
+  list_goals: () => clone([...store.goals].sort((a, b) => b.year - a.year || a.addedAt - b.addedAt)),
+  save_goal: ({ input }) => {
+    if (!["projects", "grams", "metres", "own"].includes(input.kind)) throw new Error(`“${input.kind}” is not a goal the app knows.`);
+    if (!(input.target > 0)) throw new Error("A goal is a number more than 0.");
+    const label = input.kind === "own" ? input.label.split(/\s+/).filter(Boolean).join(" ") : "";
+    if (input.kind === "own" && !label) throw new Error("Say what your own goal is.");
+    let g = input.id && store.goals.find((x) => x.id === input.id);
+    if (!g) store.goals.push((g = { id: `goal-${store.nextId++}`, done: 0, addedAt: Date.now() }));
+    Object.assign(g, { year: input.year, kind: input.kind, label, target: Math.round(input.target * 100) / 100 });
+    return clone(g);
+  },
+  set_goal_done: ({ id, done }) => {
+    const g = store.goals.find((x) => x.id === id);
+    if (!g) throw new Error("That goal is no longer there.");
+    if (g.kind === "own") g.done = Math.max(0, done);
+    return clone(g);
+  },
+  remove_goal: ({ id }) => {
+    store.goals = store.goals.filter((g) => g.id !== id);
+  },
   // As abbreviations.rs: yours, by term; the same term again is that one changed.
   list_abbreviations: () => clone([...store.abbreviations].sort((a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }))),
   save_abbreviation: ({ input }) => {

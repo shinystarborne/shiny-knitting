@@ -10,6 +10,7 @@ mod covers;
 mod db;
 mod export;
 mod external;
+mod goals;
 mod link_preview;
 mod masterclasses;
 mod models;
@@ -156,6 +157,10 @@ pub fn run() {
             abbreviations::save_abbreviation,
             abbreviations::remove_abbreviation,
             ball_band::read_ball_band,
+            goals::list_goals,
+            goals::save_goal,
+            goals::set_goal_done,
+            goals::remove_goal,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,

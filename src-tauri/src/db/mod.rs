@@ -845,6 +845,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     }
     // Abbreviations of your own, for the glossary.
     crate::abbreviations::migrate(conn)?;
+    // Goals for a year, for Statistics.
+    crate::goals::migrate(conn)?;
     // A project's own hour's worth, when not the standard.
     if !column_exists(conn, "projects", "hour_rate")? {
         conn.execute("ALTER TABLE projects ADD COLUMN hour_rate REAL", [])?;

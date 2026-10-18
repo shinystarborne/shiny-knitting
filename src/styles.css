@@ -4205,3 +4205,20 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .photo-yarn { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: transparent; border: 1px solid var(--border); color: var(--text); }
 .photo-yarn.on { border-color: var(--accent); background: var(--accent-soft); }
 @media (max-width: 640px) { .photo-colours-body { flex-direction: column; } .photo-colours-photo { width: 100%; } }
+
+/* Goals for a year, at the top of Statistics: a bar each, and how it stands. */
+.stats-sections { display: contents; }
+.goals-panel h2 select { font: inherit; padding: 0 4px; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+.goals-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.goal { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); }
+.goal-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.goal-head b { flex: 1 1 100%; min-width: 0; font-size: 14px; }
+.goal-figures { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.goal-tools { display: flex; gap: 4px; margin-left: auto; }
+.goal-tools .ghost { padding: 1px 8px; font-size: 12px; }
+.goal-bar { height: 8px; border-radius: 999px; background: var(--bg-input); overflow: hidden; }
+.goal-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.goal.reached .goal-bar i, .goal.ahead .goal-bar i { background: var(--ok); }
+.goal-pace { font-size: 12px; color: var(--text-dim); }
+.goal.reached .goal-pace { color: var(--ok); font-weight: 600; }
+.goals-none { margin: 0; }

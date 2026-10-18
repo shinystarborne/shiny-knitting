@@ -896,6 +896,19 @@ export interface BallBand {
   care: string[];
 }
 
+/** A goal for a year, in Statistics. Mirrors `goals.rs::Goal`. */
+export interface Goal {
+  id: string;
+  year: number;
+  kind: "projects" | "grams" | "metres" | "own";
+  /** Your own goal's words; "" for the others. */
+  label: string;
+  target: number;
+  /** Your own goal's count; the others are worked out (views/goals.ts). */
+  done: number;
+  addedAt: number;
+}
+
 /** An abbreviation of your own, for the glossary. Mirrors `abbreviations.rs::Abbreviation`. */
 export interface Abbreviation {
   id: string;
@@ -1586,6 +1599,12 @@ export const api = {
   saveCurrency: (code: string) => invoke<string>("save_currency", { code }),
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
+  /** Goals for a year, every year's. */
+  listGoals: () => invoke<Goal[]>("list_goals"),
+  saveGoal: (input: { id: string | null; year: number; kind: Goal["kind"]; label: string; target: number }) => invoke<Goal>("save_goal", { input }),
+  /** Your own goal's count. */
+  setGoalDone: (id: string, done: number) => invoke<Goal>("set_goal_done", { id, done }),
+  removeGoal: (id: string) => invoke<void>("remove_goal", { id }),
   /** Your own abbreviations, for the glossary. */
   listAbbreviations: () => invoke<Abbreviation[]>("list_abbreviations"),
   /** Adds one of yours, or changes the one with that id (or that term). */

@@ -21,14 +21,7 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
-  below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Yearly goals
-
-Goals for a year: projects finished, grams or metres of the stash used,
-or your own. Shown in Statistics with how far along they are.
 
 ### Every measurement drawn
 
@@ -148,6 +141,11 @@ calculators.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Yearly goals:** at the top of Statistics (views/goals.ts; goals table,
+  goals.rs): projects finished that year, grams or metres used that year
+  (yarn_usage: finished projects and yarn marked used up), or your own,
+  counted with − and +. A bar each, and against the days gone ahead,
+  behind, reached, or not reached; a year to look back on. *0.3.105*
 - **Colours from a photo:** From a photo… in a chart's colours
   (views/photo-colours.ts): k-means in CIELAB on the photo at 160 px, alike
   ones (ΔE < 10) merged, under 2% dropped; each with the stash yarns nearest
