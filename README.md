@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.102](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.102)** —
+  calculator steps as a checklist on a project's board, a counter for a step that repeats. The one to test.
 - **[v0.3.0-beta.101](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.101)** —
-  abbreviations explained: a glossary in Cheatsheets, your own, and in a pattern when pointed at. The one to test.
+  abbreviations explained: a glossary in Cheatsheets, your own, and in a pattern when pointed at. Superseded by `beta.102`.
 - **[v0.3.0-beta.100](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.100)** —
   restore a backup, in Settings: what is here saved first. Superseded by `beta.101`.
 - **[v0.3.0-beta.99](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.99)** —
