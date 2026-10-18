@@ -398,6 +398,10 @@ Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
 - **`cargo` is not on `PATH`.** Source `vcvars64.bat` and add
   `%USERPROFILE%\.cargo\bin` before any cargo command, including
   `npm run tauri build`.
+- **The harness's dates are British.** Several checks read dates as "3 March
+  2026". Headless Edge takes its date format from Windows, not `--lang`: start
+  it with `--lang=en-GB --js-flags=--ms-user-locale=en_GB`, or those checks
+  fail for nothing.
 - **Build the harness as a production bundle** (`npm run harness:build &&
   npm run harness:serve`) before deciding a bug only happens in dev.
 - **Test the built app, not only the harness.** The harness is the same code in
