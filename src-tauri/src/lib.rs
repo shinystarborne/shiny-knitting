@@ -148,6 +148,8 @@ pub fn run() {
             backup::make_backup,
             backup::backup_progress,
             backup::last_backup,
+            backup::restore_backup,
+            backup::restart_app,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,

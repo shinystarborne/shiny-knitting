@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Restoring a backup**: reading a backup back in (from the ideas).
-  See below.
 - [ ] **Abbreviations explained**: ssk, m1l, w&t and the like, explained
   where they are in a pattern. See below.
 - [ ] **Calculator steps as a checklist**: steps saved to a project, ticked
@@ -34,12 +32,6 @@ under the list.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Restoring a backup
-
-Make a backup is built (Settings): the database and the files. Restoring
-reads one back in, in place of what is there now, after saying so plainly
-and making a backup of the present first.
 
 ### Abbreviations
 
@@ -397,7 +389,13 @@ calculators.
   and every file of the library folder in one zip, stored, zip64; written as
   .part and renamed when whole; progress polled (backup_progress); the last
   one remembered (app_settings last_backup). backup.json says what it is. A
-  real 6.5 GB library took 20 s. Restoring is not built yet.
+  real 6.5 GB library took 20 s. Restore a backup (restore_backup): said
+  plainly first; the zip checked (backup.json, library.db); what is there
+  saved beside it as "before restoring <date> <time>.zip"; unpacked to
+  `restoring/` beside the library and its database opened (migrated);
+  then swap_in closes the connection, moves library.db and library/ aside,
+  the backup's in, and reopens; a failed move puts everything back. The
+  app restarts (restart_app). *0.3.100*
 - **App:** updates found by themselves (at every start and every hour, with a
   card that says so) and installed in place in one click, with betas; settings
   behind the gear.

@@ -2533,6 +2533,26 @@ const handlers = {
     return clone(store.lastBackup);
   },
   backup_progress: () => clone(store.backupProgress ?? { running: false, done: 0, total: 0 }),
+  // As backup.rs: the open dialog answered by store.restoreFrom (null:
+  // cancelled), what is here saved first, then read back; store.restoreError
+  // fails it. Nothing is replaced here: the app would start again.
+  restore_backup: async ({ beforeName }) => {
+    store.restoreBeforeName = beforeName;
+    const from = store.restoreFrom === undefined ? "D:/Backups/Shiny Knitting backup 2026-10-01.zip" : store.restoreFrom;
+    if (!from) return null;
+    if (store.restoreError) throw new Error(store.restoreError);
+    for (const restoring of [false, true]) {
+      for (let done = 0; done <= 3; done++) {
+        store.backupProgress = { running: true, done, total: 3, restoring };
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    store.backupProgress = { running: false, done: 0, total: 0 };
+    return { from, savedTo: from.replace(/[^/]*$/, beforeName), files: 42 };
+  },
+  restart_app: () => {
+    store.restarted = (store.restarted ?? 0) + 1;
+  },
   last_backup: () => clone(store.lastBackup ?? null),
   get_currency: () => store.currency ?? "EUR",
   get_hour_rate: () => store.hourRate ?? null,

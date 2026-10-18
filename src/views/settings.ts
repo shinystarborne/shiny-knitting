@@ -1,4 +1,5 @@
 import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
+import { askYesNo, say } from "../dialogs";
 import { clickedOn, closestEl } from "../dom";
 import { parsePrice } from "./money";
 import { longDate, toDateInput } from "./project-form";
@@ -100,11 +101,15 @@ export class SettingsDialog {
           Saves the whole library — every pattern, cover and photo, and everything
           you have written down — to one zip file, where you choose. Keep it
           somewhere other than this computer: a USB stick, or a cloud folder.
+          Restoring one puts it in place of what is here, after saving what is
+          here first.
         </p>
         <div class="model-row">
           <button class="ghost" data-act="backup">Make a backup…</button>
+          <button class="ghost" data-act="restore">Restore a backup…</button>
         </div>
         <em class="hint block" data-el="backup-result"></em>
+        <em class="hint block" data-el="restore-result" hidden></em>
 
         <h3>Needle sizes</h3>
         <label class="field">
@@ -314,6 +319,49 @@ export class SettingsDialog {
     }
   }
 
+  /**
+   * Reads a backup back in, in place of everything here: said plainly first,
+   * and what is here now saved beside it before anything is changed. The app
+   * then starts again, on the library restored.
+   */
+  private async restore(): Promise<void> {
+    const ok = await askYesNo(
+      "Restoring a backup puts it in place of everything in the app now: every pattern, project, yarn, chart and note. What is here now is saved first, as a backup in the same folder as the one you choose, so nothing is lost. Then the app starts again.",
+      { title: "Restore a backup", okLabel: "Choose the backup…", danger: true },
+    );
+    if (!ok) return;
+    const out = this.root.querySelector<HTMLElement>('[data-el="restore-result"]')!;
+    const buttons = [...this.root.querySelectorAll<HTMLButtonElement>('[data-act="backup"], [data-act="restore"]')];
+    buttons.forEach((b) => (b.disabled = true));
+    const poll = window.setInterval(() => {
+      void api.backupProgress().then((p) => {
+        if (!p.running || !p.total) return;
+        out.hidden = false;
+        out.textContent = p.restoring ? `Reading the backup: ${p.done} of ${p.total} files…` : `Saving what is here now first: ${p.done} of ${p.total} files…`;
+      });
+    }, 400);
+    try {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, "0")}.${String(now.getMinutes()).padStart(2, "0")}`;
+      const done = await api.restoreBackup(`Shiny Knitting before restoring ${toDateInput(now.getTime())} ${time}.zip`);
+      window.clearInterval(poll);
+      if (!done) {
+        out.hidden = true;
+        return;
+      }
+      out.hidden = false;
+      out.textContent = `Restored from ${done.from}.`;
+      await say(`The backup is restored: ${done.files} files. What was here before is saved in ${done.savedTo}. The app starts again now.`, "Backup restored");
+      await api.restartApp();
+    } catch (err) {
+      out.hidden = false;
+      out.textContent = `The backup was not restored: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      window.clearInterval(poll);
+      buttons.forEach((b) => (b.disabled = false));
+    }
+  }
+
   private bind(): void {
     void this.showLastBackup();
     const baseInput = this.root.querySelector('[data-f="baseUrl"]') as HTMLInputElement;
@@ -334,6 +382,7 @@ export class SettingsDialog {
       if (act === "check-updates") void this.checkUpdates(btn as HTMLButtonElement);
       if (act === "download-update") void this.downloadUpdate(btn as HTMLButtonElement);
       if (act === "backup") void this.backup(btn as HTMLButtonElement);
+      if (act === "restore") void this.restore();
     });
 
     // Clicking the backdrop dismisses; a click inside the form does not.

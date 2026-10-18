@@ -1239,6 +1239,15 @@ export interface BackupProgress {
   running: boolean;
   done: number;
   total: number;
+  /** A backup being read back in, not made. */
+  restoring?: boolean;
+}
+
+/** A backup read back in, and where what was there before was saved. Mirrors `backup.rs::RestoreDone`. */
+export interface RestoreDone {
+  from: string;
+  savedTo: string;
+  files: number;
 }
 
 /** One time someone was measured. Mirrors `models.rs::MeasurementSet`. */
@@ -1637,6 +1646,13 @@ export const api = {
   /** How far the backup being made has got. */
   backupProgress: () => invoke<BackupProgress>("backup_progress"),
   lastBackup: () => invoke<BackupDone | null>("last_backup"),
+  /**
+   * Asks for a backup and puts it in place of the library, after saving what
+   * is here now beside it as `beforeName`; null when cancelled.
+   */
+  restoreBackup: (beforeName: string) => invoke<RestoreDone | null>("restore_backup", { beforeName }),
+  /** Starts the app again, as after a restore. */
+  restartApp: () => invoke<void>("restart_app"),
   saveMeasureUnit: (unit: MeasureUnit) => invoke<MeasureUnit>("save_measure_unit", { unit }),
 
   // Shops, and the wishlist. Web addresses are tidied by the backend, so use
