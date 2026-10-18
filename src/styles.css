@@ -4191,3 +4191,17 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .yarn-form .band-read { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 4px; }
 .yarn-form .band-read .hint { flex: 1; min-width: 200px; }
 .yarn-form .from-band { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+
+/* Colours from a photo, for a chart: the photo beside its colours, each with the yarns nearest it. */
+.photo-colours-dialog { max-width: 720px; }
+.photo-colours-body { display: flex; gap: 14px; align-items: flex-start; }
+.photo-colours-photo { width: 200px; max-height: 260px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); flex: none; }
+.photo-colours-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; }
+.photo-colour { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.photo-colour-use { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.photo-colour-sw { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); flex: none; display: inline-block; }
+.photo-colour-sw.small { width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 5px; }
+.photo-colour-yarns { display: flex; flex-wrap: wrap; gap: 5px; padding-left: 26px; }
+.photo-yarn { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: transparent; border: 1px solid var(--border); color: var(--text); }
+.photo-yarn.on { border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 640px) { .photo-colours-body { flex-direction: column; } .photo-colours-photo { width: 100%; } }

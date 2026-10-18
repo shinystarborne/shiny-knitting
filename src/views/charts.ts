@@ -46,6 +46,7 @@ import { CanvasPainter, chartPng, drawChart, drawRing, drawThumbnail, drawTiles,
 import { chartPdf, PAPERS, type Paper } from "./chart-pdf";
 import { gaugeOf, gaugeSpan, readGauge, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
+import { colourName, likeness, mainColours, nearestYarns, pixelsOf, yarnColour, type PhotoColour } from "./photo-colours";
 
 // ---------- the list, in the Calculators tab ----------
 
@@ -457,6 +458,7 @@ export class ChartPage {
       return this.refresh();
     }
     if (act === "add-colour") return this.addColour();
+    if (act === "photo-colours") return void (await this.fromPhoto());
     if (act === "remove-colour") return void (await this.removeColour());
     if (act === "remove") return void (await this.remove());
     if (act === "export") return void (await this.exportDialog());
@@ -990,6 +992,7 @@ export class ChartPage {
           )
           .join("")}
         ${this.g.colours.length < MAX_COLOURS ? `<button class="ghost chart-add-colour" data-act="add-colour" title="Another colour">+ Colour</button>` : ""}
+        <button class="ghost chart-add-colour" data-act="photo-colours" title="A photo's main colours, as the chart's, with the yarns in your stash nearest them">🎨 From a photo…</button>
       </div>
       <div class="chart-colour-edit">
         <input type="color" data-f="colour-hex" value="${esc(c.hex)}" aria-label="The colour" />
@@ -1024,6 +1027,113 @@ export class ChartPage {
     c.yarn = yarnLabel(yarn);
     const unnamed = PALETTE.some((p) => p.name === c.name) || /^Colour \d+$/.test(c.name);
     if (unnamed && (yarn.colourway || yarn.name)) c.name = (yarn.colourway || yarn.name).slice(0, 40);
+  }
+
+  /**
+   * Colours from a photo: its main ones picked out, each with the stash's
+   * yarns nearest it (by their photos), to add to the chart or to recolour
+   * it with, the chart's most used colour taking the photo's main one.
+   */
+  private async fromPhoto(): Promise<void> {
+    const file = await pickImage();
+    if (!file) return;
+    const pixels = await pixelsOf(file, 160);
+    const found = pixels ? mainColours(pixels, 8) : [];
+    if (!found.length) return say("That file could not be read as a picture.", "Colours from a photo");
+    const coloured = (await Promise.all(this.yarns.map(async (yarn) => ({ yarn, hex: await yarnColour(yarn) })))).filter((c): c is { yarn: Yarn; hex: string } => !!c.hex);
+    const preview = URL.createObjectURL(file);
+    // Per colour: used or not, and the yarn chosen for it.
+    const picks = found.map(() => ({ use: true, yarnId: "" }));
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        dialog.close();
+        URL.revokeObjectURL(preview);
+        resolve();
+      };
+      const dialog = customDialog("Colours from a photo", finish, "photo-colours-dialog");
+      const card = dialog.card;
+      const rows = found
+        .map((c, i) => {
+          const near = nearestYarns(c.hex, coloured);
+          return `
+          <div class="photo-colour" data-i="${i}">
+            <label class="photo-colour-use"><input type="checkbox" data-use="${i}" checked />
+              <span class="photo-colour-sw" style="background:${c.hex}"></span>
+              <span><b>${esc(colourName(c.hex))}</b><span class="hint"> ${Math.round(c.share * 100)}% of it</span></span></label>
+            <div class="photo-colour-yarns">
+              ${
+                near.length
+                  ? near
+                      .map(
+                        (n) => `<button type="button" class="photo-yarn" data-pick="${i}" data-yarn="${esc(n.yarn.id)}" title="Knit it in ${esc(yarnLabel(n.yarn))}: ${likeness(n.distance)}">
+                        <span class="photo-colour-sw small" style="background:${n.hex}"></span>${esc(yarnLabel(n.yarn))} <span class="hint">${likeness(n.distance)}</span></button>`,
+                      )
+                      .join("")
+                  : `<span class="hint">${coloured.length ? "No yarn in the stash near it." : "No yarn in the stash has a photo to match."}</span>`
+              }
+            </div>
+          </div>`;
+        })
+        .join("");
+      card.insertAdjacentHTML(
+        "beforeend",
+        `
+        <div class="photo-colours-body">
+          <img class="photo-colours-photo" src="${preview}" alt="The photo" />
+          <div class="photo-colours-list">${rows}</div>
+        </div>
+        <p class="hint">Pick a yarn for a colour to knit it in that one: the legend names it. A yarn's colour is read from its photo.</p>
+        <div class="dialog-actions">
+          <button class="ghost" data-act="cancel">Cancel</button>
+          <button class="ghost" data-act="add" title="The colours ticked, after the chart's own">Add to the chart</button>
+          <button class="primary" data-act="recolour" title="The chart's colours, the most used first, take the colours ticked, the most of the photo first">Recolour the chart</button>
+        </div>`,
+      );
+      card.addEventListener("change", (e) => {
+        const box = e.target as HTMLInputElement;
+        if (box.dataset.use) picks[Number(box.dataset.use)].use = box.checked;
+      });
+      card.addEventListener("click", (e) => {
+        const pick = closestEl(e.target, "[data-pick]");
+        if (pick) {
+          const p = picks[Number(pick.dataset.pick)];
+          p.yarnId = p.yarnId === pick.dataset.yarn ? "" : pick.dataset.yarn!;
+          for (const b of card.querySelectorAll<HTMLElement>(`[data-pick="${pick.dataset.pick}"]`)) b.classList.toggle("on", b.dataset.yarn === p.yarnId);
+          return;
+        }
+        const act = closestEl(e.target, "button[data-act]")?.dataset.act;
+        if (act === "cancel") return finish();
+        if (act !== "add" && act !== "recolour") return;
+        const chosen = found.map((c, i) => ({ colour: c, ...picks[i] })).filter((c) => c.use);
+        if (chosen.length) this.usePhotoColours(chosen, act === "recolour");
+        finish();
+      });
+      dialog.show();
+    });
+  }
+
+  /** The colours from a photo put in: added after the chart's, or in place of them, the most used first. */
+  private usePhotoColours(chosen: { colour: PhotoColour; yarnId: string }[], recolour: boolean): void {
+    this.change(() => {
+      const counts = usage(this.g, this.mask);
+      // The chart's colours, the most used first: the background first when it is.
+      const order = this.g.colours.map((_, i) => i).sort((a, b) => counts[b] - counts[a] || a - b);
+      chosen.forEach((c, k) => {
+        let i: number;
+        if (recolour && k < order.length) i = order[k];
+        else if (this.g.colours.length < MAX_COLOURS) i = this.g.colours.push({ name: "", hex: c.colour.hex }) - 1;
+        else return;
+        const col = this.g.colours[i];
+        col.hex = c.colour.hex;
+        delete col.yarnId;
+        delete col.yarn;
+        // Named for the yarn knitted in it (its colourway), else for how it looks.
+        col.name = c.yarnId ? `Colour ${i + 1}` : colourName(c.colour.hex);
+        if (c.yarnId) this.linkYarn(i, c.yarnId);
+      });
+    }, true);
+    this.paintPalette();
+    this.note(recolour ? "Recoloured from the photo" : "Colours added from the photo");
   }
 
   private addColour(): void {
@@ -1482,6 +1592,18 @@ function listRows(rows: number[]): string {
     i = j + 1;
   }
   return out.join(", ");
+}
+
+/** An image picked from a file; null when none is. */
+function pickImage(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null));
+    input.addEventListener("cancel", () => resolve(null));
+    input.click();
+  });
 }
 
 function esc(v: string): string {

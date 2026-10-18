@@ -21,16 +21,9 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Colours from a photo**: a palette for a chart, and the nearest
-  yarns in the stash. See below.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Colours from a photo
-
-A photo's main colours picked out: as a palette for a colourwork chart,
-and matched to the nearest yarns in the stash (by their photos' colour).
 
 ### Yearly goals
 
@@ -155,6 +148,12 @@ calculators.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Colours from a photo:** From a photo… in a chart's colours
+  (views/photo-colours.ts): k-means in CIELAB on the photo at 160 px, alike
+  ones (ΔE < 10) merged, under 2% dropped; each with the stash yarns nearest
+  (ΔE ≤ 30), a yarn's colour the main one of the middle of its photo. Added
+  after the chart's, or recolouring it (its most used colour the photo's
+  main one); named plainly (colourName), or for the yarn picked. *0.3.104*
 - **The ball band, from a photo:** Read the ball band… in the yarn form,
   shown when a model is switched on: the photo (1600 px JPEG) sent to
   read_ball_band (ball_band.rs: a JSON schema with the care symbols' ids
