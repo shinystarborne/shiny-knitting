@@ -19,8 +19,27 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
-100 to 106).
+**Asked for 18 Oct 2026**
+
+- [ ] **Lace charts**: a chart maker for lace, drawn in its stitches'
+  symbols. See below.
+- [ ] **Symbols explained**: the chart symbols with what they mean, as the
+  abbreviations are. See below.
+
+### Lace charts
+
+A chart of stitches, not colours: each square a stitch drawn in its
+standard symbol (knit, purl, yarn over, k2tog, ssk, sk2p, no stitch…),
+worked flat or in the round, with its legend and the rows written out
+(on a wrong-side row, a knit square purled), printed and saved to a
+project like a colourwork chart.
+
+### Symbols explained
+
+A glossary of the chart symbols, each drawn, with what it means and the
+abbreviation it stands for (a masterclass video where one covers it): in
+Cheatsheets beside the abbreviations, and on a lace chart a symbol said
+when pointed at.
 
 ---
 
