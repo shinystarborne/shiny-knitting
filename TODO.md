@@ -21,8 +21,6 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **Calculator steps as a checklist**: steps saved to a project, ticked
-  off as knitted, a counter for a step that repeats. See below.
 - [ ] **The yarn form filled from a photo of the ball band**, read by the
   model. See below.
 - [ ] **Colours from a photo**: a palette for a chart, and the nearest
@@ -30,12 +28,6 @@ under the list.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Steps as a checklist
-
-A calculator's steps saved to a project as a checklist, not a text: each
-step ticked when done, the one being knitted marked, and a step that
-repeats ("decrease every other round 10 times") given its own counter.
 
 ### The ball band, from a photo
 
@@ -172,6 +164,12 @@ calculators.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Steps as a checklist:** a garment's or socks' steps saved to a project's
+  board as a "steps" card (BOARD_KINDS; views/steps.ts): each ticked, the
+  first not done marked Knitting now, and a step whose words say "every …
+  N times" (all such added up; not "*K6, M1* 4 times" nor "8 times round")
+  counted with − and +, ticked at its last. Other results go as text.
+  *0.3.102*
 - **Calculators:** a top-down round yoke (lopapeysa), with 3 to 6 increase
   rounds fitted to the colourwork's repeat; and a raglan, top-down or
   bottom-up, in the round or flat as a cardigan (bands and buttonholes picked

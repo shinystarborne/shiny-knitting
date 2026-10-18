@@ -257,7 +257,9 @@ export async function verifyCalculators() {
       (view()!.querySelector('[data-act="save"]') as HTMLElement).click();
       await waitFor(() => store.boardItems.length === before + 1, "the board item");
       const item = store.boardItems[store.boardItems.length - 1];
-      check(results, "Save puts the steps on the project's board, as a text", item.boardId === live.id && item.kind === "text" && /Cast on 104 stitches/.test(item.data.text ?? ""), JSON.stringify(item));
+      const saved = item.data as { title?: string; intro?: string; steps?: { text: string; times: number; done: boolean }[] };
+      check(results, "Save puts the steps on the project's board, as a checklist", item.boardId === live.id && item.kind === "steps" && /^Cast on 104 stitches/.test(saved.steps?.[0]?.text ?? "") && saved.steps!.every((s) => !s.done) && /^Raglan/.test(saved.title ?? "") && /Gauge/.test(saved.intro ?? ""), JSON.stringify(item).slice(0, 400));
+      check(results, "…a step that repeats given its times to count", saved.steps!.some((s) => s.times > 0 && /every \d+ rounds \d+ times/.test(s.text)), JSON.stringify(saved.steps!.map((s) => s.times)));
       check(results, "…and says so", /Saved to/.test(view()!.querySelector('[data-el="saved"]')?.textContent ?? ""));
     }
 

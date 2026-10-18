@@ -11,6 +11,7 @@ import { familyByMetres, grouped, weightLabel } from "./yarn-weight";
 import { familyByGauge, inYarn, metresForArea, socksArea, stashFor, sweaterArea } from "./yarn-need";
 import { figureCaption, measureFigure } from "./measure-figures";
 import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
+import { stepList } from "./steps";
 
 type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts";
 
@@ -131,8 +132,11 @@ export class CalculatorsView {
   /** Every yarn in the stash, for what would do for a garment's yarn. */
   private stash: Yarn[] = [];
   private unit: MeasureUnit = "cm";
-  /** The latest result as text, for Copy and Save. */
-  private plan: { title: string; text: string } | null = null;
+  /**
+   * The latest result as text, for Copy and Save; a garment's or socks' with
+   * its steps apart too, to be saved as a checklist.
+   */
+  private plan: { title: string; text: string; intro?: string; steps?: string[] } | null = null;
   /** The round yoke charts, to knit a yoke from. */
   private charts: Chart[] = [];
   /** What the round yoke worked out wants of its chart, for Fit the chart. */
@@ -592,14 +596,12 @@ export class CalculatorsView {
     const person = this.people.find((p) => p.id === kept.values.person);
     const title = `${what}${person ? ` for ${person.name}` : ""}, ${longDate(Date.now())}`;
     const g = input.gauge;
+    const intro = `Gauge ${showGauge(g.sts, this.unit)} sts × ${showGauge(g.rows, this.unit)} rows per ${gaugeSpan(this.unit)}. Finished chest ${this.len(finished.chest)}, upper arm ${this.len(finished.upperArm)}, neck ${this.len(finished.neck)}.`;
     this.plan = {
       title,
-      text: [
-        title,
-        `Gauge ${showGauge(g.sts, this.unit)} sts × ${showGauge(g.rows, this.unit)} rows per ${gaugeSpan(this.unit)}. Finished chest ${this.len(finished.chest)}, upper arm ${this.len(finished.upperArm)}, neck ${this.len(finished.neck)}.`,
-        "",
-        ...steps.map((s, i) => `${i + 1}. ${s}`),
-      ].join("\n"),
+      text: [title, intro, "", ...steps.map((s, i) => `${i + 1}. ${s}`)].join("\n"),
+      intro,
+      steps,
     };
   }
 
@@ -831,14 +833,12 @@ export class CalculatorsView {
     const person = this.people.find((p) => p.id === kept.values.person);
     const title = `Socks${person ? ` for ${person.name}` : ""}, ${longDate(Date.now())}`;
     const g = input.gauge;
+    const intro = `${up ? "Toe-up" : "Cuff-down"}, ${heelName.toLowerCase()}, ${TOES.find((t) => t.key === input.toe)!.label.toLowerCase()}. Gauge ${showGauge(g.sts, this.unit)} sts × ${showGauge(g.rows, this.unit)} rows per ${gaugeSpan(this.unit)}. ${r.sts} stitches: ${this.len(r.finished.around)} round, for a foot of ${this.len(input.footAround)}.`;
     this.plan = {
       title,
-      text: [
-        title,
-        `${up ? "Toe-up" : "Cuff-down"}, ${heelName.toLowerCase()}, ${TOES.find((t) => t.key === input.toe)!.label.toLowerCase()}. Gauge ${showGauge(g.sts, this.unit)} sts × ${showGauge(g.rows, this.unit)} rows per ${gaugeSpan(this.unit)}. ${r.sts} stitches: ${this.len(r.finished.around)} round, for a foot of ${this.len(input.footAround)}.`,
-        "",
-        ...steps.map((s, i) => `${i + 1}. ${s}`),
-      ].join("\n"),
+      text: [title, intro, "", ...steps.map((s, i) => `${i + 1}. ${s}`)].join("\n"),
+      intro,
+      steps,
     };
     return `
       ${this.resultHead("The numbers")}
@@ -939,7 +939,9 @@ export class CalculatorsView {
     const name = (y: Yarn) => `${[y.brand, y.name].filter(Boolean).join(" ")}${y.colourway ? ` (${y.colourway})` : ""}`;
     const balls = (n: number) => `${n} ball${n === 1 ? "" : "s"}`;
     const inOwn = own && need.balls !== null ? `${need.grams !== null ? `${grouped(need.grams)} g, ` : ""}${balls(need.balls)} of ${name(own)}` : "";
-    if (this.plan) this.plan.text += `\n\nYarn: about ${grouped(need.metres)} m, with a tenth to spare${inOwn ? `: ${inOwn}` : ""}.`;
+    const yarnLine = `Yarn: about ${grouped(need.metres)} m, with a tenth to spare${inOwn ? `: ${inOwn}` : ""}.`;
+    if (this.plan) this.plan.text += `\n\n${yarnLine}`;
+    if (this.plan?.intro !== undefined) this.plan.intro += ` ${yarnLine}`;
     return `
       <h3>Yarn</h3>
       <p class="calc-big" data-el="yarn-need"><b>About ${grouped(need.metres)} m</b> <span class="hint">by your gauge, with a tenth to spare</span></p>
@@ -972,7 +974,7 @@ export class CalculatorsView {
       <div class="calc-actions">
         <button class="ghost" data-act="copy">Copy</button>
         <select data-k="saveTo" aria-label="Project to save to">
-          <option value="">Save to a project's board…</option>
+          <option value="">${this.plan?.steps ? "Save to a project's board, as a checklist…" : "Save to a project's board…"}</option>
           ${live.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
         </select>
         <button class="ghost" data-act="save">Save</button>
@@ -1009,14 +1011,23 @@ export class CalculatorsView {
     if (el) el.textContent = text;
   }
 
-  /** Puts the result on a project's board, as a text, below what is there. */
+  /**
+   * Puts the result on a project's board, below what is there: a garment's or
+   * socks' steps as a checklist, to tick as they are knitted; anything else
+   * as a text.
+   */
   private async saveToBoard(): Promise<void> {
     const projectId = this.main.querySelector<HTMLSelectElement>('[data-k="saveTo"]')?.value;
     if (!projectId || !this.plan) return this.mark("Choose a project first.");
     try {
       const items = await api.listBoardItems(projectId).catch(() => []);
       const y = items.reduce((max, it) => Math.max(max, it.y + it.h), 0) + 40;
-      await api.addBoardItem(projectId, { kind: "text", x: 40, y, w: 460, h: 560, data: { text: this.plan.text } });
+      if (this.plan.steps) {
+        const list = stepList(this.plan.title, this.plan.intro ?? "", this.plan.steps);
+        await api.addBoardItem(projectId, { kind: "steps", x: 40, y, w: 480, h: 620, data: { ...list } });
+      } else {
+        await api.addBoardItem(projectId, { kind: "text", x: 40, y, w: 460, h: 560, data: { text: this.plan.text } });
+      }
       this.mark(`Saved to ${this.projects.find((p) => p.id === projectId)?.name ?? "the project"}'s board.`);
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Save");

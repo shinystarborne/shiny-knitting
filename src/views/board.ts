@@ -7,6 +7,7 @@ import { copyPicture } from "../copy-picture";
 import { openLightbox } from "../lightbox";
 import { logPictures } from "./project-photos";
 import { playerHtml } from "./masterclasses";
+import { countStep, nowAt, progress, readStepList, tick, type StepList } from "./steps";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -88,6 +89,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   pin: [420, 300],
   // 16:9, and the bar it is moved by.
   video: [480, 302],
+  steps: [480, 620],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -432,8 +434,9 @@ export class Board {
     if (target.closest(".board-tools, .board-zoom, button, input, select, a")) return;
     const el = this.itemEl(target);
     // A log card's entries are read, scrolled and selected like a page: the
-    // card is picked, not dragged. It moves by its header.
-    if (el && target.closest(".board-log-list")) {
+    // card is picked, not dragged. It moves by its header. So does a
+    // checklist's.
+    if (el && target.closest(".board-log-list, .board-steps-list")) {
       this.select(el.dataset.id!);
       return;
     }
@@ -522,7 +525,7 @@ export class Board {
 
   private onWheel(e: WheelEvent): void {
     // A note being read, or a log card's entries, scroll themselves.
-    if ((e.target as HTMLElement).closest("textarea, .board-log-list") && !e.ctrlKey) return;
+    if ((e.target as HTMLElement).closest("textarea, .board-log-list, .board-steps-list") && !e.ctrlKey) return;
     e.preventDefault();
     const box = this.root.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) {
@@ -562,6 +565,15 @@ export class Board {
     if (act === "log-copy" && btn.dataset.entry) await copyPicture(logPhotoUrl(btn.dataset.entry), "The photo");
     if (act === "log-photo-clear") this.setLogPhoto(null);
     if (act === "open-log") this.hooks.openLog?.();
+    if (act === "step-tick" || act === "step-more" || act === "step-less") {
+      const item = this.items.find((i) => i.id === id)!;
+      const i = Number(btn.dataset.step);
+      const list = readStepList(item.data);
+      const next = act === "step-tick" ? tick(list, i) : countStep(list, i, act === "step-more" ? 1 : -1);
+      item.data = { ...item.data, ...next };
+      this.repaint(id);
+      await this.save(id, { data: item.data });
+    }
     if (act === "note-colour") {
       const item = this.items.find((i) => i.id === id)!;
       await this.save(id, { data: { ...item.data, colour: btn.dataset.colour } });
@@ -1086,6 +1098,9 @@ export class Board {
           ${videoId ? playerHtml({ videoId, title: String(d.title ?? "") }, "board-video") : `<div class="board-caption missing">Only YouTube videos play on the board: ↗ opens it.</div>`}`;
         break;
       }
+      case "steps":
+        body = this.stepsHtml(d);
+        break;
       case "swatch": {
         const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour)) ? String(d.colour) : "#c94c6d";
         body = `
@@ -1097,6 +1112,66 @@ export class Board {
       }
     }
     return `<div class="${cls}" data-id="${item.id}" data-kind="${item.kind}" style="${style}">${body}${extra}${remove}${grip}</div>`;
+  }
+
+  /**
+   * One item drawn again in place, the others left as they are (a video
+   * playing goes on playing), its list scrolled where it was.
+   */
+  private repaint(id: string): void {
+    const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${id}"]`);
+    const item = this.items.find((i) => i.id === id);
+    if (!el || !item) return;
+    const scrolled = el.querySelector(".board-steps-list")?.scrollTop ?? 0;
+    const t = document.createElement("template");
+    t.innerHTML = this.itemHtml(item).trim();
+    const fresh = t.content.firstElementChild as HTMLElement;
+    el.replaceWith(fresh);
+    const list = fresh.querySelector(".board-steps-list");
+    if (list) list.scrollTop = scrolled;
+  }
+
+  /**
+   * A calculator's steps as a checklist: each ticked when done, the first not
+   * done marked as the one being knitted, and a step that repeats counted,
+   * ticked by itself at its last time.
+   */
+  private stepsHtml(data: Record<string, unknown>): string {
+    const list: StepList = readStepList(data);
+    const now = nowAt(list);
+    const { done, total } = progress(list);
+    const steps = list.steps
+      .map(
+        (s, i) => `
+        <li class="board-step${s.done ? " done" : ""}${i === now ? " now" : ""}">
+          <button class="step-tick" data-act="step-tick" data-step="${i}" title="${s.done ? "Not done after all" : "Done"}" aria-pressed="${s.done}">${s.done ? "✓" : ""}</button>
+          <div class="step-body">
+            ${i === now ? `<span class="step-now">Knitting now</span>` : ""}
+            <p>${esc(s.text)}</p>
+            ${
+              s.times
+                ? `<div class="step-count" title="Times done, of the times it is worked">
+                    <button data-act="step-less" data-step="${i}" aria-label="One fewer" ${s.count ? "" : "disabled"}>−</button>
+                    <b>${s.count}</b> of ${s.times}
+                    <button data-act="step-more" data-step="${i}" aria-label="One more" ${s.count >= s.times ? "disabled" : ""}>+</button>
+                  </div>`
+                : ""
+            }
+          </div>
+        </li>`,
+      )
+      .join("");
+    return `
+      <div class="board-steps">
+        <div class="board-steps-head" title="Drag here to move it">
+          <strong>${esc(list.title || "Steps")}</strong>
+          <span class="board-steps-done">${done === total && total ? "All done" : `${done} of ${total} done`}</span>
+        </div>
+        <div class="board-steps-list">
+          ${list.intro ? `<p class="board-steps-intro">${esc(list.intro)}</p>` : ""}
+          <ol class="board-steps-ol">${steps}</ol>
+        </div>
+      </div>`;
   }
 
   /** A log card: a field to write in, and the entries, the newest first, with their photos. */
@@ -1164,6 +1239,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   log: "log card",
   pin: "pin",
   video: "video",
+  steps: "checklist",
 };
 
 /**

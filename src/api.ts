@@ -930,8 +930,8 @@ export interface ProjectInput {
 
 /** What can go on a board, a project's or an inspiration board. */
 /** "pin" is a picture of a pattern's pin, with `{ patternId, page, title }`. */
-/** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`. */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video";
+/** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`; "steps" a calculator's steps as a checklist (views/steps.ts). */
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {
