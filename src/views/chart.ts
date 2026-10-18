@@ -15,6 +15,7 @@
  * when the shaping moves off them, so changing it loses nothing drawn.
  */
 import type { ChartColour, ChartData, ChartSection } from "../api";
+import { LACE_START, NO_STITCH_KEY, STITCHES, stitchOf } from "./stitches";
 
 export const MAX_SIDE = 400;
 export const MAX_COLOURS = 16;
@@ -60,7 +61,7 @@ export function clone(g: Grid): Grid {
 }
 
 export interface NewChart {
-  kind: "standard" | "yoke";
+  kind: "standard" | "yoke" | "lace";
   width: number;
   height: number;
   /** A yoke's repeats around. */
@@ -80,7 +81,7 @@ export function newGrid(o: NewChart): Grid {
     width,
     height,
     cells: new Uint8Array(width * height),
-    colours: PALETTE.slice(0, 2).map((c) => ({ ...c })),
+    colours: o.kind === "lace" ? LACE_START.map(laceColour) : PALETTE.slice(0, 2).map((c) => ({ ...c })),
     flat: !yoke && !!o.flat,
     repeats: yoke ? clampInt(o.repeats ?? 18, 1, 300) : 1,
     topDown: false,
@@ -95,8 +96,87 @@ export function newGrid(o: NewChart): Grid {
   return g;
 }
 
+// ---------- lace ----------
+
+/** Whether a chart's squares are stitches, drawn in their symbols. */
+export function isLace(g: { kind: string }): boolean {
+  return g.kind === "lace";
+}
+
+/** A lace chart's entry for a stitch: named as it is written, white, or grey for no stitch. */
+export function laceColour(key: string): ChartColour {
+  const s = stitchOf(key);
+  return { name: s?.abbr ?? key, hex: key === NO_STITCH_KEY ? "#c4c4c4" : "#ffffff", stitch: key };
+}
+
+/** The stitch a lace chart's entry is; knit when it says none. */
+export function stitchAt(g: Grid, colour: number): ReturnType<typeof stitchOf> & object {
+  return stitchOf(g.colours[colour]?.stitch) ?? STITCHES[0];
+}
+
+/** A row of a lace chart: the stitches it works off the needle, and the stitches it leaves. */
+export interface LaceRow {
+  row: number;
+  takes: number;
+  makes: number;
+}
+
+/** Each row's stitches worked and made. */
+export function laceRows(g: Grid): LaceRow[] {
+  return range(g.height).map((y) => {
+    let takes = 0;
+    let makes = 0;
+    for (let x = 0; x < g.width; x++) {
+      const s = stitchAt(g, g.cells[y * g.width + x]);
+      takes += s.takes;
+      makes += s.makes;
+    }
+    return { row: y, takes, makes };
+  });
+}
+
+/**
+ * Where a lace chart does not add up: a row working more or fewer stitches
+ * than the row before it left. Its first row is not checked (it works what
+ * was cast on). Charted as a repeat, that is the commonest mistake: a yarn
+ * over with no decrease to make up for it.
+ */
+export function laceMismatches(g: Grid): { row: number; takes: number; had: number }[] {
+  const rows = laceRows(g);
+  return rows.slice(1).filter((r, i) => r.takes !== rows[i].makes).map((r) => ({ row: r.row, takes: r.takes, had: rows[r.row - 1].makes }));
+}
+
+/**
+ * A lace chart's row in words, as it is worked: from the right on a
+ * right-side row (and every round), from the left on a wrong-side row, each
+ * stitch as it is worked from that side; no stitch left out; knits and purls
+ * counted ("k3"), others said once or so many times ("(yo) 2 times").
+ */
+function laceRowWords(g: Grid, y: number, rs: boolean): string {
+  const order = range(g.width);
+  if (rs) order.reverse();
+  const words = order
+    .map((x) => stitchAt(g, g.cells[y * g.width + x]))
+    .filter((s) => s.key !== NO_STITCH_KEY)
+    .map((s) => (rs ? s.abbr : s.ws));
+  const parts: string[] = [];
+  for (let i = 0; i < words.length; ) {
+    let n = 1;
+    while (i + n < words.length && words[i + n] === words[i]) n++;
+    const w = words[i];
+    parts.push(w === "k" || w === "p" ? `${w}${n}` : n > 1 ? `(${w}) ${n} times` : w);
+    i += n;
+  }
+  return parts.length ? `${parts.join(", ")}.` : "no stitches.";
+}
+
 /** The next colour to offer: the first of the palette not in the chart yet. */
 export function nextColour(g: Grid): ChartColour {
+  if (isLace(g)) {
+    const used = new Set(g.colours.map((c) => c.stitch));
+    const free = STITCHES.find((s) => !used.has(s.key));
+    return laceColour(free?.key ?? "knit");
+  }
   const used = new Set(g.colours.map((c) => c.hex));
   const free = PALETTE.find((c) => !used.has(c.hex));
   return free ? { ...free } : { name: `Colour ${g.colours.length + 1}`, hex: "#888888" };
@@ -622,7 +702,8 @@ export interface Float {
  * the left edge to the right.
  */
 export function longFloats(g: Grid, limit = g.floatLimit, mask = stitchMask(g)): Float[] {
-  if (limit <= 0) return [];
+  // Lace is knitted in one colour: nothing floats.
+  if (limit <= 0 || isLace(g)) return [];
   const out: Float[] = [];
   const round = g.kind === "yoke" || !g.flat;
   for (let y = 0; y < g.height; y++) {
@@ -648,6 +729,7 @@ export function longFloats(g: Grid, limit = g.floatLimit, mask = stitchMask(g)):
 
 /** What a chart is, in a line: "Round yoke, 12 sts × 40 rounds, 18 repeats, knitted from the hem up". */
 export function describe(g: Grid): string {
+  if (isLace(g)) return `Lace: ${g.width} stitches × ${g.height} ${g.flat ? "rows, worked flat" : "rounds, in the round"}`;
   if (g.kind === "yoke") {
     return `Round yoke: a ${g.width}-stitch repeat, ${g.repeats} times around, ${g.height} rounds, knitted ${g.topDown ? "from the neck down" : "from the hem up"}`;
   }
@@ -673,6 +755,17 @@ export interface WrittenRow {
  * (M1) where a square begins. Rows alike one after another are written once.
  */
 export function writeOut(g: Grid): WrittenRow[] {
+  if (isLace(g)) {
+    const rows = laceRows(g);
+    return range(g.height).map((y) => {
+      const rs = !g.flat || y % 2 === 0;
+      const word = g.flat ? "Row" : "Round";
+      // The stitches there are after it, where that changes.
+      const count = y === 0 || rows[y].makes !== rows[y - 1].makes ? `, ${rows[y].makes} sts` : "";
+      const label = g.flat ? `${word} ${y + 1} (${rs ? "RS" : "WS"}${count})` : `${word} ${y + 1}${count ? ` (${count.slice(2)})` : ""}`;
+      return { from: y + 1, to: y + 1, label, text: laceRowWords(g, y, rs) };
+    });
+  }
   const mask = stitchMask(g);
   const yoke = g.kind === "yoke";
   const lines: WrittenRow[] = [];
@@ -778,6 +871,11 @@ export function rowInWords(g: Grid, row: number, lines = writeOut(g)): WrittenRo
 
 /** How the chart is read, for the top of the words. */
 export function readingNote(g: Grid): string {
+  if (isLace(g)) {
+    return g.flat
+      ? "Worked flat: right-side rows (odd numbers) are read from the right, wrong-side rows (even numbers) from the left, each square worked so the right side shows its symbol: a blank square purled, a dot knitted. A grey square is no stitch: go on to the next."
+      : "Worked in the round: every round read from the right. A grey square is no stitch: go on to the next.";
+  }
   if (g.kind === "yoke") {
     return `Knitted in the round ${g.topDown ? "from the neck down" : "from the hem up"}, every round read from the right. The ${g.width}-stitch repeat goes ${g.repeats} times around; a grey square is no stitch.`;
   }
@@ -798,7 +896,9 @@ export function writtenText(name: string, g: Grid): string {
     name,
     describe(g),
     readingNote(g),
-    `Colours: ${g.colours.map((c, i) => `${colourLabel(c)}: ${counts[i]} sts`).join("; ")}.`,
+    isLace(g)
+      ? `Stitches: ${g.colours.map((_, i) => stitchAt(g, i)).filter((s) => s.key !== NO_STITCH_KEY).map((s) => `${s.abbr}: ${s.name.toLowerCase()}${g.flat && s.ws !== s.abbr ? ` (on a WS row, ${s.ws})` : ""}`).join("; ")}.`
+      : `Colours: ${g.colours.map((c, i) => `${colourLabel(c)}: ${counts[i]} sts`).join("; ")}.`,
     "",
     ...writeOut(g).map((r) => `${r.label}: ${r.text}`),
     ...(g.notes.trim() ? ["", g.notes.trim()] : []),

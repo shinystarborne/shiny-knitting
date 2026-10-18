@@ -21,18 +21,8 @@ under the list.
 
 **Asked for 18 Oct 2026**
 
-- [ ] **Lace charts**: a chart maker for lace, drawn in its stitches'
-  symbols. See below.
 - [ ] **Symbols explained**: the chart symbols with what they mean, as the
   abbreviations are. See below.
-
-### Lace charts
-
-A chart of stitches, not colours: each square a stitch drawn in its
-standard symbol (knit, purl, yarn over, k2tog, ssk, sk2p, no stitch…),
-worked flat or in the round, with its legend and the rows written out
-(on a wrong-side row, a knit square purled), printed and saved to a
-project like a colourwork chart.
 
 ### Symbols explained
 
@@ -160,6 +150,15 @@ when pointed at.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Lace charts:** a chart kind "lace" (charts.rs, chart.ts): its colours
+  are its stitches (ChartColour.stitch, each once; views/stitches.ts: abbr,
+  name, WS version, takes and makes, symbol drawn through the Painter, and
+  as SVG), knit the background and no stitch grey. Rows in words from each
+  side (a WS row worked as its WS stitches, no stitch left out, the count
+  where it changes); laceMismatches: a row working other than the stitches
+  the one before left, in the side panel's Stitches and the status line.
+  Pointing at a square names its stitch. Legend, PDF and picture as a
+  colour chart's. No repeat box yet. *0.3.110*
 - **Every measurement drawn:** each People measurement (measure-figures.ts):
   a figure standing, with the tape round (whole in front, dashed behind) or
   a line with tips; a head, a hand, the foot. Beside People's table as

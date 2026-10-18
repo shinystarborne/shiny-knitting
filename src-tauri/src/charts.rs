@@ -62,10 +62,11 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
     let name = if name.is_empty() { "Untitled chart".to_string() } else { name };
 
     let yoke = match d.kind.as_str() {
-        "standard" => false,
+        "standard" | "lace" => false,
         "yoke" => true,
-        _ => return refuse("A chart is a standard one or a round yoke."),
+        _ => return refuse("A chart is a standard one, a round yoke, or lace."),
     };
+    let lace = d.kind == "lace";
     if !(1..=MAX_SIDE).contains(&d.width) || !(1..=MAX_SIDE).contains(&d.height) {
         return refuse(&format!("A chart is 1 to {MAX_SIDE} squares each way."));
     }
@@ -81,10 +82,22 @@ pub fn clean(input: ChartInput) -> Result<ChartInput, AppError> {
         }
         c.yarn = line(&c.yarn, 120);
         c.yarn_id = line(&c.yarn_id, 60);
+        // A lace chart's colours are its stitches, each a stitch once; another chart's have none.
+        c.stitch = if lace { line(&c.stitch, 20) } else { String::new() };
+        if lace && c.stitch.is_empty() {
+            return refuse("Each of a lace chart's squares is a stitch.");
+        }
         // A yarn's name without the yarn, or the yarn without a name, is not a link.
         if c.yarn.is_empty() || c.yarn_id.is_empty() {
             c.yarn.clear();
             c.yarn_id.clear();
+        }
+    }
+
+    if lace {
+        let mut seen = std::collections::HashSet::new();
+        if !d.colours.iter().all(|c| seen.insert(c.stitch.as_str())) {
+            return refuse("A stitch is in a lace chart's list once.");
         }
     }
 
@@ -300,6 +313,33 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+
+    #[test]
+    fn a_lace_charts_colours_are_its_stitches_each_once() {
+        let stitch = |key: &str| ChartColour { name: key.into(), hex: "#ffffff".into(), stitch: key.into(), ..Default::default() };
+        let mut input = standard(4, 2);
+        input.data.kind = "lace".into();
+        input.data.flat = true;
+        input.data.colours = vec![stitch("knit"), stitch("yo"), stitch("k2tog")];
+        input.data.cells = "01200000".into();
+        let c = clean(input.clone()).unwrap();
+        assert_eq!(c.data.kind, "lace");
+        assert_eq!(c.data.colours.iter().map(|c| c.stitch.as_str()).collect::<Vec<_>>(), vec!["knit", "yo", "k2tog"]);
+        assert!(c.data.flat, "flat, as asked");
+        let mut twice = input.clone();
+        twice.data.colours[2].stitch = "yo".into();
+        assert!(clean(twice).unwrap_err().to_string().contains("once"));
+        let mut none = input.clone();
+        none.data.colours[1].stitch = " ".into();
+        assert!(clean(none).is_err(), "each a stitch");
+        // A colour chart keeps no stitches.
+        let mut colour = standard(4, 3);
+        colour.data.colours[0].stitch = "yo".into();
+        assert!(clean(colour).unwrap().data.colours[0].stitch.is_empty());
+        let mut odd = standard(4, 3);
+        odd.data.kind = "tapestry".into();
+        assert!(clean(odd).is_err());
     }
 
     #[test]

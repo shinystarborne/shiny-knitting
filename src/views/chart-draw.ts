@@ -6,7 +6,8 @@
  * and a yoke seen from above -- are for the screen only, and draw on a
  * canvas directly.
  */
-import { colourLabel, inkOn, range, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
+import { colourLabel, inkOn, isLace, range, stitchAt, stitchMask, stsInRow, shapingRounds, usage, type Float, type Grid } from "./chart";
+import { NO_STITCH_KEY } from "./stitches";
 
 /** Draws in a box whose origin is top left, y going down, in whatever unit the painter uses. */
 export interface Painter {
@@ -88,7 +89,16 @@ export function drawChart(p: Painter, g: Grid, l: Layout): void {
     }
   }
 
-  if (g.symbols) {
+  if (isLace(g)) {
+    // Each square its stitch's symbol.
+    const s = Math.min(l.cw, l.ch);
+    for (let r = r0; r < r1; r++) {
+      for (let c = c0; c < c1; c++) {
+        const i = r * g.width + c;
+        if (mask[i]) stitchAt(g, g.cells[i]).draw(p, xOf(c) + l.cw / 2, yOf(r) + l.ch / 2, s, "#1a1a1a");
+      }
+    }
+  } else if (g.symbols) {
     const s = Math.min(l.cw, l.ch);
     for (let r = r0; r < r1; r++) {
       for (let c = c0; c < c1; c++) {
@@ -194,6 +204,24 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
   const lineH = box + size * 0.7;
   let cx = x;
   let cy = y;
+  if (isLace(g)) {
+    // Each stitch's symbol, what it is, and on a wrong-side row what it is worked as.
+    g.colours.forEach((c, i) => {
+      const s = stitchAt(g, i);
+      const label = s.key === NO_STITCH_KEY ? "No stitch: go on to the next" : `${s.abbr}: ${s.name.toLowerCase()}${g.flat && s.ws !== s.abbr ? `; on a WS row ${s.ws}` : ""}`;
+      const itemW = box + gap + p.measure(label, size) + size * 2;
+      if (cx > x && cx + itemW > x + width) {
+        cx = x;
+        cy += lineH;
+      }
+      p.rect(cx, cy, box, box, c.hex);
+      p.poly([[cx, cy], [cx + box, cy], [cx + box, cy + box], [cx, cy + box]], HEAVY, false, Math.max(0.5, size / 14));
+      s.draw(p, cx + box / 2, cy + box / 2, box, "#1a1a1a");
+      p.text(cx + box + gap, cy + box / 2, label, size, "#1a1a1a", "left");
+      cx += itemW;
+    });
+    return cy + lineH - y;
+  }
   g.colours.forEach((c, i) => {
     const name = colourLabel(c);
     const label = `${name}  ${counts[i] ?? 0} sts`;

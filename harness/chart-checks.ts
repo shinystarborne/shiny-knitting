@@ -304,7 +304,7 @@ export async function verifyCharts() {
     await waitFor(() => !!document.querySelector(".chart-new-dialog"), "the new chart dialog");
     const d = dialogCard()!;
     (d.querySelector('input[value="yoke"]') as HTMLInputElement).click();
-    check(results, "the yoke asks for its repeat, rounds and repeats around", !(d.querySelector('[data-for="yoke"]') as HTMLElement).hidden && (d.querySelector('[data-for="standard"]') as HTMLElement).hidden);
+    check(results, "the yoke asks for its repeat, rounds and repeats around", !(d.querySelector('[data-for="yoke"]') as HTMLElement).hidden && (d.querySelector('[data-for~="standard"]') as HTMLElement).hidden);
     set(d.querySelector('[data-f="name"]')!, "Rjúpa");
     click(d, '[data-act="make"]');
     await waitFor(() => !!page()?.querySelector(".chart-canvas[data-grid]"), "the chart page");

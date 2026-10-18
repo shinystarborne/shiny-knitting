@@ -14,7 +14,7 @@
  * and a compressed content stream per page.
  */
 import { zlibSync } from "fflate";
-import { describe, readingNote, writeOut, type Grid } from "./chart";
+import { describe, isLace, readingNote, writeOut, type Grid } from "./chart";
 import { drawChart, drawLegend, knittedAspect, margins, Measurer, type Painter } from "./chart-draw";
 
 const MM = 72 / 25.4;
@@ -245,7 +245,7 @@ export function chartPdf(name: string, g: Grid, o: PdfOptions): Uint8Array<Array
     pages.push(page);
     y = MARGIN;
   }
-  page.text(MARGIN, y + 5, "Colours", 10, "#1a1a1a", "left", true);
+  page.text(MARGIN, y + 5, isLace(g) ? "Stitches" : "Colours", 10, "#1a1a1a", "left", true);
   y += 16;
   y += drawLegend(page, g, MARGIN, y, legendW, legendSize);
   y = writeParagraphs(pages, page, y + 8, [readingNote(g), ...(g.notes.trim() ? g.notes.trim().split(/\n+/) : [])], 8.5, paper);

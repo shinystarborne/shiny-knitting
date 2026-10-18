@@ -1143,6 +1143,8 @@ export interface ChartColour {
   /** The stash yarn knitted in this colour, and what it was called when chosen: the legend names it. */
   yarnId?: string;
   yarn?: string;
+  /** On a lace chart, the stitch this is (views/stitches.ts): its squares are that stitch. */
+  stitch?: string;
 }
 
 /**
@@ -1163,7 +1165,8 @@ export interface ChartSection {
  * as drawn, so stitch 1 is the last column.
  */
 export interface ChartData {
-  kind: "standard" | "yoke";
+  /** A lace chart's squares are stitches (its colours each a stitch), drawn in their symbols. */
+  kind: "standard" | "yoke" | "lace";
   width: number;
   height: number;
   /** One character per square, row by row from row 0: a colour's index in hex. */

@@ -1728,6 +1728,10 @@ pub struct ChartColour {
     pub yarn_id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub yarn: String,
+    /// On a lace chart, the stitch this is ("k2tog", "yo"…): its squares are
+    /// that stitch, drawn in its symbol.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub stitch: String,
 }
 
 /// A round yoke's stretch of rounds with the same stitches in each repeat.
