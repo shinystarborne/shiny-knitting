@@ -21,8 +21,10 @@ It does five things:
 
 Installers are on the [releases page](https://github.com/shinystarborne/shiny-knitting/releases):
 
+- **[v0.3.0-beta.100](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.100)** —
+  restore a backup, in Settings: what is here saved first. The one to test.
 - **[v0.3.0-beta.99](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.99)** —
-  a new lot is bought today: its date filled in, to change if need be. The one to test.
+  a new lot is bought today: its date filled in, to change if need be. Superseded by `beta.100`.
 - **[v0.3.0-beta.98](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.98)** —
   deadstock and cone yarn: metres and price per 100 g, counts like 2/1400 read, a cone's price worked out. Superseded by `beta.99`.
 - **[v0.3.0-beta.97](https://github.com/shinystarborne/shiny-knitting/releases/tag/v0.3.0-beta.97)** —
