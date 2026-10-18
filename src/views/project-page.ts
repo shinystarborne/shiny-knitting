@@ -253,6 +253,9 @@ export class ProjectPage {
     this.tools = await api.listTools().catch(() => this.tools);
     this.people = await api.listPeople().catch(() => this.people);
     this.unit = await api.getMeasureUnit().catch(() => this.unit);
+    // Changed in Settings with the page open: the standard hour and the currency.
+    this.hourRate = await api.getHourRate().catch(() => this.hourRate);
+    this.currency = await api.getCurrency().catch(() => this.currency);
     await this.syncCounter();
     this.renderSide();
     await this.board?.refreshLinked();

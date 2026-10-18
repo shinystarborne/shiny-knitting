@@ -133,6 +133,9 @@ export async function verifyKnitTime() {
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="save"]')!.click();
     await waitFor(() => !settings(), "saved");
     check(results, "…and keep one that is", store.hourRate === 15, String(store.hourRate));
+    // The page open all along takes it up, not only once opened again.
+    await waitFor(() => !!box()?.querySelector(".knit-worth"), "the open page to take up the standard", 5000).catch(() => {});
+    check(results, "the project page open while Settings were saved takes up the new standard", !!page() && box()?.querySelector<HTMLInputElement>("[data-rate]")?.value === "15" && /€15\.00 an hour/.test(box()?.querySelector('[data-el="knit-worth"]')?.textContent ?? ""), box()?.querySelector<HTMLInputElement>("[data-rate]")?.value ?? "no page");
     tab("patterns");
     await waitFor(() => !page(), "the library");
     document.querySelector(".library")!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: hat.id }));
