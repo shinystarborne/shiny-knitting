@@ -480,6 +480,10 @@ pub struct YarnDetails {
     /// Deadstock or cone yarn, sold by weight: its price is for 100 g, not a ball.
     #[serde(default)]
     pub deadstock: bool,
+    /// Deadstock whose price is a cone's, as it was bought: the cone's weight
+    /// (grams per ball) makes it a price per 100 g.
+    #[serde(default)]
+    pub per_cone: bool,
 }
 
 /// The care symbols a ball band can show, in the order they are read on a

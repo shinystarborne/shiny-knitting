@@ -334,7 +334,9 @@ calculators.
   yarn so. Its figures are then metres per 100 g (a count such as 2/1400
   typed there or as the weight: 700) and a cone's grams, kept per ball (a
   cone, or 100 g when bought by weight; byWeight in yarn-weight.ts); its
-  card says Deadstock and the m/100 g. *0.3.98*
+  card says Deadstock and the m/100 g. Or priced by the cone, as bought
+  (yarn_details.per_cone): the cone's grams make it so much per 100 g
+  (per100gPrice), and the sums count it by the cone's weight. *0.3.98*
 - **Your size in a pattern:** a PDF's sizes read from its text (named after
   Sizes, else by their place, counted from its runs; reader/sizes.ts); the
   size knitted chosen in the reader's Size picker and kept with the pattern

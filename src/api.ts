@@ -507,6 +507,8 @@ export interface YarnDetails {
   price?: number | null;
   /** Deadstock or cone yarn, sold by weight: its price is for 100 g, not a ball. */
   deadstock?: boolean;
+  /** Deadstock whose price is a cone's, as bought: by the cone's weight (grams per ball), so much per 100 g. */
+  perCone?: boolean;
 }
 
 export interface YarnLotInput {

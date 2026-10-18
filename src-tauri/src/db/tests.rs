@@ -2081,7 +2081,7 @@ fn a_yarn_round_trips_every_field() {
             bought_at: Some(1_700_000_000_000),
             ..YarnLotInput::default()
         }],
-        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()], price: Some(6.2), deadstock: false }),
+        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()], price: Some(6.2), deadstock: false, per_cone: false }),
     };
     let id = uuid::Uuid::new_v4().to_string();
     let y = insert_yarn(&conn, &id, &input).unwrap();
@@ -2187,6 +2187,11 @@ fn a_deadstock_yarns_price_is_for_100_g_for_every_colour() {
     let mut unpriced = get_yarn(&conn, "ecru").unwrap();
     unpriced.details = Some(YarnDetails { deadstock: true, ..YarnDetails::default() });
     assert!(update_yarn(&conn, &unpriced).unwrap().details.unwrap().deadstock);
+    // Priced by the cone, as bought; not deadstock, it cannot be.
+    unpriced.details = Some(YarnDetails { price: Some(45.0), deadstock: true, per_cone: true, ..YarnDetails::default() });
+    assert!(update_yarn(&conn, &unpriced).unwrap().details.unwrap().per_cone);
+    unpriced.details = Some(YarnDetails { price: Some(45.0), per_cone: true, ..YarnDetails::default() });
+    assert!(!update_yarn(&conn, &unpriced).unwrap().details.unwrap().per_cone);
     unpriced.details = Some(YarnDetails::default());
     assert!(!update_yarn(&conn, &unpriced).unwrap().details.unwrap().deadstock);
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM yarn_details", [], |r| r.get::<_, i64>(0)).unwrap(), 0, "nothing said, nothing kept");

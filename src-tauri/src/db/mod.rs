@@ -816,6 +816,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     if !column_exists(conn, "yarn_details", "deadstock")? {
         conn.execute("ALTER TABLE yarn_details ADD COLUMN deadstock INTEGER NOT NULL DEFAULT 0", [])?;
     }
+    // Deadstock priced by the cone, as bought.
+    if !column_exists(conn, "yarn_details", "per_cone")? {
+        conn.execute("ALTER TABLE yarn_details ADD COLUMN per_cone INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     if !column_exists(conn, "patterns", "price")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
     }
@@ -5260,7 +5264,7 @@ fn details_key(v: &str) -> String {
 pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
     Ok(conn
         .query_row(
-            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock, per_cone FROM yarn_details WHERE brand = ?1 AND name = ?2",
             params![details_key(brand), details_key(name)],
             |r| {
                 Ok(YarnDetails {
@@ -5271,6 +5275,7 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
                     care: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
                     price: r.get(5)?,
                     deadstock: r.get(6)?,
+                    per_cone: r.get(7)?,
                 })
             },
         )
@@ -5307,14 +5312,16 @@ pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDeta
     let (brand, name) = (details_key(brand), details_key(name));
     let (sts, rows) = (tenth(d.gauge_sts), tenth(d.gauge_rows));
     let cost = price(d.price)?;
+    // A cone's price is only deadstock's.
+    let per_cone = d.deadstock && d.per_cone;
     if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" && cost.is_none() && !d.deadstock {
         conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2", params![brand, name])?;
         return Ok(());
     }
     conn.execute(
-        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7, price = ?8, deadstock = ?9",
-        params![brand, name, sts, rows, from, to, care, cost, d.deadstock],
+        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock, per_cone) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7, price = ?8, deadstock = ?9, per_cone = ?10",
+        params![brand, name, sts, rows, from, to, care, cost, d.deadstock, per_cone],
     )?;
     Ok(())
 }

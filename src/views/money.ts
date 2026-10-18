@@ -57,23 +57,39 @@ export function ballPrice(y: Yarn): number | null {
   return y.details?.price ?? null;
 }
 
-/** What so many grams of a yarn cost: by 100 g, or as a share of a ball; null when that is not known. */
+/** Whether a yarn's price is for 100 g: deadstock, not priced by the cone. */
+function by100g(y: Yarn): boolean {
+  return !!y.details?.deadstock && !y.details.perCone;
+}
+
+/**
+ * Deadstock's price for 100 g: as said, or a cone's by the cone's weight.
+ * Null when there is none, or a cone's weight is not said.
+ */
+export function per100gPrice(y: Yarn): number | null {
+  const price = ballPrice(y);
+  if (price == null) return null;
+  if (by100g(y)) return price;
+  return y.gramsPerBall ? Math.round((price / y.gramsPerBall) * 100 * 100) / 100 : null;
+}
+
+/** What so many grams of a yarn cost: by 100 g, or as a share of a ball or cone; null when that is not known. */
 export function gramsCost(y: Yarn, grams: number): number | null {
   const price = ballPrice(y);
   if (price == null) return null;
-  if (y.details?.deadstock) return (grams / 100) * price;
+  if (by100g(y)) return (grams / 100) * price;
   return y.gramsPerBall ? (grams / y.gramsPerBall) * price : null;
 }
 
 /**
  * What a lot cost: its balls at its yarn's price; for deadstock, the grams
- * bought -- its cones by their weight, else as weighed -- by 100 g. Null when
- * that is not said.
+ * bought -- its cones by their weight, else as weighed -- by 100 g or by the
+ * cone. Null when that is not said.
  */
 export function lotCost(lot: YarnLot, y: Yarn): number | null {
   const price = ballPrice(y);
   if (price == null) return null;
-  const cost = y.details?.deadstock ? (boughtGrams(lot, y) / 100) * price : price * (lot.balls || 0);
+  const cost = y.details?.deadstock ? (gramsCost(y, boughtGrams(lot, y)) ?? 0) : price * (lot.balls || 0);
   return Math.round(cost * 100) / 100;
 }
 
@@ -88,7 +104,7 @@ export function lotWorth(lot: YarnLot, y: Yarn): number | null {
   if (price == null) return null;
   if (y.details?.deadstock) {
     const grams = lot.weighed ? lot.gramsLeft : lot.balls * (y.gramsPerBall || 0);
-    return (grams / 100) * price;
+    return gramsCost(y, grams) ?? 0;
   }
   const balls = lot.weighed ? (y.gramsPerBall ? lot.gramsLeft / y.gramsPerBall : lot.balls) : lot.balls;
   return price * (balls || 0);

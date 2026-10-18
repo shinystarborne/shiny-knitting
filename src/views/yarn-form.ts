@@ -233,10 +233,15 @@ export class YarnForm {
         </div>
         <div class="field yarn-price">
           <label class="yarn-price-input">
-            <span data-el="price-label">${priceLabel(!!this.details.deadstock)}</span>
+            <span data-el="price-label">${priceLabel(this.details)}</span>
             <input data-f="price" inputmode="decimal" value="${this.details.price != null ? escapeAttr(String(this.details.price)) : ""}" placeholder="e.g. 4,95" />
           </label>
-          <em class="hint" data-el="price-hint">${priceHint(!!this.details.deadstock)}</em>
+          <label class="check per-cone" data-el="per-cone" ${this.details.deadstock ? "" : "hidden"}>
+            <input type="checkbox" data-f="perCone" ${this.details.deadstock && this.details.perCone ? "checked" : ""} />
+            <span>Price per cone <em class="hint">what a whole cone cost; its price per 100 g is worked out from the grams per cone</em></span>
+          </label>
+          <p class="hint cone-price" data-el="cone-price" hidden></p>
+          <em class="hint" data-el="price-hint">${priceHint(this.details)}</em>
         </div>
         <div class="field">
           <span>Fibre content</span>
@@ -293,6 +298,7 @@ export class YarnForm {
 
     this.bind();
     this.figuresBy(!!this.details.deadstock);
+    this.conePriceHint();
     this.renderDetails();
     this.renderCare();
     void api
@@ -457,7 +463,8 @@ export class YarnForm {
     if (priced?.price != null && priceInput && !priceInput.value.trim()) {
       priceInput.value = String(priced.price);
       if (!!priced.deadstock !== !!this.details.deadstock) this.setDeadstock(!!priced.deadstock);
-      filled.push(priced.deadstock ? "price per 100 g" : "price a ball");
+      if (priced.deadstock) this.setPerCone(!!priced.perCone);
+      filled.push(priceLabel(priced).toLowerCase());
     }
     // Its fibres and superwash too, when none are typed yet.
     if (this.takeFibresFrom(same)) filled.push("fibres");
@@ -542,7 +549,41 @@ export class YarnForm {
     if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
     if (f === "superwash" || f === "name" || f === "brand" || (e.target as HTMLElement).closest(".fibre-row")) this.shareHint();
     if (f === "deadstock") this.setDeadstock((e.target as HTMLInputElement).checked);
+    if (f === "perCone") this.setPerCone((e.target as HTMLInputElement).checked);
+    if (f === "price" || f === "gramsPerBall") this.conePriceHint();
   };
+
+  /** Deadstock's price a cone's, as bought, or 100 g's. */
+  private setPerCone(perCone: boolean): void {
+    this.details = { ...this.details, perCone };
+    const box = this.root.querySelector<HTMLInputElement>('[data-f="perCone"]');
+    if (box) box.checked = perCone;
+    this.priceWords();
+  }
+
+  /** The price's label and hint as it is meant: a ball's, 100 g's, or a cone's. */
+  private priceWords(): void {
+    const label = this.root.querySelector<HTMLElement>('[data-el="price-label"]');
+    const hint = this.root.querySelector<HTMLElement>('[data-el="price-hint"]');
+    if (label) label.textContent = priceLabel(this.details);
+    if (hint) hint.textContent = priceHint(this.details);
+    this.conePriceHint();
+  }
+
+  /** A cone's price as so much per 100 g, by the grams per cone; or that they are wanted for it. */
+  private conePriceHint(): void {
+    const el = this.root.querySelector<HTMLElement>('[data-el="cone-price"]');
+    if (!el) return;
+    const price = parsePrice(this.value("price"));
+    const cone = num(this.value("gramsPerBall"));
+    const on = !!this.details.deadstock && !!this.details.perCone && price != null;
+    el.hidden = !on;
+    if (!on) return;
+    const fixed = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    el.textContent = cone
+      ? `${fixed(price!)} for ${grouped(cone)} g is ${fixed((price! / cone) * 100)} per 100 g.`
+      : "Say the grams per cone, and its price per 100 g is worked out from them.";
+  }
 
   /**
    * Deadstock or cone yarn, or not: its price a ball's or 100 g's, and its
@@ -552,10 +593,9 @@ export class YarnForm {
     this.details = { ...this.details, deadstock };
     const box = this.root.querySelector<HTMLInputElement>('[data-f="deadstock"]');
     if (box) box.checked = deadstock;
-    const label = this.root.querySelector<HTMLElement>('[data-el="price-label"]');
-    const hint = this.root.querySelector<HTMLElement>('[data-el="price-hint"]');
-    if (label) label.textContent = priceLabel(deadstock);
-    if (hint) hint.textContent = priceHint(deadstock);
+    const perCone = this.root.querySelector<HTMLElement>('[data-el="per-cone"]');
+    if (perCone) perCone.hidden = !deadstock;
+    this.priceWords();
     this.figuresBy(deadstock);
     this.weightHint();
   }
@@ -575,8 +615,9 @@ export class YarnForm {
       metres.type = "text";
       metres.inputMode = "decimal";
       if (per100) metres.value = String(per100);
-      // 100 g "balls" are how a yarn bought by weight is kept: no cone.
-      if (num(grams.value) === 100) grams.value = "";
+      // 100 g "balls" are how a yarn bought by weight is kept: no cone,
+      // unless it is priced by the cone.
+      if (num(grams.value) === 100 && !this.details.perCone) grams.value = "";
     } else if (!deadstock && was) {
       const f = byWeight(readPer100g(metres.value) ?? 0, num(grams.value));
       metres.type = "number";
@@ -1040,7 +1081,9 @@ export class YarnForm {
       this.readDetails(true);
       const typed = this.value("price").trim();
       const price = typed ? parsePrice(typed) : null;
-      if (typed && price === null) throw new Error(`The ${priceLabel(!!this.details.deadstock).toLowerCase()} is a number: 4,95 or 4.95.`);
+      if (typed && price === null) throw new Error(`The ${priceLabel(this.details).toLowerCase()} is a number: 4,95 or 4.95.`);
+      const perCone = !!this.details.deadstock && !!this.details.perCone;
+      if (perCone && price != null && !num(this.value("gramsPerBall"))) throw new Error("A price per cone needs the grams per cone: its price per 100 g is worked out from them.");
       // Deadstock's metres per 100 g and cone, kept as figures per ball.
       let figures = { metresPerBall: num(this.value("metresPerBall")), gramsPerBall: num(this.value("gramsPerBall")) };
       if (this.details.deadstock) {
@@ -1060,7 +1103,7 @@ export class YarnForm {
         fibres: this.fibreValues(),
         superwash: (this.root.querySelector('[data-f="superwash"]') as HTMLInputElement).checked,
         plans: this.plans,
-        details: { ...this.details, price },
+        details: { ...this.details, price, perCone },
       };
 
       let saved: Yarn;
@@ -1125,15 +1168,15 @@ export class YarnForm {
   }
 }
 
-/** What the price is for: a ball, or 100 g of deadstock and cone yarn. */
-function priceLabel(deadstock: boolean): string {
-  return deadstock ? "Price per 100 g" : "Price a ball";
+/** What the price is for: a ball; or for deadstock and cone yarn, 100 g or a cone. */
+function priceLabel(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
+  return !d.deadstock ? "Price a ball" : d.perCone ? "Price per cone" : "Price per 100 g";
 }
 
-function priceHint(deadstock: boolean): string {
-  return deadstock
-    ? "The same for every colour and every lot of this yarn, by its brand and name. A lot costs its grams at this."
-    : "The same for every colour and every lot of this yarn, by its brand and name. A lot costs its balls times this.";
+function priceHint(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
+  const same = "The same for every colour and every lot of this yarn, by its brand and name.";
+  if (!d.deadstock) return `${same} A lot costs its balls times this.`;
+  return d.perCone ? `${same} A lot costs its grams at this, by the cone's weight.` : `${same} A lot costs its grams at this.`;
 }
 
 function emptyLot(): LotRow {
