@@ -4242,3 +4242,13 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .symbol-row { padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .stitch-tip { position: fixed; z-index: 1000; max-width: 340px; padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); color: var(--text); }
 .stitch-tip[hidden] { display: none; }
+
+/* A chart on a board: moved by its bar, drawn as big as the card lets it. */
+.board-item.kind-chart { display: flex; flex-direction: column; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.board-chart-bar { display: flex; align-items: center; gap: 8px; padding: 5px 8px; background: var(--bg-raised); color: var(--text); font-size: 12px; }
+.board-chart-bar span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.board-chart-bar button { font-size: 11px; padding: 2px 8px; }
+.board-chart { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px; }
+/* Calculators opened for a project: whose board Save puts it on, and the way back. */
+.calc-for { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 13px; color: var(--text-dim); }
+.calc-for b { color: var(--text); }

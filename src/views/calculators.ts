@@ -83,7 +83,21 @@ const EASE_FIELDS: { key: keyof RaglanInput; label: string; hint: string; start:
  * back, or between calculators, loses nothing. Lengths are kept in cm and
  * gauges per 10 cm, as typed into the page's own fields.
  */
-const kept: { calc: Calc; values: Record<string, string>; unit: MeasureUnit | null } = { calc: "raglan", values: {}, unit: null };
+const kept: { calc: Calc; values: Record<string, string>; unit: MeasureUnit | null; forProject: { id: string; name: string } | null } = { calc: "raglan", values: {}, unit: null, forProject: null };
+
+/**
+ * Opens a calculator for a project, from its board: Save is set to put the
+ * result there, and the tab says so, with the way back.
+ */
+export function openCalculatorFor(calc: string, project: { id: string; name: string }): void {
+  if (CALCS.some((c) => c.key === calc)) kept.calc = calc as Calc;
+  kept.forProject = { id: project.id, name: project.name };
+}
+
+/** The tab opened as itself again, for no project. */
+export function leaveProject(): void {
+  kept.forProject = null;
+}
 
 /** Which calculator the tab opens on next: the charts, coming back from one. */
 export function openCalculatorsOn(calc: Calc): void {
@@ -178,7 +192,11 @@ export class CalculatorsView {
     this.root = document.createElement("div");
     this.root.className = "library calculators";
     this.root.innerHTML = `
-      <header class="lib-bar"><h1>Calculators</h1></header>
+      <header class="lib-bar"><h1>Calculators</h1>${
+        kept.forProject
+          ? `<div class="calc-for" data-el="calc-for">For <b>${esc(kept.forProject.name)}</b>: Save puts the result on its board. <button class="ghost" data-act="back-to-project">← Back to ${esc(kept.forProject.name)}</button></div>`
+          : ""
+      }</header>
       <div class="lib-body">
         <aside class="filters calc-nav">
           ${CALCS.map((c) => `<button class="calc-pick" data-calc="${c.key}"><b>${c.label}</b><span>${c.hint}</span></button>`).join("")}
@@ -983,13 +1001,14 @@ export class CalculatorsView {
   }
 
   private actions(): string {
-    const live = this.projects.filter((p) => isLive(p.status));
+    // The project it was opened for is offered, and chosen, whatever its state.
+    const live = this.projects.filter((p) => isLive(p.status) || p.id === kept.forProject?.id);
     return `
       <div class="calc-actions">
         <button class="ghost" data-act="copy">Copy</button>
         <select data-k="saveTo" aria-label="Project to save to">
           <option value="">${this.plan?.steps ? "Save to a project's board, as a checklist…" : "Save to a project's board…"}</option>
-          ${live.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
+          ${live.map((p) => `<option value="${esc(p.id)}" ${p.id === kept.forProject?.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}
         </select>
         <button class="ghost" data-act="save">Save</button>
         <span class="hint" data-el="saved"></span>
@@ -1002,6 +1021,12 @@ export class CalculatorsView {
     const pick = closestEl(e.target, "[data-calc]");
     if (pick) return this.show(pick.dataset.calc as Calc);
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
+    if (act === "back-to-project" && kept.forProject) {
+      const id = kept.forProject.id;
+      kept.forProject = null;
+      this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: id }));
+      return;
+    }
     if (act === "copy" && this.plan) {
       try {
         await navigator.clipboard.writeText(this.plan.text);

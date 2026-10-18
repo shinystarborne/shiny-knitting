@@ -28,6 +28,10 @@ export interface ProjectPageHooks {
   finish(project: Project): void;
   /** After the project was removed. */
   removed(): void;
+  /** Opens a chart from its card on the board, coming back here. */
+  openChart?(id: string): void;
+  /** Opens a calculator, its result to be saved to this project's board. */
+  openCalculator?(calc: string, project: Project): void;
 }
 
 /** Which each project's page showed last, its board or its log, while the app is open. */
@@ -166,6 +170,8 @@ export class ProjectPage {
       project: () => this.project,
       openPattern: (id) => this.hooks.openPattern(id),
       openLog: () => void this.show("log"),
+      openChart: (id) => this.hooks.openChart?.(id),
+      openCalculator: (calc) => this.hooks.openCalculator?.(calc, this.project),
     });
     await this.board.mount();
     this.root.querySelector(".project-view-switch")!.addEventListener("click", (e) => {

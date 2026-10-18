@@ -1,4 +1,6 @@
-import { api, type BoardItem, type BoardKind, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, type BoardItem, type BoardKind, type Chart, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { decode, describe as describeChart, normalize } from "./chart";
+import { CanvasPainter, drawChart, sizeCanvas } from "./chart-draw";
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
 import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
@@ -90,6 +92,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   // 16:9, and the bar it is moved by.
   video: [480, 302],
   steps: [480, 620],
+  chart: [380, 380],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -101,6 +104,10 @@ export interface BoardHooks {
   openPattern(id: string): void;
   /** Shows the project's whole log, from its card. */
   openLog?(): void;
+  /** Opens a chart, to change it, from its card. */
+  openChart?(id: string): void;
+  /** Opens a calculator, its result to be saved to this board. */
+  openCalculator?(calc: string): void;
 }
 
 export interface BoardOptions {
@@ -121,6 +128,18 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
   { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
+  { kind: "chart", html: `<button data-add="chart" title="A chart from Calculators, drawn on the board as it is now">▦<span>Chart</span></button>` },
+];
+
+/** The calculators a project's board can open, to save their result onto it. */
+export const BOARD_CALCULATORS: { key: string; label: string }[] = [
+  { key: "raglan", label: "Raglan sweater or cardigan" },
+  { key: "yoke", label: "Round yoke" },
+  { key: "socks", label: "Socks" },
+  { key: "size", label: "Stitches for a size" },
+  { key: "evenly", label: "Increase or decrease evenly" },
+  { key: "regauge", label: "Re-gauge a pattern" },
+  { key: "held", label: "Yarns held together" },
 ];
 
 const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
@@ -146,6 +165,8 @@ export class Board {
   private patterns: Pattern[] = [];
   private yarns: Yarn[] = [];
   private tools: Tool[] = [];
+  /** The charts, for chart cards: drawn from them as they are now. */
+  private charts: Chart[] = [];
   /** The project's log, for a log card; empty on an inspiration board. */
   private logEntries: LogEntry[] = [];
   /**
@@ -178,6 +199,7 @@ export class Board {
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
         ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => t.html).join("")}
+        ${this.hooks.openCalculator ? `<button data-act="calculator" title="A calculator, its result saved to this board">🧮<span>Calculator</span></button>` : ""}
       </div>
       <div class="board-zoom">
         <button data-act="zoom-out" title="Zoom out">−</button>
@@ -191,12 +213,13 @@ export class Board {
     this.world = this.root.querySelector(".board-world")!;
     this.bind();
 
-    [this.items, this.patterns, this.yarns, this.tools, this.logEntries] = await Promise.all([
+    [this.items, this.patterns, this.yarns, this.tools, this.logEntries, this.charts] = await Promise.all([
       api.listBoardItems(this.boardId),
       api.listPatterns({}).catch(() => [] as Pattern[]),
       api.listYarns({}).catch(() => [] as Yarn[]),
       api.listTools().catch(() => [] as Tool[]),
       this.hooks.project() ? api.listProjectLog(this.boardId).catch(() => [] as LogEntry[]) : Promise.resolve([] as LogEntry[]),
+      api.listCharts().catch(() => [] as Chart[]),
     ]);
     this.view = this.savedView() ?? fitView(this.items, this.root.clientWidth || 900, this.root.clientHeight || 600);
     this.applyView();
@@ -257,10 +280,11 @@ export class Board {
   }
 
   async refreshLinked(): Promise<void> {
-    [this.patterns, this.yarns, this.tools] = await Promise.all([
+    [this.patterns, this.yarns, this.tools, this.charts] = await Promise.all([
       api.listPatterns({}).catch(() => this.patterns),
       api.listYarns({}).catch(() => this.yarns),
       api.listTools().catch(() => this.tools),
+      api.listCharts().catch(() => this.charts),
     ]);
     await this.refreshLog();
   }
@@ -521,6 +545,11 @@ export class Board {
     const item = this.items.find((i) => i.id === d.id);
     if (!item) return;
     void this.save(item.id, d.mode === "move" ? { x: item.x, y: item.y } : { w: item.w, h: item.h });
+    // A chart drawn again to its card's new size.
+    if (d.mode === "size" && item.kind === "chart") {
+      const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"]`);
+      if (el) this.paintCharts(el);
+    }
   }
 
   private onWheel(e: WheelEvent): void {
@@ -545,6 +574,7 @@ export class Board {
     const act = btn.dataset.act;
     const id = this.itemEl(btn)?.dataset.id;
     const box = this.root.getBoundingClientRect();
+    if (act === "calculator") return void (await this.pickCalculator());
     if (act === "zoom-in") this.setView(zoomAt(this.view, 1.25, box.width / 2, box.height / 2));
     if (act === "zoom-out") this.setView(zoomAt(this.view, 1 / 1.25, box.width / 2, box.height / 2));
     if (act === "fit") this.setView(fitView(this.items, box.width, box.height));
@@ -806,6 +836,16 @@ export class Board {
       if (!choices.length) return void (await say("There are no needles or hooks yet.", "Add a needle"));
       const id = await askChoice("Which needle, hook or cable?", choices, { title: "Add a needle" });
       if (id) await this.add("tool", at, { toolId: id });
+    } else if (kind === "chart") {
+      this.charts = await api.listCharts().catch(() => this.charts);
+      const choices: Choice[] = this.charts.map((c) => ({
+        value: c.id,
+        label: c.name,
+        group: c.data.kind === "yoke" ? "Round yokes" : c.data.kind === "lace" ? "Lace" : "Colourwork",
+      }));
+      if (!choices.length) return void (await say("There are no charts yet: draw one under Calculators → Charts.", "Add a chart"));
+      const id = await askChoice("Which chart?", choices, { title: "Add a chart" });
+      if (id) await this.add("chart", at, { chartId: id });
     } else if (kind === "video") {
       const classes = await api.listMasterclasses().catch(() => []);
       const own = this.hooks.project()?.masterclassId ?? "";
@@ -989,6 +1029,7 @@ export class Board {
     const item = this.items.find((i) => i.id === id);
     if (!item) return;
     if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
+    if (item.kind === "chart" && typeof item.data.chartId === "string" && this.charts.some((c) => c.id === item.data.chartId)) this.hooks.openChart?.(item.data.chartId);
     if ((item.kind === "link" || item.kind === "video") && typeof item.data.url === "string") {
       void api.openLink(item.data.url).catch((e) => say(e instanceof Error ? e.message : String(e), "Link"));
     }
@@ -1014,6 +1055,23 @@ export class Board {
     this.world.innerHTML = this.items.map((i) => this.itemHtml(i)).join("");
     (this.root.querySelector(".board-empty") as HTMLElement).hidden = this.items.length > 0;
     void this.fillPictures();
+    this.paintCharts();
+  }
+
+  /** Each chart card's chart, drawn as the chart is now, as big as the card lets it. */
+  private paintCharts(root: ParentNode = this.world): void {
+    for (const canvas of root.querySelectorAll<HTMLCanvasElement>("canvas[data-chart-of]")) {
+      const chart = this.charts.find((c) => c.id === canvas.dataset.chartOf);
+      const box = canvas.parentElement!;
+      if (!chart) continue;
+      const g = decode(chart.data);
+      normalize(g);
+      const w = Math.max(20, box.clientWidth - 12);
+      const h = Math.max(20, box.clientHeight - 12);
+      const side = Math.max(1, Math.min(w / g.width, h / g.height));
+      const ctx = sizeCanvas(canvas, side * g.width, side * g.height);
+      drawChart(new CanvasPainter(ctx), g, { x: 0, y: 0, cw: side, ch: side, line: side > 6 ? 0.5 : 0.01 });
+    }
   }
 
   private itemHtml(item: BoardItem): string {
@@ -1101,6 +1159,15 @@ export class Board {
       case "steps":
         body = this.stepsHtml(d);
         break;
+      case "chart": {
+        // Moved by its bar; drawn after, from the chart as it is now.
+        const chart = this.charts.find((c) => c.id === d.chartId);
+        body = chart
+          ? `<div class="board-chart-bar" title="${esc(describeChart(decode(chart.data)))}"><span>▦ ${esc(chart.name)}</span><button data-act="open" title="Open the chart, to change it">Open ↗</button></div>
+             <div class="board-chart"><canvas data-chart-of="${esc(chart.id)}"></canvas></div>`
+          : `<div class="board-caption missing">A chart no longer in Calculators</div>`;
+        break;
+      }
       case "swatch": {
         const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour)) ? String(d.colour) : "#c94c6d";
         body = `
@@ -1204,6 +1271,12 @@ export class Board {
       </div>`;
   }
 
+  /** A calculator chosen, opened with this board's project to save its result to. */
+  private async pickCalculator(): Promise<void> {
+    const calc = await askChoice("Which calculator? Its result is saved to this board.", BOARD_CALCULATORS.map((c) => ({ value: c.key, label: c.label })), { title: "Calculator" });
+    if (calc) this.hooks.openCalculator?.(calc);
+  }
+
   /** Pictures, pattern covers and yarn photos, filled in once their bytes arrive. */
   private async fillPictures(): Promise<void> {
     const paint = async (el: HTMLElement, url: Promise<string | null>) => {
@@ -1240,6 +1313,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   pin: "pin",
   video: "video",
   steps: "checklist",
+  chart: "chart",
 };
 
 /**

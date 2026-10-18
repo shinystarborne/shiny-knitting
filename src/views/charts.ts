@@ -1720,8 +1720,10 @@ export class ChartPage {
         `
         <label class="dialog-field"><span class="dialog-label">Project</span>
           <select class="dialog-input" data-f="project">${live.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>
-        <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="picture" checked />
-          <span><span class="dialog-label">The chart, as a picture</span></span></label>
+        <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="live" checked />
+          <span><span class="dialog-label">The chart</span><span class="dialog-hint">Drawn on the board as it is: change it here, and the board shows the change.</span></span></label>
+        <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="picture" />
+          <span><span class="dialog-label">The chart, as a picture</span><span class="dialog-hint">As it is now, to keep.</span></span></label>
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="words" />
           <span><span class="dialog-label">The rows in words</span></span></label>
         <p class="form-error" data-el="error" hidden></p>
@@ -1737,13 +1739,18 @@ export class ChartPage {
         if (act?.dataset.act === "cancel") return finish();
         if (act?.dataset.act !== "save") return;
         const projectId = field<HTMLSelectElement>("project").value;
+        const chartCard = field<HTMLInputElement>("live").checked;
         const picture = field<HTMLInputElement>("picture").checked;
         const words = field<HTMLInputElement>("words").checked;
-        if (!picture && !words) return finish();
+        if (!chartCard && !picture && !words) return finish();
         (act as HTMLButtonElement).disabled = true;
         try {
           const items = await api.listBoardItems(projectId).catch(() => []);
           let y = items.reduce((max, it) => Math.max(max, it.y + it.h), 0) + 40;
+          if (chartCard) {
+            await api.addBoardItem(projectId, { kind: "chart", x: 40, y, w: 380, h: 380, data: { chartId: this.chartId } });
+            y += 410;
+          }
           if (picture) {
             const png = await chartPng(this.savedName, this.g, { maxSide: 1400, asKnitted: kept.knitted, subtitle: this.subtitle() });
             const prepared = await prepareBoardImage(png);

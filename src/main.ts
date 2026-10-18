@@ -21,7 +21,7 @@ import { PeopleView, PersonPage } from "./views/people";
 import { SwatchesView, type StashMode } from "./views/swatches";
 import { StashHistoryView } from "./views/stash-history";
 import { StashStatsView } from "./views/stash-stats";
-import { CalculatorsView, openCalculatorsOn, takeChartReturn } from "./views/calculators";
+import { CalculatorsView, leaveProject, openCalculatorFor, openCalculatorsOn, takeChartReturn } from "./views/calculators";
 import { ChartPage } from "./views/charts";
 import { SwatchForm, type SwatchTemplate } from "./views/swatch-form";
 import { PatternForm } from "./views/pattern-form";
@@ -145,6 +145,7 @@ class App {
       } else if (tab.dataset.tab === "people") {
         void this.showPeople();
       } else if (tab.dataset.tab === "calculators") {
+        leaveProject();
         void this.showCalculators();
       } else if (tab.dataset.tab === "cheatsheets") {
         void this.showCheatsheets();
@@ -529,6 +530,11 @@ class App {
       editLinks: (project) => void this.openProjectForm(project, null),
       finish: (project) => void this.openFinish(project),
       removed: () => void this.showProjects(),
+      openChart: (chartId) => void this.showChartPage(chartId, { label: "← The project", go: () => void this.showProjectPage(id) }),
+      openCalculator: (calc, project) => {
+        openCalculatorFor(calc, project);
+        void this.showCalculators();
+      },
     });
     this.activeProjectPage = page;
     await page.mount();
@@ -587,18 +593,19 @@ class App {
     await view.mount();
   }
 
-  private async showChartPage(id: string): Promise<void> {
+  private async showChartPage(id: string, back?: { label: string; go: () => void }): Promise<void> {
     const token = ++this.navToken;
     this.clearScreen();
     this.setActiveTab("calculators");
-    // Opened from the round yoke calculator, it goes back there.
+    // Opened from the round yoke calculator, it goes back there; from a project's board, there.
     const from = takeChartReturn();
     const page = new ChartPage(this.screen, id, {
       back: () => {
+        if (back) return back.go();
         openCalculatorsOn(from);
         void this.showCalculators();
       },
-      backLabel: from === "yoke" ? "← Round yoke" : "← Charts",
+      backLabel: back?.label ?? (from === "yoke" ? "← Round yoke" : "← Charts"),
     });
     this.activeChartPage = page;
     await page.mount();

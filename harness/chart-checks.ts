@@ -64,7 +64,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 10000): Pr
 type StoredChart = { id: string; name: string; data: { kind: string; colours: { name: string; hex: string; yarn?: string; yarnId?: string }[]; cells: string; width: number; height: number; repeats: number; topDown: boolean; sections: { row: number; sts: number; cols: number[] }[] } };
 type Store = {
   charts: StoredChart[];
-  boardItems: { id: string; boardId: string; kind: string; data: { text?: string } }[];
+  boardItems: { id: string; boardId: string; kind: string; data: { text?: string; chartId?: string } }[];
   projects: { id: string; name: string; status: string }[];
 };
 
@@ -465,7 +465,7 @@ export async function verifyCharts() {
       click(dialogCard(), '[data-act="save"]');
       await waitFor(() => store.boardItems.length === before + 2, "the board items");
       const added = store.boardItems.slice(-2);
-      check(results, "Save to a project puts the picture and the rows in words on its board", added[0].kind === "image" && added[1].kind === "text" && added.every((i) => i.boardId === live.id) && /Round 1 \(240 sts\)/.test(added[1].data.text ?? ""), JSON.stringify(added.map((a) => a.kind)));
+      check(results, "Save to a project puts the chart itself and the rows in words on its board", added[0].kind === "chart" && typeof added[0].data.chartId === "string" && added[1].kind === "text" && added.every((i) => i.boardId === live.id) && /Round 1 \(240 sts\)/.test(added[1].data.text ?? ""), JSON.stringify(added.map((a) => a.kind)));
     }
 
     // ---------- the list again ----------
