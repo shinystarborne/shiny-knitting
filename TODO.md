@@ -19,17 +19,8 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-**Asked for 18 Oct 2026**
-
-- [ ] **Symbols explained**: the chart symbols with what they mean, as the
-  abbreviations are. See below.
-
-### Symbols explained
-
-A glossary of the chart symbols, each drawn, with what it means and the
-abbreviation it stands for (a masterclass video where one covers it): in
-Cheatsheets beside the abbreviations, and on a lace chart a symbol said
-when pointed at.
+Nothing on it now: what was asked for on 18 Oct 2026 is built (betas 110
+and 111).
 
 ---
 
@@ -150,6 +141,11 @@ when pointed at.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Chart symbols explained:** Chart symbols, second in Cheatsheets
+  (abbreviations.ts SymbolsPanel): each stitch drawn, its meaning from its
+  abbreviation in the glossary (yours first), its wrong-side stitch, and a
+  masterclass video. On a lace chart, the square the pointer rests on said
+  beside it (charts.ts tipFor), "on this wrong-side row" on one. *0.3.111*
 - **Lace charts:** a chart kind "lace" (charts.rs, chart.ts): its colours
   are its stitches (ChartColour.stitch, each once; views/stitches.ts: abbr,
   name, WS version, takes and makes, symbol drawn through the Painter, and

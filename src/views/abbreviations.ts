@@ -1,6 +1,7 @@
 import { api, type Abbreviation, type Masterclass, type MasterclassPart } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { NO_STITCH_KEY, STITCHES, symbolSvg, type Stitch } from "./stitches";
 
 /**
  * Abbreviations: the common ones a pattern writes (ssk, k2tog, m1l, w&t…),
@@ -323,4 +324,62 @@ export class AbbreviationsPanel {
 
 function esc(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ---------- chart symbols ----------
+
+/** What a chart's stitch means: its abbreviation's meaning in the glossary (yours first), else its name. */
+export function stitchMeaning(s: Stitch, entries: Entry[]): { meaning: string; entry: Entry | null } {
+  const entry = s.glossary ? (entries.find((e) => e.term.toLowerCase() === s.glossary!.toLowerCase()) ?? null) : null;
+  return { meaning: entry?.meaning ?? `${s.name}.`, entry };
+}
+
+/** A stitch said in full, as markup: its symbol, abbreviation, meaning, wrong-side stitch, and a video. */
+export function stitchHtml(s: Stitch, entries: Entry[], masterclasses: Masterclass[], o: { ws?: boolean } = {}): string {
+  if (s.key === NO_STITCH_KEY) {
+    return `<div class="stitch-said">${symbolSvg(s.key, 28)}<div><b>No stitch</b><span>A grey square: there is no stitch here. Go on to the next square.</span></div></div>`;
+  }
+  const { meaning, entry } = stitchMeaning(s, entries);
+  const video = entry ? videoFor(entry, masterclasses) : null;
+  return `
+    <div class="stitch-said">${symbolSvg(s.key, 28)}<div>
+      <b>${esc(s.abbr)}</b> <span class="hint">${esc(s.name)}</span>
+      ${meaning.replace(/\.$/, "").toLowerCase() === s.name.toLowerCase() ? "" : `<span>${esc(meaning)}</span>`}
+      ${s.ws !== s.abbr ? `<span class="hint">${o.ws ? "On this wrong-side row" : "On a wrong-side row"}, worked as <b>${esc(s.ws)}</b>, so the right side shows it.</span>` : ""}
+      ${video ? `<button class="link" data-act="stitch-video" data-url="${esc(video.part.url)}" title="From your masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}
+    </div></div>`;
+}
+
+/**
+ * The chart symbols, as the Cheatsheets tab shows them: each drawn, with
+ * what it is written as and means, what it is worked as on a wrong-side
+ * row, and a video where one covers it.
+ */
+export class SymbolsPanel {
+  private host: HTMLElement;
+
+  constructor(host: HTMLElement) {
+    this.host = host;
+  }
+
+  async mount(): Promise<void> {
+    const own = document.createElement("div");
+    own.className = "abbr-panel";
+    this.host.append(own);
+    this.host = own;
+    const { entries, masterclasses } = await loadGlossary();
+    this.host.innerHTML = `
+      <header class="sheet-head">
+        <h2 class="abbr-title">Chart symbols</h2>
+        <span class="hint sheet-source">What each square of a chart means. Drawn as most charts draw them; a lace chart says them when you point at a square.</span>
+      </header>
+      <div class="abbr-body">
+        <div class="symbol-list">${STITCHES.map((s) => `<div class="symbol-row" data-stitch="${s.key}">${stitchHtml(s, entries, masterclasses)}</div>`).join("")}</div>
+        <p class="hint">A designer may draw one differently: their chart's own legend says so, and goes first.</p>
+      </div>`;
+    this.host.addEventListener("click", (e) => {
+      const btn = closestEl(e.target, '[data-act="stitch-video"]');
+      if (btn) void api.openLink(btn.dataset.url!).catch((err) => say(err instanceof Error ? err.message : String(err), "Masterclass"));
+    });
+  }
 }

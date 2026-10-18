@@ -52,6 +52,8 @@ import { chartPdf, PAPERS, type Paper } from "./chart-pdf";
 import { gaugeOf, gaugeSpan, readGauge, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { NO_STITCH_KEY, STITCHES, symbolSvg } from "./stitches";
+import { loadGlossary, stitchHtml, type Entry } from "./abbreviations";
+import type { Masterclass } from "../api";
 import { colourName, likeness, mainColours, nearestYarns, pixelsOf, yarnColour, type PhotoColour } from "./photo-colours";
 
 // ---------- the list, in the Calculators tab ----------
@@ -306,6 +308,11 @@ export class ChartPage {
   private yarns: Yarn[] = [];
   private unit: MeasureUnit = "cm";
   private onKey = (e: KeyboardEvent) => this.key(e);
+  /** On a lace chart: the label of the stitch pointed at, the glossary it is read from, and the wait before it shows. */
+  private tip: HTMLElement | null = null;
+  private tipTimer = 0;
+  private tipAt = "";
+  private glossary: { entries: Entry[]; masterclasses: Masterclass[] } = { entries: [], masterclasses: [] };
   /** Removed: there is nothing to save any more. */
   private removed = false;
 
@@ -390,6 +397,7 @@ export class ChartPage {
     this.screen.appendChild(this.root);
     this.canvas = this.root.querySelector<HTMLCanvasElement>(".chart-canvas")!;
     this.wire();
+    if (isLace(this.g)) void loadGlossary().then((g) => (this.glossary = g));
     this.zoomPx = this.fitZoom();
     this.refresh();
     document.addEventListener("keydown", this.onKey);
@@ -398,6 +406,7 @@ export class ChartPage {
   /** Saves what is not saved yet, and takes the page down. */
   destroy(): void {
     document.removeEventListener("keydown", this.onKey);
+    this.hideTip();
     if (this.root && this.g && !this.removed) void this.save();
     this.root?.remove();
   }
@@ -420,7 +429,11 @@ export class ChartPage {
     this.canvas.addEventListener("pointermove", (e) => this.move(e));
     this.canvas.addEventListener("pointerup", (e) => this.up(e));
     this.canvas.addEventListener("pointercancel", (e) => this.up(e));
-    this.canvas.addEventListener("pointerleave", () => this.status());
+    this.canvas.addEventListener("pointerleave", () => {
+      this.status();
+      this.hideTipSoon();
+    });
+    this.canvas.addEventListener("pointerdown", () => this.hideTip());
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.root.querySelector('[data-el="scroll"]')!.addEventListener(
       "wheel",
@@ -871,6 +884,7 @@ export class ChartPage {
   private move(e: PointerEvent): void {
     const at = this.squareAt(e);
     if (at) this.hover = at;
+    if (!this.drag && !this.pasting) this.tipFor(at, e);
     if (this.pasting && at && (at[0] !== this.pasting.at[0] || at[1] !== this.pasting.at[1])) {
       this.pasting.at = at;
       this.paintGrid();
@@ -885,6 +899,57 @@ export class ChartPage {
       this.paintGrid();
     }
     d.last = at;
+  }
+
+  /**
+   * On a lace chart, the stitch of the square the pointer rests on, said
+   * beside it: its symbol, what it means, what it is worked as on a
+   * wrong-side row, and a video where one covers it.
+   */
+  private tipFor(at: [number, number] | null, e: PointerEvent): void {
+    if (!isLace(this.g) || !at) return this.hideTipSoon();
+    const key = `${at[0]},${at[1]}`;
+    if (key === this.tipAt) return;
+    this.tipAt = key;
+    window.clearTimeout(this.tipTimer);
+    if (this.tip) this.tip.hidden = true;
+    const [x, y] = [e.clientX, e.clientY];
+    this.tipTimer = window.setTimeout(() => {
+      const s = stitchAt(this.g, this.g.cells[at[1] * this.g.width + at[0]]);
+      if (!this.tip) {
+        this.tip = document.createElement("div");
+        this.tip.className = "stitch-tip";
+        this.tip.addEventListener("mouseenter", () => window.clearTimeout(this.tipTimer));
+        this.tip.addEventListener("mouseleave", () => this.hideTipSoon());
+        this.tip.addEventListener("click", (ev) => {
+          const btn = closestEl(ev.target, '[data-act="stitch-video"]');
+          if (btn) void api.openLink(btn.dataset.url!).catch(() => {});
+        });
+        document.body.append(this.tip);
+      }
+      const ws = this.g.flat && at[1] % 2 === 1;
+      this.tip.innerHTML = stitchHtml(s, this.glossary.entries, this.glossary.masterclasses, { ws });
+      this.tip.hidden = false;
+      const left = Math.max(8, Math.min(x + 14, window.innerWidth - this.tip.offsetWidth - 8));
+      const top = y + 18 + this.tip.offsetHeight > window.innerHeight - 8 ? y - this.tip.offsetHeight - 12 : y + 18;
+      this.tip.style.left = `${left}px`;
+      this.tip.style.top = `${Math.max(8, top)}px`;
+    }, 450);
+  }
+
+  private hideTip(): void {
+    window.clearTimeout(this.tipTimer);
+    this.tipAt = "";
+    this.tip?.remove();
+    this.tip = null;
+  }
+
+  private hideTipSoon(): void {
+    window.clearTimeout(this.tipTimer);
+    this.tipAt = "";
+    this.tipTimer = window.setTimeout(() => {
+      if (this.tip) this.tip.hidden = true;
+    }, 250);
   }
 
   /** A line or a box being dragged: drawn afresh from where the drag began. */
@@ -1047,7 +1112,7 @@ export class ChartPage {
             .map((s) => `<option value="${s.key}" ${s.key === chosen.key ? "selected" : ""}>${esc(s.key === NO_STITCH_KEY ? "No stitch (grey)" : `${s.abbr}: ${s.name}`)}</option>`)
             .join("")}
         </select>
-        <span class="hint stitch-said">${esc(chosen.key === NO_STITCH_KEY ? "A gap in the row: no stitch is worked." : `${chosen.name}: ${chosen.takes === chosen.makes ? "the same stitches after" : chosen.makes > chosen.takes ? `${chosen.makes - chosen.takes} more` : `${chosen.takes - chosen.makes} fewer`}${this.g.flat && chosen.ws !== chosen.abbr ? `; on a wrong-side row, ${chosen.ws}` : ""}.`)}</span>
+        <span class="hint stitch-line">${esc(chosen.key === NO_STITCH_KEY ? "A gap in the row: no stitch is worked." : `${chosen.name}: ${chosen.takes === chosen.makes ? "the same stitches after" : chosen.makes > chosen.takes ? `${chosen.makes - chosen.takes} more` : `${chosen.takes - chosen.makes} fewer`}${this.g.flat && chosen.ws !== chosen.abbr ? `; on a wrong-side row, ${chosen.ws}` : ""}.`)}</span>
         ${this.colour ? `<button class="ghost danger-text" data-act="remove-colour" title="Its squares go to knit">Remove</button>` : `<span class="hint">Background</span>`}
       </div>`;
   }

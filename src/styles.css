@@ -4229,3 +4229,16 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .calc-how { flex: none; width: 150px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
 .calc-how .hint { margin: 0; font-size: 11px; text-align: center; }
 @media (max-width: 700px) { .calc-measure { flex-direction: column; } .calc-how { width: auto; } }
+
+/* Chart symbols: a lace chart's stitches, drawn; said in the glossary and when pointed at on a chart. */
+.stitch-symbol { flex: none; display: inline-block; vertical-align: middle; }
+.stitch-chip { display: inline-flex; align-items: center; gap: 6px; }
+.lace-rows tr.off td { color: var(--accent); font-weight: 600; }
+.lace-rows { max-height: 260px; }
+.stitch-said { display: flex; gap: 10px; align-items: flex-start; }
+.stitch-said > div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.4; }
+.stitch-said .link { text-align: left; }
+.symbol-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.symbol-row { padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.stitch-tip { position: fixed; z-index: 1000; max-width: 340px; padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); color: var(--text); }
+.stitch-tip[hidden] { display: none; }
