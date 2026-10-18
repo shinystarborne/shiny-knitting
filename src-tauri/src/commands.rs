@@ -809,7 +809,7 @@ const AI_SETTINGS_KEY: &str = "ai";
 ///
 /// The key never leaves the backend in plaintext: only a boolean is handed to
 /// the frontend, and only the provider calls get the real value.
-fn unlocked_ai_settings(state: &AppState) -> CmdResult<AiSettings> {
+pub(crate) fn unlocked_ai_settings(state: &AppState) -> CmdResult<AiSettings> {
     let mut settings = stored_ai_settings(&state.db())?;
     if !settings.api_key.is_empty() && crate::ai::secret::is_encrypted(&settings.api_key) {
         settings.api_key = crate::ai::secret::decrypt(&settings.api_key)

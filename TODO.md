@@ -21,20 +21,11 @@ under the list.
 
 **Asked for 17 Oct 2026**
 
-- [ ] **The yarn form filled from a photo of the ball band**, read by the
-  model. See below.
 - [ ] **Colours from a photo**: a palette for a chart, and the nearest
   yarns in the stash. See below.
 - [ ] **Yearly goals**: projects finished, stash used, in Statistics. See
   below.
 - [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### The ball band, from a photo
-
-A photo of a ball band in the yarn form, read by the model set in Settings
-(as a pattern's scan is): brand, name, colourway, dye lot, metres and grams
-per ball, fibres, the gauge and needles, and the care symbols, filled in to
-check before saving.
 
 ### Colours from a photo
 
@@ -164,6 +155,12 @@ calculators.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **The ball band, from a photo:** Read the ball band… in the yarn form,
+  shown when a model is switched on: the photo (1600 px JPEG) sent to
+  read_ball_band (ball_band.rs: a JSON schema with the care symbols' ids
+  described; yards and ounces converted; figures checked). Only empty
+  fields are filled, marked (.from-band) until typed over; then the yarn's
+  other colours fill the rest. *0.3.103*
 - **Steps as a checklist:** a garment's or socks' steps saved to a project's
   board as a "steps" card (BOARD_KINDS; views/steps.ts): each ticked, the
   first not done marked Knitting now, and a step whose words say "every …

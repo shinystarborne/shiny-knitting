@@ -2,6 +2,7 @@ mod abbreviations;
 mod ai;
 mod annotations;
 mod backup;
+mod ball_band;
 mod charts;
 mod cheatsheets;
 mod commands;
@@ -154,6 +155,7 @@ pub fn run() {
             abbreviations::list_abbreviations,
             abbreviations::save_abbreviation,
             abbreviations::remove_abbreviation,
+            ball_band::read_ball_band,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,

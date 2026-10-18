@@ -1,5 +1,6 @@
 import {
   api,
+  type BallBand,
   YARN_WEIGHT_OPTIONS,
   type Fibre,
   type MeasureUnit,
@@ -162,6 +163,11 @@ export class YarnForm {
           </div>
         </div>
 
+        <div class="band-read" data-el="band-read" hidden>
+          <button class="ghost" data-act="read-band" type="button" title="A photo of the yarn's label, read by the model set in Settings">📷 Read the ball band…</button>
+          <span class="hint" data-el="band-status">From a photo of the label: what is empty here filled in, to check before saving.</span>
+        </div>
+
         <div class="field-row">
           <div class="field">
             <span>Brand</span>
@@ -299,6 +305,14 @@ export class YarnForm {
     this.bind();
     this.figuresBy(!!this.details.deadstock);
     this.conePriceHint();
+    // Read from a photo, when a model is set up to read it.
+    void api
+      .getAiSettings()
+      .then((s) => {
+        const row = this.root.querySelector<HTMLElement>('[data-el="band-read"]');
+        if (row && s.enabled && s.baseUrl.trim()) row.hidden = false;
+      })
+      .catch(() => {});
     this.renderDetails();
     this.renderCare();
     void api
@@ -543,6 +557,8 @@ export class YarnForm {
 
   private onInput = (e: Event): void => {
     const f = (e.target as HTMLElement).dataset.f;
+    // Read from the ball band, then typed over: checked.
+    (e.target as HTMLElement).classList?.remove("from-band");
     if (f === "yarnWeight") this.weightAuto = false;
     if (f === "metresPerBall") this.metresAuto = false;
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
@@ -800,6 +816,7 @@ export class YarnForm {
       this.renderFibres();
     }
     if (btn.dataset.act === "photo-file") void this.choosePhoto();
+    if (btn.dataset.act === "read-band") void this.readBallBand(btn as HTMLButtonElement);
     if (btn.dataset.act === "weight-help") {
       const help = this.root.querySelector<HTMLElement>('[data-el="weight-help"]');
       if (help) help.hidden = !help.hidden;
@@ -1024,6 +1041,101 @@ export class YarnForm {
     box.style.backgroundImage = url ? `url("${url}")` : "";
   }
 
+  /**
+   * A ball band read from a photo by the model: what is empty in the form
+   * filled in from it, marked to be checked, and what it filled said. What
+   * is typed already is kept.
+   */
+  private async readBallBand(btn: HTMLButtonElement): Promise<void> {
+    const file = await pickImage();
+    if (!file) return;
+    const status = this.root.querySelector<HTMLElement>('[data-el="band-status"]')!;
+    btn.disabled = true;
+    status.textContent = "Reading the ball band…";
+    try {
+      const image = await readableImage(file);
+      if (!image) throw new Error("That file could not be read as an image.");
+      const filled = this.fillFromBand(await api.readBallBand(image));
+      status.textContent = filled.length
+        ? `Read from the ball band: ${filled.join(", ")}. Check them before saving: a model can misread.`
+        : "The ball band said nothing that is not filled in already.";
+    } catch (err) {
+      status.textContent = `The ball band could not be read: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /** Fills what is empty from a ball band read; says what it filled. */
+  fillFromBand(b: BallBand): string[] {
+    const filled: string[] = [];
+    const put = (field: string, value: string | number, what: string) => {
+      const input = this.root.querySelector<HTMLInputElement>(`[data-f="${field}"]`);
+      if (!input || input.value.trim() || !value) return;
+      input.value = String(value);
+      input.classList.add("from-band");
+      filled.push(what);
+    };
+    put("brand", b.brand, "brand");
+    put("name", b.name, "name");
+    put("colourway", b.colourway, "colourway");
+    put("yarnWeight", b.weight, "weight");
+    if (this.details.deadstock) {
+      // Deadstock's metres are per 100 g, and its grams a cone's.
+      put("metresPerBall", per100gOf(b), "metres per 100 g");
+      put("gramsPerBall", b.gramsPerBall, "grams per cone");
+    } else {
+      put("metresPerBall", b.metresPerBall, "metres per ball");
+      put("gramsPerBall", b.gramsPerBall, "grams per ball");
+    }
+    this.readLots();
+    if (b.dyeLot && this.lots[0] && !this.lots[0].dyeLot.trim()) {
+      this.lots[0].dyeLot = b.dyeLot;
+      this.renderLots();
+      this.root.querySelector('.lot-row [data-lf="dyeLot"]')?.classList.add("from-band");
+      filled.push("dye lot");
+    }
+    if (b.fibres.length && !this.fibreValues().length) {
+      this.fibres = b.fibres.map((f) => ({ name: f.name, percent: f.percent ? String(f.percent) : "" }));
+      this.renderFibres();
+      filled.push("fibres");
+    }
+    const superwash = this.root.querySelector<HTMLInputElement>('[data-f="superwash"]');
+    if (b.superwash && superwash && !superwash.checked) {
+      superwash.checked = true;
+      filled.push("superwash");
+    }
+    this.readDetails();
+    const d = this.details;
+    const band: string[] = [];
+    if (!d.gaugeSts && !d.gaugeRows && (b.gaugeSts || b.gaugeRows)) {
+      this.details = { ...this.details, gaugeSts: b.gaugeSts, gaugeRows: b.gaugeRows };
+      band.push("gauge");
+    }
+    if (!d.needleFrom && !d.needleTo && b.needleFrom) {
+      this.details = { ...this.details, needleFrom: b.needleFrom, needleTo: b.needleTo };
+      band.push("needles");
+    }
+    if (!d.care.length && b.care.length) {
+      this.details = { ...this.details, care: [...b.care] };
+      band.push("care");
+    }
+    if (band.length) {
+      this.renderDetails();
+      this.renderCare();
+      for (const f of ["gaugeSts", "gaugeRows", "needleFrom", "needleTo"]) {
+        const input = this.root.querySelector<HTMLInputElement>(`[data-f="${f}"]`);
+        if (input?.value) input.classList.add("from-band");
+      }
+      filled.push(...band);
+    }
+    this.weightAuto = false;
+    this.weightHint();
+    // A yarn already in the stash fills in the rest of itself.
+    if (b.name) this.fillFromKnown();
+    return filled;
+  }
+
   private async choosePhoto(): Promise<void> {
     const input = document.createElement("input");
     input.type = "file";
@@ -1181,6 +1293,38 @@ function priceHint(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
 }
 
 /** A new lot row: bought today, as near as it matters; the date can be changed. */
+/** An image picked from a file; null when none is. */
+function pickImage(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null));
+    input.addEventListener("cancel", () => resolve(null));
+    input.click();
+  });
+}
+
+/** A photo as a data: URL the model reads: big enough for a label's small print, no bigger. */
+async function readableImage(file: Blob, longest = 1600): Promise<string | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return null;
+  }
+  try {
+    const scale = Math.min(1, longest / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.9);
+  } finally {
+    bitmap.close();
+  }
+}
+
 function emptyLot(): LotRow {
   return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: toDateInput(Date.now()), leftover: false };
 }

@@ -2965,6 +2965,15 @@ const handlers = {
       { id: "Qwen3.8-27B", label: "Qwen3.8-27B" },
     ],
   }),
+  // As ball_band.rs: what store.ballBand says (store.ballBandError fails
+  // it), with the picture it was sent kept to look at.
+  read_ball_band: async ({ image }) => {
+    if (!store.aiSettings?.enabled) throw new Error("Reading with a model is switched off in Settings.");
+    store.ballBandImage = image;
+    await new Promise((r) => setTimeout(r, 200));
+    if (store.ballBandError) throw new Error(store.ballBandError);
+    return clone(store.ballBand);
+  },
   suggest_metadata: ({ patternId, excerpt, images, pages }) => {
     if (!store.aiSettings?.enabled) throw new Error("Describing with a model is switched off in Settings.");
     const p = store.patterns.find((x) => x.id === patternId);

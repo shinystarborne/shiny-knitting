@@ -4186,3 +4186,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .step-count { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .step-count b { font-variant-numeric: tabular-nums; min-width: 1.5em; text-align: right; }
 .step-count button { width: 26px; height: 24px; padding: 0; font-size: 15px; line-height: 1; }
+
+/* The yarn form read from a ball band's photo: what it filled in, to check. */
+.yarn-form .band-read { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 4px; }
+.yarn-form .band-read .hint { flex: 1; min-width: 200px; }
+.yarn-form .from-band { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }

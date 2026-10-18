@@ -877,6 +877,25 @@ export interface Masterclass {
   addedAt: number;
 }
 
+/** What a ball band says, as the model read it from a photo. Mirrors `ball_band.rs::BallBand`; empty and 0 are not said. */
+export interface BallBand {
+  brand: string;
+  name: string;
+  colourway: string;
+  dyeLot: string;
+  weight: string;
+  metresPerBall: number;
+  gramsPerBall: number;
+  fibres: Fibre[];
+  superwash: boolean;
+  /** Per 10 cm. */
+  gaugeSts: number;
+  gaugeRows: number;
+  needleFrom: number;
+  needleTo: number;
+  care: string[];
+}
+
 /** An abbreviation of your own, for the glossary. Mirrors `abbreviations.rs::Abbreviation`. */
 export interface Abbreviation {
   id: string;
@@ -1717,6 +1736,8 @@ export const api = {
 
   // AI metadata.
   getAiSettings: () => invoke<AiSettingsView>("get_ai_settings"),
+  /** A ball band read from a photo (a data: URL) by the model set in Settings. */
+  readBallBand: (image: string) => invoke<BallBand>("read_ball_band", { image }),
   saveAiSettings: (settings: AiSettingsView, apiKey?: string) =>
     invoke<AiSettingsView>("save_ai_settings", { settings, apiKey }),
   testAiConnection: () => invoke<AiConnectionTest>("test_ai_connection"),
