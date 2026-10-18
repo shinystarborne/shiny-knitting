@@ -105,7 +105,7 @@ export class StashStatsView {
           ${
             bought.items.length
               ? `<ul class="usage-list">${bought.items.map((x) => `<li><span>${esc(x.name)}</span><b>${money(x.amount, this.currency)}</b><em>${x.kind === "tool" ? "needles &amp; hooks" : x.kind} · ${day(x.at)}</em></li>`).join("")}</ul>`
-              : `<p class="hint">Nothing bought with a price this month. A yarn's price a ball, a pattern's price and a needle's or a set's are in their forms.</p>`
+              : `<p class="hint">Nothing bought with a price this month. A yarn's price (a ball's, or 100 g's for deadstock), a pattern's price and a needle's or a set's are in their forms.</p>`
           }
         </div>
         <details class="usage-table"><summary>The months as a table</summary>

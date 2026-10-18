@@ -49,21 +49,47 @@ export function pricePerBall(text: string, balls: number): number | null {
   return each || !(balls > 1) ? n : Math.round((n / balls) * 100) / 100;
 }
 
-/** What a ball of a yarn costs: the same for every colour and lot of it, by brand and name. */
+/**
+ * A yarn's price: a ball's, or 100 g's for deadstock and cone yarn. The same
+ * for every colour and lot of it, by brand and name.
+ */
 export function ballPrice(y: Yarn): number | null {
   return y.details?.price ?? null;
 }
 
-/** What a lot cost: its balls at its yarn's price; null when that is not said. */
-export function lotCost(lot: YarnLot, y: Yarn): number | null {
+/** What so many grams of a yarn cost: by 100 g, or as a share of a ball; null when that is not known. */
+export function gramsCost(y: Yarn, grams: number): number | null {
   const price = ballPrice(y);
-  return price == null ? null : Math.round(price * (lot.balls || 0) * 100) / 100;
+  if (price == null) return null;
+  if (y.details?.deadstock) return (grams / 100) * price;
+  return y.gramsPerBall ? (grams / y.gramsPerBall) * price : null;
 }
 
-/** What is left of a lot is worth: its balls whole, or the share of a ball weighed. */
+/**
+ * What a lot cost: its balls at its yarn's price; for deadstock, the grams
+ * bought -- its cones by their weight, else as weighed -- by 100 g. Null when
+ * that is not said.
+ */
+export function lotCost(lot: YarnLot, y: Yarn): number | null {
+  const price = ballPrice(y);
+  if (price == null) return null;
+  const cost = y.details?.deadstock ? (boughtGrams(lot, y) / 100) * price : price * (lot.balls || 0);
+  return Math.round(cost * 100) / 100;
+}
+
+/** The grams a lot was bought as: its balls at the weight per ball, or what it weighed. */
+function boughtGrams(lot: YarnLot, y: Yarn): number {
+  return lot.balls && y.gramsPerBall ? lot.balls * y.gramsPerBall : lot.gramsLeft || 0;
+}
+
+/** What is left of a lot is worth: its balls whole, or the share of a ball weighed; deadstock by its grams. */
 export function lotWorth(lot: YarnLot, y: Yarn): number | null {
   const price = ballPrice(y);
   if (price == null) return null;
+  if (y.details?.deadstock) {
+    const grams = lot.weighed ? lot.gramsLeft : lot.balls * (y.gramsPerBall || 0);
+    return (grams / 100) * price;
+  }
   const balls = lot.weighed ? (y.gramsPerBall ? lot.gramsLeft / y.gramsPerBall : lot.balls) : lot.balls;
   return price * (balls || 0);
 }
@@ -117,7 +143,8 @@ export function spending(yarns: Yarn[], patterns: Pattern[], tools: Tool[] = [],
     const name = [y.brand, y.name].filter(Boolean).join(" ") + (y.colourway ? ` (${y.colourway})` : "");
     for (const lot of y.lots) {
       const cost = lotCost(lot, y);
-      if (cost) out.push({ at: lot.boughtAt ?? y.addedAt, kind: "yarn", name: `${name}${lot.balls ? `, ${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : ""}`, amount: cost });
+      const amount = lot.balls ? `, ${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : y.details?.deadstock && lot.gramsLeft ? `, ${lot.gramsLeft} g` : "";
+      if (cost) out.push({ at: lot.boughtAt ?? y.addedAt, kind: "yarn", name: `${name}${amount}`, amount: cost });
     }
   }
   for (const p of patterns) if (p.price) out.push({ at: p.addedAt, kind: "pattern", name: p.title, amount: p.price });
@@ -143,21 +170,21 @@ export function spentByMonth(spends: Spend[], now = Date.now(), count = 12): { s
 /**
  * What a project cost: its pattern, and its yarn by what it took -- what a
  * finished one used, else what it plans to take -- at the yarn's price a
- * ball. Tools are not counted. Says what is not known.
+ * ball, or 100 g for deadstock. Tools are not counted. Says what is not known.
  */
 export function projectCost(p: Project, yarns: Yarn[], patterns: Pattern[], uses: YarnUse[]): { yarn: number; pattern: number; total: number; unknown: string[] } {
   const unknown: string[] = [];
   let yarn = 0;
   for (const py of p.yarns) {
     const y = yarns.find((x) => x.id === py.yarnId);
-    const price = y ? ballPrice(y) : null;
     const used = uses.filter((u) => u.projectId === p.id && u.yarnId === py.yarnId && u.source === "finished").reduce((n, u) => n + u.grams, 0);
     const grams = used || py.plannedGrams || 0;
-    if (!y || price == null || !y.gramsPerBall || !grams) {
+    const cost = y && grams ? gramsCost(y, grams) : null;
+    if (cost == null) {
       unknown.push(py.yarnName);
       continue;
     }
-    yarn += (grams / y.gramsPerBall) * price;
+    yarn += cost;
   }
   const pattern = p.patternId ? (patterns.find((x) => x.id === p.patternId)?.price ?? 0) : 0;
   const round = (n: number) => Math.round(n * 100) / 100;

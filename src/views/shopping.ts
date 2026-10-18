@@ -185,6 +185,8 @@ export interface YarnStart {
   boughtAt: number | null;
   /** What a ball cost, from the price as typed; null when it says none. */
   price: number | null;
+  /** The price as typed is for 100 g ("€8 / 100 g"), as deadstock and cone yarn is sold. */
+  deadstock?: boolean;
 }
 
 /**
@@ -210,7 +212,9 @@ export function yarnStart(w: Wish): YarnStart {
   // The brand is its own field, so it is not said twice.
   if (brand && name.toLowerCase().startsWith(`${brand.toLowerCase()} `)) name = name.slice(brand.length).trim();
   const balls = ballsIn(w.amount);
-  return { brand, name: name || w.name.trim(), colourway, balls, notes: w.notes, boughtAt: w.gotAt, price: pricePerBall(w.price, balls) };
+  const deadstock = /100\s*g(?![a-z])/i.test(w.price);
+  const price = deadstock ? parsePrice(w.price.replace(/\/?\s*(?:per\s+|je\s+|pro\s+)?100\s*g(?![a-z])/i, "")) : pricePerBall(w.price, balls);
+  return { brand, name: name || w.name.trim(), colourway, balls, notes: w.notes, boughtAt: w.gotAt, price, deadstock };
 }
 
 /** How many balls an amount says: "6 balls", "6 x 50 g", "6 Knäuel", or just "6". */

@@ -477,6 +477,9 @@ pub struct YarnDetails {
     /// colour and every lot of the yarn. None when not said.
     #[serde(default)]
     pub price: Option<f64>,
+    /// Deadstock or cone yarn, sold by weight: its price is for 100 g, not a ball.
+    #[serde(default)]
+    pub deadstock: bool,
 }
 
 /// The care symbols a ball band can show, in the order they are read on a

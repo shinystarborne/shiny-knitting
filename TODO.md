@@ -327,7 +327,11 @@ calculators.
   Several sizes added at once are a set; Sets makes and changes one, its
   pieces ticked. Needles & hooks' header says what they all cost
   (toolsCost), and they are in Statistics' Spent. A price the same brand and
-  kind has is offered for another bought alone. *0.3.88*
+  kind has is offered for another bought alone. *0.3.88* Deadstock or
+  cone yarn (yarn_details.deadstock, beside the price): its price is for
+  100 g, and the sums count it by grams; a lot bought as its cones at
+  grams per ball, else as weighed. A wishlist price "per 100 g" starts the
+  yarn so. *0.3.98*
 - **Your size in a pattern:** a PDF's sizes read from its text (named after
   Sizes, else by their place, counted from its runs; reader/sizes.ts); the
   size knitted chosen in the reader's Size picker and kept with the pattern

@@ -1,7 +1,8 @@
 /**
  * Checks for prices: what was typed read as a price, a wishlist price taken
  * as a ball's, a yarn's price a ball kept from the yarn form for every
- * colour and lot of it (by brand and name), a pattern's
+ * colour and lot of it (by brand and name), or 100 g's for deadstock and
+ * cone yarn, a pattern's
  * price from its form, the currency chosen in Settings, what the stash is
  * worth and what was spent in Statistics, and what a project cost on its
  * page (its yarn by the grams it takes, and its pattern; no tools).
@@ -71,6 +72,22 @@ function pure(results: CheckResult[]): void {
   check(results, "a project's cost: the grams it plans at the yarn's price a ball, and its pattern", planned.yarn === 9.9 && planned.pattern === 6.5 && planned.total === 16.4 && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
   const used = [{ projectId: "pr", yarnId: "a", grams: 150, source: "finished" }] as unknown as YarnUse[];
   check(results, "…what it used, once finished, before what it planned", projectCost(project, yarns, patterns, used).yarn === 14.85);
+
+  // Deadstock and cone yarn: the price is for 100 g. Two cones of 500 g, one
+  // started (320 g left), and a lot bought by weight with no cones counted.
+  const byWeight = (price: number | null) => ({ ...priced(price), deadstock: true });
+  const cones = [
+    yarn({ id: "d", name: "Cashmere 2/28", gramsPerBall: 500, metresPerBall: 7000, details: byWeight(8), lots: [lot({ id: "d1", balls: 2, boughtAt: new Date(2028, 2, 5).getTime() }), lot({ id: "d2", balls: 1, weighed: true, gramsLeft: 320 })] }),
+    yarn({ id: "e", name: "Merino ends", gramsPerBall: 0, metresPerBall: 0, details: byWeight(5.5), lots: [lot({ id: "e1", weighed: true, gramsLeft: 400 })] }),
+  ];
+  const coneWorth = stashWorth(cones);
+  check(results, "deadstock is worth its grams at its price per 100 g: 1000 g + 320 g + 400 g", coneWorth.worth === 80 + 25.6 + 22 && coneWorth.unpriced === 0, JSON.stringify(coneWorth));
+  const coneSpends = spending(cones, []);
+  check(results, "…it cost its cones by their weight, or the grams bought by weight", coneSpends.some((s) => s.amount === 80 && /2 balls/.test(s.name)) && coneSpends.some((s) => s.amount === 40) && coneSpends.some((s) => s.amount === 22 && /400 g/.test(s.name)), JSON.stringify(coneSpends));
+  const coneProject = { id: "pc", patternId: null, yarns: [{ id: "e3", yarnId: "e", yarnName: "Merino ends", lotId: null, plannedGrams: 250 }] } as unknown as Project;
+  const coneCost = projectCost(coneProject, cones, [], []);
+  check(results, "…and a project takes it by the grams, with no weight per ball needed", coneCost.yarn === 13.75 && !coneCost.unknown.length, JSON.stringify(coneCost));
+  check(results, "a wishlist price per 100 g starts the yarn as deadstock, at that price", yarnStart(wish("€8,50 / 100 g", "500 g")).price === 8.5 && yarnStart(wish("12.90 per 100g", "")).deadstock === true && yarnStart(wish("12.90 per 100g", "")).price === 12.9 && !yarnStart(wish("€4.95 a ball", "6 balls")).deadstock);
 }
 
 export async function verifyPrices() {
@@ -84,6 +101,7 @@ export async function verifyPrices() {
   const was = { price: pattern.price, addedAt: pattern.addedAt };
   let yarnId = "";
   let otherColour = "";
+  let coneId = "";
   let projectId = "";
 
   try {
@@ -155,6 +173,34 @@ export async function verifyPrices() {
     await invoke("delete_yarn", { id: otherColour });
     otherColour = "";
 
+    // ---------- deadstock and cone yarn: a price per 100 g ----------
+    await addYarn();
+    set('[data-f="name"]', "Cone Check");
+    set('[data-f="gramsPerBall"]', "500");
+    set('.lot-row [data-lf="balls"]', "2");
+    const box = modal()!.querySelector<HTMLInputElement>('[data-f="deadstock"]');
+    check(results, "the yarn form has a deadstock or cone yarn box, not ticked", !!box && !box.checked && /Deadstock or cone yarn/.test(box.closest("label")!.textContent ?? ""));
+    box!.checked = true;
+    box!.dispatchEvent(new Event("input", { bubbles: true }));
+    const label = modal()!.querySelector('[data-el="price-label"]')!.textContent;
+    check(results, "…ticked, the price is said per 100 g", label === "Price per 100 g" && /grams/.test(modal()!.querySelector('[data-el="price-hint"]')!.textContent ?? ""), String(label));
+    set('[data-f="price"]', "8,50");
+    modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
+    await waitFor(() => !!store.yarns.find((y) => y.name === "Cone Check") && !modal(), "the cone yarn added");
+    coneId = store.yarns.find((y) => y.name === "Cone Check")!.id;
+    const cone = (await listed()).find((y) => y.id === coneId)?.details;
+    check(results, "…and kept: deadstock, 8.50 per 100 g", cone?.deadstock === true && cone.price === 8.5, JSON.stringify(cone));
+    await addYarn();
+    set('[data-f="name"]', "Cone Check");
+    const coneLabel = () => modal()!.querySelector('[data-el="price-label"]')!.textContent;
+    await waitFor(() => {
+      modal()!.querySelector('[data-f="name"]')!.dispatchEvent(new Event("change", { bubbles: true }));
+      return priceNow() !== "";
+    }, "the cone yarn known", 3000).catch(() => {});
+    check(results, "…another colour of it starts as deadstock at that price", priceNow() === "8.5" && coneLabel() === "Price per 100 g" && modal()!.querySelector<HTMLInputElement>('[data-f="deadstock"]')!.checked, `${priceNow()} ${coneLabel()}`);
+    modal()!.querySelector<HTMLElement>('[data-act="cancel"]')!.click();
+    await waitFor(() => !modal(), "the form closed");
+
     // ---------- a pattern's price, from its form ----------
     tab("patterns");
     await waitFor(() => !!document.querySelector(".library"), "the library");
@@ -204,6 +250,7 @@ export async function verifyPrices() {
     if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
     if (yarnId) await invoke("delete_yarn", { id: yarnId }).catch(() => {});
     if (otherColour) await invoke("delete_yarn", { id: otherColour }).catch(() => {});
+    if (coneId) await invoke("delete_yarn", { id: coneId }).catch(() => {});
     const kept = store.patterns.find((x) => x.id === pattern.id);
     if (kept) Object.assign(kept, was);
     store.currency = before.currency;

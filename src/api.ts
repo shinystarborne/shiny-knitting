@@ -505,6 +505,8 @@ export interface YarnDetails {
   care: string[];
   /** What a ball costs, in the settings' currency: every colour and lot of the yarn the same. Null when not said. */
   price?: number | null;
+  /** Deadstock or cone yarn, sold by weight: its price is for 100 g, not a ball. */
+  deadstock?: boolean;
 }
 
 export interface YarnLotInput {

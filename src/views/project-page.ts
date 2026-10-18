@@ -412,7 +412,7 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   /**
    * What it cost: its yarn, by what it used or plans to take at the yarn's
-   * price a ball, and its pattern; tools are not counted. Says what has no
+   * price a ball or 100 g, and its pattern; tools are not counted. Says what has no
    * price, and nothing at all when nothing has one.
    */
   private costHtml(): string {
@@ -422,7 +422,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     return `
       <div class="field project-cost-field"><span>Cost</span>
         <p class="project-cost" data-el="cost"><b>${money(c.total, this.currency)}</b>${parts ? ` <span class="hint">${esc(parts)}</span>` : ""}</p>
-        ${c.unknown.length ? `<p class="hint">Not counted, no price a ball or no amount: ${esc(c.unknown.join(", "))}.</p>` : ""}
+        ${c.unknown.length ? `<p class="hint">Not counted, no price or no amount: ${esc(c.unknown.join(", "))}.</p>` : ""}
       </div>`;
   }
 

@@ -2081,7 +2081,7 @@ fn a_yarn_round_trips_every_field() {
             bought_at: Some(1_700_000_000_000),
             ..YarnLotInput::default()
         }],
-        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()], price: Some(6.2) }),
+        details: Some(crate::models::YarnDetails { gauge_sts: 27.0, gauge_rows: 36.0, needle_from: 2.75, needle_to: 3.25, care: vec!["hand-wash".into(), "dry-flat".into()], price: Some(6.2), deadstock: false }),
     };
     let id = uuid::Uuid::new_v4().to_string();
     let y = insert_yarn(&conn, &id, &input).unwrap();
@@ -2171,6 +2171,25 @@ fn a_yarns_price_a_ball_is_the_same_for_every_colour_and_lot() {
     assert_eq!(get_yarn(&conn, "rost").unwrap().details.unwrap().price, None);
     cleared.details = Some(YarnDetails { price: Some(-2.0), ..YarnDetails::default() });
     assert!(update_yarn(&conn, &cleared).is_err());
+}
+
+#[test]
+fn a_deadstock_yarns_price_is_for_100_g_for_every_colour() {
+    use crate::models::YarnDetails;
+    let conn = test_db();
+    let colour = |id: &str, details: Option<YarnDetails>| {
+        insert_yarn(&conn, id, &YarnInput { name: "Cashmere 2/28".into(), brand: "Mill end".into(), details, ..YarnInput::default() }).unwrap()
+    };
+    let cone = colour("ecru", Some(YarnDetails { price: Some(9.5), deadstock: true, ..YarnDetails::default() }));
+    assert_eq!(cone.details.as_ref().map(|d| (d.price, d.deadstock)), Some((Some(9.5), true)));
+    assert!(colour("navy", None).details.unwrap().deadstock, "another colour of it too");
+    // Said with no price yet, it is kept; taken off, the price is a ball's again.
+    let mut unpriced = get_yarn(&conn, "ecru").unwrap();
+    unpriced.details = Some(YarnDetails { deadstock: true, ..YarnDetails::default() });
+    assert!(update_yarn(&conn, &unpriced).unwrap().details.unwrap().deadstock);
+    unpriced.details = Some(YarnDetails::default());
+    assert!(!update_yarn(&conn, &unpriced).unwrap().details.unwrap().deadstock);
+    assert_eq!(conn.query_row("SELECT COUNT(*) FROM yarn_details", [], |r| r.get::<_, i64>(0)).unwrap(), 0, "nothing said, nothing kept");
 }
 
 #[test]

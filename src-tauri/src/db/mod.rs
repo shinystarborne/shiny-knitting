@@ -812,6 +812,10 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         }
         conn.execute("UPDATE yarn_lots SET price = NULL", [])?;
     }
+    // Deadstock or cone yarn: its price is for 100 g.
+    if !column_exists(conn, "yarn_details", "deadstock")? {
+        conn.execute("ALTER TABLE yarn_details ADD COLUMN deadstock INTEGER NOT NULL DEFAULT 0", [])?;
+    }
     if !column_exists(conn, "patterns", "price")? {
         conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
     }
@@ -5250,12 +5254,13 @@ fn details_key(v: &str) -> String {
     v.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// What the ball band says of a yarn, and what a ball of it costs, by its
-/// brand and name; all 0 and no price when nothing is.
+/// What the ball band says of a yarn, and what a ball of it (or 100 g of a
+/// deadstock one) costs, by its brand and name; all 0 and no price when
+/// nothing is.
 pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
     Ok(conn
         .query_row(
-            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock FROM yarn_details WHERE brand = ?1 AND name = ?2",
             params![details_key(brand), details_key(name)],
             |r| {
                 Ok(YarnDetails {
@@ -5265,6 +5270,7 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
                     needle_to: r.get(3)?,
                     care: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
                     price: r.get(5)?,
+                    deadstock: r.get(6)?,
                 })
             },
         )
@@ -5272,7 +5278,7 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
         .unwrap_or_default())
 }
 
-/// Sets what the ball band says of a yarn, and its price a ball, for every
+/// Sets what the ball band says of a yarn, and its price a ball or 100 g, for every
 /// colour of it. A range typed the wrong way round is turned; one size twice
 /// is one size; a price is kept to the cent.
 pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDetails) -> AppResult<()> {
@@ -5301,14 +5307,14 @@ pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDeta
     let (brand, name) = (details_key(brand), details_key(name));
     let (sts, rows) = (tenth(d.gauge_sts), tenth(d.gauge_rows));
     let cost = price(d.price)?;
-    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" && cost.is_none() {
+    if sts == 0.0 && rows == 0.0 && from == 0.0 && to == 0.0 && care == "[]" && cost.is_none() && !d.deadstock {
         conn.execute("DELETE FROM yarn_details WHERE brand = ?1 AND name = ?2", params![brand, name])?;
         return Ok(());
     }
     conn.execute(
-        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care, price) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7, price = ?8",
-        params![brand, name, sts, rows, from, to, care, cost],
+        "INSERT INTO yarn_details (brand, name, gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT (brand, name) DO UPDATE SET gauge_sts = ?3, gauge_rows = ?4, needle_from = ?5, needle_to = ?6, care = ?7, price = ?8, deadstock = ?9",
+        params![brand, name, sts, rows, from, to, care, cost, d.deadstock],
     )?;
     Ok(())
 }

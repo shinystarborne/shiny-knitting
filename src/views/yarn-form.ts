@@ -135,7 +135,7 @@ export class YarnForm {
     // What the band says is the yarn's, whatever its colour.
     if (from?.details) this.details = { ...from.details, care: [...from.details.care] };
     // A price from the wishlist is the one to start with, the yarn's or not.
-    if (this.start?.price != null) this.details = { ...this.details, price: this.start.price };
+    if (this.start?.price != null) this.details = { ...this.details, price: this.start.price, deadstock: !!this.start.deadstock };
   }
 
   open(): void {
@@ -225,11 +225,17 @@ export class YarnForm {
           <div class="care-pick" data-el="care"></div>
           <p class="hint" data-el="details-hint">The gauge to expect, the needles to use, and how to wash it. Kept for every colour of this yarn.</p>
         </div>
-        <label class="field yarn-price">
-          <span>Price a ball</span>
-          <input data-f="price" inputmode="decimal" value="${this.details.price != null ? escapeAttr(String(this.details.price)) : ""}" placeholder="e.g. 4,95" />
-          <em class="hint">The same for every colour and every lot of this yarn, by its brand and name. A lot costs its balls times this.</em>
-        </label>
+        <div class="field yarn-price">
+          <label class="yarn-price-input">
+            <span data-el="price-label">${priceLabel(!!this.details.deadstock)}</span>
+            <input data-f="price" inputmode="decimal" value="${this.details.price != null ? escapeAttr(String(this.details.price)) : ""}" placeholder="e.g. 4,95" />
+          </label>
+          <label class="check deadstock">
+            <input type="checkbox" data-f="deadstock" ${this.details.deadstock ? "checked" : ""} />
+            <span>Deadstock or cone yarn <em class="hint">sold by weight, so its price is for 100 g</em></span>
+          </label>
+          <em class="hint" data-el="price-hint">${priceHint(!!this.details.deadstock)}</em>
+        </div>
         <div class="field">
           <span>Fibre content</span>
           <div class="fibre-list" data-el="fibres"></div>
@@ -433,17 +439,20 @@ export class YarnForm {
     const said = (d?: YarnDetails) => !!d && !!(d.gaugeSts || d.gaugeRows || d.needleFrom || d.care.length);
     const band = same.find((y) => said(y.details))?.details;
     if (band && !said(this.details)) {
-      this.details = { ...band, care: [...band.care], price: this.details.price };
+      this.details = { ...band, care: [...band.care], price: this.details.price, deadstock: this.details.deadstock };
       this.renderDetails();
       this.renderCare();
       filled.push("gauge, needles and care");
     }
-    // Its price a ball: the yarn's, whatever the colour.
-    const priced = same.find((y) => y.details?.price != null)?.details?.price;
+    // Its price, a ball's or 100 g's: the yarn's, whatever the colour.
+    const priced = same.find((y) => y.details?.price != null)?.details;
     const priceInput = this.root.querySelector<HTMLInputElement>('[data-f="price"]');
-    if (priced != null && priceInput && !priceInput.value.trim()) {
-      priceInput.value = String(priced);
-      filled.push("price a ball");
+    if (priced?.price != null && priceInput && !priceInput.value.trim()) {
+      priceInput.value = String(priced.price);
+      const box = this.root.querySelector<HTMLInputElement>('[data-f="deadstock"]');
+      if (box) box.checked = !!priced.deadstock;
+      this.priceUnit(!!priced.deadstock);
+      filled.push(priced.deadstock ? "price per 100 g" : "price a ball");
     }
     // Its fibres and superwash too, when none are typed yet.
     if (this.takeFibresFrom(same)) filled.push("fibres");
@@ -526,7 +535,17 @@ export class YarnForm {
     if (f === "yarnWeight" || f === "metresPerBall" || f === "gramsPerBall") this.weightHint();
     if ((e.target as HTMLElement).closest(".fibre-row")) this.fibreHint();
     if (f === "superwash" || f === "name" || f === "brand" || (e.target as HTMLElement).closest(".fibre-row")) this.shareHint();
+    if (f === "deadstock") this.priceUnit((e.target as HTMLInputElement).checked);
   };
+
+  /** The price said a ball's, or 100 g's for deadstock and cone yarn. */
+  private priceUnit(deadstock: boolean): void {
+    this.details = { ...this.details, deadstock };
+    const label = this.root.querySelector<HTMLElement>('[data-el="price-label"]');
+    const hint = this.root.querySelector<HTMLElement>('[data-el="price-hint"]');
+    if (label) label.textContent = priceLabel(deadstock);
+    if (hint) hint.textContent = priceHint(deadstock);
+  }
 
   /**
    * Says which weight the figures make, and fills the weight in from the ball
@@ -934,7 +953,7 @@ export class YarnForm {
       this.readDetails(true);
       const typed = this.value("price").trim();
       const price = typed ? parsePrice(typed) : null;
-      if (typed && price === null) throw new Error("The price a ball is a number: 4,95 or 4.95.");
+      if (typed && price === null) throw new Error(`The ${priceLabel(!!this.details.deadstock).toLowerCase()} is a number: 4,95 or 4.95.`);
       const shared = {
         // The same brand or yarn typed in another case files with the one
         // already there, so the lists do not fill with near-twins.
@@ -1011,6 +1030,17 @@ export class YarnForm {
     this.root.className = "modal-backdrop hidden";
     this.root.innerHTML = "";
   }
+}
+
+/** What the price is for: a ball, or 100 g of deadstock and cone yarn. */
+function priceLabel(deadstock: boolean): string {
+  return deadstock ? "Price per 100 g" : "Price a ball";
+}
+
+function priceHint(deadstock: boolean): string {
+  return deadstock
+    ? "The same for every colour and every lot of this yarn, by its brand and name. A lot costs its grams at this."
+    : "The same for every colour and every lot of this yarn, by its brand and name. A lot costs its balls times this.";
 }
 
 function emptyLot(): LotRow {
