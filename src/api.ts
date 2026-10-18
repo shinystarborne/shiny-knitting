@@ -378,6 +378,8 @@ export interface UpdateInfo {
   sizeBytes: number;
   /** The release's page, for "What's new"; empty if there is none. */
   pageUrl: string;
+  /** The version it installs: "0.3.112". */
+  version?: string;
 }
 
 /** What a manual "Check for updates" found. */
@@ -1799,4 +1801,8 @@ export const api = {
     invoke<string>("download_update", args),
   /** Runs the installer; the app exits, so this normally never resolves. */
   installUpdate: (args: { path: string }) => invoke<void>("install_update", args),
+  /** The version before this one, to go back to; null when there is none. */
+  previousVersion: () => invoke<UpdateInfo | null>("previous_version"),
+  /** The window has opened: the crash guard's note is taken away (guard.rs). */
+  appStarted: () => invoke<void>("app_started"),
 };

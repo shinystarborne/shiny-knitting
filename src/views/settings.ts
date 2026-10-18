@@ -93,6 +93,7 @@ export class SettingsDialog {
 
         <div class="model-row">
           <button class="ghost" data-act="check-updates">Check for updates</button>
+          <button class="ghost" data-act="go-back" title="Something wrong since the last update? The version before is installed in its place; your library is kept">Go back to the previous version…</button>
         </div>
         <em class="hint block" data-el="update-result"></em>
 
@@ -381,6 +382,7 @@ export class SettingsDialog {
       if (act === "test") void this.test(btn as HTMLButtonElement);
       if (act === "check-updates") void this.checkUpdates(btn as HTMLButtonElement);
       if (act === "download-update") void this.downloadUpdate(btn as HTMLButtonElement);
+      if (act === "go-back") void this.goBack(btn as HTMLButtonElement);
       if (act === "backup") void this.backup(btn as HTMLButtonElement);
       if (act === "restore") void this.restore();
     });
@@ -577,6 +579,38 @@ export class SettingsDialog {
       // Show the reason and offer the download again, as it was.
       result.textContent = `${message(err)} `;
       result.appendChild(this.downloadButton());
+    }
+  }
+
+  /**
+   * Goes back to the version before this one: found among the releases,
+   * asked about, downloaded and installed in place, the app opening again.
+   * The library is kept: only the app changes.
+   */
+  private async goBack(button: HTMLButtonElement): Promise<void> {
+    const result = this.root.querySelector('[data-el="update-result"]') as HTMLElement;
+    button.disabled = true;
+    result.textContent = "Looking for the version before this one…";
+    try {
+      const before = await api.previousVersion();
+      if (!before) {
+        result.textContent = "There is no earlier version to go back to.";
+        return;
+      }
+      result.textContent = "";
+      const ok = await askYesNo(
+        `Go back to version ${before.version || before.tag}? It is downloaded and installed in place of this one, and the app opens again.\n\nYour patterns, projects, stash and everything else are kept: only the app changes. Turn off the automatic update check if you want to stay on it.`,
+        { title: "Go back to the previous version", okLabel: "Go back" },
+      );
+      if (!ok) return;
+      result.textContent = `Downloading ${before.version || before.tag}…`;
+      const path = await api.downloadUpdate({ assetApiUrl: before.assetApiUrl, fileName: before.assetName });
+      await api.installUpdate({ path });
+      result.textContent = "Starting the installer…";
+    } catch (err) {
+      result.textContent = `Could not go back: ${message(err)}`;
+    } finally {
+      button.disabled = false;
     }
   }
 

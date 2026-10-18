@@ -11,6 +11,7 @@ mod db;
 mod export;
 mod external;
 mod goals;
+mod guard;
 mod link_preview;
 mod masterclasses;
 mod models;
@@ -44,6 +45,9 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
+
+            // A version that did not open last time is asked about first.
+            guard::on_start(&base);
 
             let library_dir = base.join("library");
             std::fs::create_dir_all(&library_dir)?;
@@ -161,6 +165,8 @@ pub fn run() {
             goals::save_goal,
             goals::set_goal_done,
             goals::remove_goal,
+            guard::app_started,
+            update::previous_version,
             projects::list_gallery_photos,
             projects::set_project_gallery,
             projects::set_project_size,

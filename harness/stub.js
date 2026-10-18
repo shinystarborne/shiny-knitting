@@ -3170,6 +3170,12 @@ const handlers = {
   install_update: ({ path }) => {
     window.__installedUpdate = path;
   },
+  // As update.rs: the version before this one (store.previousVersion; none by default).
+  previous_version: () => clone(store.previousVersion ?? null),
+  // As guard.rs: the window says it opened.
+  app_started: () => {
+    store.appStarted = (store.appStarted ?? 0) + 1;
+  },
 
   // ---------- bulk add ----------
   //

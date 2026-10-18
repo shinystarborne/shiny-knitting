@@ -948,6 +948,8 @@ const root = document.getElementById("app");
 if (root) {
   const app = new App(root);
   void app.start();
+  // Opened: the crash guard need not ask about going back next time.
+  void api.appStarted().catch(() => {});
   // Test hook for the browser harness, so the startup update check can be
   // re-run after a release is seeded (it normally fires once, at boot).
   (window as unknown as Record<string, unknown>).__runStartupUpdateCheck = () =>

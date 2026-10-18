@@ -71,6 +71,8 @@ pub struct UpdateInfo {
     pub size_bytes: u64,
     /// The release's page on GitHub, for "What's new"; empty if it has none.
     pub page_url: String,
+    /// The version it installs ("0.3.112"), from its installer's name.
+    pub version: String,
 }
 
 /// What a manual check found.
@@ -220,7 +222,21 @@ fn build_info(release: &Value) -> Option<UpdateInfo> {
             .filter(|u| u.starts_with("https://github.com/"))
             .unwrap_or_default()
             .to_string(),
+        version: release_version(release).map(|v| v.to_string()).unwrap_or_default(),
     })
+}
+
+/// The release just before `current`: the newest older than it, betas
+/// counted (the version an update came from may well have been one). None
+/// when there is none to go back to.
+fn pick_previous(releases: &[Value], current: &Version) -> Option<UpdateInfo> {
+    releases
+        .iter()
+        .filter(|r| !r["draft"].as_bool().unwrap_or(false))
+        .filter_map(|r| release_version(r).map(|v| (v, r)))
+        .filter(|(v, _)| v < current)
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .and_then(|(_, release)| build_info(release))
 }
 
 /// The installer asset of a release: the NSIS `-setup.exe` (per-user, no
@@ -241,6 +257,46 @@ fn pick_asset(release: &Value) -> Option<(String, String, u64)> {
         asset["url"].as_str()?.to_string(),
         asset["size"].as_u64().unwrap_or(0),
     ))
+}
+
+/// The releases feed, newest first.
+async fn fetch_releases() -> CmdResult<Vec<Value>> {
+    let client = client().map_err(|e| AppError::Message(format!("could not check for updates: {e}")))?;
+    let response = client
+        .get(RELEASES_URL)
+        .send()
+        .await
+        .map_err(|e| AppError::Message(format!("could not reach the releases: {e}")))?;
+    if response.status().as_u16() == 404 {
+        return Err(AppError::Message("releases could not be reached".into()));
+    }
+    response
+        .error_for_status()
+        .map_err(|e| AppError::Message(format!("could not reach the releases: {e}")))?
+        .json()
+        .await
+        .map_err(|e| AppError::Message(format!("could not read the releases: {e}")))
+}
+
+/// The version before this one, to go back to; none when there is none.
+#[tauri::command]
+pub async fn previous_version() -> CmdResult<Option<UpdateInfo>> {
+    let current = Version::parse(env!("CARGO_PKG_VERSION")).map_err(|e| AppError::Message(e.to_string()))?;
+    Ok(pick_previous(&fetch_releases().await?, &current))
+}
+
+/// Going back, without the window: the version before found, downloaded, and
+/// its installer started. The caller then ends the app for it.
+pub fn go_back_now() -> Result<(), String> {
+    tauri::async_runtime::block_on(async {
+        let previous = previous_version().await.map_err(|e| e.to_string())?.ok_or("there is no earlier version to go back to")?;
+        let path = download_to_temp(&previous.asset_api_url, &previous.asset_name).await.map_err(|e| e.to_string())?;
+        std::process::Command::new(&path)
+            .args(UPDATE_INSTALLER_ARGS)
+            .spawn()
+            .map_err(|e| format!("could not start the installer: {e}"))?;
+        Ok(())
+    })
 }
 
 async fn run_check(include_beta: bool) -> CmdResult<UpdateOutcome> {
@@ -330,13 +386,18 @@ pub async fn startup_update_check(state: State<'_, AppState>) -> CmdResult<Start
 
 #[tauri::command]
 pub async fn download_update(asset_api_url: String, file_name: String) -> CmdResult<String> {
+    Ok(download_to_temp(&asset_api_url, &file_name).await?.to_string_lossy().into_owned())
+}
+
+/// Downloads a release's installer into the temp folder; where it went.
+async fn download_to_temp(asset_api_url: &str, file_name: &str) -> CmdResult<PathBuf> {
     let err = |e: &dyn std::fmt::Display| {
         AppError::Message(format!("could not download the update: {e}"))
     };
 
     let client = client().map_err(|e| AppError::Message(format!("could not download the update: {e}")))?;
     let mut response = client
-        .get(&asset_api_url)
+        .get(asset_api_url)
         // Asking the API URL for octet-stream serves the asset bytes
         // directly instead of the JSON description.
         .header(reqwest::header::ACCEPT, "application/octet-stream")
@@ -360,7 +421,7 @@ pub async fn download_update(asset_api_url: String, file_name: String) -> CmdRes
     while let Some(chunk) = response.chunk().await.map_err(|e| err(&e))? {
         file.write_all(&chunk).map_err(|e| err(&e))?;
     }
-    Ok(path.to_string_lossy().into_owned())
+    Ok(path)
 }
 
 /// Guards `install_update`: only the installer this app downloaded may be
@@ -492,6 +553,19 @@ mod tests {
         let picked = pick_release(&releases, true, &current).expect("beta update");
         assert_eq!(picked.tag, "v0.4.0-beta.1");
         assert!(picked.prerelease);
+    }
+
+    #[test]
+    fn the_version_before_is_the_newest_older_one_betas_and_all() {
+        let feed = vec![
+            release("v1.0.0", false, false, vec![asset("Shiny.Knitting_1.0.0_x64-setup.exe", 5)]),
+            release("v0.3.0-beta.112", true, false, vec![asset("Shiny.Knitting_0.3.112_x64-setup.exe", 5)]),
+            release("v0.3.0-beta.111", true, false, vec![asset("Shiny.Knitting_0.3.111_x64-setup.exe", 5)]),
+            release("v0.3.0-beta.113", true, true, vec![asset("Shiny.Knitting_0.3.113_x64-setup.exe", 5)]),
+        ];
+        let before = pick_previous(&feed, &Version::parse("1.0.0").unwrap()).unwrap();
+        assert_eq!((before.version.as_str(), before.tag.as_str()), ("0.3.112", "v0.3.0-beta.112"), "a draft is never gone back to");
+        assert!(pick_previous(&feed, &Version::parse("0.3.111").unwrap()).is_none(), "nothing older to go back to");
     }
 
     #[test]
