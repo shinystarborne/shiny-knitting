@@ -4222,3 +4222,10 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .goal-pace { font-size: 12px; color: var(--text-dim); }
 .goal.reached .goal-pace { color: var(--ok); font-weight: 600; }
 .goals-none { margin: 0; }
+
+/* A garment's measurements, the drawing of the one being typed beside them. */
+.calc-measure { display: flex; gap: 14px; align-items: flex-start; }
+.calc-measure .calc-fields { flex: 1; min-width: 0; }
+.calc-how { flex: none; width: 150px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; }
+.calc-how .hint { margin: 0; font-size: 11px; text-align: center; }
+@media (max-width: 700px) { .calc-measure { flex-direction: column; } .calc-how { width: auto; } }

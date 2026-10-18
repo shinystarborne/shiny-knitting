@@ -149,7 +149,7 @@ export async function verifySocks() {
     document.querySelector<HTMLInputElement>('input[data-key="foot_around"]')!.focus();
     check(results, "…and typing around the foot draws it, saying how", !!how()!.querySelector("svg.measure-figure") && /widest part of the foot, just behind the toes/.test(how()!.textContent ?? ""), how()!.textContent ?? "");
     document.querySelector<HTMLElement>('[data-how="chest"]')!.click();
-    check(results, "…a measurement with no drawing says how in words", /Chest/.test(how()!.textContent ?? "") && !how()!.querySelector("svg") && /fullest part of the chest/.test(how()!.textContent ?? ""), how()!.textContent ?? "");
+    check(results, "…the chest drawn too, saying how in words", /Chest/.test(how()!.textContent ?? "") && how()!.querySelector("svg")?.getAttribute("data-figure") === "chest" && /fullest part of the chest/.test(how()!.textContent ?? ""), how()!.textContent ?? "");
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

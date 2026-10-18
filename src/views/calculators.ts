@@ -48,6 +48,8 @@ const RAGLAN_FIELDS: { key: keyof RaglanInput; label: string; hint?: string; fro
   { key: "armLength", label: "Arm length", hint: "Underarm to wrist, cuff included", from: "arm_length" },
   { key: "bodyLength", label: "Body length", hint: "Underarm to hem, hem rib included", start: 35 },
 ];
+/** The drawing of how each of a garment's measurements is taken (measure-figures.ts). */
+const GARMENT_FIGURES: Record<string, string> = { chest: "chest", upperArm: "upper_arm", wrist: "wrist", neck: "neck", yokeDepth: "armhole_depth", armLength: "arm_length", bodyLength: "body_length" };
 /** The socks' fields a person's measurements fill. */
 const SOCK_FIELDS: { key: string; label: string; hint?: string; from?: string; start?: number }[] = [
   { key: "footAround", label: "Around the foot", hint: "A tape round the widest part of the foot, just behind the toes", from: "foot_around" },
@@ -189,6 +191,15 @@ export class CalculatorsView {
     this.root.addEventListener("click", (e) => void this.onClick(e));
     this.root.addEventListener("input", (e) => this.onInput(e));
     this.root.addEventListener("change", (e) => this.onChange(e));
+    // How to take the measurement being typed: its drawing beside the fields.
+    this.root.addEventListener("focusin", (e) => {
+      const key = (e.target as HTMLElement).dataset?.k;
+      const box = this.root.querySelector<HTMLElement>('[data-el="calc-how"]');
+      if (box && key && GARMENT_FIGURES[key] && box.dataset.key !== key) {
+        box.dataset.key = key;
+        box.innerHTML = howToMeasure(GARMENT_FIGURES[key]);
+      }
+    });
     this.show(kept.calc);
   }
 
@@ -308,7 +319,10 @@ export class CalculatorsView {
           <p class="hint calc-person-note" data-el="person-note">${esc(this.personNote())}</p>
           ${this.gaugeBlock()}
           <h3>Measurements</h3>
-          <div class="calc-fields">${fields.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+          <div class="calc-measure">
+            <div class="calc-fields">${fields.map((f) => this.lengthField(f.key, f.label, f.hint, f.start)).join("")}</div>
+            <aside class="calc-how" data-el="calc-how" aria-live="polite">${howToMeasure("chest")}</aside>
+          </div>
           <div class="calc-person-save">
             <button class="ghost" data-act="save-measurements" title="Keep these measurements in People, dated today: for the person chosen, or someone new">Save to People…</button>
             <span class="hint" data-el="people-saved"></span>
@@ -1275,4 +1289,9 @@ function table(rows: (string | number)[][], head?: string[]): string {
 
 function esc(v: string): string {
   return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** A garment measurement's drawing, and how it is taken. */
+function howToMeasure(figure: string): string {
+  return `${measureFigure(figure, 150)}<p class="hint">${esc(figureCaption(figure))}</p>`;
 }

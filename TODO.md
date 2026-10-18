@@ -19,15 +19,8 @@ released as a beta, then moved to Already built. **Decide first** means an
 open question to settle before starting; the details are in the sections
 under the list.
 
-**Asked for 17 Oct 2026**
-
-- [ ] **Every People measurement drawn**, as the foot's are. See below.
-
-### Every measurement drawn
-
-Drawings for People's other measurements, as the foot's are: a simple
-figure, the tape or the line marked, beside the table and in the
-calculators.
+Nothing on it now: everything asked for on 17 Oct 2026 is built (betas
+100 to 106).
 
 ---
 
@@ -141,6 +134,11 @@ calculators.
   plainly (Around the foot, Foot length) and drawn beside their fields
   (measure-figures.ts); in People, how to take the measurement being typed,
   beside the table. *0.3.92*
+- **Every measurement drawn:** each People measurement (measure-figures.ts):
+  a figure standing, with the tape round (whole in front, dashed behind) or
+  a line with tips; a head, a hand, the foot. Beside People's table as
+  before, and beside the raglan's and yoke's measurements (calc-how, the
+  one being typed; the body's length too). *0.3.106*
 - **Yearly goals:** at the top of Statistics (views/goals.ts; goals table,
   goals.rs): projects finished that year, grams or metres used that year
   (yarn_usage: finished projects and yarn marked used up), or your own,
