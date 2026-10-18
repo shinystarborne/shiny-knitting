@@ -39,3 +39,8 @@ Thumbs.db
 desktop.ini
 
 *.log
+
+# Our own notes: the work list and the developer's guide. Kept on our
+# computers, not published.
+/TODO.md
+/docs/DEVELOPMENT.md

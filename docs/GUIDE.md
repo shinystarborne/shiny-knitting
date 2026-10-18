@@ -1,0 +1,897 @@
+# Shiny Knitting: the full guide
+
+Everything the app does, tab by tab, in detail. For a quick overview, see the
+[README](../README.md).
+
+## Where your data lives
+
+Everything is under `%APPDATA%\com.shiny.knittingapp`:
+
+```
+library.db        SQLite database: metadata, notes, counters, highlight settings
+library/originals/  your imported PDF and EPUB files
+```
+
+Back up that one folder and you have backed up the whole app.
+
+## Using it
+
+**Adding a pattern.** "Add pattern", then drop a PDF/EPUB onto the box or press
+**Browse for a file…**. The title is pre-filled from the filename; edit it and
+fill in designer, tags, and needle size while you are there. Browse hands the
+app a path and the file is copied on the Rust side; a dropped file has no path,
+so its contents travel across raw, as bytes, and are written off the main
+thread.
+
+**Patterns and Books.** The library has two shelves, switched at its top:
+**Patterns**, the single ones, and **Books**, everything tagged `book`. Adding
+a tag moves a pattern between them, and the shelf you were on is remembered.
+Added from Books, a file is tagged `book` from the start.
+
+**Add folder…** adds a whole folder at once: every PDF and EPUB under it,
+subfolders included, is copied in with its title taken from the file name. A
+progress panel lists each file as it lands and can be stopped partway; anything
+already added stays. Files already in the library are skipped — duplicates are
+recognised by content, not name — and the panel ends with a count of what was
+added, skipped, and could not be read.
+
+**Finding a pattern.** Every card is the same size; a wider window fits more of
+them to a row rather than stretching them. The left sidebar filters. Status, difficulty, designer,
+needle size, and yarn weight are checkboxes; tags are buttons you can combine.
+The search box covers title, designer, notes, and tags.
+
+**Needle size** filters on the sizes a pattern actually uses, in millimetres,
+however it was written: "3.5mm / US 4", "US 6", "US size 8", "US H-8" (hooks by
+their letter), "4 and 5", or a range like "3.5–4 mm". The text stays on the card
+as written; the filter lists each size once with a count, smallest first, and
+ticking two means either. **Settings → Needle sizes** spells them in the sidebar
+as Metric (4 mm), US (US 6) or Both. A UK size or a bare number with no system
+named is not guessed at beyond the obvious, so an old pattern written in old
+UK numbers is best corrected to millimetres in its details.
+
+**Designers and tags** show the most used first, with their counts: the ten
+most used designers and twenty most used tags, plus any you have ticked. A
+search field above each finds the rest as you type, and **Show all…** opens the
+whole list in a dialog — searchable, most used or A–Z — where ticking one filters
+the library straight away.
+
+A large library stays quick: cards are drawn a page at a time as the grid is
+scrolled, and a cover is read only when its card is about to come into view.
+The stash, needles, projects and inspiration boards work the same way.
+
+**Want to knit.** A pattern starts with no status. Mark the ones you plan to
+knit soon with **☆ Want to knit** on the card (click again to take it off), and
+the **Want to knit** filter lists just those. Libraries from before this have
+the old automatic "Want to knit" cleared once, on the first start, so the list
+means something; In progress, Finished and Abandoned are left as they were.
+
+**⋯ on a card** sets the status without opening the pattern — No status, Want
+to knit, In progress, Finished or Abandoned, with or without a project — and
+opens **Tags…** (add with Enter or a comma, the tags you already use offered as
+you type), **Details…**, **Cover…** and **Start a project…**. A pattern goes
+**In progress** by itself when a project is started from it or an active
+project is given it; patterns that already had an active project catch up once.
+
+**Yarn weight** filters on the standard weight scale — Lace, Fingering, Sport,
+DK, Worsted, Aran, Bulky, Chunky, Super chunky, Jumbo — lightest first, with a
+count beside each. A pattern states its weight however the designer liked, so
+anything from "DK", "8 ply" and "4-ply worsted" through to a bare "100 m/100g", or a cone's "2/28", is read
+into the right family. A name always wins over a figure; a figure with no
+recognisable unit is left alone rather than guessed at, and a weight nothing
+matches is still shown on the card as written. Families you own nothing in are
+dimmed rather than hidden, since they still answer "could I knit this in
+something I have?".
+
+**A file gone missing.** A pattern whose file was moved or deleted outside the
+app says **File missing** on its card, and opening it explains rather than
+showing an empty reader. **Find it…** asks where the file is now and copies
+it back into the library; everything else of the pattern — marks, counters,
+notes, projects — was kept all along.
+
+**Removing a pattern.** Every card has a **Remove** button. It takes the
+pattern out of the library at once, asking nothing, because nothing is lost
+yet: a notice at the foot of the screen has **Undo** for a few seconds, and the
+pattern waits in the **Bin** — the library's **Bin (n)** button — with its
+file, cover, marks and counters, for 30 days. There it can be restored as it
+was, or deleted for good; **Empty the bin** deletes them all. After 30 days it
+is deleted for good by itself. Adding the same file again brings it back from
+the Bin.
+
+**Duplicates…** in the toolbar finds patterns that are in the library more
+than once: identical files, and patterns with the same title (a download's
+"(1)" or "copy", case and punctuation ignored) by the same designer or with
+one of them unnamed. Each group suggests which to keep — the copy with the most
+attached to it: projects, then highlights and pins, rows counted, notes, the
+one read last. The extra copies of identical files are ticked for removal from
+the start; in a same-name group nothing is, since those may be different
+versions or languages. Removing folds each copy into the one kept first: its
+projects and board cards move across, its tags are added, and a status, notes,
+designer, needle size or yarn weight the kept one lacks are taken from it. Its
+highlights, pins and counters go with it.
+
+## Needles & hooks
+
+The **Needles & hooks** tab is everything in your needle box, and what each
+thing is on. A card shows the size big, what it is, its lengths, the brand and
+material, and either **Free** (green edge) or the project it is on (red edge).
+
+**What can be recorded.** Straight needles, fixed circulars, double-pointed
+sets, interchangeable tips, interchangeable cables, and crochet hooks. Each
+kind asks only for what it has:
+
+| Kind | Size | Length | Cable length | Cable size |
+| --- | :-: | :-: | :-: | :-: |
+| Straight, double-pointed, crochet hook | ✓ | ✓ | | |
+| Circular (fixed) | ✓ | | ✓ | |
+| Interchangeable tips | ✓ | ✓ | | ✓ |
+| Interchangeable cable | | | ✓ | ✓ |
+
+Cable size is the connector — **mini, small, standard or large** — which is
+what decides which tips fit which cables. A circular's cable length is the
+length as sold, tip to tip. Every tool also has a brand, a material and notes.
+A double-pointed set is one entry.
+
+**Brand and material** are typed, or picked: **▾** lists the brands already in
+your box, and the materials (metal, aluminium, steel, copper, bamboo, wood,
+carbon, plastic, plus any you have typed before). Typing narrows the list;
+anything not on it — casein, rosewood — is kept as typed and gets its own
+filter box. A brand typed in another case ("chiaogoo") is filed under the
+spelling you already use.
+
+**Adding a set.** Type several sizes into Size — `2.75, 3, 3.25, 3.5, 4` — and
+**Add** makes one entry per size, sharing the kind, length, brand, material and
+notes; the button says how many ("Add 5") before anything is added. A comma
+between digits with nothing else around it (`3,5`) is read as a decimal comma,
+so `3,5` is 3.5 mm. When a set's tips change connector partway — ChiaoGoo's are
+small up to 5 mm and large from 5.5 mm — choose **Changes with size…** under
+Cable size and say where each connector starts ("From 5.5 mm: Large"; **+ Add a
+change** for a third). Each size is stored with its own. A set is added free: its sizes do not share a project, so
+"In use for" is hidden while one is typed, and each size goes onto its own
+project afterwards.
+
+**Adding a run of them.** **Save and add another** keeps the form filled in, so
+needles that differ by more than the size are still quick to enter.
+
+**What it is on.** A tool is in use while an active **project** has it (see
+[Projects](#projects)). *In use for* in the form puts it on one; its card shows
+the project, and the project's name opens it. **Free it** on the card takes a
+tool off its project.
+
+**Filters.** **Free** shows only what is not on a project. There are also
+**In use**, kind, size, material, cable size and brand. Boxes in one group widen
+the list (4 mm *or* 4.5 mm); different groups narrow it (4 mm *and* free). The
+search box matches size ("4mm"), brand, kind, material, project and notes.
+
+## Projects
+
+The **Projects** tab is everything being knitted, and everything finished. A
+project has a name, optionally a pattern from your library (a pattern can be
+knitted more than once), a start date, notes — and the needles, hooks, cables
+and yarn it is made with. **What is on an active project is what is in use**:
+the Needles & hooks tab and the stash both say so, and filter on it.
+
+**Starting one.** **+ New project** on the tab, or **+ Start a project** in the
+side pane of an open pattern, which fills the pattern in. Choose its needles
+and yarn there: free ones first, then those on another project, which are moved
+over. A yarn bought in more than one dye lot asks which lot, since that is the
+one knitted from and the one its leftover goes back to. Left without a name, a
+project takes its pattern's.
+
+**A project's page.** Opening a project — from its card, a needle's card, or
+the name in a pattern's side pane — goes to its own page. Down the side: a
+**cover** (click the box and paste a picture with `Ctrl`+`V`, drop one on it, or
+choose one), the name, the pattern, **Started** and **Finished** dates (the
+finished date can be corrected once it is finished), its needles and yarn, and
+notes. Everything there saves as it is changed.
+
+The rest of the page is the project's **board**, an endless surface to gather
+what it is made of and what it should look like, as on a Miro board:
+
+- **Note** — a sticky note, in five colours; double-click to write
+- **Text** — words on the board itself, for headings
+- **Link** — a web address, opened in your browser
+- **Picture** — chosen, pasted with `Ctrl`+`V`, or dropped from a folder;
+  **✂ Crop**, on it as it is pointed at or selected (or `C`), crops it: drag
+  a box over the part to keep, and the picture takes the new shape. A pin
+  from the pattern crops the same way.
+- **Pattern**, **Yarn**, **Needle** — cards for things already in the app,
+  this project's own listed first; a pattern's card opens it
+- **Colour** — a swatch, with a name; double-click to change the colour
+
+Drag the board to move around, scroll to pan, `Ctrl`+scroll to zoom; **Fit**
+shows everything. Drag an item to move it and its corner to resize it (a picture
+keeps its shape unless `Shift` is held); `Delete` removes the one selected, after
+asking. Pasting a web address makes a link and pasting words makes a note. New
+things go into free space near the middle of the view, and the board remembers
+where it was looked at.
+
+**The pattern beside the board.** A project's page opens with its pattern in a
+pane beside its board — the whole reader, with marks, pins, zoom and the row
+line — so it can be followed while the board is in view; **📄 Show the pattern
+here** brings it back once closed. Drag the pane's left edge to make it wider or narrower; **–** minimises
+it to a tab on the right edge, which brings it back where it was; **×** closes
+it, and **Open full ↗** opens it on its own. The page remembers how it was
+left, and how wide.
+
+**Row counter.** Counting is done on a project's page: it has its own row
+counter, and the pattern beside the board counts for it with the highlight line.
+A pattern opened from the library is for reading and marking, with no counter
+and no line. Each project counts its own rows: two pairs of socks from one
+pattern keep their counts apart. A project's counter starts from the pattern's
+counters, their names and targets; the first project on the needles to count
+takes the pattern's counts as they were, and any other starts from nothing.
+The count keys (J and K unless you chose others) and each counter's own key
+work anywhere on the page except while typing, in the pattern beside the board
+too.
+
+**Saved as you go.** The name and notes save a moment after typing stops, and
+a note on the board does too, so opening another tab straight away loses
+nothing.
+
+**While knitting.** An open pattern's side pane shows its project at the top —
+what is on it, and **Needles, yarn, finish…** to change any of it.
+
+**Status.** A project is **Active**, **Paused**, **Finished** or **Frogged**, set
+on its page. Paused keeps its needles and yarn in use — the knitting is still on
+them — and they can still be changed. Frogging asks first, then frees them as
+finishing does, keeping them listed as a record, and its yarn is simply back in
+the stash. A frogged project can be started again: it gets back what it had,
+except a needle that has gone onto another project since. The Projects tab
+filters by all four.
+
+**Finishing.** **Finish project…** releases every needle, hook and cable back to
+free, and asks what each yarn used: **g used**, **balls used** (a ball is the
+yarn's weight per ball, so 1 of 2 balls leaves one), or **g left** if you
+weighed it. Each row starts with what the project was to take, and says what
+it held and what will be left as you type ("50 g before (2 whole balls) → 25 g
+left"). What is left becomes what the lot holds, with a **Leftover** tag in the
+stash; nothing left is used up; left empty, the stash stays as it was. What it
+used goes into the stash's Statistics. It also offers to mark the pattern
+Finished. A finished project keeps the list of what it used and what was left,
+as a record.
+
+**The gallery.** The Projects tab switches between **Projects**, **Plans** and
+**Gallery**. Every finished project is in the gallery by itself, newest first,
+shown by its photos: its cover and the photos in its log. Opened, it shows them
+big, one at a time (the arrow keys go through them), beside its pattern, yarn,
+needles and hooks, dates, who it was for, notes and log. **Choose photos**
+leaves some out; **Hide from the gallery** takes the whole project out, and
+**Show hidden** brings the hidden ones back to show again.
+
+**The log.** A project's page switches between its **Board** and its **Log**,
+a diary of the knitting, the newest first, a day at a time. Type what happened
+— what you changed in the pattern, where you stopped, how the yarn behaves —
+and **Add to log** (or `Ctrl`+`Enter`) dates it by itself; a photo can go with
+it, or be an entry on its own (pasted, dropped or chosen; click it to see it
+bigger). The project writes its own milestones as they happen: started,
+paused, back on the needles, frogged, started again, a new pattern, finished.
+Any entry can be changed — its words, its day and time, its photo — or
+removed, and a photo cropped with **Crop**. A finished project keeps its log as its record.
+
+The log can be on the board too: **📓 Log** in the board's toolbar adds a card
+that shows it, the newest first with its photos, and keeps up with it. Write in
+the card's field and Enter adds to the log, with a photo if you like: 📷
+chooses one, `Ctrl`+`V` while writing pastes one, or drop one on the card (it
+waits, as a thumbnail, for the words to go with it; several dropped are an
+entry each). Each photo on the card has its own **✂ Crop**. Its entries scroll inside the card,
+which moves by its header; **Open ↗** (or a double-click) shows the whole log.
+One card is enough, and only a project's board has one.
+
+**Removing** a project frees what is on it; the needles and yarn stay, and its
+log goes with it. Removing a pattern keeps its projects, without the pattern.
+
+## Inspiration
+
+The **Inspiration** tab holds boards of their own, not tied to a project: a
+colour scheme, a shape of cardigan, next winter's hats. **+ New board** asks
+for its name and opens it. A board works like a project's — notes, text, links,
+pictures pasted with `Ctrl`+`V` or dropped from anywhere, patterns from the
+library, yarn from the stash, and colour swatches — and everything on it,
+including its name, saves as it changes. Each board's card shows a few of its
+pictures and its colours, newest first, and the boards changed most recently
+come first. Removing a board removes what is on it; the patterns and yarn on it
+stay where they are.
+
+## Gauge swatches
+
+The **Stash** tab switches between its **Yarn** and its **Swatches**. A swatch
+records what it was knitted in — a yarn from the stash, or one typed in, for a
+friend's yarn or one long used up — and on (a needle from Needles & hooks, or
+just a size), its stitch pattern, and its stitches and rows counted over
+10 × 10 cm in the middle, before and after blocking, with a photo (pasted,
+dropped or chosen), the date, a project and notes. Counts are kept per 10 cm;
+with inches chosen in Settings they are shown and typed over 4 × 4 in. A
+swatch is known by its blocked gauge, as the calculators will use it; the count
+before blocking is optional, and with both the form and the card say what
+blocking did ("7% wider, 5% longer"), which some yarns — deadstock, cones —
+do a lot of. One counted only before blocking says **Not blocked yet**.
+
+A yarn's card says it was swatched ("Swatched: 22 sts × 30 rows on 4 mm", its
+newest), and its form lists its swatches, with **+ Add a swatch** starting one
+in that yarn. A swatch's form shows the yarn it was knitted in, with **Open the
+yarn**. Removing a yarn keeps its swatches, which still say what they were
+knitted in.
+
+## People
+
+The **People** tab is the people you knit for. **+ Add a person** asks for a
+name and opens their page: notes down the side (colours they like, fibres they
+cannot wear), the projects for them, and a table of their measurements, a row
+for each and a column for each time they were measured, the newest first.
+
+The rows are a standard set, each saying how to take it when pointed at —
+height, chest, waist, hips, neck, shoulder width, upper arm, wrist, arm
+length, armhole depth, back length, head, hand, foot length and around — then
+any of their own (**+ Add a measurement of their own**: thumb length, calf),
+and a shoe size. **+ Measure again** adds a column dated today, with the last
+values as a guide, and older ones are kept, because children grow: each newer
+value says how much it changed since. Everything saves as it is typed; Enter
+moves down the column.
+
+Measurements are kept in centimetres and shown in centimetres or inches, as
+chosen in **Settings → Measurements**; a figure typed with its unit (`36 in`,
+`91 cm`) is read as that either way.
+
+A project's page has **For**, which says who it is for and shows their latest
+measurements under it, with a way to their page.
+
+## Calculators
+
+The **Calculators** tab does the sums. Each works out as it is typed, in
+centimetres or inches as Settings says, and remembers what was typed while the
+app is open. A gauge comes from one of your swatches (its blocked gauge) or is
+typed in.
+
+- **Raglan sweater**, top-down in the round. Pick someone from People to fill
+  in their chest, upper arm, wrist, neck, armhole depth and arm length; give the
+  body length and a fit (fitted, classic, relaxed, oversized), and adjust any
+  ease. Out come the numbers — cast-on, the split at the raglan lines, the
+  increase rounds and how they are spaced in the yoke's depth, the pieces at
+  the underarm, the body, the sleeve from upper arm to wrist, and what it all
+  measures — and the steps in words. When the body and sleeves need different
+  numbers of increase rounds, or the yoke is too shallow for them, it says so.
+  **Worked bottom-up** turns it round: the sleeves from the cuff and the body
+  from the hem, the underarms put on hold, all joined for the yoke and
+  decreased to the neck, the underarms grafted at the end — the same counts,
+  met in the other order. **Flat, as a cardigan** works it in rows from the
+  neck, open at the front: give the front band's width and the number of
+  buttons, and the fronts come out each half the front less half a band, the
+  increases on right-side rows, the body flat and the sleeves in the round,
+  and the bands picked up along the fronts at the end — the buttonholes
+  spaced evenly on one — with the neckband round the top. **Back neck raised
+  by** (0 for none, about 2 cm is usual) adds German short rows across the
+  back, so the neck sits higher behind than in front: the pairs worked out
+  from the row gauge, each turning a little further into the sleeves and
+  stopping short of the front's middle — straight after the set-up top-down,
+  just before the neckband bottom-up, and the same in the round yoke.
+  **Rib** (1x1, 2x2, or any count) fits the counts to it: the hem and cuffs
+  a whole number of repeats, the neck too (a raglan's comes out so by itself;
+  a round yoke's fits the rib and the colourwork's repeat both, or, where
+  they would only meet in a big step, the neckband is cast on for the rib and
+  one round after it makes the yoke's count), and a cardigan's flat rib —
+  hem, bands and neckband — half a repeat more, so each row begins and ends
+  alike, the body made the hem's count on the row before it.
+- **Round yoke (lopapeysa)**, top-down in the round, from the same measurements
+  (its yoke depth filled in as the armhole depth + 2 cm, since a round yoke
+  covers the shoulders). Three increase rounds, or up to six for a rounder yoke,
+  each growing it by the same fraction and spaced as in Elizabeth Zimmermann's
+  percentage system; give the colourwork's repeat and every count fits it, with
+  one small round at the underarm to split evenly. Each increase round is
+  written out (`*K3, M1* 6 times, *K2, M1* 54 times`), then the split, body and
+  sleeves as for the raglan.
+- **Stitches for a size**: the stitches for a width, fitted to a stitch
+  pattern's repeat (a multiple of 4 plus 2), and the rows for a length, with
+  what they actually measure.
+- **Increase or decrease evenly**: written out for the round or a flat row —
+  `*K13, M1* 4 times, *K12, M1* 4 times` — with a minus for decreasing.
+- **Re-gauge a pattern**: its counts at your gauge for the same size, and what
+  they would measure knitted as written.
+- **Yarns held together**: each strand's metres per 100 g, typed or picked
+  from the stash, and what they make as one yarn (1066 and 1500 m/100 g come
+  to 623) with its weight; how much of every 100 g each strand is, how many
+  grams of each for the metres you need, and whether it is within 10% of the
+  yarn it is to match.
+- **Colourwork charts**: a standard chart, or a round yoke's repeat with its
+  shaping, drawn square by square (Draw, Fill, Line, Box, Pick, Mirror), seen
+  knitted up, written out row by row, and printed at the real size. **Select**
+  (S) takes a block of squares: drag corner to corner, or Ctrl+A for all.
+  **Copy** and **Cut** (Ctrl+C, Ctrl+X) take it, Delete clears it, and
+  **Paste** (Ctrl+V) floats it under the pointer to put down as many times as
+  you click, flipped ↔ or ↕ if you like, until Esc. A block copied pastes into
+  another chart too, its colours with it: the chart's own where it has them,
+  added where it has room, else the nearest. Each colour can say which
+  **stash yarn** it is knitted in, picked beside its name: the legend, the
+  PDF and the rows in words then name it ("Peat (Jamieson's Spindrift,
+  Peat)"), and a colour still called by the palette's name takes the yarn's
+  colourway.
+  **Knitting from a chart**: on a project's page, under its row counter,
+  **Chart** picks the chart it is knitted from and the project's row its first
+  row is knitted on (after a rib, say). The chart is drawn there with the row
+  to knit next marked and the rows before it faded, said ("Round 6 of 12 ·
+  repeat 2") and written out, and every row counted moves it on. A standard
+  chart repeats up the work; a yoke's is knitted once.
+
+**Copy** takes the result as text; **Save** puts it on a project's board.
+
+## Cheatsheets
+
+The **Cheatsheets** tab keeps what you look things up in while knitting, listed
+down the side and open beside the list.
+
+- **+ Web page**: a tutorial, a table of yarn weights, a video. Give its address,
+  or paste a site's whole embed code (`<iframe …>`); a YouTube link is kept as
+  its embed page, which plays here. It is shown in a frame, named by its own
+  title unless you name it. Some sites tell every app not to show their pages
+  inside it; the app reads that when the page is added, and offers the page in
+  **a window of its own** beside the app, or in your browser, instead (**Try
+  here anyway** if it is wrong).
+- **Pages from a book**: pages of a PDF in the library, drawn from the book's own
+  file, sharp at any size (− and +), with **In the book ↗** to open it there.
+  **+ Pages from a book…** picks the book (books first) and the pages, and in a
+  book you are reading **Cheatsheet…** keeps the page you are on, or a few.
+- An **EPUB's chapter** is kept from the book with **Cheatsheet…**, as a copy: a
+  reflowing book has no pages to point at.
+
+Each has a name and a note, changed where they show; **↑ ↓** move it in the
+list, and the one open is remembered.
+
+## Wishlist and shops
+
+The **Wishlist** tab is what you want to get: yarn, needles and hooks,
+patterns, or anything else. Each item has what it is, its brand, how much, a
+price (typed as you like, with its currency), a picture, a link to it, the shop
+to get it from, the project it is for, and notes.
+
+**Paste a link and the rest fills itself in.** The shop's page is read for the
+name, brand, price and picture of what is on it: from the product data shops
+publish for search engines, else from the tags they give link previews, else
+from the page's title. Only empty fields are filled, so nothing typed is
+replaced; **Fetch details** reads the page again. Some shops refuse anything
+that is not a browser (Etsy, Garnstudio), and then the form says so and the
+details are typed in as before. A picture can also be pasted with `Ctrl`+`V`,
+dropped on the box or chosen. The link picks the shop by itself when it is on
+the site of one in the Shops tab, and **+ New shop…** in the shop picker adds
+one without leaving the form, named after the link's site. The
+filters down the side are Kind, Shop and For, each counting what is still
+wanted; with one shop or project ticked, a new item starts with it chosen.
+**✓ Got it** moves an item down to **Got**, dated, where it stays as a record
+of what was bought until it is removed; **Want again** puts it back.
+
+Yarn and needles that were got have **+ Add to stash** or **+ Add to needles**
+on their card. It opens the yarn or needle form filled in from the item: for
+yarn the brand, name and colourway ("Air, Off White" or "Air – Off White"),
+the balls bought as its first lot, dated, and the picture as its photo; for
+needles the kind, size and length read from the name ("4 mm circular, 60 cm",
+in English or German). Saving it marks the item **In the stash**.
+
+The **Shops** tab is the shops you buy from: a name, a web address, tags
+(yarn, needles, deadstock, sale — your own, offered again on the next shop) and
+your own comment ("Drops is the cheapest here", "great prices on deadstock").
+The tags are filters down the side, where a shop must have every tag ticked,
+and a tag on a card ticks it; a card shows two rows of tags, and **+N** names
+the rest when pointed at.
+
+**Paste a shop's address and its name fills itself in**, read from the shop's
+own home page: the part of its title that matches its address, else the name
+the site gives itself, else the address. An address pasted into the Name field
+moves to where it belongs. **Look up names** names every shop still named after
+its address at once; a shop that does not say its name, or will not be read,
+keeps the address, and anything can be renamed by hand. The search looks through the comments and tags
+as well as the names and addresses, the address on a card opens the shop in
+the browser, and **N things on your wishlist** goes to the wishlist filtered
+to that shop. A web address can be typed without
+`https://`; only web addresses are kept. Removing a shop keeps what was to be
+got there on the wishlist, with no shop.
+
+The gear at the right end of the tab bar opens **Settings**, from any tab.
+
+**Make a backup** is in Settings: one click asks where to save, and copies the
+whole library there as one zip — every pattern file, cover and photo, and a
+clean copy of the database with everything written down in it — named with
+the date. It says how far it has got as it copies (a library of several
+gigabytes takes well under a minute) and, afterwards, when the last backup was
+made. Keep it somewhere other than this computer.
+
+## Yarn stash
+
+The **Stash** tab (next to **Patterns** at the top) is every yarn you own. A
+card shows the name, brand and colourway, the weight, a photo, and how much you
+have now, not how much you bought: "2 × 25 g · ~280 m" for whole balls, "240 g
+(2.4 balls) · ~528 m" once some are started. A yarn on an active project says
+which ("In use: Gift hat"), and one holding a project's leftover is tagged
+**Leftover**; **Availability** down the side filters on Free, In use and
+Leftover. A lot's **Leftover** box can also be ticked or cleared by hand.
+
+**What it is made of.** A yarn's **Fibre content** is its fibres and their
+shares, as the ball band gives them: pick each fibre from the list (or type your
+own) with its percentage, or type the whole thing in one go — "75% wool, 25%
+polyamide", "Wolle 80 %, Polyamid 20 %" — and it is split into rows. The form
+says whether the shares add up to 100%. **Superwash** is a box of its own. The
+card shows "75% wool · 25% polyamide" and a Superwash pill. Down the side,
+**Fibre** filters on any fibre in the stash (most used first; ticking two means
+either), and **Made of** on Only animal fibres, No animal fibres (for someone who
+cannot wear wool), No synthetics, Superwash and Not superwash; a yarn with no
+fibres recorded passes none of the fibre boxes, since nothing is known about it.
+
+**From the ball band.** A yarn's form takes the gauge to expect (stitches
+and rows over 10 cm, or 4 in with inches chosen) and the needles to use (a
+size, or a range), and its **Care**: the washing, bleaching, drying, ironing
+and dry-cleaning symbols, picked from the drawn ones, each with what it means
+("Hand wash only", "Do not iron"); one way to wash at a time. They belong to
+the yarn, not the colour: kept once by brand and yarn name, every colour of it
+shows them, and changed on one colour they change for all. The card says
+"18 sts × 24 rows / 10 cm · needles 5–5.5 mm", and shows the care symbols with
+their words. A swatch's gauge is still the one the calculators use; this is what
+to expect.
+
+**Another colour of the same yarn** is quick: **+ Colour** on a card opens a new
+yarn with its brand, name, weight, metres and grams per ball, gauge and needles filled in, so only the
+colourway is typed; each colour is its own card. In the form, **Brand** and
+**Name** are typed or picked — **▾** lists the brands and yarns already in the
+stash (a chosen brand narrows the names) — and picking a name you have fills in
+the rest of that yarn, leaving anything already typed alone. A name or brand
+typed in another case files with the one already there.
+
+**Whole balls by the ball band, started ones weighed.** A lot of balls with
+no grams typed is whole balls, each the yarn's grams per ball. Once balls are
+started, put the grams left on the lot, and that is what there is, so a
+half-used ball counts as what it actually is. The metres are worked out from
+the grams (metres per ball ÷ grams per ball × grams). When the per-ball
+figures are unknown the metres line simply stays off rather than being
+invented.
+
+**Lots are first-class.** The same yarn bought twice is two lots, because dye
+lots differ between purchases and mixing them shows in the knitting. Each lot
+keeps its dye lot, balls bought, grams left, where it lives, and when it was bought;
+a yarn's totals add up over all of them. A new yarn starts with one empty lot
+row, and the **+ Add lot** button adds another.
+
+The weight filter down the side is the same standard scale the library
+filters patterns on — Lace through Jumbo, with a count beside each — so
+"could I knit this in something I have?" reads off one table. Families you
+own nothing in are dimmed rather than hidden.
+
+**A photo** can be chosen, pasted with `Ctrl`+`V` — a picture copied from a
+shop's page, or a screenshot — or dropped on the photo box. It is downscaled in
+the app before it is stored, as covers are. Removing a yarn asks first and takes
+its photo with it.
+
+**Yarn weight.** **Weights ?** beside the field opens a cheat sheet: each weight
+with its metres per 100 g, its other names, and the needles it is usually knitted
+on. Fill in metres and grams per ball and the weight is filled in for you ("175 m
+/ 50 g = 350 m/100 g: Sport"); a weight you type yourself is kept, with the
+figures' weight said beside it if they disagree. **Cone yarn** can be given by its
+count: `2/28` is two strands of 28 m to the gram, 1 400 m/100 g, a lace weight;
+`2/2800` gives the single strand per 100 g and is the same yarn. With the cone's
+grams filled in, its metres are worked out too.
+
+Ply counts follow the UK and Australian names Ravelry uses: 2 ply lace, 3–4 ply
+fingering, 5 ply sport, 8 ply DK, 10 ply worsted, 12 ply bulky, 14 ply chunky. A
+family name wins over a ply count, so "4-ply worsted" is worsted.
+
+**The row counter.** One total, and any number of named counters.
+
+- ***Project total*** — every row you finish, across the whole project. It
+  **always** counts. There is no way to switch it off, and nothing any counter
+  does can stop it.
+- ***Counters*** — named places counted separately: a front, a sleeve, a
+  collar, a 12-row lace repeat. Each keeps its own count and its own target,
+  and each has a dot that switches it on or off.
+
+The dot is the whole idea. A counter that is **on** moves whenever rows are
+counted; one that is **off** keeps its count and stops moving. Several can be
+on at once, so working two sleeves alternately advances both from the same rows.
+Counters never affect each other — one reaching its target leaves the others
+alone — and a counter sitting on its target does not hold the total back, so
+the two numbers can never quietly disagree.
+
+Each counter has its own `−`/`+` for nudging it on its own, which is how you
+check a count against the pattern without counting a project row. Tick
+*own* on a counter to have its own buttons leave the project total alone, for a
+cast-on or a setup row.
+
+There is a **click** on every count, like a mechanical counter, because the
+sound tells you the press registered without looking away from the needles. The
+`♪` button beside the counter's title turns it off, and **Sound** under its
+keys chooses it: **Clicker** (a hand tally counter's, as Shelfmind's), **Soft
+tap**, **Wood block** or **Tick**, each heard as it is picked, and a little
+lower when counting down. The choices are remembered. They are synthesised, so
+there is no sound file in the installer.
+
+Everything is saved as you go and survives closing the app.
+
+Keyboard, while the reader has focus:
+
+| Key | Action |
+| --- | --- |
+| `J` / `K` | **count a row up / down** — and, with the line on, move it a whole band |
+| `Shift`+`J`/`K` | counts the row without moving the line |
+| `Alt`+`J`/`K` | moves the line a whole band without counting |
+| `↓` `→` | count a row (`Shift` for +10) |
+| `↑` `←` | uncount a row (`Shift` for −10) |
+| `PageDown` / `PageUp` | scroll the pattern under a stationary line |
+| `+` / `-` | count ±1 (`Shift` for ±10) |
+
+Every one of those counting keys is the same single action: the project total
+plus every counter that is switched on.
+
+**Choosing your keys.** `J` and `K` are only the starting keys. Under **Keys** in
+the counter panel, click the key beside *Count up* or *Count down* and press the
+one you want instead. A counter can also have a key of its own: its **Key**
+button takes one the same way, and that key then works like the counter's own
+`+` (with `Shift`, its `−`), whether or not the counter is switched on. A key
+already in use is refused with what it is used for, so one key never does two
+things; `Escape`, `Tab`, `PageUp`/`PageDown` and the modifier keys cannot be
+chosen. **Clear** takes a counter's key away, or puts *Count up*/*Count down*
+back to `J`/`K`. Keys are matched by their place on the keyboard, so they work
+the same with `Shift` held and on any keyboard layout. The choices are saved.
+
+The count keys are the ones for working through a schematic. Set the line's
+thickness to the on-screen height of one chart row and each press lands on
+exactly the next row — a line covering 0–5px moves to 5–10px, then 10–15px —
+and the project total follows, so a row is marked and counted in one press. The
+reader bar shows which row the line is on.
+
+Two deliberate choices: the **project total** is the counter that moves, not any
+one named counter, because the line tracks a position in the document and the
+total counts rows worked — the same kind of quantity. A counter is a named part
+of that work, so the enabled ones follow it and the disabled ones do not. And
+the line is free to be put anywhere, and each count moves it exactly its own
+height on from there, so a line the height of a chart row goes row by row.
+
+**The highlight line.** It is in the pattern beside a project's board, where
+the counter is, and it is **on the page**: kept as the page it is on and its
+place there, so it scrolls with the pattern. Scroll away to check something
+and it is still on its row; move the app to another display, make the pane
+wider, or zoom, and it is on the same row of the chart. It is **off** until
+you want it: press **Line** and tick *Show line*. While it is off the count
+keys just count, and the page stays where it is.
+
+- Drag its round **●** to move it anywhere on the page, across as well as up
+  and down, or onto another page. Drag its corner **◢** to make it wider,
+  narrower, taller or shorter: over just the chart when the chart does not
+  fill the page, and as tall as one of its rows. **Full width of the page**
+  in its settings puts it across the page again.
+- Click the **●**, and it glows: the next click in the pattern puts it there
+  (`Esc`: not now). Otherwise a click in the pattern is the pattern's, and
+  the line stays on the row being knitted.
+- Every count of the row moves the line, whatever counted it: the counter's
+  `+` and `−`, its arrow and `+`/`−` keys, or the count keys; a counter's own
+  buttons are a nudge, and leave it. Each count moves it its own height along
+  the page, on to the next page past the end of one. Near the top or bottom
+  of the pane the pattern scrolls with it; scrolled away, the next count
+  brings it back into view.
+- `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
+  pattern.
+- Double-click the **●**, or press "Line", for its settings: show it,
+  **Full width of the page**, **Bring it into view**, colour, opacity,
+  smooth movement, and **Rows go up the page (a chart)**: a chart is read
+  from the bottom row up, so counting a row steps the line up rather than down.
+- The pattern opens, and comes back from being hidden or minimised, with the
+  line in view; rows counted while it was minimised have moved it on.
+
+The line is kept per pattern. A line kept before it belonged to a page is
+given one the first time it is shown: on the page in view, where it sat in
+the window, as tall as it was.
+
+The line starts at 30% opacity, which is faint enough to read the pattern
+straight through it. Its height is also the height of one row for the count
+keys, which is what ties the line to the counter. Existing patterns still on the old 90% default are moved
+over on first launch, and any opacity you have set deliberately is left alone.
+Likewise, a line that was only ever on because it used to start on is switched
+off once on first launch; one you have adjusted in any way is left showing.
+
+**Layout.** "Split view" puts the counter, notes, and tags beside the pattern.
+"Focus view" gives the pattern the full width; a "Counter" button brings the
+panel back for a quick check.
+
+**Updates.** **Settings → Updates** shows the version you have and checks for a
+newer one on request. Tick **Include beta releases** to be offered pre-releases
+as well as stable ones; a beta build is always offered the next beta, ticked or
+not, since otherwise it would have nowhere to go. With **Check for updates
+automatically** on (it is, unless you turn it off), the app looks at every start
+and every hour while it is open. When there is something new, a card says so in
+the corner — **Update now**, **What's new**, or **Later** — and an **Update
+available** button stays beside the settings gear. Click either (or **Update now** in
+Settings) and, after one question, the app downloads the new version, closes,
+updates itself in place — a small progress window, nothing to click, no
+uninstalling — and opens again. Your library is untouched. This works from the
+version that brought it onwards; updating *to* it still goes through the old
+installer once.
+
+Your place in the document is saved as you scroll, so reopening a pattern
+returns you to the same page and position.
+
+A PDF opens fit to the width of the pane, or as far zoomed as it was when you
+last read it: each pattern keeps its own zoom. `+`/`-`/fit buttons in the reader
+bar zoom it further, as do `Ctrl` + `=`/`-`/`0` and `Ctrl`+scroll-wheel; past
+the width of the window it scrolls sideways as well as down. An EPUB reflows
+to the pane instead, so there is nothing to zoom.
+
+**Open ↗** in the reader bar, or **Open in your PDF app** in a pattern's ⋯
+menu, opens the file itself in the program Windows uses for it: to print it,
+or to fill in a form in it.
+
+**Two patterns side by side.** **Beside…** in the reader bar opens another
+pattern from the library next to this one — a separate chart, a size table,
+a second pattern — each with its own zoom, scroll and marks; the one beside
+has a ✕ to close it. A pattern opens with the same one beside it until it is
+closed.
+
+**Light reading.** ☀ in the reader bar turns the reader light — pale paper
+colours for the bar, the notes and the space around the pages — for every
+pattern, until ☾ turns it dark again. The rest of the app stays dark.
+
+**Which page.** A PDF's bar says which page is in view, of how many
+("15 / 19"), following the reading; click it to go to another page. Resized
+(the window, another display, the pane beside a board dragged wider), the
+pages are fitted again with the spot being read kept where it was in the pane.
+
+**A page at a time.** **Pages** in the reader bar shows a PDF one page at a
+time, each fitted whole to the pane: `→`/`←` and `PageDown`/`PageUp`, the
+**‹ ›** at the sides, or a sideways swipe (two fingers on a trackpad, or a
+finger on a screen) turn the page. The pattern remembers it; pressed again,
+the pages scroll as before, at the zoom they had.
+
+**Turning a page.** A chart printed sideways to fit can be turned the right way
+up: **⟳** turns the page taking up most of the pane a quarter turn clockwise,
+and `Shift`-click turns it back. Only that page turns, and it stays turned the
+next time you open the pattern. Marks, pins, search and links all turn with it,
+and a mark made on a turned page is still in the right place if you turn the
+page back.
+
+**Contents and bookmarks.** **📑** opens a panel with the PDF's own table of
+contents (an EPUB's chapters), and a **Bookmarks** tab. **🔖** bookmarks the
+page in view in one click; rename a bookmark in the panel, or remove it with
+its ✕. Click any entry to go there.
+
+**Search.** **🔎** or `Ctrl`+`F` searches the PDF's text: `Enter`/`Shift`+`Enter`
+or ▲/▼ step through the matches, which are marked on the page, and `Escape`
+closes it. A PDF made of scanned pictures has no text to search, and says so.
+
+**Links** in a PDF work with **Select** (➤): one inside the document jumps to its
+page, and a web or email link opens in your browser rather than in the app.
+
+## Marking up a pattern
+
+Four tools, as icons in the bar above the reading area. **Select** (➤) is the
+default, so reading and tidying up need no tool chosen at all.
+
+- **Select** (➤) — click a note to open it and change the wording, or click a
+  highlight or drawing to be offered its removal. Nothing is deleted without
+  asking. Drag a drawing, a highlighter stroke or a note to move it, and a
+  drawing's bottom-right corner to resize it (the pointer says which); a
+  highlight made over text stays with its words.
+- **Highlighter** (🖊) — drag over the page like a highlighter pen: a broad,
+  see-through band in the current colour, over text or over a chart alike.
+  It scales with the page, so it stays on the same rows at any zoom.
+- **Note** (🅣) — click anywhere to drop a note. Clearing the text and saving
+  removes the note rather than leaving an empty dot behind.
+- **Draw** (✏️) — a thin pen, freehand, over charts and diagrams.
+- **Text** (Aa) — click where it goes on a PDF page and type: a size, a
+  change you made, a row to remember. Enter starts a new line, `Ctrl`+`Enter`
+  puts it there, in the mark colour; it scales with the page. With Select,
+  click it to change it (cleared, it is gone), drag it to move it, and drag its
+  corner to make the letters bigger or smaller.
+- **Eraser** (⌫) — drag over a drawing or a highlighter stroke to rub out the
+  part it passes over, as a pencil eraser would: across the middle of a line
+  leaves two, along it takes it away. Notes and highlights over text are left
+  alone.
+
+The colour wheel picks the colour for both pens. **Undo** (↶) removes the last
+mark made; **Clear** (🗑) removes every mark on the pattern, after asking once.
+Both grey out when there is nothing to act on.
+
+Every mark belongs to the page it was made on and moves with that page as you
+scroll, zoom or resize the window. It is remembered as a position on the page,
+so on a **PDF**, whose pages never change, it stays exactly where you put it.
+An **EPUB** reflows when the window changes width, and a stroke drawn over its
+text is not moved with the words — the same as a drawing.
+
+## Pins
+
+A pin keeps a picture of part of a page somewhere you can see it while you work,
+which is the point: a chart you have to keep scrolling back to is no help.
+
+Press **Pin** (📌) and drag a box around anything — a chart, a stitch diagram,
+a run of instructions you will refer to again. Pin mode ends after each box;
+press 📌 again for the next one. Up to **5** per pattern; the button greys out
+at the limit and says so.
+
+Each pin gets a numbered chip next to the 📌 button. Click a chip to show or
+hide that pin; hover it and click its ✕ to remove the pin. A shown pin is a
+panel you can:
+
+- **drag** by its header, anywhere over the reading pane
+- **zoom** with its − and + buttons
+- **resize** from its bottom-right corner
+- **put on the project's board** with its ⤴ button: a sharp picture of it,
+  saying which page of which pattern it is from. In the pattern beside a
+  board, onto that board; in a pattern opened from the library, onto the board
+  of its project on the needles (asked which, when there are several).
+
+Pressed anywhere, a pin comes to the front, above the others, and stays there;
+one shown again from its chip comes to the front too. The panel is drawn
+straight from the PDF, so it stays as sharp as the page at any size. Panels stay where you put them — including across closing the
+pattern. Hover a panel's header to see the words under its crop.
+
+Pins are for **PDFs**. An EPUB's text is reflowed and rewrapped by the window it
+is shown in, so there is no fixed region of the page to cut, and the Pin button
+says so rather than offering something that is subtly not what you pointed at.
+
+## Covers
+
+A new pattern gets a cover automatically, in the background: the first page of
+a PDF, or the cover image an EPUB declares (checking the EPUB 3
+`cover-image` property, the older `<meta name="cover">`, then any image with
+"cover" in its name). Everything is downscaled and stored as a JPEG under
+`library/covers/`.
+
+Hover a card and press **Cover…** (or **Change cover…** in the pattern's
+details) to change it:
+
+- **Paste** — `Ctrl`+`V` while the dialog is open uses the picture on the
+  clipboard, such as a shop's photo copied with *Copy image*.
+- **Drop** a picture file on it, or **Choose a picture…** from disk.
+- **Read from the pattern** — take the cover from the file again, discarding
+  whatever you had.
+- **Remove** — leave the placeholder.
+
+The **Covers** button in the toolbar adds a cover to every pattern that is
+missing one, which is useful for a library that predates the feature.
+
+## Filling in details with a model
+
+It is **off unless you switch it on**: **Settings → Describe patterns with a
+model**. While it is off there is no robot anywhere and nothing is ever sent;
+the model's own settings appear once it is on.
+
+The **robot** in the patterns toolbar reads the front of each pattern and fills
+in what it can; the robot in an open pattern does the same for just that one and
+shows you a before/after table. A run over the library carries on while you use
+the rest of the app: its panel can be minimised to a small bar, or closed, which
+leaves a robot and the count beside the settings gear to bring it back. **Stop**
+ends it after the pattern being read. Cards update one by one as it goes.
+
+It also says whether a file is a **book**: several patterns in one (a book, a
+magazine, a collection). It is told the file's length as well as shown its
+front, and a book is tagged `book`. Every EPUB is tagged `book` too, as it is
+added (and the ones already in the library once, on updating).
+
+The model is configured under **Settings**, and there is no provider list: any
+model serving an OpenAI-compatible API works, which covers Ollama, LM Studio,
+vLLM, llama.cpp, LocalAI, and hosted services alike. Point it at the address
+and press **Test connection** to list the models it offers. The `/v1` is added
+for you if you leave it off.
+
+The dialog says whether the address is on your own network or out on the
+internet, and whether anything would be sent there. Only the start of each
+pattern is ever sent — roughly the first page or two, adjustable under *More
+options* — because gauge, size, and materials are all at the front, and a
+pattern's instructions are not the app's business.
+
+An API key is optional (a local model rarely needs one) and is stored encrypted
+with Windows DPAPI, so it can only be read back by your Windows account.
+
+**Scanned patterns are read from their pictures.** A great many knitting
+patterns are scans or phone photographs, where the page is an image and there is
+no text to extract at all. When the text comes back empty, the first three pages
+are rendered and sent as images instead, and the model is asked to describe what
+it can see — the designer, needle size, yarn, and difficulty off the front page.
+This needs a model that accepts images; if yours does not, the app says so
+plainly rather than reporting a bare error. The prompt insists on transcribing
+only what is actually legible, so an unreadable detail comes back empty rather
+than guessed.
+
+**Results are saved automatically**, and each affected card grows an **Undo
+model change** button. By default a scan only fills fields that are still empty,
+so it will not overwrite your own wording; turn that off under *More options* if
+you want a scan to replace it.
+
+Two settings worth knowing about, both under *More options*:
+
+- **Reasoning effort** — a reasoning model can spend its entire reply budget
+  thinking and return an empty answer. Lower effort is faster, cheaper, and
+  more reliable for this task.
+- **Include patterns that already have metadata** — off by default, so a second
+  scan does not repeat work you have already reviewed.
