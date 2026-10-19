@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.3)** —
+  search in Cheatsheets: by name, note, book or site.
 - **[v1.1.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.2)** —
   every web and mail address in a PDF clickable, not only the PDF's own links; Settings show on an open project straight away.
 - **[v1.1.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.1)** —
