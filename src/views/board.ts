@@ -1,4 +1,4 @@
-import { api, type BoardItem, type BoardKind, type Chart, type Cheatsheet, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, isLive, type BoardItem, type BoardKind, type Chart, type Cheatsheet, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { decode, describe as describeChart, normalize } from "./chart";
 import { SHEET_CARD, drawSheetPages, keepOpen as keepSheetOpen, sheetFrameHtml } from "./cheatsheets";
 import { CanvasPainter, drawChart, sizeCanvas } from "./chart-draw";
@@ -11,6 +11,7 @@ import { openLightbox } from "../lightbox";
 import { logPictures } from "./project-photos";
 import { playerHtml } from "./masterclasses";
 import { countStep, nowAt, progress, readStepList, tick, type StepList } from "./steps";
+import { clock, hoursText, sessionMs, totalMs } from "./knit-time";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -95,6 +96,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   steps: [480, 620],
   chart: [380, 380],
   sheet: SHEET_CARD,
+  timer: [300, 280],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -132,6 +134,7 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
   { kind: "chart", html: `<button data-add="chart" title="A chart from Calculators, drawn on the board as it is now">▦<span>Chart</span></button>` },
   { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>` },
+  { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
 ];
 
 /** The calculators a project's board can open, to save their result onto it. */
@@ -171,6 +174,8 @@ export class Board {
   /** The charts, for chart cards: drawn from them as they are now. */
   private charts: Chart[] = [];
   private sheets: Cheatsheet[] = [];
+  /** The project's spells of knitting, for its timer card. */
+  private sessions: KnitSession[] = [];
   /** A cheatsheet's pages as drawn, by card: kept over a redraw of the board while they are the same. */
   private sheetPages = new Map<string, { key: string; node: HTMLElement }>();
   /** The project's log, for a log card; empty on an inspiration board. */
@@ -228,6 +233,15 @@ export class Board {
       api.listCharts().catch(() => [] as Chart[]),
     ]);
     this.sheets = await api.listCheatsheets().catch(() => [] as Cheatsheet[]);
+    if (this.hooks.project()) {
+      this.sessions = await api.listKnitSessions(this.boardId).catch(() => [] as KnitSession[]);
+      // Started or stopped anywhere -- the page's side, the tab bar, the counter -- the card follows.
+      const onTimer = () => void this.reloadSessions();
+      document.addEventListener("knit-timer", onTimer);
+      this.teardown.push(() => document.removeEventListener("knit-timer", onTimer));
+      const ticking = window.setInterval(() => this.tickTimer(), 1000);
+      this.teardown.push(() => window.clearInterval(ticking));
+    }
     this.view = this.savedView() ?? fitView(this.items, this.root.clientWidth || 900, this.root.clientHeight || 600);
     this.applyView();
     this.render();
@@ -463,7 +477,7 @@ export class Board {
   private onDown(e: PointerEvent): void {
     if (e.button !== 0 && e.button !== 1) return;
     const target = e.target as HTMLElement;
-    if (target.closest(".board-tools, .board-zoom, button, input, select, a")) return;
+    if (target.closest(".board-tools, .board-zoom, button, input, select, a, .board-timer-auto")) return;
     const el = this.itemEl(target);
     // A log card's entries are read, scrolled and selected like a page: the
     // card is picked, not dragged. It moves by its header. So does a
@@ -598,6 +612,17 @@ export class Board {
       openLightbox(all.map((x) => x.picture), Math.max(0, all.findIndex((x) => x.id === btn.dataset.entry)), "The photo");
     }
     if (act === "open") this.open(id);
+    if (act === "timer-go") {
+      const running = this.sessions.some((s) => s.endedAt === null);
+      try {
+        if (running) await api.stopKnitting();
+        else await api.startKnitting(this.boardId);
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
+      }
+      await this.reloadSessions();
+      this.root.dispatchEvent(new CustomEvent("knit-timer", { bubbles: true }));
+    }
     if (act === "sheet-window" || act === "sheet-browser") {
       const s = this.sheets.find((x) => x.id === this.items.find((i) => i.id === id)?.data.sheetId);
       if (s) {
@@ -735,6 +760,11 @@ export class Board {
   private async onChange(e: Event): Promise<void> {
     const input = e.target as HTMLInputElement;
     const f = input.dataset.f;
+    if (f === "timer-auto") {
+      const item = this.items.find((i) => i.id === this.itemEl(input)?.dataset.id);
+      if (item) await this.save(item.id, { data: { ...item.data, auto: input.checked } });
+      return;
+    }
     if (f !== "colour" && f !== "label") return;
     const id = this.itemEl(input)?.dataset.id;
     const item = this.items.find((i) => i.id === id);
@@ -885,6 +915,14 @@ export class Board {
       const m = classes.find((x) => x.parts.some((p) => p.id === id));
       const part = m?.parts.find((p) => p.id === id);
       if (m && part) await this.addVideo(m.id, part);
+    } else if (kind === "timer") {
+      // One timer is enough, as one log is.
+      const there = this.items.find((i) => i.kind === "timer");
+      if (there) {
+        this.reveal(there);
+        return this.select(there.id);
+      }
+      await this.add("timer", at, { auto: true });
     } else if (kind === "log") {
       // One log is enough: a second card would show the same.
       const there = this.items.find((i) => i.kind === "log");
@@ -1233,6 +1271,9 @@ export class Board {
       case "steps":
         body = this.stepsHtml(d);
         break;
+      case "timer":
+        body = this.timerHtml(d);
+        break;
       case "sheet": {
         // Moved by its bar; a web page in a frame, a book's pages drawn after.
         const s = this.sheets.find((x) => x.id === d.sheetId);
@@ -1281,6 +1322,59 @@ export class Board {
    * One item drawn again in place, the others left as they are (a video
    * playing goes on playing), its list scrolled where it was.
    */
+  /** The project's time read again, and its timer card drawn again. */
+  private async reloadSessions(): Promise<void> {
+    if (!this.hooks.project()) return;
+    this.sessions = await api.listKnitSessions(this.boardId).catch(() => this.sessions);
+    for (const item of this.items) if (item.kind === "timer") this.repaint(item.id);
+  }
+
+  /** A second on, on the timer card: its clock and the total. */
+  private tickTimer(): void {
+    const running = this.sessions.find((s) => s.endedAt === null);
+    if (!running) return;
+    const clockEl = this.world.querySelector('[data-el="timer-clock"]');
+    if (clockEl) clockEl.textContent = clock(sessionMs(running));
+    const totalEl = this.world.querySelector('[data-el="timer-total"]');
+    if (totalEl) totalEl.textContent = `${hoursText(totalMs(this.sessions))} in all`;
+  }
+
+  /** The timer card shown, from the tab bar's timer; false when the board has none. */
+  showTimer(): boolean {
+    const item = this.items.find((i) => i.kind === "timer");
+    if (!item) return false;
+    this.reveal(item);
+    this.select(item.id);
+    const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"]`);
+    el?.classList.remove("timer-shown");
+    void el?.offsetWidth;
+    el?.classList.add("timer-shown");
+    return true;
+  }
+
+  /**
+   * The knitting timer, big: this project's clock while it runs, its time in
+   * all, a big Start or Stop, and whether counting a row keeps it.
+   */
+  private timerHtml(d: Record<string, unknown>): string {
+    const running = this.sessions.find((s) => s.endedAt === null);
+    const live = isLive(this.hooks.project()?.status ?? "");
+    const go = running
+      ? `<button class="primary board-timer-go" data-act="timer-go" title="Stop the timer: you have put it down">■ Stop</button>`
+      : `<button class="board-timer-go" data-act="timer-go" title="Time your knitting: it runs with the app closed too">▶ Start</button>`;
+    return `
+      <div class="board-timer-bar" title="Drag here to move it">⏱ Knitting time</div>
+      <div class="board-timer">
+        <div class="board-timer-clock${running ? " running" : ""}" data-el="timer-clock">${running ? clock(sessionMs(running)) : "0:00:00"}</div>
+        <div class="board-timer-total" data-el="timer-total">${this.sessions.length ? `${hoursText(totalMs(this.sessions))} in all` : "Not timed yet"}</div>
+        ${live ? go : `<p class="board-timer-total">Finished: its time is added by hand, on the side.</p>`}
+        <label class="board-timer-auto" title="Counting a row starts the timer; five minutes without one stops it, as at the last row counted">
+          <input type="checkbox" data-f="timer-auto" ${d.auto !== false ? "checked" : ""} />
+          <span>Start with a row counted, stop after 5 minutes without one</span>
+        </label>
+      </div>`;
+  }
+
   private repaint(id: string): void {
     const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${id}"]`);
     const item = this.items.find((i) => i.id === id);
@@ -1411,6 +1505,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   steps: "checklist",
   chart: "chart",
   sheet: "cheatsheet",
+  timer: "timer",
 };
 
 /**

@@ -2915,6 +2915,21 @@ pub fn stop_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
     Ok(Some(KnitSession { ended_at: Some(now), ..running }))
 }
 
+/// Stops the timer running as at a moment gone by -- the last row counted
+/// before it was left -- kept between its start and now. A spell under a
+/// minute is no spell, as one typed in is not: it goes. None when none ran,
+/// or it went.
+pub fn stop_knitting_at(conn: &Connection, at: i64) -> AppResult<Option<KnitSession>> {
+    let Some(running) = running_knit_session(conn)? else { return Ok(None) };
+    let ended = at.clamp(running.started_at, now_ms().max(running.started_at));
+    if ended - running.started_at < 60_000 {
+        conn.execute("DELETE FROM knit_sessions WHERE id = ?1", params![running.id])?;
+        return Ok(None);
+    }
+    conn.execute("UPDATE knit_sessions SET ended_at = ?2 WHERE id = ?1", params![running.id, ended])?;
+    Ok(Some(KnitSession { ended_at: Some(ended), ..running }))
+}
+
 /// A spell's length checked: a minute at least, a day at most, not in the future.
 fn sitting(started_at: i64, seconds: i64) -> AppResult<i64> {
     if !(60..=LONGEST_SITTING_MS / 1000).contains(&seconds) {

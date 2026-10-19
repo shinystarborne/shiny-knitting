@@ -3757,6 +3757,33 @@ fn a_project_has_its_own_hour_s_worth_or_the_standard() {
 }
 
 #[test]
+fn a_timer_left_stops_as_at_the_last_row_counted() {
+    let conn = test_db();
+    let hat = insert_project(&conn, "Hat", &crate::models::ProjectInput { name: "Hat".into(), ..Default::default() }).unwrap();
+    assert_eq!(stop_knitting_at(&conn, now_ms()).unwrap(), None, "nothing runs");
+    let begun = now_ms() - 20 * 60_000;
+    let running = start_knitting(&conn, &hat.id).unwrap();
+    conn.execute("UPDATE knit_sessions SET started_at = ?2 WHERE id = ?1", params![running.id, begun]).unwrap();
+    // Ten minutes in, the last row; left since.
+    let stopped = stop_knitting_at(&conn, begun + 10 * 60_000).unwrap().unwrap();
+    assert_eq!((stopped.started_at, stopped.ended_at), (begun, Some(begun + 10 * 60_000)));
+    assert_eq!(running_knit_session(&conn).unwrap(), None);
+    assert_eq!(list_knit_sessions(&conn, Some(&hat.id)).unwrap()[0].ended_at, Some(begun + 10 * 60_000), "kept so");
+
+    // Kept within its start and now.
+    let again = start_knitting(&conn, &hat.id).unwrap();
+    conn.execute("UPDATE knit_sessions SET started_at = ?2 WHERE id = ?1", params![again.id, now_ms() - 5 * 60_000]).unwrap();
+    let to_come = stop_knitting_at(&conn, now_ms() + 3_600_000).unwrap().unwrap();
+    assert!(to_come.ended_at.unwrap() <= now_ms(), "not in the future");
+
+    // Under a minute is no spell: it goes.
+    let brief = start_knitting(&conn, &hat.id).unwrap();
+    assert_eq!(stop_knitting_at(&conn, brief.started_at + 20_000).unwrap(), None);
+    assert!(!list_knit_sessions(&conn, Some(&hat.id)).unwrap().iter().any(|s| s.id == brief.id), "gone");
+    assert_eq!(list_knit_sessions(&conn, Some(&hat.id)).unwrap().len(), 2);
+}
+
+#[test]
 fn knitting_is_timed_one_project_at_a_time() {
     let conn = test_db();
     let project = |name: &str| insert_project(&conn, name, &crate::models::ProjectInput { name: name.into(), ..Default::default() }).unwrap();

@@ -1,4 +1,5 @@
 import { api, type Counter, type CountKeys, type CountOutcome, type Progress } from "../api";
+import { rowsCounted } from "../auto-timer";
 import { askForm, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { CLICK_SOUNDS, clickSound, isClickMuted, playClick, setClickMuted, setClickSound, type ClickSound } from "./click";
@@ -251,6 +252,8 @@ export class RowCounter {
     const outcome = await api.countRows(this.patternId, this.projectId, delta);
     playClick(delta < 0);
     this.apply(outcome);
+    // The timer hears it: a project's card may keep the timer by the counter.
+    if (this.projectId) rowsCounted(this.projectId, delta);
     if (moveLine) this.onRowsCounted?.(delta);
   }
 
@@ -258,6 +261,7 @@ export class RowCounter {
     const outcome = await api.countCounter(id, delta);
     playClick(delta < 0);
     this.apply(outcome);
+    if (this.projectId) rowsCounted(this.projectId, delta);
   }
 
   private async toggle(id: string): Promise<void> {

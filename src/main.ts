@@ -1,6 +1,7 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
 import { clock, sessionMs } from "./views/knit-time";
+import { installAutoTimer, stopIfLeft } from "./auto-timer";
 import { api, toBytes, type AiSettingsView, type KnitSession, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
@@ -107,6 +108,7 @@ class App {
       <button class="tab" data-tab="shops">Shops</button>
       <span class="tab-spacer"></span>
       <button class="timer-pill" data-act="timer" hidden title="Knitting being timed: open its project"></button>
+      <button class="timer-stop" data-act="timer-stop" hidden title="Stop the timer: you have put it down" aria-label="Stop the timer">■</button>
       <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
     this.screen = document.createElement("div");
@@ -123,7 +125,17 @@ class App {
         return;
       }
       if (act === "timer" && this.timer) {
-        void this.showProjectPage(this.timer.session.projectId);
+        // On its project already: the timer itself, shown.
+        const id = this.timer.session.projectId;
+        if (this.activeProjectPage?.id === id) this.activeProjectPage.showTimer();
+        else void this.showProjectPage(id);
+        return;
+      }
+      if (act === "timer-stop") {
+        void api
+          .stopKnitting()
+          .then(() => document.dispatchEvent(new CustomEvent("knit-timer")))
+          .catch((err) => say(err instanceof Error ? err.message : String(err), "Knitting time"));
         return;
       }
       if (act === "update-available") {
@@ -212,7 +224,9 @@ class App {
       void this.openProjectForm(null, detail.patternId ?? null, detail);
     });
     // A timer started or stopped anywhere: the tab bar says so.
-    this.screen.addEventListener("knit-timer", () => void this.refreshTimer());
+    // Heard on the document: started or stopped on a page, or by the row counter.
+    document.addEventListener("knit-timer", () => void this.refreshTimer());
+    installAutoTimer();
     void this.refreshTimer();
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
@@ -322,10 +336,14 @@ class App {
   async refreshTimer(): Promise<void> {
     const session = await api.runningKnitSession().catch(() => null);
     const pill = this.tabBar.querySelector<HTMLElement>('[data-act="timer"]');
-    if (!pill) return;
+    const stop = this.tabBar.querySelector<HTMLElement>('[data-act="timer-stop"]');
+    if (!pill || !stop) return;
+    // Left five minutes without a row counted, where the counter keeps it: stopped, and said again.
+    if (session && (await stopIfLeft(session))) return;
     if (!session) {
       this.timer = null;
       pill.hidden = true;
+      stop.hidden = true;
       if (this.timerTick !== null) window.clearInterval(this.timerTick);
       this.timerTick = null;
       return;
@@ -340,6 +358,7 @@ class App {
     };
     paint();
     pill.hidden = false;
+    stop.hidden = false;
     if (this.timerTick === null) {
       let n = 0;
       this.timerTick = window.setInterval(() => {

@@ -194,6 +194,7 @@ pub fn run() {
             projects::running_knit_session,
             projects::start_knitting,
             projects::stop_knitting,
+            projects::stop_knitting_at,
             projects::add_knit_time,
             projects::change_knit_session,
             projects::delete_knit_session,

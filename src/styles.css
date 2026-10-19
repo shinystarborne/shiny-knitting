@@ -4134,6 +4134,21 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 /* Twelve tabs and a running timer on one line: no tab breaks in two, and their sides narrow when the window does. */
 .tab-bar .tab { white-space: nowrap; padding-left: clamp(8px, 1vw, 16px); padding-right: clamp(8px, 1vw, 16px); }
 .timer-pill { align-self: center; margin-bottom: 6px; }
+.timer-stop { align-self: center; margin: 0 8px 6px -4px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--text); font-size: 11px; cursor: pointer; }
+.timer-stop:hover { background: var(--accent-soft); }
+/* A knitting timer on a board: moved by its bar; a big clock and a big button. */
+.board-item.kind-timer { display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.board-timer-bar { flex: none; display: flex; align-items: center; padding: 6px 36px 6px 10px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: grab; }
+.board-timer { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px 14px 14px; text-align: center; }
+.board-timer-clock { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-dim); }
+.board-timer-clock.running { color: var(--text); }
+.board-timer-total { font-size: 13px; color: var(--text-dim); }
+.board-timer-go { min-width: 70%; padding: 14px 18px; font-size: 18px; font-weight: 700; border-radius: 12px; }
+.board-timer-auto { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text-dim); text-align: left; cursor: pointer; }
+.board-timer-auto input { margin-top: 2px; }
+/* Shown from the tab bar's timer: a moment's glow. */
+.timer-shown { animation: timer-shown 1.4s ease-out; }
+@keyframes timer-shown { 0% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .knit-worth { margin: 2px 0 4px; font-size: 13px; }
 .knit-worth b { font-variant-numeric: tabular-nums; }
 .knit-rate-field { margin: 6px 0 4px; }

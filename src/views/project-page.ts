@@ -129,6 +129,15 @@ export class ProjectPage {
     // A timer running here ticks on the page.
     const tick = window.setInterval(() => this.tickTime(), 1000);
     this.teardown.push(() => window.clearInterval(tick));
+    // Started or stopped elsewhere -- the board's timer, the tab bar, the counter -- the side follows.
+    const onTimer = () => {
+      void api.listKnitSessions(this.projectId).then((sessions) => {
+        this.sessions = sessions;
+        this.paintTime();
+      }).catch(() => {});
+    };
+    document.addEventListener("knit-timer", onTimer);
+    this.teardown.push(() => document.removeEventListener("knit-timer", onTimer));
 
     this.root = document.createElement("div");
     this.root.className = "project-page";
@@ -539,6 +548,17 @@ ${plan ? "" : `      <div class="project-side-dates">
     box.outerHTML = this.timeHtml();
     const details = this.root.querySelector<HTMLDetailsElement>('[data-el="knit-time"] .knit-sittings');
     if (details) details.open = open;
+  }
+
+  /** The timer shown, from the tab bar: the board's card, or else the side's. */
+  showTimer(): void {
+    if (this.board?.showTimer()) return;
+    const box = this.root.querySelector<HTMLElement>('[data-el="knit-time"]');
+    if (!box) return;
+    box.scrollIntoView({ block: "center", behavior: "smooth" });
+    box.classList.remove("timer-shown");
+    void box.offsetWidth;
+    box.classList.add("timer-shown");
   }
 
   /** A second on: the running clock and the total. */

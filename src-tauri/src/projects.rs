@@ -117,6 +117,12 @@ pub fn stop_knitting(state: State<'_, AppState>) -> CmdResult<Option<KnitSession
     db::stop_knitting(&state.db())
 }
 
+/// Stops the timer as at a moment gone by: the last row counted, when it was left.
+#[tauri::command]
+pub fn stop_knitting_at(state: State<'_, AppState>, at: i64) -> CmdResult<Option<KnitSession>> {
+    db::stop_knitting_at(&state.db(), at)
+}
+
 /// Knitting time typed in: when it started, and how many seconds.
 #[tauri::command]
 pub fn add_knit_time(state: State<'_, AppState>, project_id: String, started_at: i64, seconds: i64) -> CmdResult<KnitSession> {
