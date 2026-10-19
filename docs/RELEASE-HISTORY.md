@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.4)** —
+  cheatsheets on a project's board: a book's pages drawn, a web page in a frame, put there from the board or from Cheatsheets.
 - **[v1.1.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.3)** —
   search in Cheatsheets: by name, note, book or site.
 - **[v1.1.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.2)** —
