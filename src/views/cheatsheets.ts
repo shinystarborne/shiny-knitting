@@ -1,8 +1,9 @@
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { api, toBytes, type Cheatsheet, type Pattern, type SheetRegion } from "../api";
+import { api, isLive, toBytes, type Cheatsheet, type Pattern, type SheetRegion } from "../api";
 import { askChoice, askForm, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { showNotice } from "../notice";
 import { AbbreviationsPanel, SymbolsPanel } from "./abbreviations";
 import { symbolSvg } from "./stitches";
 
@@ -31,6 +32,9 @@ const SYMBOLS = "symbols";
 
 /** How big pages are drawn, as a share of the pane's width. */
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2];
+
+/** A cheatsheet's card on a board, as it is put there. */
+export const SHEET_CARD: [number, number] = [420, 540];
 
 /** How small a box may be, in pixels on screen, before it counts as a slip. */
 const MIN_BOX_PX = 12;
@@ -201,6 +205,7 @@ export class CheatsheetsView {
                  ${s.region && !this.cropping ? `<button class="ghost" data-act="whole" title="Show all of the page again">Whole page</button>` : ""}
                  ${this.cropping ? `<span class="hint sheet-crop-hint">Drag a box around the part to keep</span><button class="ghost" data-act="crop-cancel">Cancel</button>` : ""}`
           }
+          <button class="ghost" data-act="to-board" title="Show it on a project's board, beside your pattern and yarn">To a project…</button>
           <button class="ghost icon-btn" data-act="up" title="Up the list" aria-label="Up the list" ${at === 0 ? "disabled" : ""}>↑</button>
           <button class="ghost icon-btn" data-act="down" title="Down the list" aria-label="Down the list" ${at === this.sheets.length - 1 ? "disabled" : ""}>↓</button>
           <button class="ghost danger-text" data-act="remove">Remove</button>
@@ -220,8 +225,7 @@ export class CheatsheetsView {
 
   private paintWeb(s: Cheatsheet, body: HTMLElement): void {
     if (s.framable) {
-      body.innerHTML = `<iframe class="sheet-frame" src="${esc(s.url)}" title="${esc(s.title)}" referrerpolicy="strict-origin-when-cross-origin"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation" allow="fullscreen; encrypted-media; picture-in-picture"></iframe>
+      body.innerHTML = `${sheetFrameHtml(s)}
         <p class="hint sheet-frame-note">Blank, or refusing? Some sites will not be shown inside another app: <button class="link" data-act="not-framable">open it in a window of its own instead</button>.</p>`;
       return;
     }
@@ -264,56 +268,27 @@ export class CheatsheetsView {
   private async paintPages(s: Cheatsheet, book: Pattern, body: HTMLElement): Promise<void> {
     const token = this.drawToken;
     body.innerHTML = `<p class="calc-wait">Drawing the pages…</p>`;
-    let doc: pdfjs.PDFDocumentProxy;
-    try {
-      doc = await pdfjs.getDocument({ data: toBytes(await api.readFile(book.id)) }).promise;
-    } catch (err) {
-      body.innerHTML = `<p class="calc-wait">${esc(`The book could not be read: ${err instanceof Error ? err.message : String(err)}`)}</p>`;
-      return;
-    }
-    try {
-      if (token !== this.drawToken) return;
-      const pages = document.createElement("div");
-      pages.className = "sheet-pages";
-      body.replaceChildren(pages);
-      const width = Math.max(320, body.clientWidth - 40) * ZOOMS[this.zoom];
-      const last = Math.min(s.pageTo, doc.numPages);
-      if (s.pageFrom > doc.numPages) {
-        body.innerHTML = `<p class="calc-wait">The book has ${doc.numPages} pages: Pages… to choose others.</p>`;
-        return;
-      }
-      const region = this.cropping ? null : s.region;
-      for (let n = s.pageFrom; n <= last; n++) {
-        const page = await doc.getPage(n);
-        if (token !== this.drawToken) return;
-        const base = page.getViewport({ scale: 1 });
-        const ratio = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: (width / base.width) * ratio });
-        const box = region ?? { x: 0, y: 0, w: 1, h: 1 };
-        const canvas = document.createElement("canvas");
-        canvas.className = region ? "sheet-page sheet-part" : "sheet-page";
-        canvas.dataset.page = String(n);
-        canvas.width = Math.max(1, Math.floor(viewport.width * box.w));
-        canvas.height = Math.max(1, Math.floor(viewport.height * box.h));
-        canvas.style.width = `${Math.floor(width * box.w)}px`;
-        const ctx = canvas.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (this.cropping) {
-          const frame = document.createElement("div");
-          frame.className = "sheet-crop";
-          frame.appendChild(canvas);
-          pages.appendChild(frame);
-          this.cropOn(s, frame);
-        } else {
-          pages.appendChild(canvas);
-        }
-        await page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -box.x * viewport.width, -box.y * viewport.height] }).promise;
-        page.cleanup();
-      }
-    } finally {
-      await doc.destroy().catch(() => {});
-    }
+    const pages = document.createElement("div");
+    pages.className = "sheet-pages";
+    const width = Math.max(320, body.clientWidth - 40) * ZOOMS[this.zoom];
+    const cropping = this.cropping;
+    const failed = await drawSheetPages(
+      s,
+      book,
+      width,
+      cropping ? null : s.region,
+      (canvas) => {
+        if (!pages.isConnected) body.replaceChildren(pages);
+        if (!cropping) return void pages.appendChild(canvas);
+        const frame = document.createElement("div");
+        frame.className = "sheet-crop";
+        frame.appendChild(canvas);
+        pages.appendChild(frame);
+        this.cropOn(s, frame);
+      },
+      () => token === this.drawToken,
+    );
+    if (failed && token === this.drawToken) body.innerHTML = `<p class="calc-wait">${esc(failed)}</p>`;
   }
 
   // ---------- doing things ----------
@@ -349,6 +324,7 @@ export class CheatsheetsView {
       }
       if (act === "open-book") this.root.dispatchEvent(new CustomEvent("open-pattern-at", { bubbles: true, detail: { id: s.patternId, page: s.pageFrom } }));
       if (act === "pages") await this.choosePages(s);
+      if (act === "to-board") await this.toBoard(s);
       if (act === "crop" || act === "crop-cancel") {
         this.cropping = act === "crop";
         await this.paintView();
@@ -505,6 +481,19 @@ export class CheatsheetsView {
     await this.paintView();
   }
 
+  /** On a project's board, under what is there, as the board shows it: the card says where. */
+  private async toBoard(s: Cheatsheet): Promise<void> {
+    const projects = (await api.listProjects().catch(() => [])).filter((p) => isLive(p.status));
+    if (!projects.length) return say("There is no project on the needles or planned to put it on.", "To a project");
+    const id = await askChoice(`Which project's board is “${s.title}” to go on?`, projects.map((p) => ({ value: p.id, label: p.name })), { title: "To a project" });
+    if (!id) return;
+    const items = await api.listBoardItems(id).catch(() => []);
+    const y = items.reduce((low, i) => Math.max(low, i.y + i.h + 40), 40);
+    await api.addBoardItem(id, { kind: "sheet", x: 40, y, w: SHEET_CARD[0], h: SHEET_CARD[1], data: { sheetId: s.id } });
+    const name = projects.find((p) => p.id === id)!.name;
+    showNotice(`On the board of ${name}.`, { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: id })) });
+  }
+
   private async choosePages(s: Cheatsheet): Promise<void> {
     const pages = await askPages(s.title, s.pageFrom, s.pageTo, false);
     if (!pages) return;
@@ -514,6 +503,62 @@ export class CheatsheetsView {
     this.paintList();
     await this.paintView();
   }
+}
+
+/**
+ * A cheatsheet's pages, drawn from its book at a width: each page, or the
+ * part of it kept, a canvas handed to `place` before it is painted, so they
+ * show as they come. Stops when `live` says the drawing is no longer wanted.
+ * Says why, when they cannot be drawn; null when they were.
+ */
+export async function drawSheetPages(
+  s: Cheatsheet,
+  book: Pattern,
+  width: number,
+  region: SheetRegion | null,
+  place: (canvas: HTMLCanvasElement) => void,
+  live: () => boolean = () => true,
+): Promise<string | null> {
+  let doc: pdfjs.PDFDocumentProxy;
+  try {
+    doc = await pdfjs.getDocument({ data: toBytes(await api.readFile(book.id)) }).promise;
+  } catch (err) {
+    return `The book could not be read: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  try {
+    if (!live()) return null;
+    if (s.pageFrom > doc.numPages) return `The book has ${doc.numPages} pages: Pages… to choose others.`;
+    const last = Math.min(s.pageTo, doc.numPages);
+    for (let n = s.pageFrom; n <= last; n++) {
+      const page = await doc.getPage(n);
+      if (!live()) return null;
+      const base = page.getViewport({ scale: 1 });
+      const ratio = window.devicePixelRatio || 1;
+      const viewport = page.getViewport({ scale: (width / base.width) * ratio });
+      const box = region ?? { x: 0, y: 0, w: 1, h: 1 };
+      const canvas = document.createElement("canvas");
+      canvas.className = region ? "sheet-page sheet-part" : "sheet-page";
+      canvas.dataset.page = String(n);
+      canvas.width = Math.max(1, Math.floor(viewport.width * box.w));
+      canvas.height = Math.max(1, Math.floor(viewport.height * box.h));
+      canvas.style.width = `${Math.floor(width * box.w)}px`;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      place(canvas);
+      await page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -box.x * viewport.width, -box.y * viewport.height] }).promise;
+      page.cleanup();
+    }
+    return null;
+  } finally {
+    await doc.destroy().catch(() => {});
+  }
+}
+
+/** A web page kept, in a frame: sandboxed, as a video's player is. */
+export function sheetFrameHtml(s: Pick<Cheatsheet, "url" | "title">, className = "sheet-frame"): string {
+  return `<iframe class="${className}" src="${esc(s.url)}" title="${esc(s.title)}" referrerpolicy="strict-origin-when-cross-origin"
+    sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation" allow="fullscreen; encrypted-media; picture-in-picture"></iframe>`;
 }
 
 /** Asks which pages, and a name when it is new; null when cancelled. */

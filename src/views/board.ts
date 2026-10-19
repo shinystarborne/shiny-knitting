@@ -1,5 +1,6 @@
-import { api, type BoardItem, type BoardKind, type Chart, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, type BoardItem, type BoardKind, type Chart, type Cheatsheet, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { decode, describe as describeChart, normalize } from "./chart";
+import { SHEET_CARD, drawSheetPages, keepOpen as keepSheetOpen, sheetFrameHtml } from "./cheatsheets";
 import { CanvasPainter, drawChart, sizeCanvas } from "./chart-draw";
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
 import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
@@ -93,6 +94,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   video: [480, 302],
   steps: [480, 620],
   chart: [380, 380],
+  sheet: SHEET_CARD,
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -129,6 +131,7 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
   { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
   { kind: "chart", html: `<button data-add="chart" title="A chart from Calculators, drawn on the board as it is now">▦<span>Chart</span></button>` },
+  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>` },
 ];
 
 /** The calculators a project's board can open, to save their result onto it. */
@@ -167,6 +170,9 @@ export class Board {
   private tools: Tool[] = [];
   /** The charts, for chart cards: drawn from them as they are now. */
   private charts: Chart[] = [];
+  private sheets: Cheatsheet[] = [];
+  /** A cheatsheet's pages as drawn, by card: kept over a redraw of the board while they are the same. */
+  private sheetPages = new Map<string, { key: string; node: HTMLElement }>();
   /** The project's log, for a log card; empty on an inspiration board. */
   private logEntries: LogEntry[] = [];
   /**
@@ -221,6 +227,7 @@ export class Board {
       this.hooks.project() ? api.listProjectLog(this.boardId).catch(() => [] as LogEntry[]) : Promise.resolve([] as LogEntry[]),
       api.listCharts().catch(() => [] as Chart[]),
     ]);
+    this.sheets = await api.listCheatsheets().catch(() => [] as Cheatsheet[]);
     this.view = this.savedView() ?? fitView(this.items, this.root.clientWidth || 900, this.root.clientHeight || 600);
     this.applyView();
     this.render();
@@ -286,6 +293,7 @@ export class Board {
       api.listTools().catch(() => this.tools),
       api.listCharts().catch(() => this.charts),
     ]);
+    this.sheets = await api.listCheatsheets().catch(() => this.sheets);
     await this.refreshLog();
   }
 
@@ -460,7 +468,7 @@ export class Board {
     // A log card's entries are read, scrolled and selected like a page: the
     // card is picked, not dragged. It moves by its header. So does a
     // checklist's.
-    if (el && target.closest(".board-log-list, .board-steps-list")) {
+    if (el && target.closest(".board-log-list, .board-steps-list, .board-sheet")) {
       this.select(el.dataset.id!);
       return;
     }
@@ -550,11 +558,13 @@ export class Board {
       const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"]`);
       if (el) this.paintCharts(el);
     }
+    // A cheatsheet's pages, drawn again to the card's new width.
+    if (d.mode === "size" && item.kind === "sheet") void this.paintSheets();
   }
 
   private onWheel(e: WheelEvent): void {
     // A note being read, or a log card's entries, scroll themselves.
-    if ((e.target as HTMLElement).closest("textarea, .board-log-list, .board-steps-list") && !e.ctrlKey) return;
+    if ((e.target as HTMLElement).closest("textarea, .board-log-list, .board-steps-list, .board-sheet") && !e.ctrlKey) return;
     e.preventDefault();
     const box = this.root.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) {
@@ -588,6 +598,17 @@ export class Board {
       openLightbox(all.map((x) => x.picture), Math.max(0, all.findIndex((x) => x.id === btn.dataset.entry)), "The photo");
     }
     if (act === "open") this.open(id);
+    if (act === "sheet-window" || act === "sheet-browser") {
+      const s = this.sheets.find((x) => x.id === this.items.find((i) => i.id === id)?.data.sheetId);
+      if (s) {
+        try {
+          if (act === "sheet-window") await api.openCheatsheetWindow(s.id, s.url, s.title);
+          else await api.openLink(s.url);
+        } catch (err) {
+          await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
+        }
+      }
+    }
     if (act === "edit-link") await this.editLink(id);
     if (act === "log-add") await this.addToLog(id);
     if (act === "log-photo") this.chooseLogPhoto();
@@ -846,6 +867,12 @@ export class Board {
       if (!choices.length) return void (await say("There are no charts yet: draw one under Calculators → Charts.", "Add a chart"));
       const id = await askChoice("Which chart?", choices, { title: "Add a chart" });
       if (id) await this.add("chart", at, { chartId: id });
+    } else if (kind === "sheet") {
+      this.sheets = await api.listCheatsheets().catch(() => this.sheets);
+      const choices: Choice[] = this.sheets.map((s) => ({ value: s.id, label: s.title, group: s.kind === "web" ? "Web pages" : "From books" }));
+      if (!choices.length) return void (await say("There are no cheatsheets yet: keep a web page or a book's pages in the Cheatsheets tab.", "Add a cheatsheet"));
+      const id = await askChoice("Which cheatsheet?", choices, { title: "Add a cheatsheet" });
+      if (id) await this.add("sheet", at, { sheetId: id });
     } else if (kind === "video") {
       const classes = await api.listMasterclasses().catch(() => []);
       const own = this.hooks.project()?.masterclassId ?? "";
@@ -1030,6 +1057,11 @@ export class Board {
     if (!item) return;
     if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
     if (item.kind === "chart" && typeof item.data.chartId === "string" && this.charts.some((c) => c.id === item.data.chartId)) this.hooks.openChart?.(item.data.chartId);
+    // A cheatsheet, open in its tab.
+    if (item.kind === "sheet" && typeof item.data.sheetId === "string" && this.sheets.some((s) => s.id === item.data.sheetId)) {
+      keepSheetOpen(item.data.sheetId);
+      this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true }));
+    }
     if ((item.kind === "link" || item.kind === "video") && typeof item.data.url === "string") {
       void api.openLink(item.data.url).catch((e) => say(e instanceof Error ? e.message : String(e), "Link"));
     }
@@ -1056,6 +1088,48 @@ export class Board {
     (this.root.querySelector(".board-empty") as HTMLElement).hidden = this.items.length > 0;
     void this.fillPictures();
     this.paintCharts();
+    void this.paintSheets();
+  }
+
+  /**
+   * Each cheatsheet card's book pages, drawn to the card's width, and an
+   * EPUB chapter's copy; kept as drawn while the sheet and the width stay.
+   */
+  private async paintSheets(): Promise<void> {
+    for (const box of this.world.querySelectorAll<HTMLElement>(".board-sheet[data-sheet-of]")) {
+      const itemId = this.itemEl(box)?.dataset.id ?? "";
+      const s = this.sheets.find((x) => x.id === box.dataset.sheetOf);
+      if (!s) continue;
+      const width = Math.max(120, Math.round(box.clientWidth - 16));
+      const key = JSON.stringify([s.id, s.kind, s.patternId, s.pageFrom, s.pageTo, s.region, s.kind === "pages" ? width : 0]);
+      const kept = this.sheetPages.get(itemId);
+      if (kept?.key === key) {
+        box.replaceChildren(kept.node);
+        continue;
+      }
+      const node = document.createElement("div");
+      node.className = "board-sheet-pages";
+      this.sheetPages.set(itemId, { key, node });
+      box.replaceChildren(node);
+      if (s.kind === "chapter") {
+        const html = await api.readCheatsheetCopy(s.id).catch(() => null);
+        if (html === null) {
+          node.innerHTML = `<p class="board-caption missing">The chapter's copy could not be read.</p>`;
+          continue;
+        }
+        const frame = document.createElement("iframe");
+        frame.className = "board-sheet-chapter";
+        frame.setAttribute("sandbox", "");
+        frame.title = s.title;
+        frame.srcdoc = html;
+        node.replaceChildren(frame);
+        continue;
+      }
+      const book = this.patterns.find((p) => p.id === s.patternId);
+      if (!book) continue;
+      const failed = await drawSheetPages(s, book, width, s.region, (canvas) => node.appendChild(canvas), () => this.sheetPages.get(itemId)?.node === node);
+      if (failed) node.innerHTML = `<p class="board-caption missing">${esc(failed)}</p>`;
+    }
   }
 
   /** Each chart card's chart, drawn as the chart is now, as big as the card lets it. */
@@ -1159,6 +1233,28 @@ export class Board {
       case "steps":
         body = this.stepsHtml(d);
         break;
+      case "sheet": {
+        // Moved by its bar; a web page in a frame, a book's pages drawn after.
+        const s = this.sheets.find((x) => x.id === d.sheetId);
+        if (!s) {
+          body = `<div class="board-caption missing">A cheatsheet no longer kept</div>`;
+          break;
+        }
+        const web = s.kind === "web";
+        const book = this.patterns.find((p) => p.id === s.patternId);
+        const bar = `<div class="board-chart-bar board-sheet-bar" title="Drag here to move it"><span>📋 ${esc(s.title)}</span>${
+          web ? `<button data-act="sheet-window" title="In a window of its own, beside the app">Window ↗</button>` : ""
+        }<button data-act="open" title="Open it in Cheatsheets">Open ↗</button></div>`;
+        const inner = web
+          ? s.framable
+            ? sheetFrameHtml(s, "board-sheet-frame")
+            : `<div class="board-sheet-refused"><p>${esc(hostOf(s.url))} will not be shown inside another app.</p><button data-act="sheet-window">Open in a window of its own</button><button class="ghost" data-act="sheet-browser">In your browser</button></div>`
+          : s.kind === "pages" && !book
+            ? `<div class="board-caption missing">The book these pages are from is no longer in the library.</div>`
+            : `<div class="board-sheet" data-sheet-of="${esc(s.id)}"></div>`;
+        body = bar + inner;
+        break;
+      }
       case "chart": {
         // Moved by its bar; drawn after, from the chart as it is now.
         const chart = this.charts.find((c) => c.id === d.chartId);
@@ -1314,6 +1410,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   video: "video",
   steps: "checklist",
   chart: "chart",
+  sheet: "cheatsheet",
 };
 
 /**
