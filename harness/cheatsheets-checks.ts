@@ -215,6 +215,27 @@ export async function verifyCheatsheets() {
     await waitFor(() => items().length === 5, "one fewer");
     check(results, "Remove takes it out, the next one open", !!view()!.querySelector(".sheet-item.on"));
 
+    // Searched: by name, by the book it is from, the glossaries by theirs.
+    const search = view()!.querySelector<HTMLInputElement>('[data-f="search"]')!;
+    const searchFor = (text: string) => {
+      search.value = text;
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const sheetsNow = store.cheatsheets!;
+    const named = sheetsNow[sheetsNow.length - 1];
+    searchFor(named.title.toUpperCase());
+    check(results, "the search finds a cheatsheet by its name, whatever the case", items().some((i) => i.dataset.sheet === named.id) && items().every((i) => sheetsNow.find((s) => s.id === i.dataset.sheet)!.title.toLowerCase().includes(named.title.toLowerCase())), items().map((i) => i.textContent?.trim()).join(" | "));
+    const fromBook = sheetsNow.find((s) => s.kind === "pages")!;
+    const bookTitle = store.patterns.find((p) => p.id === (fromBook as unknown as { patternId: string }).patternId)!.title;
+    searchFor(bookTitle.split(/\s+/)[0]);
+    check(results, "…by the book it is sheetsNow from", items().some((i) => i.dataset.sheet === fromBook.id), bookTitle);
+    searchFor("no such thing anywhere");
+    check(results, "…nothing found said so, the glossaries hidden too", items().length === 0 && /Nothing matches the search/.test(view()!.querySelector(".sheet-list")!.textContent ?? "") && !view()!.querySelector('[data-sheet="abbreviations"]'));
+    searchFor("ssk");
+    check(results, "…the glossaries found by what they hold", !!view()!.querySelector('[data-sheet="abbreviations"]') && !!view()!.querySelector('[data-sheet="symbols"]'));
+    searchFor("");
+    check(results, "…and emptied, all of them again", items().length === 5);
+
     // An EPUB's chapter, kept as a copy.
     const epub = store.patterns.find((p) => p.format === "epub")!;
     tab("patterns");

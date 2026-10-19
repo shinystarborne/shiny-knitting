@@ -53,6 +53,7 @@ export class CheatsheetsView {
   private drawToken = 0;
   /** Drawing a box round the part of the page to keep: the whole page shown for it. */
   private cropping = false;
+  private search = "";
 
   constructor(screen: HTMLElement) {
     this.screen = screen;
@@ -65,6 +66,7 @@ export class CheatsheetsView {
       <header class="lib-bar">
         <h1>Cheatsheets</h1>
         <div class="lib-actions">
+          <input type="search" class="mc-search" data-f="search" placeholder="Search names, notes, books, sites…" aria-label="Search the cheatsheets" />
           <button class="ghost" data-act="add-pages" title="Pages of a PDF in the library: a table of cast-ons, a chart of increases">+ Pages from a book…</button>
           <button class="primary" data-act="add-web" title="A page online, or an embed code: kept to read here">+ Web page</button>
         </div>
@@ -76,6 +78,12 @@ export class CheatsheetsView {
     this.screen.appendChild(this.root);
     this.root.addEventListener("click", (e) => void this.onClick(e));
     this.root.addEventListener("change", (e) => void this.onChange(e));
+    this.root.addEventListener("input", (e) => {
+      const el = e.target as HTMLInputElement;
+      if (el.dataset.f !== "search") return;
+      this.search = el.value;
+      this.paintList();
+    });
     [this.sheets, this.patterns] = await Promise.all([api.listCheatsheets().catch(() => [] as Cheatsheet[]), api.listPatterns({}).catch(() => [] as Pattern[])]);
     if (this.openId !== ABBREVIATIONS && this.openId !== SYMBOLS && !this.sheets.some((s) => s.id === this.openId)) this.openId = this.sheets[0]?.id ?? "";
     this.paintList();
@@ -112,20 +120,32 @@ export class CheatsheetsView {
 
   // ---------- the list ----------
 
+  /** Whether a text has every word searched for. */
+  private matches(text: string): boolean {
+    const words = this.search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const said = text.toLowerCase();
+    return words.every((w) => said.includes(w));
+  }
+
   private paintList(): void {
     const list = this.root.querySelector<HTMLElement>('[data-el="list"]')!;
     // The glossary first, always there: it is the app's, not one kept.
-    const glossary = `
-      <button class="sheet-item${this.openId === ABBREVIATIONS ? " on" : ""}" data-sheet="${ABBREVIATIONS}" title="What ssk, k2tog or w&amp;t means">
+    const abbreviations = this.matches("Abbreviations ssk, k2tog, w&t… and your own glossary")
+      ? `<button class="sheet-item${this.openId === ABBREVIATIONS ? " on" : ""}" data-sheet="${ABBREVIATIONS}" title="What ssk, k2tog or w&amp;t means">
         <span class="sheet-kind" aria-hidden="true">🔤</span>
         <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and your own</span></span>
-      </button>
-      <button class="sheet-item${this.openId === SYMBOLS ? " on" : ""}" data-sheet="${SYMBOLS}" title="What each square of a chart means">
+      </button>`
+      : "";
+    const symbols = this.matches("Chart symbols yo, k2tog, ssk… as charts draw them glossary")
+      ? `<button class="sheet-item${this.openId === SYMBOLS ? " on" : ""}" data-sheet="${SYMBOLS}" title="What each square of a chart means">
         <span class="sheet-kind" aria-hidden="true">${symbolSvg("k2tog", 18)}</span>
         <span class="sheet-text"><b>Chart symbols</b><span>yo, k2tog, ssk… as charts draw them</span></span>
-      </button>`;
-    list.innerHTML = glossary + (this.sheets.length
-      ? this.sheets
+      </button>`
+      : "";
+    // Found by its name, its note, and where it is from: the book or the site.
+    const shown = this.sheets.filter((s) => this.matches(`${s.title} ${s.notes} ${this.source(s)} ${s.kind === "web" ? s.url : ""}`));
+    list.innerHTML = abbreviations + symbols + (shown.length
+      ? shown
           .map(
             (s) => `
           <button class="sheet-item${s.id === this.openId ? " on" : ""}" data-sheet="${esc(s.id)}" title="${esc(s.title)}">
@@ -134,7 +154,7 @@ export class CheatsheetsView {
           </button>`,
           )
           .join("")
-      : `<p class="hint sheet-none">Nothing kept yet.</p>`);
+      : `<p class="hint sheet-none">${this.sheets.length ? "Nothing matches the search." : "Nothing kept yet."}</p>`);
   }
 
   // ---------- the one open ----------
@@ -381,6 +401,10 @@ export class CheatsheetsView {
 
   private async added(s: Cheatsheet): Promise<void> {
     this.sheets = [s, ...this.sheets.filter((x) => x.id !== s.id)];
+    // The new one shown in the list, whatever was searched for.
+    this.search = "";
+    const search = this.root.querySelector<HTMLInputElement>('[data-f="search"]');
+    if (search) search.value = "";
     this.openId = s.id;
     keepOpen(s.id);
     this.paintList();
