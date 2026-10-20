@@ -4142,7 +4142,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .timer-stop { align-self: center; margin: 0 8px 6px -4px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--text); font-size: 11px; cursor: pointer; }
 .timer-stop:hover { background: var(--accent-soft); }
 /* A knitting timer on a board: moved by its bar; a big clock and a big button. */
-.board-item.kind-timer { display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.board-item.kind-timer { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.board-timer-fit { display: flex; flex-direction: column; }
 .board-timer-bar { flex: none; display: flex; align-items: center; padding: 6px 36px 6px 10px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: grab; }
 .board-timer { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 8px 14px 14px; text-align: center; }
 .board-timer-clock { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-dim); }
@@ -4152,12 +4153,18 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .board-timer-auto { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text-dim); text-align: left; cursor: pointer; }
 .board-timer-auto input { margin-top: 2px; }
 /* The row counter on a board: the page's own, moved in; scrolled within when long. */
-.board-item.kind-counter { display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.board-counter-slot { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+.board-item.kind-counter { display: flex; flex-direction: column; align-items: center; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+/* Laid out at one width and zoomed to the card (Board.fitCard): small, all of it smaller. */
+.board-fit { flex: none; width: 280px; box-sizing: border-box; }
+.board-counter-slot { padding: 30px 12px 12px; }
 .board-counter-slot .project-counter { gap: 10px; }
-.board-counter-slot [data-act="collapse"] { display: none; }
-/* Its ✕ clear of the counter's own buttons. */
-.board-item.kind-counter .board-counter-slot { padding-top: 30px; }
+.board-item.fit-scrolls { overflow-y: auto; }
+/* The counter's settings under its gear: only the counts, until it is pressed. */
+.counter:not(.settings-open) .counter-setting { display: none !important; }
+.counter:not(.settings-open) .counter-row:not(.on) { opacity: 0.55; }
+.counter-gear.on { background: var(--accent-soft); border-color: var(--accent); }
+.counter-head { gap: 6px; }
+.counter-head h3 { flex: 1; }
 /* Shown from the tab bar's timer: a moment's glow. */
 .timer-shown { animation: timer-shown 1.4s ease-out; }
 @keyframes timer-shown { 0% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }

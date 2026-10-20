@@ -64,8 +64,33 @@ export async function verifyBoardCounter() {
 
     addCounter();
     await waitFor(() => !!card()?.querySelector(".project-counter"), "the counter card");
-    const body = card()!.querySelector<HTMLElement>(".counter-body");
-    check(results, "Counter puts it on the board, all of it shown, no folding", !!body && !body.hidden && getComputedStyle(card()!.querySelector('[data-act="collapse"]')!).display === "none");
+    const shown = (sel: string) => {
+      const el = card()?.querySelector<HTMLElement>(sel);
+      return !!el && getComputedStyle(el).display !== "none";
+    };
+    check(results, "Counter puts it on the board: the counts and their − and +, the rest under a gear", shown('[data-act="total-inc"]') && shown('[data-act="total-dec"]') && shown('[data-act="settings"]') && !shown(".quick") && !shown('[data-act="sound"]') && !shown('[data-act="add-counter"]') && !shown(".counter-keys") && !card()!.querySelector('[data-act="collapse"]'));
+    card()!.querySelector<HTMLElement>('[data-act="settings"]')!.click();
+    await wait(100);
+    check(results, "…the gear shows the settings", shown(".quick") && shown('[data-act="sound"]') && shown('[data-act="add-counter"]') && shown(".counter-keys"));
+    card()!.querySelector<HTMLElement>('[data-act="settings"]')!.click();
+    await wait(100);
+    check(results, "…and hides them again", !shown(".quick") && !shown(".counter-keys"));
+
+    // Sized: what is in it is sized with it.
+    const fit = () => card()!.querySelector<HTMLElement>(".board-fit")!;
+    const zoom = () => Number(fit().style.zoom || 1);
+    card()!.style.width = "150px";
+    card()!.style.height = "160px";
+    await wait(300);
+    const small = zoom();
+    const fits = fit().getBoundingClientRect().height <= card()!.getBoundingClientRect().height + 1 && fit().getBoundingClientRect().width <= card()!.getBoundingClientRect().width + 1;
+    card()!.style.width = "560px";
+    card()!.style.height = "800px";
+    await wait(300);
+    check(results, "a small counter card is all there, smaller; a big one bigger", small < 0.6 && fits && zoom() > 1.5, `${small} ${fits} ${zoom()}`);
+    card()!.style.width = "320px";
+    card()!.style.height = "440px";
+    await wait(200);
     addCounter();
     await wait(200);
     check(results, "…one: Counter again picks it", page()!.querySelectorAll(".board-item.kind-counter").length === 1);

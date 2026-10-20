@@ -70,6 +70,20 @@ export async function verifyBoardTimer() {
     (page()!.querySelector('.board-tools [data-add="timer"]') as HTMLElement).click();
     await wait(200);
     check(results, "…one on a board: Timer again picks it", page()!.querySelectorAll(".board-item.kind-timer").length === 1);
+    // Sized: its clock and button with it.
+    const fit = () => card()!.querySelector<HTMLElement>(".board-fit")!;
+    card()!.style.width = "140px";
+    card()!.style.height = "130px";
+    await wait(300);
+    const small = Number(fit().style.zoom || 1);
+    const fits = fit().getBoundingClientRect().height <= card()!.getBoundingClientRect().height + 1;
+    card()!.style.width = "600px";
+    card()!.style.height = "560px";
+    await wait(300);
+    check(results, "a small timer card is all there, smaller; a big one bigger", small < 0.6 && fits && Number(fit().style.zoom) > 1.5, `${small} ${fits} ${fit().style.zoom}`);
+    card()!.style.width = "300px";
+    card()!.style.height = "280px";
+    await wait(200);
 
     // Its big Start and Stop; the side and the tab bar follow.
     go().click();

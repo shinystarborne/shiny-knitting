@@ -143,6 +143,9 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
 ];
 
+/** The width a counter's or timer's card is laid out at, then zoomed to its card's size. */
+const FIT_W = 280;
+
 /** The calculators a project's board can open, to save their result onto it. */
 export const BOARD_CALCULATORS: { key: string; label: string }[] = [
   { key: "raglan", label: "Raglan sweater or cardigan" },
@@ -182,6 +185,13 @@ export class Board {
   private sheets: Cheatsheet[] = [];
   /** The project's spells of knitting, for its timer card. */
   private sessions: KnitSession[] = [];
+  /** Fits a counter's or timer's card to its size as it is sized, and as what is in it changes. */
+  private fitter = new ResizeObserver((entries) => {
+    for (const e of entries) {
+      const card = (e.target as HTMLElement).closest<HTMLElement>(".board-item");
+      if (card) this.fitCard(card);
+    }
+  });
   /** A cheatsheet's pages as drawn, by card: kept over a redraw of the board while they are the same. */
   private sheetPages = new Map<string, { key: string; node: HTMLElement }>();
   /** The project's log, for a log card; empty on an inspiration board. */
@@ -229,6 +239,7 @@ export class Board {
     this.host.appendChild(this.root);
     this.world = this.root.querySelector(".board-world")!;
     this.bind();
+    this.teardown.push(() => this.fitter.disconnect());
 
     [this.items, this.patterns, this.yarns, this.tools, this.logEntries, this.charts] = await Promise.all([
       api.listBoardItems(this.boardId),
@@ -1143,6 +1154,39 @@ export class Board {
     this.paintCharts();
     void this.paintSheets();
     this.placeCounter();
+    this.fitter.disconnect();
+    for (const el of this.world.querySelectorAll<HTMLElement>(".board-item.kind-counter, .board-item.kind-timer")) this.watchFit(el);
+  }
+
+  /** A counter's or timer's card watched: sized, or what is in it changed, it is fitted again. */
+  private watchFit(card: HTMLElement): void {
+    this.fitter.observe(card);
+    const fit = card.querySelector<HTMLElement>(".board-fit");
+    if (fit) this.fitter.observe(fit);
+  }
+
+  /**
+   * What is in a counter's or timer's card, made as big as the card: laid out
+   * at one width and zoomed, so a small card is all there, smaller, and a big
+   * one big. The counter's settings, open, fit its width and scroll.
+   */
+  private fitCard(card: HTMLElement): void {
+    const fit = card.querySelector<HTMLElement>(".board-fit");
+    if (!fit) return;
+    fit.style.zoom = "1";
+    const natural = Math.max(1, fit.offsetHeight);
+    const byWidth = card.clientWidth / FIT_W;
+    const open = !!fit.querySelector(".counter.settings-open");
+    let zoom = Math.max(0.3, Math.min(4, open ? byWidth : Math.min(byWidth, card.clientHeight / natural)));
+    fit.style.zoom = String(zoom);
+    // Small, its words wrap a little otherwise and it grows: made to fit as it then is.
+    for (let i = 0; i < 3 && !open && zoom > 0.3; i++) {
+      const tall = fit.offsetHeight * zoom;
+      if (tall <= card.clientHeight + 0.5) break;
+      zoom = Math.max(0.3, (zoom * card.clientHeight) / tall);
+      fit.style.zoom = String(zoom);
+    }
+    card.classList.toggle("fit-scrolls", open);
   }
 
   /** The project's counter, in its card; kept in the page when there is none. */
@@ -1319,7 +1363,7 @@ export class Board {
       case "counter":
         // The page's own counter is moved in after: it keeps its state and its keys.
         body = this.hooks.counter?.()
-          ? `<div class="board-counter-slot"></div>`
+          ? `<div class="board-counter-slot board-fit"></div>`
           : `<div class="board-caption missing">The counter counts the rows of the project's pattern: choose one, on the side.</div>`;
         break;
       case "sheet": {
@@ -1411,6 +1455,7 @@ export class Board {
       ? `<button class="primary board-timer-go" data-act="timer-go" title="Stop the timer: you have put it down">■ Stop</button>`
       : `<button class="board-timer-go" data-act="timer-go" title="Time your knitting: it runs with the app closed too">▶ Start</button>`;
     return `
+      <div class="board-fit board-timer-fit">
       <div class="board-timer-bar" title="Drag here to move it">⏱ Knitting time</div>
       <div class="board-timer">
         <div class="board-timer-clock${running ? " running" : ""}" data-el="timer-clock">${running ? clock(sessionMs(running)) : "0:00:00"}</div>
@@ -1420,6 +1465,7 @@ export class Board {
           <input type="checkbox" data-f="timer-auto" ${d.auto !== false ? "checked" : ""} />
           <span>Start with a row counted, stop after 5 minutes without one</span>
         </label>
+      </div>
       </div>`;
   }
 
@@ -1435,6 +1481,7 @@ export class Board {
     const list = fresh.querySelector(".board-steps-list");
     if (list) list.scrollTop = scrolled;
     if (item.kind === "counter") this.placeCounter();
+    if (item.kind === "counter" || item.kind === "timer") this.watchFit(fresh);
   }
 
   /**

@@ -58,8 +58,8 @@ export class RowCounter {
     this.root.innerHTML = `
       <div class="counter-head">
         <h3>Row counter</h3>
-        <button class="ghost counter-sound" data-act="sound" title="Counting sound">♪</button>
-        <button class="ghost" data-act="collapse" title="Hide the counter">–</button>
+        <button class="ghost counter-sound counter-setting" data-act="sound" title="Counting sound">♪</button>
+        <button class="ghost counter-gear" data-act="settings" title="Settings: the sound, the keys, ±10 and Reset, and adding or changing counters" aria-label="Counter settings" aria-pressed="false">⚙</button>
       </div>
       <div class="counter-body">
         <div class="counter-total">
@@ -69,12 +69,12 @@ export class RowCounter {
             <span class="value" data-el="total">0</span>
             <button data-act="total-inc" title="Add 1">+</button>
           </div>
-          <div class="quick">
+          <div class="quick counter-setting">
             <button data-act="total-dec10" title="Subtract 10">−10</button>
             <button data-act="total-inc10" title="Add 10">+10</button>
             <button data-act="total-reset" title="Reset to zero">Reset</button>
           </div>
-          <p class="hint">
+          <p class="hint counter-setting">
             Counts every row, and every counter that is switched on.
           </p>
         </div>
@@ -82,14 +82,14 @@ export class RowCounter {
         <div class="counter-counters">
           <label>Counters</label>
           <ul data-el="counterlist" class="counter-list"></ul>
-          <button class="ghost" data-act="add-counter">+ Add counter</button>
-          <p class="hint">
+          <button class="ghost counter-setting" data-act="add-counter">+ Add counter</button>
+          <p class="hint counter-setting">
             The dot switches a counter on and off. Off keeps its count but stops
             it moving. Several can be on at once.
           </p>
         </div>
 
-        <div class="counter-keys">
+        <div class="counter-keys counter-setting">
           <label>Keys</label>
           <div class="key-row">
             <span>Count up</span>
@@ -231,12 +231,11 @@ export class RowCounter {
         if (!isClickMuted()) playClick();
         break;
 
-      case "collapse": {
-        const body = this.q(".counter-body");
-        const hidden = body.hasAttribute("hidden");
-        if (hidden) body.removeAttribute("hidden");
-        else body.setAttribute("hidden", "");
-        btn.textContent = hidden ? "–" : "+";
+      case "settings": {
+        // Only the counts, until the gear: the rest is set up once and left.
+        const open = this.root.classList.toggle("settings-open");
+        btn.setAttribute("aria-pressed", String(open));
+        btn.classList.toggle("on", open);
         break;
       }
     }
@@ -435,7 +434,7 @@ export class RowCounter {
 
     if (!this.counters.length) {
       this.counterList.innerHTML =
-        '<li class="counter-empty">No counters yet. Add one for each part you count separately.</li>';
+        '<li class="counter-empty">No counters yet: ⚙ to add one for each part you count separately.</li>';
       return;
     }
 
@@ -450,7 +449,7 @@ export class RowCounter {
           : "";
         return `
           <li class="counter-row${c.enabled ? " on" : ""}" data-id="${c.id}">
-            <button class="counter-toggle" data-act="c-toggle" data-id="${c.id}"
+            <button class="counter-toggle counter-setting" data-act="c-toggle" data-id="${c.id}"
               title="${c.enabled ? "Counting — click to set aside" : "Set aside — click to count it"}"
               aria-label="${c.enabled ? "Counting" : "Set aside"}"
               aria-pressed="${c.enabled}">${c.enabled ? "●" : "○"}</button>
@@ -462,7 +461,7 @@ export class RowCounter {
               <button data-act="c-dec" data-id="${c.id}" title="Subtract 1">−</button>
               <button data-act="c-inc" data-id="${c.id}" title="Add 1">+</button>
             </div>
-            <div class="counter-more">
+            <div class="counter-more counter-setting">
               <button class="ghost key-chip${c.hotkey ? " set" : ""}" data-act="c-key" data-id="${c.id}"
                 title="${c.hotkey ? `${escapeHtml(keyLabel(c.hotkey))} counts this counter; Shift+${escapeHtml(keyLabel(c.hotkey))} counts it down. Click to change.` : "Give this counter its own key"}"
                 >${c.hotkey ? escapeHtml(keyLabel(c.hotkey)) : "Key"}</button>
