@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.10](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.10)** —
+  pause the knitting timer, one sitting with the break left out; it stops itself after 30 minutes without a row, not 5.
 - **[v1.1.0-beta.9](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.9)** —
   a plain calculator on the board, + − × ÷ with a tape; Calculators renamed Constructors.
 - **[v1.1.0-beta.8](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.8)** —
