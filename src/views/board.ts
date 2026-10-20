@@ -97,6 +97,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   chart: [380, 380],
   sheet: SHEET_CARD,
   timer: [300, 280],
+  counter: [320, 440],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -112,6 +113,10 @@ export interface BoardHooks {
   openChart?(id: string): void;
   /** Opens a calculator, its result to be saved to this board. */
   openCalculator?(calc: string): void;
+  /** The project's row counter, to show on its card; null while it has no pattern to count. */
+  counter?(): HTMLElement | null;
+  /** Keeps the counter in the page while no card shows it, so it still counts and tells the page. */
+  parkCounter?(host: HTMLElement): void;
 }
 
 export interface BoardOptions {
@@ -578,7 +583,7 @@ export class Board {
 
   private onWheel(e: WheelEvent): void {
     // A note being read, or a log card's entries, scroll themselves.
-    if ((e.target as HTMLElement).closest("textarea, .board-log-list, .board-steps-list, .board-sheet") && !e.ctrlKey) return;
+    if ((e.target as HTMLElement).closest("textarea, .board-log-list, .board-steps-list, .board-sheet, .board-counter-slot") && !e.ctrlKey) return;
     e.preventDefault();
     const box = this.root.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) {
@@ -1065,7 +1070,7 @@ export class Board {
 
   private async remove(id: string): Promise<void> {
     const item = this.items.find((i) => i.id === id);
-    if (!item) return;
+    if (!item || item.kind === "counter") return;
     // An empty note is a slip, and goes without asking.
     const empty = (item.kind === "note" || item.kind === "text") && !String(item.data.text ?? "").trim();
     if (!empty && !(await askYesNo(`Remove this ${KIND_NAMES[item.kind]} from the board?`, { okLabel: "Remove", danger: true }))) return;
@@ -1127,6 +1132,49 @@ export class Board {
     void this.fillPictures();
     this.paintCharts();
     void this.paintSheets();
+    this.placeCounter();
+  }
+
+  /** The project's counter, in its card; kept in the page when there is none. */
+  placeCounter(): void {
+    const host = this.hooks.counter?.();
+    if (!host) return;
+    const slot = this.world.querySelector<HTMLElement>(".board-counter-slot");
+    if (slot) {
+      if (host.parentElement !== slot) slot.replaceChildren(host);
+    } else {
+      this.hooks.parkCounter?.(host);
+    }
+  }
+
+  /**
+   * The counter's card, put on the board when the project has a pattern and
+   * the board has none yet -- for a project from before the counter moved
+   * here, too -- in free space, the view left as it is.
+   */
+  ensureCounter(): Promise<void> {
+    // Asked twice at once -- the page opening, its pattern read -- one card.
+    this.ensuring = (this.ensuring ?? Promise.resolve()).then(() => this.ensureCounterNow());
+    return this.ensuring;
+  }
+
+  private ensuring: Promise<void> | null = null;
+
+  private async ensureCounterNow(): Promise<void> {
+    if (this.hooks.counter?.() && !this.items.some((i) => i.kind === "counter")) {
+      const [w, h] = SIZES.counter;
+      const at = this.placeFor("counter");
+      try {
+        this.items.push(await api.addBoardItem(this.boardId, { kind: "counter", x: at.x, y: at.y, w, h, data: {} }));
+        (this.root.querySelector(".board-empty") as HTMLElement).hidden = true;
+        this.render();
+        return;
+      } catch {
+        // Kept in the page instead; it still counts.
+      }
+    }
+    if (this.items.some((i) => i.kind === "counter")) this.repaint(this.items.find((i) => i.kind === "counter")!.id);
+    this.placeCounter();
   }
 
   /**
@@ -1195,7 +1243,8 @@ export class Board {
       item.hasImage && (item.kind === "image" || item.kind === "pin")
         ? `<span class="board-pic-tools"><button class="board-crop" data-act="view" title="See it big (double-click it, or Space with it selected)">⤢ View</button><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
         : "";
-    const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
+    // The counter is the project's, and stays: moved and sized, not removed.
+    const remove = item.kind === "counter" ? "" : `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
     let body = "";
     let extra = "";
@@ -1273,6 +1322,12 @@ export class Board {
         break;
       case "timer":
         body = this.timerHtml(d);
+        break;
+      case "counter":
+        // The page's own counter is moved in after: it keeps its state and its keys.
+        body = this.hooks.counter?.()
+          ? `<div class="board-counter-slot"></div>`
+          : `<div class="board-caption missing">The counter counts the rows of the project's pattern: choose one, on the side.</div>`;
         break;
       case "sheet": {
         // Moved by its bar; a web page in a frame, a book's pages drawn after.
@@ -1386,6 +1441,7 @@ export class Board {
     el.replaceWith(fresh);
     const list = fresh.querySelector(".board-steps-list");
     if (list) list.scrollTop = scrolled;
+    if (item.kind === "counter") this.placeCounter();
   }
 
   /**
@@ -1506,6 +1562,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   chart: "chart",
   sheet: "cheatsheet",
   timer: "timer",
+  counter: "row counter",
 };
 
 /**

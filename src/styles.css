@@ -4146,6 +4146,10 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .board-timer-go { min-width: 70%; padding: 14px 18px; font-size: 18px; font-weight: 700; border-radius: 12px; }
 .board-timer-auto { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text-dim); text-align: left; cursor: pointer; }
 .board-timer-auto input { margin-top: 2px; }
+/* The row counter on a board: the page's own, moved in; scrolled within when long. */
+.board-item.kind-counter { display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.board-counter-slot { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+.board-counter-slot .project-counter { gap: 10px; }
 /* Shown from the tab bar's timer: a moment's glow. */
 .timer-shown { animation: timer-shown 1.4s ease-out; }
 @keyframes timer-shown { 0% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }

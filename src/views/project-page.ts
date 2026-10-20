@@ -161,6 +161,7 @@ export class ProjectPage {
           <div class="project-pattern-body"></div>
         </section>
         <button class="project-pattern-tab" data-pane="restore" hidden title="Show the pattern again">📄 <span>Pattern</span></button>
+        <div class="counter-park" hidden></div>
       </div>`;
     this.screen.appendChild(this.root);
     await this.syncCounter();
@@ -181,8 +182,11 @@ export class ProjectPage {
       openLog: () => void this.show("log"),
       openChart: (id) => this.hooks.openChart?.(id),
       openCalculator: (calc) => this.hooks.openCalculator?.(calc, this.project),
+      counter: () => this.counterHost,
+      parkCounter: (host) => this.root.querySelector(".counter-park")?.appendChild(host),
     });
     await this.board.mount();
+    await this.board.ensureCounter();
     this.root.querySelector(".project-view-switch")!.addEventListener("click", (e) => {
       const view = closestEl(e.target, "[data-view]")?.dataset.view;
       if (view === "board" || view === "log") void this.show(view);
@@ -317,7 +321,6 @@ export class ProjectPage {
                <button class="ghost" data-act="show-pattern" title="Read the pattern here, beside the board">📄 Show the pattern here</button>
                <button class="link" data-act="open-pattern" title="Open the pattern on its own">Open it full ↗</button>
              </div>
-             <div data-el="counter"></div>
              <div data-el="chart"></div>`
           : ""
       }
@@ -370,9 +373,6 @@ ${plan ? "" : `      <div class="project-side-dates">
 
       <button class="ghost danger-text" data-act="remove">Remove project</button>
     `;
-    // The counter's element is moved back in, not rebuilt, so it keeps its state.
-    const slot = side.querySelector('[data-el="counter"]');
-    if (slot && this.counterHost) slot.replaceWith(this.counterHost);
     const chartSlot = side.querySelector('[data-el="chart"]');
     if (chartSlot && this.chart) chartSlot.replaceWith(this.chart.host);
     mountPatternPicker(side.querySelector<HTMLElement>('[data-el="pattern-pick"]')!, this.patterns, p.patternId);
@@ -852,6 +852,9 @@ ${plan ? "" : `      <div class="project-side-dates">
     const counter = new RowCounter(host, patternId, this.projectId);
     this.counterHost = host;
     this.counter = counter;
+    // Its place is the board's card: kept in the page until the board has it.
+    this.root?.querySelector(".counter-park")?.appendChild(host);
+    void this.board?.ensureCounter();
     await counter.refresh().catch(() => {});
   }
 
