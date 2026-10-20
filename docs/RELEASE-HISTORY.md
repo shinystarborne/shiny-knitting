@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.7](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.7)** —
+  the row counter only where you want it: a Counter button on the board, removed like any card.
 - **[v1.1.0-beta.6](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.6)** —
   the row counter on the project's board, off the side panel; there by itself while the project has a pattern.
 - **[v1.1.0-beta.5](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.5)** —
