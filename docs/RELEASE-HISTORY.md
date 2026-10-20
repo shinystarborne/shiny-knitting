@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.8](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.8)** —
+  the counter shows only the counts, its settings under a gear; counter and timer cards scale what is in them.
 - **[v1.1.0-beta.7](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.7)** —
   the row counter only where you want it: a Counter button on the board, removed like any card.
 - **[v1.1.0-beta.6](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.6)** —
