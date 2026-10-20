@@ -6,9 +6,14 @@ import type { KnitSession } from "../api";
  * checks it directly.
  */
 
-/** A spell's length in ms: to now while its timer runs. */
+/** A spell's length in ms: to now while its timer runs, to its pause while paused, its breaks left out. */
 export function sessionMs(s: KnitSession, now = Date.now()): number {
-  return Math.max(0, (s.endedAt ?? now) - s.startedAt);
+  return Math.max(0, (s.endedAt ?? s.pausedAt ?? now) - s.startedAt - (s.pausedMs ?? 0));
+}
+
+/** Whether a spell is paused now. */
+export function isPaused(s: KnitSession | null | undefined): boolean {
+  return !!s && s.endedAt === null && s.pausedAt != null;
 }
 
 /** All the spells' time, in ms. */

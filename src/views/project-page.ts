@@ -9,7 +9,8 @@ import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
 import { money, parsePrice, projectCost } from "./money";
-import { clock, hoursText, perHour, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
+import { clock, hoursText, isPaused, perHour, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
+import { noteActivity } from "../auto-timer";
 import { openLightbox } from "../lightbox";
 import { projectPictures } from "./project-photos";
 import { mountPatternPicker } from "./pattern-picker";
@@ -469,7 +470,8 @@ ${plan ? "" : `      <div class="project-side-dates">
           ${
             live
               ? running
-                ? `<button class="primary knit-stop" data-act="knit-stop" title="Stop the timer: you have put it down">■ Stop <span class="knit-clock" data-el="knit-clock">${clock(sessionMs(running))}</span></button>`
+                ? `<button class="primary knit-stop" data-act="knit-stop" title="Stop the timer: you have put it down">■ Stop <span class="knit-clock" data-el="knit-clock">${clock(sessionMs(running))}</span></button>
+                   <button class="ghost knit-pause" data-act="knit-pause" title="${isPaused(running) ? "Go on: the same sitting" : "A break: the same sitting after it, the break not counted"}">${isPaused(running) ? "▶ Go on" : "⏸ Pause"}</button>`
                 : `<button class="ghost knit-start" data-act="knit-start" title="Time your knitting: start when you pick it up, stop when you put it down. It runs with the app closed too.">▶ Start knitting</button>`
               : ""
           }
@@ -565,7 +567,7 @@ ${plan ? "" : `      <div class="project-side-dates">
   /** A second on: the running clock and the total. */
   private tickTime(): void {
     const running = this.sessions.find((s) => s.endedAt === null);
-    if (!running) return;
+    if (!running || isPaused(running)) return;
     const clockEl = this.root.querySelector('[data-el="knit-clock"]');
     if (clockEl) clockEl.textContent = clock(sessionMs(running));
     const totalEl = this.root.querySelector('[data-el="knit-total"]');
@@ -689,10 +691,14 @@ ${plan ? "" : `      <div class="project-side-dates">
     }
     if (act === "finish") this.hooks.finish(this.project);
     if (act === "rate-standard") return this.setRate(null);
-    if (act === "knit-start" || act === "knit-stop") {
+    if (act === "knit-start" || act === "knit-stop" || act === "knit-pause") {
       try {
         if (act === "knit-start") await api.startKnitting(this.projectId);
-        else await api.stopKnitting();
+        else if (act === "knit-stop") await api.stopKnitting();
+        else if (isPaused(this.sessions.find((s) => s.endedAt === null))) {
+          await api.resumeKnitting();
+          noteActivity(this.projectId);
+        } else await api.pauseKnitting();
       } catch (err) {
         return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
       }

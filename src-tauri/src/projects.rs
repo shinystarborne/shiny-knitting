@@ -117,6 +117,18 @@ pub fn stop_knitting(state: State<'_, AppState>) -> CmdResult<Option<KnitSession
     db::stop_knitting(&state.db())
 }
 
+/// Pauses the timer: a break, the same sitting after it.
+#[tauri::command]
+pub fn pause_knitting(state: State<'_, AppState>) -> CmdResult<Option<KnitSession>> {
+    db::pause_knitting(&state.db())
+}
+
+/// Goes on with the sitting paused.
+#[tauri::command]
+pub fn resume_knitting(state: State<'_, AppState>) -> CmdResult<Option<KnitSession>> {
+    db::resume_knitting(&state.db())
+}
+
 /// Stops the timer as at a moment gone by: the last row counted, when it was left.
 #[tauri::command]
 pub fn stop_knitting_at(state: State<'_, AppState>, at: i64) -> CmdResult<Option<KnitSession>> {

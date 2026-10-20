@@ -715,12 +715,18 @@ export interface ToolSetInput {
   toolIds: string[];
 }
 
-/** A spell of knitting on a project; `endedAt` null while its timer runs. Mirrors `models.rs::KnitSession`. */
+/**
+ * A spell of knitting on a project; `endedAt` null while its timer runs.
+ * Paused, `pausedAt` says since when; `pausedMs` is the time paused before,
+ * left out of its length. Mirrors `models.rs::KnitSession`.
+ */
 export interface KnitSession {
   id: string;
   projectId: string;
   startedAt: number;
   endedAt: number | null;
+  pausedMs?: number;
+  pausedAt?: number | null;
 }
 
 /** A tool on an active project: the pair ("" tip), or one tip of it ("one"). Mirrors `models.rs::ToolUse`. */
@@ -1596,6 +1602,10 @@ export const api = {
   stopKnitting: () => invoke<KnitSession | null>("stop_knitting"),
   /** Stops the timer as at a moment gone by (the last row counted); a spell under a minute goes. */
   stopKnittingAt: (at: number) => invoke<KnitSession | null>("stop_knitting_at", { at }),
+  /** Pauses the timer: a break, the same sitting after it. */
+  pauseKnitting: () => invoke<KnitSession | null>("pause_knitting"),
+  /** Goes on with the sitting paused, the break left out. */
+  resumeKnitting: () => invoke<KnitSession | null>("resume_knitting"),
   /** Knitting time typed in: when it started, and how many seconds. */
   addKnitTime: (projectId: string, startedAt: number, seconds: number) => invoke<KnitSession>("add_knit_time", { projectId, startedAt, seconds }),
   /** A spell put right; one still timed is stopped so. */

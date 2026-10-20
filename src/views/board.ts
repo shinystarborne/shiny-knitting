@@ -11,7 +11,8 @@ import { openLightbox } from "../lightbox";
 import { logPictures } from "./project-photos";
 import { playerHtml } from "./masterclasses";
 import { countStep, nowAt, progress, readStepList, tick, type StepList } from "./steps";
-import { clock, hoursText, sessionMs, totalMs } from "./knit-time";
+import { clock, hoursText, isPaused, sessionMs, totalMs } from "./knit-time";
+import { noteActivity } from "../auto-timer";
 import { decimalSign, display as sumDisplay, emptySum, expression as sumExpression, keyOf as sumKeyOf, press as sumPress, type SumState } from "./sums";
 
 /**
@@ -640,10 +641,17 @@ export class Board {
       this.root.focus({ preventScroll: true });
       await this.pressSum(id, btn.dataset.key);
     }
-    if (act === "timer-go") {
-      const running = this.sessions.some((s) => s.endedAt === null);
+    if (act === "timer-go" || act === "timer-pause") {
+      const running = this.sessions.find((s) => s.endedAt === null);
       try {
-        if (running) await api.stopKnitting();
+        if (act === "timer-pause" && running) {
+          if (isPaused(running)) {
+            await api.resumeKnitting();
+            noteActivity(this.boardId);
+          } else {
+            await api.pauseKnitting();
+          }
+        } else if (running) await api.stopKnitting();
         else await api.startKnitting(this.boardId);
       } catch (err) {
         return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
@@ -1499,7 +1507,7 @@ export class Board {
   /** A second on, on the timer card: its clock and the total. */
   private tickTimer(): void {
     const running = this.sessions.find((s) => s.endedAt === null);
-    if (!running) return;
+    if (!running || isPaused(running)) return;
     const clockEl = this.world.querySelector('[data-el="timer-clock"]');
     if (clockEl) clockEl.textContent = clock(sessionMs(running));
     const totalEl = this.world.querySelector('[data-el="timer-total"]');
@@ -1526,19 +1534,24 @@ export class Board {
   private timerHtml(d: Record<string, unknown>): string {
     const running = this.sessions.find((s) => s.endedAt === null);
     const live = isLive(this.hooks.project()?.status ?? "");
+    const paused = isPaused(running);
     const go = running
-      ? `<button class="primary board-timer-go" data-act="timer-go" title="Stop the timer: you have put it down">■ Stop</button>`
+      ? `<div class="board-timer-buttons">
+           <button class="board-timer-go${paused ? " primary" : ""}" data-act="timer-pause" title="${paused ? "Go on: the same sitting" : "A break: the same sitting after it, the break not counted"}">${paused ? "▶ Go on" : "⏸ Pause"}</button>
+           <button class="board-timer-go${paused ? "" : " primary"}" data-act="timer-go" title="Stop the timer: you have put it down">■ Stop</button>
+         </div>`
       : `<button class="board-timer-go" data-act="timer-go" title="Time your knitting: it runs with the app closed too">▶ Start</button>`;
     return `
       <div class="board-fit board-timer-fit">
       <div class="board-timer-bar" title="Drag here to move it">⏱ Knitting time</div>
       <div class="board-timer">
-        <div class="board-timer-clock${running ? " running" : ""}" data-el="timer-clock">${running ? clock(sessionMs(running)) : "0:00:00"}</div>
+        <div class="board-timer-clock${running && !paused ? " running" : ""}" data-el="timer-clock">${running ? clock(sessionMs(running)) : "0:00:00"}</div>
+        ${paused ? `<div class="board-timer-paused">Paused</div>` : ""}
         <div class="board-timer-total" data-el="timer-total">${this.sessions.length ? `${hoursText(totalMs(this.sessions))} in all` : "Not timed yet"}</div>
         ${live ? go : `<p class="board-timer-total">Finished: its time is added by hand, on the side.</p>`}
-        <label class="board-timer-auto" title="Counting a row starts the timer; five minutes without one stops it, as at the last row counted">
+        <label class="board-timer-auto" title="Counting a row starts the timer, or goes on after a pause; thirty minutes without one stops it, as at the last row counted">
           <input type="checkbox" data-f="timer-auto" ${d.auto !== false ? "checked" : ""} />
-          <span>Start with a row counted, stop after 5 minutes without one</span>
+          <span>Start with a row counted, stop after 30 minutes without one</span>
         </label>
       </div>
       </div>`;

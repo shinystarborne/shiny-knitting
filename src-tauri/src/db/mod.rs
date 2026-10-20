@@ -861,6 +861,11 @@ fn migrate(conn: &Connection) -> AppResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_knit_sessions_project ON knit_sessions(project_id);",
     )?;
+    // A sitting paused -- a break, not its end: the time paused, and when the pause now on began.
+    if !column_exists(conn, "knit_sessions", "paused_ms")? {
+        conn.execute("ALTER TABLE knit_sessions ADD COLUMN paused_ms INTEGER NOT NULL DEFAULT 0", [])?;
+        conn.execute("ALTER TABLE knit_sessions ADD COLUMN paused_at INTEGER", [])?;
+    }
     // The pattern a masterclass goes with.
     if !column_exists(conn, "masterclasses", "pattern_id")? {
         conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
@@ -2862,13 +2867,15 @@ pub fn delete_tool_set(conn: &Connection, id: &str) -> AppResult<()> {
 /// The longest one sitting is taken to be: a timer left running longer was forgotten.
 const LONGEST_SITTING_MS: i64 = 24 * 3600 * 1000;
 
+const SESSION_COLUMNS: &str = "id, project_id, started_at, ended_at, paused_ms, paused_at";
+
 fn row_to_session(r: &rusqlite::Row) -> rusqlite::Result<KnitSession> {
-    Ok(KnitSession { id: r.get(0)?, project_id: r.get(1)?, started_at: r.get(2)?, ended_at: r.get(3)? })
+    Ok(KnitSession { id: r.get(0)?, project_id: r.get(1)?, started_at: r.get(2)?, ended_at: r.get(3)?, paused_ms: r.get(4)?, paused_at: r.get(5)? })
 }
 
 /// The spells of knitting, the latest first: one project's, or every one's.
 pub fn list_knit_sessions(conn: &Connection, project_id: Option<&str>) -> AppResult<Vec<KnitSession>> {
-    let sql = "SELECT id, project_id, started_at, ended_at FROM knit_sessions";
+    let sql = format!("SELECT {SESSION_COLUMNS} FROM knit_sessions");
     Ok(match project_id {
         Some(p) => conn
             .prepare(&format!("{sql} WHERE project_id = ?1 ORDER BY started_at DESC"))?
@@ -2881,13 +2888,13 @@ pub fn list_knit_sessions(conn: &Connection, project_id: Option<&str>) -> AppRes
 /// The spell being timed now, if one is.
 pub fn running_knit_session(conn: &Connection) -> AppResult<Option<KnitSession>> {
     Ok(conn
-        .query_row("SELECT id, project_id, started_at, ended_at FROM knit_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1", [], row_to_session)
+        .query_row(&format!("SELECT {SESSION_COLUMNS} FROM knit_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1"), [], row_to_session)
         .optional()?)
 }
 
 /// Stops a project's timer, if it runs.
 fn stop_knitting_on(conn: &Connection, project_id: &str, at: i64) -> AppResult<()> {
-    conn.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, ?2) WHERE project_id = ?1 AND ended_at IS NULL", params![project_id, at])?;
+    conn.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, COALESCE(paused_at, ?2)), paused_at = NULL WHERE project_id = ?1 AND ended_at IS NULL", params![project_id, at])?;
     Ok(())
 }
 
@@ -2900,19 +2907,41 @@ pub fn start_knitting(conn: &Connection, project_id: &str) -> AppResult<KnitSess
     }
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
-    tx.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, ?1) WHERE ended_at IS NULL", params![now])?;
-    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at: now, ended_at: None };
+    tx.execute("UPDATE knit_sessions SET ended_at = MAX(started_at, COALESCE(paused_at, ?1)), paused_at = NULL WHERE ended_at IS NULL", params![now])?;
+    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at: now, ended_at: None, paused_ms: 0, paused_at: None };
     tx.execute("INSERT INTO knit_sessions (id, project_id, started_at, ended_at) VALUES (?1, ?2, ?3, NULL)", params![session.id, project_id, now])?;
     tx.commit()?;
     Ok(session)
 }
 
 /// Stops the timer running, and says the spell it timed; None when none ran.
+/// Stopped while paused, it ended when it was paused.
 pub fn stop_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
     let Some(running) = running_knit_session(conn)? else { return Ok(None) };
+    let now = running.paused_at.unwrap_or_else(now_ms).max(running.started_at);
+    conn.execute("UPDATE knit_sessions SET ended_at = ?2, paused_at = NULL WHERE id = ?1", params![running.id, now])?;
+    Ok(Some(KnitSession { ended_at: Some(now), paused_at: None, ..running }))
+}
+
+/// Pauses the timer running -- a break, the sitting going on after it; None
+/// when none runs. Paused already, it stays as it is.
+pub fn pause_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
+    let Some(running) = running_knit_session(conn)? else { return Ok(None) };
+    if running.paused_at.is_some() {
+        return Ok(Some(running));
+    }
     let now = now_ms().max(running.started_at);
-    conn.execute("UPDATE knit_sessions SET ended_at = ?2 WHERE id = ?1", params![running.id, now])?;
-    Ok(Some(KnitSession { ended_at: Some(now), ..running }))
+    conn.execute("UPDATE knit_sessions SET paused_at = ?2 WHERE id = ?1", params![running.id, now])?;
+    Ok(Some(KnitSession { paused_at: Some(now), ..running }))
+}
+
+/// Goes on with the sitting paused, the break left out of its time; None when none runs.
+pub fn resume_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
+    let Some(running) = running_knit_session(conn)? else { return Ok(None) };
+    let Some(paused_at) = running.paused_at else { return Ok(Some(running)) };
+    let paused_ms = running.paused_ms + (now_ms() - paused_at).max(0);
+    conn.execute("UPDATE knit_sessions SET paused_ms = ?2, paused_at = NULL WHERE id = ?1", params![running.id, paused_ms])?;
+    Ok(Some(KnitSession { paused_ms, paused_at: None, ..running }))
 }
 
 /// Stops the timer running as at a moment gone by -- the last row counted
@@ -2921,13 +2950,14 @@ pub fn stop_knitting(conn: &Connection) -> AppResult<Option<KnitSession>> {
 /// or it went.
 pub fn stop_knitting_at(conn: &Connection, at: i64) -> AppResult<Option<KnitSession>> {
     let Some(running) = running_knit_session(conn)? else { return Ok(None) };
-    let ended = at.clamp(running.started_at, now_ms().max(running.started_at));
-    if ended - running.started_at < 60_000 {
+    let latest = running.paused_at.unwrap_or_else(now_ms).max(running.started_at);
+    let ended = at.clamp(running.started_at, latest);
+    if ended - running.started_at - running.paused_ms < 60_000 {
         conn.execute("DELETE FROM knit_sessions WHERE id = ?1", params![running.id])?;
         return Ok(None);
     }
-    conn.execute("UPDATE knit_sessions SET ended_at = ?2 WHERE id = ?1", params![running.id, ended])?;
-    Ok(Some(KnitSession { ended_at: Some(ended), ..running }))
+    conn.execute("UPDATE knit_sessions SET ended_at = ?2, paused_at = NULL WHERE id = ?1", params![running.id, ended])?;
+    Ok(Some(KnitSession { ended_at: Some(ended), paused_at: None, ..running }))
 }
 
 /// A spell's length checked: a minute at least, a day at most, not in the future.
@@ -2946,7 +2976,7 @@ fn sitting(started_at: i64, seconds: i64) -> AppResult<i64> {
 pub fn add_knit_time(conn: &Connection, project_id: &str, started_at: i64, seconds: i64) -> AppResult<KnitSession> {
     get_project(conn, project_id)?;
     let ended = sitting(started_at, seconds)?;
-    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at, ended_at: Some(ended) };
+    let session = KnitSession { id: uuid::Uuid::new_v4().to_string(), project_id: project_id.to_string(), started_at, ended_at: Some(ended), paused_ms: 0, paused_at: None };
     conn.execute("INSERT INTO knit_sessions (id, project_id, started_at, ended_at) VALUES (?1, ?2, ?3, ?4)", params![session.id, project_id, started_at, ended])?;
     Ok(session)
 }
@@ -2955,10 +2985,10 @@ pub fn add_knit_time(conn: &Connection, project_id: &str, started_at: i64, secon
 /// is stopped so, as a timer left running is put right.
 pub fn change_knit_session(conn: &Connection, id: &str, started_at: i64, seconds: i64) -> AppResult<KnitSession> {
     let ended = sitting(started_at, seconds)?;
-    if conn.execute("UPDATE knit_sessions SET started_at = ?2, ended_at = ?3 WHERE id = ?1", params![id, started_at, ended])? == 0 {
+    if conn.execute("UPDATE knit_sessions SET started_at = ?2, ended_at = ?3, paused_ms = 0, paused_at = NULL WHERE id = ?1", params![id, started_at, ended])? == 0 {
         return Err(AppError::NotFound("That time is no longer there.".to_string()));
     }
-    Ok(conn.query_row("SELECT id, project_id, started_at, ended_at FROM knit_sessions WHERE id = ?1", params![id], row_to_session)?)
+    Ok(conn.query_row(&format!("SELECT {SESSION_COLUMNS} FROM knit_sessions WHERE id = ?1"), params![id], row_to_session)?)
 }
 
 pub fn delete_knit_session(conn: &Connection, id: &str) -> AppResult<()> {

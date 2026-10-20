@@ -2633,22 +2633,39 @@ const handlers = {
     if (!isLive(p.status)) throw new Error("A finished or frogged project is not being knitted: add its time by hand.");
     const now = Date.now();
     store.knitSessions = store.knitSessions ?? [];
-    for (const s of store.knitSessions) if (s.endedAt === null) s.endedAt = Math.max(s.startedAt, now);
-    const s = { id: `ks${store.nextId++}`, projectId, startedAt: now, endedAt: null };
+    for (const s of store.knitSessions) if (s.endedAt === null) Object.assign(s, { endedAt: Math.max(s.startedAt, s.pausedAt ?? now), pausedAt: null });
+    const s = { id: `ks${store.nextId++}`, projectId, startedAt: now, endedAt: null, pausedMs: 0, pausedAt: null };
     store.knitSessions.push(s);
     return clone(s);
   },
   stop_knitting: () => {
     const s = (store.knitSessions ?? []).find((x) => x.endedAt === null);
     if (!s) return null;
-    s.endedAt = Math.max(s.startedAt, Date.now());
+    s.endedAt = Math.max(s.startedAt, s.pausedAt ?? Date.now());
+    s.pausedAt = null;
+    return clone(s);
+  },
+  pause_knitting: () => {
+    const s = (store.knitSessions ?? []).find((x) => x.endedAt === null);
+    if (!s) return null;
+    if (s.pausedAt == null) s.pausedAt = Math.max(s.startedAt, Date.now());
+    return clone(s);
+  },
+  resume_knitting: () => {
+    const s = (store.knitSessions ?? []).find((x) => x.endedAt === null);
+    if (!s) return null;
+    if (s.pausedAt != null) {
+      s.pausedMs = (s.pausedMs ?? 0) + Math.max(0, Date.now() - s.pausedAt);
+      s.pausedAt = null;
+    }
     return clone(s);
   },
   stop_knitting_at: ({ at }) => {
     const s = (store.knitSessions ?? []).find((x) => x.endedAt === null);
     if (!s) return null;
-    const ended = Math.min(Math.max(at, s.startedAt), Math.max(Date.now(), s.startedAt));
-    if (ended - s.startedAt < 60000) {
+    const ended = Math.min(Math.max(at, s.startedAt), Math.max(s.pausedAt ?? Date.now(), s.startedAt));
+    s.pausedAt = null;
+    if (ended - s.startedAt - (s.pausedMs ?? 0) < 60000) {
       store.knitSessions = store.knitSessions.filter((x) => x.id !== s.id);
       return null;
     }
@@ -2665,7 +2682,7 @@ const handlers = {
   change_knit_session: ({ id, startedAt, seconds }) => {
     const s = (store.knitSessions ?? []).find((x) => x.id === id);
     if (!s) throw new Error("That time is no longer there.");
-    Object.assign(s, { startedAt, endedAt: knitSitting(startedAt, seconds) });
+    Object.assign(s, { startedAt, endedAt: knitSitting(startedAt, seconds), pausedMs: 0, pausedAt: null });
     return clone(s);
   },
   delete_knit_session: ({ id }) => {

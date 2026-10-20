@@ -1,7 +1,7 @@
 import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
-import { clock, sessionMs } from "./views/knit-time";
-import { installAutoTimer, stopIfLeft } from "./auto-timer";
+import { clock, isPaused, sessionMs } from "./views/knit-time";
+import { installAutoTimer, noteActivity, stopIfLeft } from "./auto-timer";
 import { api, toBytes, type AiSettingsView, type KnitSession, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
@@ -108,6 +108,7 @@ class App {
       <button class="tab" data-tab="shops">Shops</button>
       <span class="tab-spacer"></span>
       <button class="timer-pill" data-act="timer" hidden title="Knitting being timed: open its project"></button>
+      <button class="timer-stop" data-act="timer-pause" hidden title="Pause: a break, the same sitting after it" aria-label="Pause the timer">⏸</button>
       <button class="timer-stop" data-act="timer-stop" hidden title="Stop the timer: you have put it down" aria-label="Stop the timer">■</button>
       <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
@@ -129,6 +130,20 @@ class App {
         const id = this.timer.session.projectId;
         if (this.activeProjectPage?.id === id) this.activeProjectPage.showTimer();
         else void this.showProjectPage(id);
+        return;
+      }
+      if (act === "timer-pause" && this.timer) {
+        // As it is now, not as last painted: paused or not may have changed elsewhere.
+        void api
+          .runningKnitSession()
+          .then(async (running) => {
+            if (!running) return;
+            const paused = isPaused(running);
+            await (paused ? api.resumeKnitting() : api.pauseKnitting());
+            if (paused) noteActivity(running.projectId);
+            document.dispatchEvent(new CustomEvent("knit-timer"));
+          })
+          .catch((err) => say(err instanceof Error ? err.message : String(err), "Knitting time"));
         return;
       }
       if (act === "timer-stop") {
@@ -337,13 +352,15 @@ class App {
     const session = await api.runningKnitSession().catch(() => null);
     const pill = this.tabBar.querySelector<HTMLElement>('[data-act="timer"]');
     const stop = this.tabBar.querySelector<HTMLElement>('[data-act="timer-stop"]');
-    if (!pill || !stop) return;
-    // Left five minutes without a row counted, where the counter keeps it: stopped, and said again.
+    const pause = this.tabBar.querySelector<HTMLElement>('[data-act="timer-pause"]');
+    if (!pill || !stop || !pause) return;
+    // Left thirty minutes without a row counted, where the counter keeps it: stopped, and said again.
     if (session && (await stopIfLeft(session))) return;
     if (!session) {
       this.timer = null;
       pill.hidden = true;
       stop.hidden = true;
+      pause.hidden = true;
       if (this.timerTick !== null) window.clearInterval(this.timerTick);
       this.timerTick = null;
       return;
@@ -354,11 +371,19 @@ class App {
     pill.title = `Knitting ${this.timer.name}: open it`;
     const paint = () => {
       if (!this.timer) return;
-      pill.textContent = `⏱ ${clock(sessionMs(this.timer.session))}`;
+      const paused = isPaused(this.timer.session);
+      pill.textContent = `${paused ? "⏸" : "⏱"} ${clock(sessionMs(this.timer.session))}`;
+      pill.classList.toggle("paused", paused);
+      pill.title = `${paused ? "Paused: " : "Knitting "}${this.timer.name}: open it`;
     };
     paint();
+    const paused = isPaused(session);
+    pause.textContent = paused ? "▶" : "⏸";
+    pause.title = paused ? "Go on: the same sitting" : "Pause: a break, the same sitting after it";
+    pause.setAttribute("aria-label", paused ? "Go on with the timer" : "Pause the timer");
     pill.hidden = false;
     stop.hidden = false;
+    pause.hidden = false;
     if (this.timerTick === null) {
       let n = 0;
       this.timerTick = window.setInterval(() => {

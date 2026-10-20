@@ -3757,6 +3757,47 @@ fn a_project_has_its_own_hour_s_worth_or_the_standard() {
 }
 
 #[test]
+fn a_paused_sitting_is_one_sitting_its_break_left_out() {
+    let conn = test_db();
+    let hat = insert_project(&conn, "Hat", &crate::models::ProjectInput { name: "Hat".into(), ..Default::default() }).unwrap();
+    assert_eq!(pause_knitting(&conn).unwrap(), None, "nothing runs");
+    let running = start_knitting(&conn, &hat.id).unwrap();
+    let begun = now_ms() - 60 * 60_000;
+    conn.execute("UPDATE knit_sessions SET started_at = ?2 WHERE id = ?1", params![running.id, begun]).unwrap();
+    // Paused after twenty minutes, for ten.
+    let paused = pause_knitting(&conn).unwrap().unwrap();
+    assert!(paused.paused_at.is_some());
+    conn.execute("UPDATE knit_sessions SET paused_at = ?2 WHERE id = ?1", params![running.id, begun + 20 * 60_000]).unwrap();
+    assert_eq!(pause_knitting(&conn).unwrap().unwrap().paused_at, Some(begun + 20 * 60_000), "paused again, as it was");
+    assert_eq!(running_knit_session(&conn).unwrap().unwrap().id, running.id, "paused, still the sitting");
+    // Gone on with now: the break, forty minutes, left out.
+    let resumed = resume_knitting(&conn).unwrap().unwrap();
+    assert_eq!(resumed.paused_at, None);
+    assert!((resumed.paused_ms - 40 * 60_000).abs() < 5_000, "{}", resumed.paused_ms);
+    // Paused and stopped: it ended when it was paused.
+    let break_at = now_ms() - 60_000;
+    conn.execute("UPDATE knit_sessions SET paused_at = ?2 WHERE id = ?1", params![running.id, break_at]).unwrap();
+    let stopped = stop_knitting(&conn).unwrap().unwrap();
+    assert_eq!(stopped.ended_at, Some(break_at));
+    assert_eq!(stopped.paused_at, None);
+    let kept = &list_knit_sessions(&conn, Some(&hat.id)).unwrap()[0];
+    assert_eq!(list_knit_sessions(&conn, Some(&hat.id)).unwrap().len(), 1, "one sitting");
+    assert!((kept.paused_ms - 40 * 60_000).abs() < 5_000);
+
+    // Another project started while one is paused: that one ends as paused.
+    let socks = insert_project(&conn, "Socks", &crate::models::ProjectInput { name: "Socks".into(), ..Default::default() }).unwrap();
+    let first = start_knitting(&conn, &hat.id).unwrap();
+    conn.execute("UPDATE knit_sessions SET started_at = ?2, paused_at = ?3 WHERE id = ?1", params![first.id, now_ms() - 30 * 60_000, now_ms() - 10 * 60_000]).unwrap();
+    start_knitting(&conn, &socks.id).unwrap();
+    let ended = list_knit_sessions(&conn, Some(&hat.id)).unwrap().into_iter().find(|s| s.id == first.id).unwrap();
+    assert!(ended.ended_at.unwrap() <= now_ms() - 10 * 60_000 + 1_000 && ended.paused_at.is_none());
+
+    // Put right by hand: the time typed is the time knitted.
+    let fixed = change_knit_session(&conn, &kept.id, begun, 3600).unwrap();
+    assert_eq!((fixed.paused_ms, fixed.ended_at), (0, Some(begun + 3_600_000)));
+}
+
+#[test]
 fn a_timer_left_stops_as_at_the_last_row_counted() {
     let conn = test_db();
     let hat = insert_project(&conn, "Hat", &crate::models::ProjectInput { name: "Hat".into(), ..Default::default() }).unwrap();

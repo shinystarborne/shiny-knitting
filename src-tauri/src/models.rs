@@ -1059,7 +1059,8 @@ pub struct ToolSetInput {
 }
 
 /// A spell of knitting on a project, timed or typed in: when it started,
-/// and when it stopped -- None while the timer runs.
+/// and when it stopped -- None while the timer runs -- less the time it was
+/// paused, and when the pause now on began.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct KnitSession {
@@ -1067,6 +1068,10 @@ pub struct KnitSession {
     pub project_id: String,
     pub started_at: i64,
     pub ended_at: Option<i64>,
+    #[serde(default)]
+    pub paused_ms: i64,
+    #[serde(default)]
+    pub paused_at: Option<i64>,
 }
 
 /// A tool on an active project: the pair, or one tip of it.

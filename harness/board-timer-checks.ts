@@ -10,6 +10,7 @@
  */
 import type { BoardItem, KnitSession, Pattern, Project } from "../src/api";
 import { IDLE_MS, idleEnd } from "../src/auto-timer";
+import { sessionMs } from "../src/views/knit-time";
 
 interface CheckResult {
   name: string;
@@ -37,8 +38,10 @@ const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
 function pure(results: CheckResult[]): void {
   const t0 = 1_000_000_000;
   const min = 60_000;
-  check(results, "a timer is left five minutes after the last row counted, ending at that row", idleEnd(t0, t0 + 10 * min, t0 + 14 * min) === null && idleEnd(t0, t0 + 10 * min, t0 + 15 * min) === t0 + 10 * min && IDLE_MS === 5 * min);
-  check(results, "…with no row counted since it started, five minutes after its start", idleEnd(t0, null, t0 + 4 * min) === null && idleEnd(t0, null, t0 + 6 * min) === t0 + 5 * min && idleEnd(t0, t0 - 60 * min, t0 + 6 * min) === t0 + 5 * min);
+  check(results, "a timer is left thirty minutes after the last row counted, ending at that row", idleEnd(t0, t0 + 10 * min, t0 + 39 * min) === null && idleEnd(t0, t0 + 10 * min, t0 + 40 * min) === t0 + 10 * min && IDLE_MS === 30 * min);
+  check(results, "…with no row counted since it started, thirty minutes after its start", idleEnd(t0, null, t0 + 29 * min) === null && idleEnd(t0, null, t0 + 31 * min) === t0 + 30 * min && idleEnd(t0, t0 - 60 * min, t0 + 31 * min) === t0 + 30 * min);
+  const paused = { id: "k", projectId: "p", startedAt: t0, endedAt: null, pausedMs: 10 * min, pausedAt: t0 + 50 * min };
+  check(results, "a paused sitting's time stops at its pause, its earlier breaks left out", sessionMs(paused, t0 + 90 * min) === 40 * min && sessionMs({ ...paused, pausedAt: null }, t0 + 90 * min) === 80 * min && sessionMs({ ...paused, pausedAt: null, endedAt: t0 + 60 * min }) === 50 * min);
 }
 
 export async function verifyBoardTimer() {
@@ -105,15 +108,40 @@ export async function verifyBoardTimer() {
     await waitFor(() => /Stop/.test(go()?.textContent ?? ""), "the card following", 5000).catch(() => {});
     check(results, "…the card showing it", /Stop/.test(go()?.textContent ?? ""));
 
-    // Five minutes without one: stopped, as at the last row.
+    // A pause, and on: one sitting, the break left out.
+    const sitting = running()!.id;
+    go().closest(".board-timer")!.querySelector<HTMLElement>('[data-act="timer-pause"]')!.click();
+    await waitFor(() => running()?.pausedAt != null && /Go on/.test(card()?.textContent ?? ""), "paused", 5000).catch(() => {});
+    const frozen = card()!.querySelector('[data-el="timer-clock"]')!.textContent;
+    await wait(1300);
+    check(results, "Pause pauses it: the clock still, said Paused, the side and the tab bar too", running()?.pausedAt != null && card()!.querySelector('[data-el="timer-clock"]')!.textContent === frozen && /Paused/.test(card()!.textContent ?? "") && /Go on/.test(page()!.querySelector('[data-act="knit-pause"]')?.textContent ?? "") && pill().classList.contains("paused") && /^⏸/.test(pill().textContent ?? ""), `${frozen} ${pill().textContent}`);
+    // Left paused long: a break, not stopped.
+    localStorage.setItem(lastKey(), String(Date.now() - 60 * 60_000));
+    running()!.startedAt = Date.now() - 90 * 60_000;
+    document.dispatchEvent(new CustomEvent("knit-timer"));
+    await wait(500);
+    check(results, "…paused, it is not stopped as left", !!running());
+    // A row counted goes on with it.
+    (page()!.querySelector('[data-act="total-inc"]') as HTMLElement).click();
+    await waitFor(() => running()?.pausedAt == null, "going on", 5000).catch(() => {});
+    check(results, "a row counted goes on with a paused timer: the same sitting", running()?.id === sitting && running()?.pausedAt == null && (running()?.pausedMs ?? 0) > 0);
+    (document.querySelector('.tab-bar [data-act="timer-pause"]') as HTMLElement).click();
+    await waitFor(() => running()?.pausedAt != null, "paused from the tab bar", 5000).catch(() => {});
+    check(results, "the tab bar pauses it too", running()?.pausedAt != null);
+    (document.querySelector('.tab-bar [data-act="timer-pause"]') as HTMLElement).click();
+    await waitFor(() => running()?.pausedAt == null, "on from the tab bar", 5000).catch(() => {});
+    check(results, "…and goes on with it", !!running() && running()!.pausedAt == null && running()!.id === sitting);
+
+    // Thirty minutes without one: stopped, as at the last row.
     const s = running()!;
-    const last = Date.now() - 6 * 60_000;
-    s.startedAt = Date.now() - 20 * 60_000;
+    const last = Date.now() - 31 * 60_000;
+    s.startedAt = Date.now() - 50 * 60_000;
+    s.pausedMs = 0;
     localStorage.setItem(lastKey(), String(last));
     document.dispatchEvent(new CustomEvent("knit-timer"));
     await waitFor(() => !running(), "stopped as left", 5000).catch(() => {});
     const stopped = (store.knitSessions ?? []).find((x) => x.id === s.id);
-    check(results, "five minutes without a row counted stops it, as at the last row", !running() && stopped?.endedAt === last, JSON.stringify(stopped));
+    check(results, "thirty minutes without a row counted stops it, as at the last row", !running() && stopped?.endedAt === last, JSON.stringify(stopped));
     await waitFor(() => /Start/.test(go()?.textContent ?? "") && pill().hidden, "everywhere stopped", 5000).catch(() => {});
     check(results, "…the card and the tab bar following", /Start/.test(go()?.textContent ?? "") && pill().hidden);
 
@@ -127,7 +155,7 @@ export async function verifyBoardTimer() {
     go().click();
     await waitFor(() => !!running(), "started by hand");
     const manual = running()!;
-    manual.startedAt = Date.now() - 30 * 60_000;
+    manual.startedAt = Date.now() - 60 * 60_000;
     document.dispatchEvent(new CustomEvent("knit-timer"));
     await wait(600);
     check(results, "…nor stops it, left", !!running());

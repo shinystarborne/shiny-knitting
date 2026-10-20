@@ -2,14 +2,15 @@ import { api, type KnitSession } from "./api";
 
 /**
  * The knitting timer kept by the row counter, for a project whose board has a
- * timer card with it ticked: a row counted starts the timer, and five minutes
- * without one stops it, as at the last row counted. Wherever the app is --
- * the timer runs with the app closed too, so a timer left is stopped when the
- * app opens again.
+ * timer card with it ticked: a row counted starts the timer (or goes on with
+ * it, paused), and thirty minutes without one stops it, as at the last row
+ * counted -- long rows are long. Paused, it is left alone: a break is not
+ * leaving. Wherever the app is -- the timer runs with the app closed too, so a
+ * timer left is stopped when the app opens again.
  */
 
 /** How long without a row counted before the timer is taken as left. */
-export const IDLE_MS = 5 * 60 * 1000;
+export const IDLE_MS = 30 * 60 * 1000;
 
 /** Says a row was counted on a project, for the timer to hear. */
 export function rowsCounted(projectId: string, delta: number): void {
@@ -30,6 +31,11 @@ export function lastCount(projectId: string): number | null {
   }
 }
 
+/** Knitting going on, as a row counted is: going on after a pause starts the wait again. */
+export function noteActivity(projectId: string, at = Date.now()): void {
+  noteCount(projectId, at);
+}
+
 function noteCount(projectId: string, at: number): void {
   try {
     localStorage.setItem(key(projectId), String(at));
@@ -40,7 +46,7 @@ function noteCount(projectId: string, at: number): void {
 
 /**
  * When a sitting left is to end: at the last row counted in it, or, with none
- * counted, five minutes after it was started -- null while it is not left.
+ * counted, thirty minutes after it was started -- null while it is not left.
  */
 export function idleEnd(startedAt: number, last: number | null, now = Date.now()): number | null {
   const counted = last !== null && last >= startedAt;
@@ -64,7 +70,14 @@ async function onCount(projectId: string, delta: number): Promise<void> {
   noteCount(projectId, Date.now());
   if (delta <= 0 || !(await keptByCounter(projectId))) return;
   const running = await api.runningKnitSession().catch(() => null);
-  if (running?.projectId === projectId) return;
+  if (running?.projectId === projectId) {
+    // Paused: a row counted is knitting again.
+    if (running.pausedAt != null) {
+      await api.resumeKnitting().catch(() => null);
+      changed();
+    }
+    return;
+  }
   // Counting here is knitting here: another project's timer stops.
   await api.startKnitting(projectId).catch(() => null);
   changed();
@@ -72,7 +85,8 @@ async function onCount(projectId: string, delta: number): Promise<void> {
 
 /** The running timer stopped when it has been left, its project's card saying so. */
 export async function stopIfLeft(running: KnitSession | null, now = Date.now()): Promise<boolean> {
-  if (!running) return false;
+  // Paused is a break, not leaving it.
+  if (!running || running.pausedAt != null) return false;
   const end = idleEnd(running.startedAt, lastCount(running.projectId), now);
   if (end === null || !(await keptByCounter(running.projectId))) return false;
   await api.stopKnittingAt(end).catch(() => null);
