@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.6](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.6)** —
+  the row counter on the project's board, off the side panel; there by itself while the project has a pattern.
 - **[v1.1.0-beta.5](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.5)** —
   the knitting timer on the board, started by a row counted and stopped five minutes after the last; a Stop in the tab bar.
 - **[v1.1.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.4)** —
