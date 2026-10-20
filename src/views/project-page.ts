@@ -186,7 +186,7 @@ export class ProjectPage {
       parkCounter: (host) => this.root.querySelector(".counter-park")?.appendChild(host),
     });
     await this.board.mount();
-    await this.board.ensureCounter();
+    this.board.counterChanged();
     this.root.querySelector(".project-view-switch")!.addEventListener("click", (e) => {
       const view = closestEl(e.target, "[data-view]")?.dataset.view;
       if (view === "board" || view === "log") void this.show(view);
@@ -200,8 +200,9 @@ export class ProjectPage {
     // The count keys count here too, away from the pattern: a row, or a
     // counter's own key. Not while typing, nor inside the pattern, which
     // counts for itself.
+    // Only with the counter on the board: without it, the keys are left alone.
     const onKey = (e: KeyboardEvent) => {
-      if (!this.counter || dialogOpen() || e.defaultPrevented) return;
+      if (!this.counter || !this.board?.hasCounter() || dialogOpen() || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       if (target.closest?.("input, textarea, select, [contenteditable], .project-pattern")) return;
       if (this.counter.handleCountKey(e)) e.preventDefault();
@@ -852,9 +853,9 @@ ${plan ? "" : `      <div class="project-side-dates">
     const counter = new RowCounter(host, patternId, this.projectId);
     this.counterHost = host;
     this.counter = counter;
-    // Its place is the board's card: kept in the page until the board has it.
+    // Its place is the board's card, if one is put there: kept in the page till then.
     this.root?.querySelector(".counter-park")?.appendChild(host);
-    void this.board?.ensureCounter();
+    this.board?.counterChanged();
     await counter.refresh().catch(() => {});
   }
 

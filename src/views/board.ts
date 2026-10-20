@@ -139,6 +139,7 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
   { kind: "chart", html: `<button data-add="chart" title="A chart from Calculators, drawn on the board as it is now">▦<span>Chart</span></button>` },
   { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>` },
+  { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern, on the board">🔢<span>Counter</span></button>` },
   { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
 ];
 
@@ -920,6 +921,15 @@ export class Board {
       const m = classes.find((x) => x.parts.some((p) => p.id === id));
       const part = m?.parts.find((p) => p.id === id);
       if (m && part) await this.addVideo(m.id, part);
+    } else if (kind === "counter") {
+      if (!this.hooks.counter?.()) return void (await say("The counter counts the rows of the project's pattern: choose its pattern first, on the side.", "Counter"));
+      // One counter, as one timer.
+      const there = this.items.find((i) => i.kind === "counter");
+      if (there) {
+        this.reveal(there);
+        return this.select(there.id);
+      }
+      await this.add("counter", at, {});
     } else if (kind === "timer") {
       // One timer is enough, as one log is.
       const there = this.items.find((i) => i.kind === "timer");
@@ -1070,7 +1080,7 @@ export class Board {
 
   private async remove(id: string): Promise<void> {
     const item = this.items.find((i) => i.id === id);
-    if (!item || item.kind === "counter") return;
+    if (!item) return;
     // An empty note is a slip, and goes without asking.
     const empty = (item.kind === "note" || item.kind === "text") && !String(item.data.text ?? "").trim();
     if (!empty && !(await askYesNo(`Remove this ${KIND_NAMES[item.kind]} from the board?`, { okLabel: "Remove", danger: true }))) return;
@@ -1142,39 +1152,23 @@ export class Board {
     const slot = this.world.querySelector<HTMLElement>(".board-counter-slot");
     if (slot) {
       if (host.parentElement !== slot) slot.replaceChildren(host);
+      // Folded up is for a side panel; on its card the counter is all there.
+      host.querySelector(".counter-body")?.removeAttribute("hidden");
     } else {
       this.hooks.parkCounter?.(host);
     }
   }
 
-  /**
-   * The counter's card, put on the board when the project has a pattern and
-   * the board has none yet -- for a project from before the counter moved
-   * here, too -- in free space, the view left as it is.
-   */
-  ensureCounter(): Promise<void> {
-    // Asked twice at once -- the page opening, its pattern read -- one card.
-    this.ensuring = (this.ensuring ?? Promise.resolve()).then(() => this.ensureCounterNow());
-    return this.ensuring;
+  /** The counter made again (the pattern changed): its card, if there is one, shows the new one. */
+  counterChanged(): void {
+    const card = this.items.find((i) => i.kind === "counter");
+    if (card) this.repaint(card.id);
+    this.placeCounter();
   }
 
-  private ensuring: Promise<void> | null = null;
-
-  private async ensureCounterNow(): Promise<void> {
-    if (this.hooks.counter?.() && !this.items.some((i) => i.kind === "counter")) {
-      const [w, h] = SIZES.counter;
-      const at = this.placeFor("counter");
-      try {
-        this.items.push(await api.addBoardItem(this.boardId, { kind: "counter", x: at.x, y: at.y, w, h, data: {} }));
-        (this.root.querySelector(".board-empty") as HTMLElement).hidden = true;
-        this.render();
-        return;
-      } catch {
-        // Kept in the page instead; it still counts.
-      }
-    }
-    if (this.items.some((i) => i.kind === "counter")) this.repaint(this.items.find((i) => i.kind === "counter")!.id);
-    this.placeCounter();
+  /** Whether the counter is on the board, to be counted with. */
+  hasCounter(): boolean {
+    return this.items.some((i) => i.kind === "counter") && !!this.hooks.counter?.();
   }
 
   /**
@@ -1243,8 +1237,7 @@ export class Board {
       item.hasImage && (item.kind === "image" || item.kind === "pin")
         ? `<span class="board-pic-tools"><button class="board-crop" data-act="view" title="See it big (double-click it, or Space with it selected)">⤢ View</button><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
         : "";
-    // The counter is the project's, and stays: moved and sized, not removed.
-    const remove = item.kind === "counter" ? "" : `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
+    const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
     let body = "";
     let extra = "";
