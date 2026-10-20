@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.5](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.5)** —
+  the knitting timer on the board, started by a row counted and stopped five minutes after the last; a Stop in the tab bar.
 - **[v1.1.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.4)** —
   cheatsheets on a project's board: a book's pages drawn, a web page in a frame, put there from the board or from Cheatsheets.
 - **[v1.1.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.3)** —
