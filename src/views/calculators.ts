@@ -192,7 +192,7 @@ export class CalculatorsView {
     this.root = document.createElement("div");
     this.root.className = "library calculators";
     this.root.innerHTML = `
-      <header class="lib-bar"><h1>Calculators</h1>${
+      <header class="lib-bar"><h1>Constructors</h1>${
         kept.forProject
           ? `<div class="calc-for" data-el="calc-for">For <b>${esc(kept.forProject.name)}</b>: Save puts the result on its board. <button class="ghost" data-act="back-to-project">← Back to ${esc(kept.forProject.name)}</button></div>`
           : ""

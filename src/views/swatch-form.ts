@@ -138,7 +138,7 @@ export class SwatchForm {
             </tbody>
           </table>
           <p class="swatch-blocking" data-el="blocking" hidden></p>
-          <span class="hint">Per ${span}${unit === "in" ? " (kept as per 10 cm)" : ""}. Half stitches count: 22.5. Counted before blocking too, it shows what washing did, which some yarns (deadstock, cones) do a lot of. Calculators use the blocked gauge.</span>
+          <span class="hint">Per ${span}${unit === "in" ? " (kept as per 10 cm)" : ""}. Half stitches count: 22.5. Counted before blocking too, it shows what washing did, which some yarns (deadstock, cones) do a lot of. Constructors use the blocked gauge.</span>
         </div>
 
         <div class="field-row swatch-when">

@@ -12,6 +12,7 @@ import { logPictures } from "./project-photos";
 import { playerHtml } from "./masterclasses";
 import { countStep, nowAt, progress, readStepList, tick, type StepList } from "./steps";
 import { clock, hoursText, sessionMs, totalMs } from "./knit-time";
+import { decimalSign, display as sumDisplay, emptySum, expression as sumExpression, keyOf as sumKeyOf, press as sumPress, type SumState } from "./sums";
 
 /**
  * A board: an endless surface to collect what a project is made of and what
@@ -98,6 +99,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   sheet: SHEET_CARD,
   timer: [300, 280],
   counter: [320, 440],
+  calc: [280, 420],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -137,10 +139,11 @@ const TOOLBAR: { kind: BoardKind; html: string }[] = [
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
   { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
-  { kind: "chart", html: `<button data-add="chart" title="A chart from Calculators, drawn on the board as it is now">▦<span>Chart</span></button>` },
+  { kind: "chart", html: `<button data-add="chart" title="A chart from Constructors, drawn on the board as it is now">▦<span>Chart</span></button>` },
   { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>` },
   { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern, on the board">🔢<span>Counter</span></button>` },
   { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
+  { kind: "calc", html: `<button data-add="calc" title="A calculator: + − × ÷, for the sums as you knit">🧮<span>Calculator</span></button>` },
 ];
 
 /** The width a counter's or timer's card is laid out at, then zoomed to its card's size. */
@@ -185,6 +188,8 @@ export class Board {
   private sheets: Cheatsheet[] = [];
   /** The project's spells of knitting, for its timer card. */
   private sessions: KnitSession[] = [];
+  /** Each calculator card's sum in progress, by card; its tape is kept on the card. */
+  private sums = new Map<string, SumState>();
   /** Fits a counter's or timer's card to its size as it is sized, and as what is in it changes. */
   private fitter = new ResizeObserver((entries) => {
     for (const e of entries) {
@@ -226,7 +231,7 @@ export class Board {
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
         ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => t.html).join("")}
-        ${this.hooks.openCalculator ? `<button data-act="calculator" title="A calculator, its result saved to this board">🧮<span>Calculator</span></button>` : ""}
+        ${this.hooks.openCalculator ? `<button data-act="calculator" title="A constructor -- a raglan, a yoke, socks… -- its result saved to this board">📐<span>Constructors</span></button>` : ""}
       </div>
       <div class="board-zoom">
         <button data-act="zoom-out" title="Zoom out">−</button>
@@ -629,6 +634,12 @@ export class Board {
       openLightbox(all.map((x) => x.picture), Math.max(0, all.findIndex((x) => x.id === btn.dataset.entry)), "The photo");
     }
     if (act === "open") this.open(id);
+    if (act === "sum" && btn.dataset.key) {
+      // Picked, so the keyboard goes on where the mouse left off.
+      this.select(id);
+      this.root.focus({ preventScroll: true });
+      await this.pressSum(id, btn.dataset.key);
+    }
     if (act === "timer-go") {
       const running = this.sessions.some((s) => s.endedAt === null);
       try {
@@ -717,6 +728,15 @@ export class Board {
       return;
     }
     if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+    // A calculator selected takes its keys: figures, + − * /, Enter, Backspace, Escape.
+    const sum = this.selected ? this.items.find((i) => i.id === this.selected && i.kind === "calc") : undefined;
+    const sumKey = sum ? sumKeyOf(e) : null;
+    if (sum && sumKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      await this.pressSum(sum.id, sumKey);
+      return;
+    }
     if ((e.key === "Delete" || e.key === "Backspace") && this.selected) {
       e.preventDefault();
       await this.remove(this.selected);
@@ -911,7 +931,7 @@ export class Board {
         label: c.name,
         group: c.data.kind === "yoke" ? "Round yokes" : c.data.kind === "lace" ? "Lace" : "Colourwork",
       }));
-      if (!choices.length) return void (await say("There are no charts yet: draw one under Calculators → Charts.", "Add a chart"));
+      if (!choices.length) return void (await say("There are no charts yet: draw one under Constructors → Charts.", "Add a chart"));
       const id = await askChoice("Which chart?", choices, { title: "Add a chart" });
       if (id) await this.add("chart", at, { chartId: id });
     } else if (kind === "sheet") {
@@ -932,6 +952,10 @@ export class Board {
       const m = classes.find((x) => x.parts.some((p) => p.id === id));
       const part = m?.parts.find((p) => p.id === id);
       if (m && part) await this.addVideo(m.id, part);
+    } else if (kind === "calc") {
+      const item = await this.add("calc", at, {});
+      // Picked, so the keyboard's figures go to it at once.
+      if (item) this.root.focus({ preventScroll: true });
     } else if (kind === "counter") {
       if (!this.hooks.counter?.()) return void (await say("The counter counts the rows of the project's pattern: choose its pattern first, on the side.", "Counter"));
       // One counter, as one timer.
@@ -1155,7 +1179,7 @@ export class Board {
     void this.paintSheets();
     this.placeCounter();
     this.fitter.disconnect();
-    for (const el of this.world.querySelectorAll<HTMLElement>(".board-item.kind-counter, .board-item.kind-timer")) this.watchFit(el);
+    for (const el of this.world.querySelectorAll<HTMLElement>(".board-item.kind-counter, .board-item.kind-timer, .board-item.kind-calc")) this.watchFit(el);
   }
 
   /** A counter's or timer's card watched: sized, or what is in it changed, it is fitted again. */
@@ -1360,6 +1384,9 @@ export class Board {
       case "timer":
         body = this.timerHtml(d);
         break;
+      case "calc":
+        body = this.sumHtml(item);
+        break;
       case "counter":
         // The page's own counter is moved in after: it keeps its state and its keys.
         body = this.hooks.counter?.()
@@ -1394,7 +1421,7 @@ export class Board {
         body = chart
           ? `<div class="board-chart-bar" title="${esc(describeChart(decode(chart.data)))}"><span>▦ ${esc(chart.name)}</span><button data-act="open" title="Open the chart, to change it">Open ↗</button></div>
              <div class="board-chart"><canvas data-chart-of="${esc(chart.id)}"></canvas></div>`
-          : `<div class="board-caption missing">A chart no longer in Calculators</div>`;
+          : `<div class="board-caption missing">A chart no longer in Constructors</div>`;
         break;
       }
       case "swatch": {
@@ -1414,6 +1441,54 @@ export class Board {
    * One item drawn again in place, the others left as they are (a video
    * playing goes on playing), its list scrolled where it was.
    */
+  /** A calculator card's sum: in progress here, or begun from its tape. */
+  private sumOf(item: BoardItem): SumState {
+    return this.sums.get(item.id) ?? emptySum(Array.isArray(item.data.tape) ? (item.data.tape as string[]) : []);
+  }
+
+  /** A calculator: its last sums, the sum so far, the number, and its keys. */
+  private sumHtml(item: BoardItem): string {
+    const s = this.sumOf(item);
+    const key = (k: string, cls = "") => `<button class="board-sum-key${cls}" data-act="sum" data-key="${k}">${k === "," || k === "." ? decimalSign() : k}</button>`;
+    const rows = [
+      ["C", "⌫", "%", "÷"],
+      ["7", "8", "9", "×"],
+      ["4", "5", "6", "−"],
+      ["1", "2", "3", "+"],
+      ["±", "0", ",", "="],
+    ];
+    return `
+      <div class="board-fit board-sum">
+        <div class="board-sum-bar" title="Drag here to move it; selected, it takes the keyboard's figures and + − * /">🧮 Calculator</div>
+        <ol class="board-sum-tape" data-el="sum-tape">${s.tape.slice(-3).map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
+        <div class="board-sum-expr" data-el="sum-expr">${esc(sumExpression(s))}</div>
+        <div class="board-sum-display" data-el="sum-display">${esc(sumDisplay(s))}</div>
+        <div class="board-sum-keys">${rows
+          .flat()
+          .map((k) => key(k, /^[÷×−+]$/.test(k) ? " op" : k === "=" ? " eq" : /^(C|⌫|%|±)$/.test(k) ? " fn" : ""))
+          .join("")}</div>
+      </div>`;
+  }
+
+  /** A key of a calculator pressed: its sum on, shown, and its tape kept when = adds to it. */
+  private async pressSum(id: string, key: string): Promise<void> {
+    const item = this.items.find((i) => i.id === id);
+    if (!item) return;
+    const before = this.sumOf(item);
+    const after = sumPress(before, key);
+    this.sums.set(id, after);
+    const el = this.world.querySelector<HTMLElement>(`.board-item[data-id="${id}"]`);
+    if (el) {
+      el.querySelector('[data-el="sum-display"]')!.textContent = sumDisplay(after);
+      el.querySelector('[data-el="sum-expr"]')!.textContent = sumExpression(after);
+      el.querySelector('[data-el="sum-tape"]')!.innerHTML = after.tape.slice(-3).map((t) => `<li>${esc(t)}</li>`).join("");
+    }
+    if (after.tape !== before.tape && after.tape.join("\n") !== before.tape.join("\n")) {
+      item.data = { ...item.data, tape: after.tape };
+      await this.save(id, { data: item.data });
+    }
+  }
+
   /** The project's time read again, and its timer card drawn again. */
   private async reloadSessions(): Promise<void> {
     if (!this.hooks.project()) return;
@@ -1481,7 +1556,7 @@ export class Board {
     const list = fresh.querySelector(".board-steps-list");
     if (list) list.scrollTop = scrolled;
     if (item.kind === "counter") this.placeCounter();
-    if (item.kind === "counter" || item.kind === "timer") this.watchFit(fresh);
+    if (item.kind === "counter" || item.kind === "timer" || item.kind === "calc") this.watchFit(fresh);
   }
 
   /**
@@ -1559,7 +1634,7 @@ export class Board {
 
   /** A calculator chosen, opened with this board's project to save its result to. */
   private async pickCalculator(): Promise<void> {
-    const calc = await askChoice("Which calculator? Its result is saved to this board.", BOARD_CALCULATORS.map((c) => ({ value: c.key, label: c.label })), { title: "Calculator" });
+    const calc = await askChoice("Which constructor? Its result is saved to this board.", BOARD_CALCULATORS.map((c) => ({ value: c.key, label: c.label })), { title: "Constructors" });
     if (calc) this.hooks.openCalculator?.(calc);
   }
 
@@ -1603,6 +1678,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   sheet: "cheatsheet",
   timer: "timer",
   counter: "row counter",
+  calc: "calculator",
 };
 
 /**

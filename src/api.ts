@@ -964,8 +964,8 @@ export interface ProjectInput {
 
 /** What can go on a board, a project's or an inspiration board. */
 /** "pin" is a picture of a pattern's pin, with `{ patternId, page, title }`. */
-/** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`; "steps" a calculator's steps as a checklist (views/steps.ts); "chart" one of the charts, `{ chartId }`, drawn as it is now; "sheet" one of the Cheatsheets, `{ sheetId }`, shown as it is kept; "timer" the project's knitting timer, `{ auto }`: kept by the row counter unless false (auto-timer.ts); "counter" the project's row counter, its only place on the page, put there if wanted. */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter";
+/** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`; "steps" a calculator's steps as a checklist (views/steps.ts); "chart" one of the charts, `{ chartId }`, drawn as it is now; "sheet" one of the Cheatsheets, `{ sheetId }`, shown as it is kept; "timer" the project's knitting timer, `{ auto }`: kept by the row counter unless false (auto-timer.ts); "counter" the project's row counter, its only place on the page, put there if wanted; "calc" a plain calculator, `{ tape }` its last sums (views/sums.ts). */
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter" | "calc";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {

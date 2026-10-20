@@ -68,7 +68,7 @@ export class ProjectChart {
             <option value="">No chart</option>
             ${this.charts.map((c) => `<option value="${esc(c.id)}" ${c.id === p.chartId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
           </select></label>`
-          : `<p class="hint">Draw a chart under Calculators, to knit from it here: the row to knit marked, as the rows are counted.</p>`
+          : `<p class="hint">Draw a chart under Constructors, to knit from it here: the row to knit marked, as the rows are counted.</p>`
       }
       ${
         chosen

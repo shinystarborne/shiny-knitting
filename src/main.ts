@@ -97,7 +97,7 @@ class App {
       <button class="tab active" data-tab="patterns">Patterns</button>
       <button class="tab" data-tab="projects">Projects</button>
       <button class="tab" data-tab="people">People</button>
-      <button class="tab" data-tab="calculators">Calculators</button>
+      <button class="tab" data-tab="calculators">Constructors</button>
       <button class="tab" data-tab="cheatsheets">Cheatsheets</button>
       <button class="tab" data-tab="masterclasses">Masterclasses</button>
       <button class="tab" data-tab="ravelry">Ravelry</button>

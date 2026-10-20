@@ -301,7 +301,7 @@ just a size), its stitch pattern, and its stitches and rows counted over
 10 × 10 cm in the middle, before and after blocking, with a photo (pasted,
 dropped or chosen), the date, a project and notes. Counts are kept per 10 cm;
 with inches chosen in Settings they are shown and typed over 4 × 4 in. A
-swatch is known by its blocked gauge, as the calculators will use it; the count
+swatch is known by its blocked gauge, as the constructors will use it; the count
 before blocking is optional, and with both the form and the card say what
 blocking did ("7% wider, 5% longer"), which some yarns — deadstock, cones —
 do a lot of. One counted only before blocking says **Not blocked yet**.
@@ -335,9 +335,9 @@ chosen in **Settings → Measurements**; a figure typed with its unit (`36 in`,
 A project's page has **For**, which says who it is for and shows their latest
 measurements under it, with a way to their page.
 
-## Calculators
+## Constructors
 
-The **Calculators** tab does the sums. Each works out as it is typed, in
+The **Constructors** tab does the sums. Each works out as it is typed, in
 centimetres or inches as Settings says, and remembers what was typed while the
 app is open. A gauge comes from one of your swatches (its blocked gauge) or is
 typed in.
@@ -521,7 +521,7 @@ and dry-cleaning symbols, picked from the drawn ones, each with what it means
 the yarn, not the colour: kept once by brand and yarn name, every colour of it
 shows them, and changed on one colour they change for all. The card says
 "18 sts × 24 rows / 10 cm · needles 5–5.5 mm", and shows the care symbols with
-their words. A swatch's gauge is still the one the calculators use; this is what
+their words. A swatch's gauge is still the one the constructors use; this is what
 to expect.
 
 **Another colour of the same yarn** is quick: **+ Colour** on a card opens a new

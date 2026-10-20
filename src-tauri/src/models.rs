@@ -1295,7 +1295,7 @@ pub struct FinishInput {
 /// - `tool`: a needle, hook or cable
 /// - `swatch`: a colour
 /// "pin" is a picture of a pattern's pin, with `{ "patternId", "page", "title" }`.
-pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter"];
+pub const BOARD_KINDS: &[&str] = &["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc"];
 
 /// One thing on a board, where it sits, and what it holds.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

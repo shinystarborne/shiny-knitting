@@ -37,7 +37,7 @@ are in use on which project.
 **People.** Measurements of the people you knit for, each one drawn so you know
 how to take it.
 
-**Calculators.** A top-down raglan or cardigan, a round yoke, and socks, worked
+**Constructors.** A top-down raglan or cardigan, a round yoke, and socks, worked
 out from someone's measurements and your gauge, with the steps written out and
 saved to a project as a checklist to tick off. Also: stitches for a size,
 increasing evenly, a pattern at another gauge, and yarns held together.
