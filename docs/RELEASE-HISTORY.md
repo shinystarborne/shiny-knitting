@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.9](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.9)** —
+  a plain calculator on the board, + − × ÷ with a tape; Calculators renamed Constructors.
 - **[v1.1.0-beta.8](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.8)** —
   the counter shows only the counts, its settings under a gear; counter and timer cards scale what is in them.
 - **[v1.1.0-beta.7](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.7)** —
