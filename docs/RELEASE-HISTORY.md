@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.15](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.15)** —
+  crochet diagrams for learners: every stitch listed in US and UK terms, how to write them as a table, plainer messages.
 - **[v1.1.0-beta.14](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.14)** —
   Cheatsheets and Masterclasses as a page of cards, each opened on a page of its own.
 - **[v1.1.0-beta.13](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.13)** —
