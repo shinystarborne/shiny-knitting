@@ -25,7 +25,7 @@ const MAX_NEEDLE_MM: f64 = 50.0;
 /// One count, rounded to a tenth; 0 for not counted.
 fn count(value: f64, what: &str) -> Result<f64, AppError> {
     if !value.is_finite() || value < 0.0 {
-        return Err(AppError::Message(format!("The {what} have to be a number.")));
+        return Err(AppError::Message(format!("The {what} must be numbers.")));
     }
     if value > MAX_PER_10CM {
         return Err(AppError::Message(format!(
@@ -50,7 +50,7 @@ pub fn clean(input: SwatchInput, tool_size: impl Fn(&str) -> Option<f64>) -> Res
         _ => input.needle_mm,
     };
     if !needle.is_finite() || needle < 0.0 || needle > MAX_NEEDLE_MM {
-        return Err(AppError::Message("Give the needle size in millimetres, e.g. 4 or 3.75.".to_string()));
+        return Err(AppError::Message("Needle size in millimetres needed, e.g. 4 or 3.75.".to_string()));
     }
     Ok(SwatchInput {
         // A stash yarn is the yarn; typed text is only for one not in the stash.

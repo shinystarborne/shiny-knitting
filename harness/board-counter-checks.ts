@@ -125,7 +125,7 @@ export async function verifyBoardCounter() {
     await open(bare.id);
     addCounter();
     await waitFor(() => !!dialog(), "the word", 3000).catch(() => {});
-    check(results, "a project with no pattern is told to choose one first", /choose its pattern first/.test(dialog()?.textContent ?? "") && !card());
+    check(results, "a project with no pattern is told to choose one first", /Choose a pattern first/.test(dialog()?.textContent ?? "") && !card());
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

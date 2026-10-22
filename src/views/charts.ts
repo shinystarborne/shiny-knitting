@@ -87,14 +87,14 @@ export class ChartList {
       <header class="chart-list-head">
         <div>
           <h2>Charts</h2>
-          <p class="hint">A grid where a square is a stitch: a standard chart, worked flat or in the round, or a round yoke's repeat, with its shaping, as a lopapeysa's.</p>
+          <p class="hint">Grid charts where each square is a stitch: standard charts worked flat or in the round, or a round yoke repeat with its shaping.</p>
         </div>
         <button class="primary" data-act="new-chart">+ New chart</button>
       </header>
       ${
         this.charts.length
           ? `<div class="chart-cards">${this.charts.map(cardHtml).join("")}</div>`
-          : `<div class="empty"><h2>No charts yet</h2><p>Draw a motif, a border, or a yoke: name its colours, see it knitted up, and print it at the real size.</p></div>`
+          : `<div class="empty"><h2>No charts yet</h2><p>Draw a motif, border or yoke, name its colours, preview it knitted up, and print it at real size.</p></div>`
       }`;
     for (const canvas of this.root.querySelectorAll<HTMLCanvasElement>("canvas[data-id]")) {
       const chart = this.charts.find((c) => c.id === canvas.dataset.id);
@@ -196,7 +196,7 @@ function newChartDialog(): Promise<{ name: string; grid: Grid } | null> {
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="yoke-lace" />
           <span><span class="dialog-label">Lace</span><span class="dialog-hint">Stitches, not colours: yarn overs and decreases, each square drawn in its symbol.</span></span></label>
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="shaped" checked />
-          <span><span class="dialog-label">Start with the usual shaping</span><span class="dialog-hint">Three decrease rounds, to about two fifths of the repeat at the neck. Change them as you like.</span></span></label>
+          <span><span class="dialog-label">Start with the usual shaping</span><span class="dialog-hint">Three decrease rounds, down to about two fifths of the repeat at the neck. Can be changed later.</span></span></label>
       </div>
       <p class="form-error" data-el="error" hidden></p>
       <div class="dialog-actions">
@@ -222,7 +222,7 @@ function newChartDialog(): Promise<{ name: string; grid: Grid } | null> {
         return;
       }
       if (yoke && !(Number.isInteger(num("reps")) && num("reps") >= 1 && num("reps") <= 300)) {
-        error.textContent = "Say how many times the repeat goes round the yoke, e.g. 18.";
+        error.textContent = "Number of repeats around the yoke needed, e.g. 18.";
         error.hidden = false;
         return;
       }
@@ -341,7 +341,7 @@ export class ChartPage {
         api.listYarns().catch(() => [] as Yarn[]),
       ]);
     } catch {
-      await say("That chart is no longer there.");
+      await say("This chart no longer exists.");
       this.hooks.back();
       return;
     }
@@ -358,8 +358,8 @@ export class ChartPage {
         <input class="inspo-name" data-f="name" value="${esc(chart.name)}" aria-label="Chart name" placeholder="Name this chart" />
         <span class="hint" data-el="saved">Saved</span>
         <span class="hint chart-note" data-el="note"></span>
-        <button class="ghost" data-act="export" title="Save it as a PDF to print, or a picture">Export…</button>
-        <button class="ghost" data-act="to-board" title="Put it on a project's board">Save to a project…</button>
+        <button class="ghost" data-act="export" title="Save as a PDF or a picture">Export…</button>
+        <button class="ghost" data-act="to-board" title="Add to a project's board">Save to a project…</button>
         <button class="ghost danger-text" data-act="remove">Remove chart</button>
       </header>
       <div class="chart-toolbar">
@@ -369,8 +369,8 @@ export class ChartPage {
         <button class="ghost toggle" data-act="mirror" title="Draw both halves at once, mirrored across the middle (M)">Mirror</button>
         <span class="chart-sep"></span>
         <button class="ghost" data-act="copy" title="Copy the squares selected (Ctrl+C)">Copy</button>
-        <button class="ghost" data-act="cut" title="Copy them, and fill them with the background (Ctrl+X)">Cut</button>
-        <button class="ghost" data-act="paste" title="Put the squares copied down, as many times as you click; Esc when done (Ctrl+V)">Paste</button>
+        <button class="ghost" data-act="cut" title="Copy and fill with the background (Ctrl+X)">Cut</button>
+        <button class="ghost" data-act="paste" title="Paste the copied squares, once per click; Esc when done (Ctrl+V)">Paste</button>
         <span class="chart-paste-tools" data-el="paste-tools" hidden>
           <button class="ghost" data-act="block-flip-x" title="Mirror the block left to right">Flip ↔</button>
           <button class="ghost" data-act="block-flip-y" title="Mirror the block top to bottom">Flip ↕</button>
@@ -382,7 +382,7 @@ export class ChartPage {
         <span class="chart-sep"></span>
         <button class="ghost" data-act="zoom-out" title="Smaller squares (−)">−</button>
         <button class="ghost" data-act="zoom-in" title="Bigger squares (+)">+</button>
-        <button class="ghost toggle" data-act="knitted" title="Squares the shape stitches are: wider than tall, at the chart's gauge">As knitted</button>
+        <button class="ghost toggle" data-act="knitted" title="Squares shaped like stitches (wider than tall), at the chart's gauge">As knitted</button>
         <span class="chart-status hint" data-el="status"></span>
       </div>
       <div class="chart-palette" data-el="palette"></div>
@@ -525,7 +525,7 @@ export class ChartPage {
       }, true);
     }
     if (act === "usual-shaping") {
-      if (this.g.sections.length > 1 && !(await askYesNo("Put the usual three decrease rounds in place of the shaping there is?", { title: "Usual shaping", okLabel: "Put them in" }))) return;
+      if (this.g.sections.length > 1 && !(await askYesNo("Replace the current shaping with the usual three decrease rounds?", { title: "Usual shaping", okLabel: "Replace" }))) return;
       return this.change(() => usualShaping(this.g), true);
     }
   }
@@ -567,7 +567,7 @@ export class ChartPage {
       case "gauge-sts":
       case "gauge-rows": {
         const per10 = value ? readGauge(value, this.unit) : 0;
-        if (Number.isNaN(per10) || per10 < 0 || per10 > 150) return void say(`Give the ${f === "gauge-sts" ? "stitches" : "rows"} per ${gaugeSpan(this.unit)}.`, "Gauge");
+        if (Number.isNaN(per10) || per10 < 0 || per10 > 150) return void say(`${f === "gauge-sts" ? "Stitches" : "Rows"} per ${gaugeSpan(this.unit)} needed.`, "Gauge");
         return this.change(() => (this.g.gauge[f === "gauge-sts" ? "sts" : "rows"] = Math.round(per10 * 10) / 10), true);
       }
       case "section-row":
@@ -774,7 +774,7 @@ export class ChartPage {
     const { width, height } = kept.clip;
     if (cut) this.change(() => clearRect(this.g, this.mask, this.selection!));
     else this.paintToolbar();
-    this.note(`${cut ? "Cut" : "Copied"}: ${width} × ${height} squares. Paste (Ctrl+V) puts them down, here or in another chart.`);
+    this.note(`${cut ? "Cut" : "Copied"}: ${width} × ${height} squares. Paste (Ctrl+V) places them here or in another chart.`);
   }
 
   private startPaste(): void {
@@ -1092,7 +1092,7 @@ export class ChartPage {
               <span class="chart-chip-sw" style="background:${NO_STITCH_COLOUR.hex}"></span><span class="chart-chip-name">No stitch</span></button>`
         }
         ${this.g.colours.length < MAX_COLOURS ? `<button class="ghost chart-add-colour" data-act="add-colour" title="Another colour">+ Colour</button>` : ""}
-        <button class="ghost chart-add-colour" data-act="photo-colours" title="A photo's main colours, as the chart's, with the yarns in your stash nearest them">🎨 From a photo…</button>
+        <button class="ghost chart-add-colour" data-act="photo-colours" title="A photo's main colours for the chart, with the closest stash yarns">🎨 From a photo…</button>
       </div>
       <div class="chart-colour-edit">
         <input type="color" data-f="colour-hex" value="${esc(c.hex)}" aria-label="The colour" />
@@ -1152,7 +1152,7 @@ export class ChartPage {
         for (let k = this.g.colours.length - 1; k > 0; k--) if (!counts[k] && k !== this.colour) removeColour(this.g, k);
         this.colour = Math.min(this.colour, this.g.colours.length - 1);
       }
-      if (this.g.colours.length >= MAX_COLOURS) return void say(`A chart can have ${MAX_COLOURS} different stitches, and this one has them all drawn.`, "Stitches");
+      if (this.g.colours.length >= MAX_COLOURS) return void say(`A chart can have up to ${MAX_COLOURS} different stitches; this one has them all.`, "Stitches");
       this.g.colours.push(laceColour(key));
       i = this.g.colours.length - 1;
     }
@@ -1189,7 +1189,7 @@ export class ChartPage {
     if (!file) return;
     const pixels = await pixelsOf(file, 160);
     const found = pixels ? mainColours(pixels, 8) : [];
-    if (!found.length) return say("That file could not be read as a picture.", "Colours from a photo");
+    if (!found.length) return say("This file is not a readable picture.", "Colours from a photo");
     const coloured = (await Promise.all(this.yarns.map(async (yarn) => ({ yarn, hex: await yarnColour(yarn) })))).filter((c): c is { yarn: Yarn; hex: string } => !!c.hex);
     const preview = URL.createObjectURL(file);
     // Per colour: used or not, and the yarn chosen for it.
@@ -1232,11 +1232,11 @@ export class ChartPage {
           <img class="photo-colours-photo" src="${preview}" alt="The photo" />
           <div class="photo-colours-list">${rows}</div>
         </div>
-        <p class="hint">Pick a yarn for a colour to knit it in that one: the legend names it. A yarn's colour is read from its photo.</p>
+        <p class="hint">A yarn picked for a colour is named in the legend. Yarn colours are read from their photos.</p>
         <div class="dialog-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
-          <button class="ghost" data-act="add" title="The colours ticked, after the chart's own">Add to the chart</button>
-          <button class="primary" data-act="recolour" title="The chart's colours, the most used first, take the colours ticked, the most of the photo first">Recolour the chart</button>
+          <button class="ghost" data-act="add" title="Adds the ticked colours after the chart's own">Add to the chart</button>
+          <button class="primary" data-act="recolour" title="Replaces the chart's colours (most used first) with the ticked colours (largest share of the photo first)">Recolour the chart</button>
         </div>`,
       );
       card.addEventListener("change", (e) => {
@@ -1308,7 +1308,7 @@ export class ChartPage {
     if (!el) return;
     const word = this.g.flat ? "row" : "round";
     if (this.pasting) {
-      el.title = el.textContent = `Pasting ${this.pasting.block.width} × ${this.pasting.block.height}: click to put it down, as often as you like; Esc when done`;
+      el.title = el.textContent = `Pasting ${this.pasting.block.width} × ${this.pasting.block.height}: click to place it, as often as needed; Esc when done`;
       return;
     }
     if (this.selection && !at) {
@@ -1325,7 +1325,7 @@ export class ChartPage {
     }
     const off = isLace(this.g) ? laceMismatches(this.g) : [];
     el.title = el.textContent = off.length
-      ? `${off.length} ${this.g.flat ? "row" : "round"}${off.length === 1 ? "" : "s"} not working the stitches the one before left: see Stitches`
+      ? `${off.length} ${this.g.flat ? "row" : "round"}${off.length === 1 ? "" : "s"} not matching the stitches of the row below: see Stitches`
       : this.floats.length
         ? `${this.floats.length} float${this.floats.length === 1 ? "" : "s"} over ${this.g.floatLimit} stitches, underlined`
         : describe(this.g);
@@ -1365,7 +1365,7 @@ export class ChartPage {
     if (isLace(this.g)) return `<div data-el="counts"></div>`;
     const yoke = this.g.kind === "yoke";
     return `
-      <p class="hint">${yoke ? "The yoke from above, the neck in the middle, its stitches the shape they knit up." : "The chart repeated, as an allover pattern knits up, its stitches the shape they knit up."}${this.g.gauge.sts ? "" : " Give a gauge (under Chart) for the shape your stitches have."}</p>
+      <p class="hint">${yoke ? "The yoke seen from above, the neck in the middle, with stitches shaped as knitted." : "The chart repeated as an allover pattern, with stitches shaped as knitted."}${this.g.gauge.sts ? "" : " A gauge (under Chart) gives the stitches their real shape."}</p>
       <canvas class="chart-preview"></canvas>
       <div data-el="counts"></div>`;
   }
@@ -1391,7 +1391,7 @@ export class ChartPage {
       ${
         off.length
           ? `<div class="calc-warnings-p">${off.map((o) => `<p>${word} ${o.row + 1} works ${o.takes} stitches, but ${word.toLowerCase()} ${o.row} left ${o.had}: ${o.takes > o.had ? "a decrease too many, or a yarn over missing" : "a yarn over too many, or a decrease missing"}.</p>`).join("")}</div>`
-          : `<p class="hint">Every ${word.toLowerCase()} works the stitches the one before left.</p>`
+          : `<p class="hint">Every ${word.toLowerCase()} matches the stitches of the row below.</p>`
       }
       <table class="calc-table lace-rows"><thead><tr><th>${word}</th><th>Works</th><th>Leaves</th></tr></thead><tbody>
         ${rows
@@ -1455,7 +1455,7 @@ export class ChartPage {
                   <option value="up" ${g.topDown ? "" : "selected"}>From the hem up</option>
                   <option value="down" ${g.topDown ? "selected" : ""}>From the neck down</option></select></label>
               </div>
-              <p class="hint">Turning it round keeps the yoke as it looks worn: the chart turns upside down, as a top-down chart is.</p>`
+              <p class="hint">Switching keeps the yoke as it looks when worn: the chart turns upside down, as top-down charts are.</p>`
             : `<label class="field calc-field"><span>Worked</span><select data-f="flat">
                 <option value="round" ${g.flat ? "" : "selected"}>In the round: every round from the right</option>
                 <option value="flat" ${g.flat ? "selected" : ""}>Flat: right-side rows from the right, wrong-side from the left</option></select></label>`
@@ -1472,12 +1472,12 @@ export class ChartPage {
           <label class="field"><span>Stitches <em class="hint">per ${span}</em></span><input data-f="gauge-sts" inputmode="decimal" value="${g.gauge.sts ? showGauge(g.gauge.sts, this.unit) : ""}" placeholder="e.g. 18" /></label>
           <label class="field"><span>Rows <em class="hint">per ${span}</em></span><input data-f="gauge-rows" inputmode="decimal" value="${g.gauge.rows ? showGauge(g.gauge.rows, this.unit) : ""}" placeholder="e.g. 24" /></label>
         </div>
-        <p class="hint">For squares the shape of your stitches, the size it comes out, and a PDF printed at the real size.</p>
+        <p class="hint">Used for stitch-shaped squares, the finished size, and real-size PDF printing.</p>
       </section>
       <section class="chart-set">
         <h3>Picture</h3>
         <div class="chart-buttons">
-          <button class="ghost" data-act="shift" data-dx="-1" data-dy="0" title="Move everything a stitch left; the left column comes round to the right">← Move</button>
+          <button class="ghost" data-act="shift" data-dx="-1" data-dy="0" title="Shift everything one stitch left; the left column wraps to the right">← Move</button>
           <button class="ghost" data-act="shift" data-dx="1" data-dy="0" title="Move everything a stitch right">Move →</button>
           <button class="ghost" data-act="shift" data-dx="0" data-dy="1" title="Move everything a row up">↑ Move</button>
           <button class="ghost" data-act="shift" data-dx="0" data-dy="-1" title="Move everything a row down">Move ↓</button>
@@ -1570,8 +1570,8 @@ export class ChartPage {
     if (!answer) return;
     const row = Number(answer["From round"]) - 1;
     const sts = Number(answer["Stitches each repeat"]);
-    if (!Number.isInteger(row) || row < 1 || row >= g.height) return void say(`Give a round from 2 to ${g.height}.`, "Shaping");
-    if (!Number.isInteger(sts) || sts < 1 || sts >= g.width) return void say(`Give the stitches each repeat has from that round: 1 to ${g.width - 1}.`, "Shaping");
+    if (!Number.isInteger(row) || row < 1 || row >= g.height) return void say(`Round must be from 2 to ${g.height}.`, "Shaping");
+    if (!Number.isInteger(sts) || sts < 1 || sts >= g.width) return void say(`Stitches per repeat from that round must be 1 to ${g.width - 1}.`, "Shaping");
     this.change(() => {
       g.sections = g.sections.filter((s) => s.row !== row).concat({ row, sts, cols: [] });
       normalize(g);
@@ -1583,8 +1583,8 @@ export class ChartPage {
       this.paintToolbar();
       await say(
         g.topDown
-          ? "That does not fit: from the neck down, each shaping round has more stitches than the one before and fewer than the one after."
-          : "That does not fit: from the hem up, each shaping round has fewer stitches than the one before and more than the one after.",
+          ? "Not possible: from the neck down, each shaping round needs more stitches than the one before and fewer than the next."
+          : "Not possible: from the hem up, each shaping round needs fewer stitches than the one before and more than the next.",
         "Shaping",
       );
     }
@@ -1634,7 +1634,7 @@ export class ChartPage {
         `
         <div class="chart-kinds" role="radiogroup">
           <label class="chart-kind"><input type="radio" name="as" value="pdf" checked />
-            <span><b>PDF, to print</b><em>Sharp at any size, with the colours and, if you like, the rows in words</em></span></label>
+            <span><b>PDF, to print</b><em>Sharp at any size, with colours and optionally the rows in words</em></span></label>
           <label class="chart-kind"><input type="radio" name="as" value="png" />
             <span><b>Picture (PNG)</b><em>To share, or keep with a pattern</em></span></label>
         </div>
@@ -1708,7 +1708,7 @@ export class ChartPage {
   /** Puts the chart, as a picture, and its rows in words, on a project's board, below what is there. */
   private boardDialog(): Promise<void> {
     const live = this.projects.filter((p) => isLive(p.status));
-    if (!live.length) return say("There are no projects being knitted to put it on.", "Save to a project");
+    if (!live.length) return say("No active projects to add it to.", "Save to a project");
     return new Promise((resolve) => {
       const finish = () => {
         dialog.close();
@@ -1723,7 +1723,7 @@ export class ChartPage {
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="live" checked />
           <span><span class="dialog-label">The chart</span><span class="dialog-hint">Drawn on the board as it is: change it here, and the board shows the change.</span></span></label>
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="picture" />
-          <span><span class="dialog-label">The chart, as a picture</span><span class="dialog-hint">As it is now, to keep.</span></span></label>
+          <span><span class="dialog-label">The chart, as a picture</span><span class="dialog-hint">A snapshot of its current state.</span></span></label>
         <label class="dialog-field dialog-checkfield"><input class="dialog-check" type="checkbox" data-f="words" />
           <span><span class="dialog-label">The rows in words</span></span></label>
         <p class="form-error" data-el="error" hidden></p>
@@ -1754,7 +1754,7 @@ export class ChartPage {
           if (picture) {
             const png = await chartPng(this.savedName, this.g, { maxSide: 1400, asKnitted: kept.knitted, subtitle: this.subtitle() });
             const prepared = await prepareBoardImage(png);
-            if (!prepared) throw new Error("The picture could not be made.");
+            if (!prepared) throw new Error("The picture could not be created.");
             const w = 420;
             const h = Math.max(40, Math.round((w * prepared.height) / prepared.width));
             const item = await api.addBoardItem(projectId, { kind: "image", x: 40, y, w, h, data: {} });

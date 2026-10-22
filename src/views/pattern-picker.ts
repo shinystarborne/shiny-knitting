@@ -20,7 +20,7 @@ export function mountPatternPicker(host: HTMLElement, patterns: Pattern[], chose
   host.innerHTML = `
     <input type="hidden" data-f="pattern" />
     <input class="pattern-pick-input" type="search" autocomplete="off" role="combobox" aria-expanded="false"
-      aria-label="Pattern" placeholder="Search your patterns: title, designer or tag" />
+      aria-label="Pattern" placeholder="Search patterns: title, designer or tag" />
     <ul class="pattern-pick-list" role="listbox" hidden></ul>`;
   const value = host.querySelector<HTMLInputElement>('[data-f="pattern"]')!;
   const input = host.querySelector<HTMLInputElement>(".pattern-pick-input")!;

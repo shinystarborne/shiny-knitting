@@ -48,8 +48,8 @@ export class ProjectsView {
         </div>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search name, pattern, notes..." />
-          <button data-act="sort-plans" class="ghost" title="Plans with a date first, the soonest first; the rest as they are">Sort by date</button>
-          <button data-act="show-hidden" class="ghost" title="Projects hidden from the gallery, to show again"></button>
+          <button data-act="sort-plans" class="ghost" title="Plans with a date first, soonest first">Sort by date</button>
+          <button data-act="show-hidden" class="ghost" title="Projects hidden from the gallery"></button>
           <button data-act="add" class="primary">+ New project</button>
         </div>
       </header>
@@ -146,7 +146,7 @@ export class ProjectsView {
     const hiddenCount = finished.filter((p) => p.galleryHidden).length;
     const toggle = this.root.querySelector<HTMLElement>('[data-act="show-hidden"]')!;
     toggle.hidden = !hiddenCount && !kept.hidden;
-    toggle.textContent = kept.hidden ? "Hide the hidden" : `Show hidden (${hiddenCount})`;
+    toggle.textContent = kept.hidden ? "Hide hidden" : `Show hidden (${hiddenCount})`;
     const shown = finished.filter((p) => {
       if (p.galleryHidden && !kept.hidden) return false;
       const text = [p.name, p.patternTitle, p.notes, ...p.yarns.map((y) => y.yarnName)].join(" ").toLowerCase();
@@ -156,7 +156,7 @@ export class ProjectsView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${finished.length ? (words.length ? "Nothing by that name" : "Every finished project is hidden") : "Nothing finished yet"}</h2>
-          <p>${finished.length ? (words.length ? "Try another word." : "Show hidden brings them back.") : "A project goes into the gallery by itself when it is finished, with its cover and the photos in its log."}</p>
+          <p>${finished.length ? (words.length ? "Try another word." : "Show hidden brings them back.") : "Finished projects appear here automatically, with their cover and log photos."}</p>
         </div>`;
       return;
     }
@@ -217,7 +217,7 @@ export class ProjectsView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${filtering ? "Nothing matches those filters" : "No projects yet"}</h2>
-          <p>${filtering ? "Try removing a filter." : "Start one here, or from a pattern while reading it. Its needles and yarn are then in use until it is finished."}</p>
+          <p>${filtering ? "Try removing a filter." : "Start one here, or from a pattern in the reader. Its needles and yarn stay in use until it is finished."}</p>
         </div>`;
       return;
     }
@@ -238,25 +238,25 @@ export class ProjectsView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${this.plans().length ? "No plan by that name" : "No plans yet"}</h2>
-          <p>${this.plans().length ? "Try another word." : "What to knit next: a pattern (or just an idea), yarn from the stash, and when. Make one here, from a pattern's ⋯ menu (Plan it), or from a yarn planned for something."}</p>
+          <p>${this.plans().length ? "Try another word." : "Projects to knit next: a pattern (or just an idea), yarn from the stash, and a date. Add one here, from a pattern's ⋯ menu (Plan it), or from a yarn."}</p>
         </div>`;
       return;
     }
     this.results.innerHTML = `
-      <p class="hint plan-hint">Drag a plan by its handle into the order you mean to knit them. Its yarn is meant for it, not in use, until you start it.</p>
+      <p class="hint plan-hint">Drag plans by their handle to order them. A plan’s yarn is reserved for it, not in use, until the project starts.</p>
       <ol class="plan-list">${plans
         .map((p) => {
           const yarn = p.yarns.map((y) => `${y.yarnName}${y.plannedGrams ? ` (${y.plannedGrams} g)` : ""}`).join(", ");
           const when = planTime(p);
           return `
           <li class="plan-row" draggable="${words.length ? "false" : "true"}" data-plan="${p.id}" data-open="${p.id}">
-            <span class="plan-grip" title="Drag to move it" aria-hidden="true">⋮⋮</span>
+            <span class="plan-grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
             <div class="plan-main">
               <h3>${escapeHtml(p.name)}</h3>
               <p>${p.patternId ? escapeHtml(p.patternTitle) : `<em>No pattern yet</em>`}${yarn ? ` · ${escapeHtml(yarn)}` : ""}</p>
             </div>
             <span class="plan-when${when ? "" : " none"}">${when ? escapeHtml(when) : "Some time"}</span>
-            <button class="ghost" data-act="start-plan" data-id="${p.id}" title="Start knitting it: from today, its pattern in progress, its yarn in use">Start knitting</button>
+            <button class="ghost" data-act="start-plan" data-id="${p.id}" title="Starts the project today: the pattern goes in progress, the yarn and needles in use">Start knitting</button>
           </li>`;
         })
         .join("")}</ol>`;
@@ -364,7 +364,7 @@ export class ProjectsView {
             : `<p class="project-pattern none">No pattern</p>`
         }
         <p class="project-dates">${escapeHtml(dates)}</p>
-        <p class="project-on">${on ? escapeHtml(on) : finished ? "Nothing recorded" : "Nothing on it yet"}</p>
+        <p class="project-on">${on ? escapeHtml(on) : finished ? "Nothing recorded" : "Nothing added yet"}</p>
       </article>`;
   }
 }

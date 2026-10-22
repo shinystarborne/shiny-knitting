@@ -72,7 +72,7 @@ export class FinishProjectDialog {
           <span>Needles, hooks &amp; cables</span>
           ${
             onIt.length
-              ? `<p class="hint">These go back to free.</p>
+              ? `<p class="hint">These become free again.</p>
                  <ul class="tool-list record">${onIt.map((t) => `<li><span>${escapeHtml(describe(t))}</span></li>`).join("")}</ul>`
               : `<p class="hint">None on this project.</p>`
           }
@@ -82,7 +82,7 @@ export class FinishProjectDialog {
           <span>The yarn it used</span>
           ${
             p.yarns.length
-              ? `<p class="hint">How much of each it used, in grams or balls (a ball is its weight per ball), or what is left of it.${guessed ? " Filled in from what the project was to take." : ""} A yarn with nothing left goes to the stash's History. Leave it empty to keep the stash as it is.</p>
+              ? `<p class="hint">Amount of each yarn used, in grams or balls (one ball = its weight per ball), or the amount left.${guessed ? " Filled in from the planned amounts." : ""} Yarn with nothing left moves to the stash's History. Empty leaves the stash unchanged.</p>
                  <div class="leftover-list">
                    ${rows
                      .map(({ y, colourway, perBall, value, unit }) => {

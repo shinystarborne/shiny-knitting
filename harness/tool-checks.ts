@@ -151,7 +151,7 @@ export async function verifyTools() {
     check(results, "a hook has a size and a length, no cable", shown("sizeMm") && shown("lengthCm") && !shown("cableCm") && !shown("cableSize"));
     act("save");
     await waitFor(() => !modal()?.querySelector<HTMLElement>('[data-el="error"]')?.hidden, "the size error");
-    check(results, "saving without a size says what is missing", /size in millimetres/.test(modal()?.querySelector('[data-el="error"]')?.textContent ?? ""));
+    check(results, "saving without a size says what is missing", /Size in millimetres/.test(modal()?.querySelector('[data-el="error"]')?.textContent ?? ""));
     set("sizeMm", "6");
     set("lengthCm", "14");
     field("brand")!.value = "Tulip";
@@ -209,7 +209,7 @@ export async function verifyTools() {
     field("brand")!.value = "ChiaoGoo";
     field("material")!.value = "Metal";
     const preview = modal()!.querySelector<HTMLElement>('[data-el="set-preview"]')!;
-    check(results, "several sizes say they make a set, added free", !preview.hidden && /4 entries, 3, 3\.5, 4, 4\.5 mm/.test(preview.textContent ?? "") && /added free/.test(preview.textContent ?? ""), preview.textContent ?? "");
+    check(results, "several sizes say they make a set, added free", !preview.hidden && /4 entries, 3, 3\.5, 4, 4\.5 mm/.test(preview.textContent ?? "") && /added as free/.test(preview.textContent ?? ""), preview.textContent ?? "");
     check(results, "…and the button says how many", modal()!.querySelector('[data-act="save"]')?.textContent === "Add 4");
     const projectRow = modal()!.querySelector<HTMLElement>('[data-el="project-row"]')!;
     check(results, "a set hides In use for: its sizes do not share a project", projectRow.hidden && getComputedStyle(projectRow).display === "none");
@@ -260,7 +260,7 @@ export async function verifyTools() {
     field("sizeMm")!.value = "3, 3.25";
     act("save");
     await waitFor(() => !modal()?.querySelector<HTMLElement>('[data-el="error"]')?.hidden, "the one-size error");
-    check(results, "editing takes one size", /give it one size/.test(modal()?.querySelector('[data-el="error"]')?.textContent ?? ""));
+    check(results, "editing takes one size", /only one size/.test(modal()?.querySelector('[data-el="error"]')?.textContent ?? ""));
     act("cancel");
     await waitFor(() => !modal(), "the edit form to close");
 

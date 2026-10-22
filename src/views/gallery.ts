@@ -120,9 +120,9 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
     const current = list[at];
     body.innerHTML = `
       <div class="gallery-stage">
-        <div class="gallery-big" data-el="big">${current ? "" : `<p class="hint">${photos.length ? "Every photo is left out: Choose photos to show some." : "No photos yet: add a cover, or a photo to its log, on its page."}</p>`}</div>
+        <div class="gallery-big" data-el="big">${current ? "" : `<p class="hint">${photos.length ? "All photos are hidden. Choose photos to show some." : "No photos yet. A cover or log photos can be added on its page."}</p>`}</div>
         ${current?.caption ? `<p class="gallery-caption">${esc(current.caption)} <span class="hint">${esc(longDate(current.at))}</span></p>` : ""}
-        ${choosing ? `<p class="hint">Ticked photos are in the gallery. Click one to leave it out or bring it back.</p>` : ""}
+        ${choosing ? `<p class="hint">Ticked photos show in the gallery. Click one to hide or show it.</p>` : ""}
         <div class="gallery-strip">${list
           .map((x, i) => {
             const on = !p.gallerySkip.includes(x.key);
@@ -132,10 +132,10 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
       </div>
       <aside class="gallery-info">${info()}</aside>
       <div class="dialog-actions gallery-actions">
-        ${current && !choosing ? `<button type="button" class="ghost" data-act="copy-photo" title="Copy the photo shown, to paste anywhere">Copy photo</button>` : ""}
+        ${current && !choosing ? `<button type="button" class="ghost" data-act="copy-photo" title="Copy the photo">Copy photo</button>` : ""}
         ${photos.length ? `<button type="button" class="ghost" data-act="choose">${choosing ? "Done choosing" : "Choose photos"}</button>` : ""}
         <button type="button" class="ghost" data-act="hide">${p.galleryHidden ? "Show in the gallery" : "Hide from the gallery"}</button>
-        <button type="button" class="ghost" data-act="card" title="A picture of it with what there is to say about it, to post">Card to post…</button>
+        <button type="button" class="ghost" data-act="card" title="A card to share: photos, pattern, yarn, needles and size">Share card…</button>
         <button type="button" class="ghost" data-act="page">Open its page</button>
         <button type="button" class="primary" data-act="close">Close</button>
       </div>`;

@@ -31,7 +31,7 @@ fn line(value: &str, max: usize) -> String {
 pub fn clean_person(input: PersonInput) -> Result<PersonInput, AppError> {
     let name = line(&input.name, 120);
     if name.is_empty() {
-        return Err(AppError::Message("Give them a name.".to_string()));
+        return Err(AppError::Message("Name needed.".to_string()));
     }
     let mut extra: Vec<String> = Vec::new();
     for raw in &input.extra {
@@ -51,20 +51,20 @@ pub fn clean_set(input: MeasurementSetInput, extra: &[String]) -> Result<Measure
     for (key, value) in input.values {
         let known = MEASUREMENTS.contains(&key.as_str()) || key.strip_prefix("x:").is_some_and(|name| extra.iter().any(|e| e == name));
         if !known {
-            return Err(AppError::Message(format!("“{key}” is not one of their measurements.")));
+            return Err(AppError::Message(format!("“{key}” is not one of this person's measurements.")));
         }
         if !value.is_finite() || value < 0.0 {
-            return Err(AppError::Message("A measurement has to be a number of centimetres.".to_string()));
+            return Err(AppError::Message("A measurement must be a number of centimetres.".to_string()));
         }
         if value > MAX_CM {
-            return Err(AppError::Message(format!("{value} cm is more than anyone measures — is it in the right unit?")));
+            return Err(AppError::Message(format!("{value} cm is too large for a measurement. Is the unit right?")));
         }
         if value > 0.0 {
             values.insert(key, (value * 100.0).round() / 100.0);
         }
     }
     if input.measured_at <= 0 {
-        return Err(AppError::Message("Give the date they were measured.".to_string()));
+        return Err(AppError::Message("Measurement date needed.".to_string()));
     }
     Ok(MeasurementSetInput { measured_at: input.measured_at, values, shoe_size: line(&input.shoe_size, 20) })
 }

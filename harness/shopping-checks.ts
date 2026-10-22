@@ -192,7 +192,7 @@ export async function verifyShopping() {
     check(results, "For offers the projects on the needles, and only those", live.length > 0 && projectChoices === ["Nothing in particular", ...live.map((p) => p.name)].join("|"), projectChoices);
     act("wish-form", "save");
     await waitFor(() => !!errorText("wish-form"), "the name error");
-    check(results, "saving without a name says what is missing", /what it is/.test(errorText("wish-form")));
+    check(results, "saving without a name says what is missing", /Item name needed/.test(errorText("wish-form")));
     type("wish-form", "name", "  Merino   DK, teal ");
     type("wish-form", "url", "deadstock.example.com/merino-dk");
     check(results, "a pasted link picks its shop", field("wish-form", "shop")?.value === "s2");
@@ -321,7 +321,7 @@ export async function verifyShopping() {
     (wishCard(air.id)!.querySelector('[data-act="stash"]') as HTMLElement).click();
     await waitFor(() => !!modal("yarn-form"), "the yarn form");
     const yarnField = (f: string) => modal("yarn-form")!.querySelector<HTMLInputElement>(`[data-f="${f}"]`)!.value;
-    check(results, "the yarn form is filled in from the wishlist", /from the wishlist/.test(modal("yarn-form")!.querySelector("h2")?.textContent ?? ""));
+    check(results, "the yarn form is filled in from the wishlist", /from wishlist/.test(modal("yarn-form")!.querySelector("h2")?.textContent ?? ""));
     check(results, "…brand, name and colourway", yarnField("brand") === "DROPS" && yarnField("name") === "Air" && yarnField("colourway") === "Off White", `${yarnField("brand")}|${yarnField("name")}|${yarnField("colourway")}`);
     check(results, "…the balls bought, as its first lot", modal("yarn-form")!.querySelector<HTMLInputElement>('[data-lf="balls"]')?.value === "6");
     await waitFor(() => !!modal("yarn-form")!.querySelector('[data-el="photobox"].filled'), "the picture in the yarn form");
@@ -415,7 +415,7 @@ export async function verifyShopping() {
 
     // Its count goes to the wishlist, filtered to it.
     const count = shopCard("s2")!.querySelector<HTMLElement>('[data-act="wishlist"]');
-    check(results, "a shop says how much on the wishlist is from it", count?.textContent === "1 thing on your wishlist", count?.textContent ?? "(none)");
+    check(results, "a shop says how much on the wishlist is from it", count?.textContent === "1 item on the wishlist", count?.textContent ?? "(none)");
     count!.click();
     await waitFor(() => !!document.querySelector(".wishlist") && wishCards().length > 0, "the wishlist");
     check(results, "…and goes to the wishlist, filtered to it", wanted() === added.id && got() === "w4" && !!document.querySelector<HTMLInputElement>('.wishlist input[data-filter="shop"][value="s2"]')?.checked, `${wanted()} / ${got()}`);
@@ -428,7 +428,7 @@ export async function verifyShopping() {
     await waitFor(() => !!modal("shop-form"), "the shop form");
     act("shop-form", "save");
     await waitFor(() => !!errorText("shop-form"), "the empty shop error");
-    check(results, "a shop needs a name or an address", /name, or its web address/.test(errorText("shop-form")));
+    check(results, "a shop needs a name or an address", /name or web address needed/.test(errorText("shop-form")));
     type("shop-form", "url", "drops");
     act("shop-form", "save");
     await waitFor(() => /not a web address/.test(errorText("shop-form")), "the address error");
@@ -532,7 +532,7 @@ export async function verifyShopping() {
     // Remove one: what was to be got there stays, with no shop.
     (shopCard("s1")!.querySelector('[data-act="remove"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector(".dialog-card"), "the confirm");
-    check(results, "removing a shop says its wishlist items stay", /stay on it, with no shop/.test(document.querySelector(".dialog-card .dialog-message")?.textContent ?? ""));
+    check(results, "removing a shop says its wishlist items stay", /stay on it, without a shop/.test(document.querySelector(".dialog-card .dialog-message")?.textContent ?? ""));
     await answer("Remove");
     await waitFor(() => !shopCard("s1"), "the removal");
     check(results, "the shop is gone, and its item stays without it", !store.shops.some((x) => x.id === "s1") && store.wishes.find((w) => w.id === "w1")?.shopId === null);

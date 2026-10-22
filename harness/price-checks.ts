@@ -257,7 +257,7 @@ export async function verifyPrices() {
     modal()!.querySelector<HTMLInputElement>('[data-f="price"]')!.value = "abc";
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     await waitFor(() => !!modal()?.querySelector('[data-el="error"]:not([hidden])') || !modal(), "the answer");
-    check(results, "a pattern's price that is no number is refused, saying so", !!modal() && /The price is a number/.test(modal()!.textContent ?? ""), modal()?.textContent?.slice(0, 200) ?? "closed");
+    check(results, "a pattern's price that is no number is refused, saying so", !!modal() && /Price must be a number/.test(modal()!.textContent ?? ""), modal()?.textContent?.slice(0, 200) ?? "closed");
     modal()!.querySelector<HTMLInputElement>('[data-f="price"]')!.value = "6,50";
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     await waitFor(() => !modal(), "the pattern saved");

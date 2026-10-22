@@ -73,7 +73,7 @@ fn validate(bytes: &[u8]) -> AppResult<(&'static str, &'static str)> {
             "That image is too large to be a cover (limit 20 MB).".into(),
         ));
     }
-    sniff(bytes).ok_or_else(|| AppError::Message("That file does not look like an image.".into()))
+    sniff(bytes).ok_or_else(|| AppError::Message("This file is not an image.".into()))
 }
 
 /// The full path of a stored image inside `dir`, if a name is recorded and
@@ -261,7 +261,7 @@ pub fn set_board_image(state: &AppState, item_id: &str, bytes: Vec<u8>) -> AppRe
 pub fn read_board_image(state: &AppState, item_id: &str) -> AppResult<(String, Vec<u8>)> {
     let name = db::board_item_image(&state.db(), item_id)?;
     let path = existing_file(&board_images_dir(state), &name)
-        .ok_or_else(|| AppError::Message("That picture is no longer there.".into()))?;
+        .ok_or_else(|| AppError::Message("This picture no longer exists.".into()))?;
     read_file(path)
 }
 
@@ -286,7 +286,7 @@ pub fn write_chart_picture(state: &AppState, chart_id: &str, bytes: &[u8]) -> Ap
 
 pub fn read_chart_picture(state: &AppState, file_name: &str) -> AppResult<(String, Vec<u8>)> {
     let path = existing_file(&chart_pictures_dir(state), file_name)
-        .ok_or_else(|| AppError::Message("That chart's picture is no longer there.".into()))?;
+        .ok_or_else(|| AppError::Message("This chart's picture no longer exists.".into()))?;
     read_file(path)
 }
 

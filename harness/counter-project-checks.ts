@@ -92,7 +92,7 @@ export async function verifyCounterProjects() {
     await waitFor(() => !!page()!.querySelector(".board-pin-caption"), "the pin on the board");
     const caption = page()!.querySelector(".board-pin-caption")!.textContent ?? "";
     check(results, "a pin on a project's board says which page of which pattern it is from", /📌 p\.3 · Featherweight Lace Sock/.test(caption), caption);
-    const toBoard = () => page()!.querySelector<HTMLElement>(`.pin-card[data-id="${pinId}"] button[title="Put it on the project's board"]`);
+    const toBoard = () => page()!.querySelector<HTMLElement>(`.pin-card[data-id="${pinId}"] button[title="Add to the project's board"]`);
     await waitFor(() => !!toBoard(), "the pin's ⤴ in the pattern beside the board");
     toBoard()!.click();
     await waitFor(() => page()!.querySelectorAll(".board-pin-caption").length === 2, "the pin on the board", 20000);

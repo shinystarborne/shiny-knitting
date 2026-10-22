@@ -73,12 +73,12 @@ export function sortOutDuplicates(): Promise<boolean> {
       const exact = groups.filter((g) => g.exact).length;
       const kinds = [
         exact ? `${exact} of identical files (their copies are ticked)` : "",
-        groups.length - exact ? `${groups.length - exact} with the same name (check those yourself)` : "",
+        groups.length - exact ? `${groups.length - exact} with the same name (to check by hand)` : "",
       ].filter(Boolean);
       summary.textContent = groups.length
         ? `${groups.length} group${groups.length === 1 ? "" : "s"} of patterns that look alike: ${kinds.join(", ")}. ` +
-          `A copy's projects and board cards move to the one kept, with its tags, notes and status; ` +
-          `its highlights, pins and counters go with it.`
+          `A removed copy's projects, board cards, tags, notes and status move to the one kept; ` +
+          `its highlights, pins and counters are deleted with it.`
         : "No duplicates found.";
       stopLazy = paintLazily(list, groups.map((g, i) => ({ g, i })), ({ g, i }) => groupHtml(g, i), {
         pictures: "[data-cover-of]",
@@ -93,7 +93,7 @@ export function sortOutDuplicates(): Promise<boolean> {
 
     const groupHtml = (g: DuplicateGroup, i: number): string => `
       <section class="dup-group" data-group="${i}">
-        <h4>${g.exact ? "Identical files" : "Same name — check these before removing"}</h4>
+        <h4>${g.exact ? "Identical files" : "Same name: check before removing"}</h4>
         ${g.patterns
           .map((e) => {
             const p = e.pattern;

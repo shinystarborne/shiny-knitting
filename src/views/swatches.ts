@@ -11,10 +11,10 @@ import { matches } from "./shopping";
 export type StashMode = "yarn" | "swatches" | "history" | "stats";
 
 const STASH_MODES: { mode: StashMode; label: string; title: string }[] = [
-  { mode: "yarn", label: "Yarn", title: "The yarn you have" },
-  { mode: "swatches", label: "Swatches", title: "Your gauge swatches" },
-  { mode: "history", label: "History", title: "Yarn you had, and used up" },
-  { mode: "stats", label: "Statistics", title: "How much is in the stash, and yarn added and used month by month" },
+  { mode: "yarn", label: "Yarn", title: "Yarn in the stash" },
+  { mode: "swatches", label: "Swatches", title: "Gauge swatches" },
+  { mode: "history", label: "History", title: "Used-up yarn" },
+  { mode: "stats", label: "Statistics", title: "Stash totals, and yarn added and used by month" },
 ];
 
 /** The Stash tab's switch between its yarn, its swatches, its ball bands, its history and its statistics. */
@@ -99,7 +99,7 @@ export class SwatchesView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${this.swatches.length ? "No swatch matches that" : "No swatches yet"}</h2>
-          <p>${this.swatches.length ? "The search looks through the yarn, stitch pattern, needle and notes." : "Add your gauge swatches: the yarn, the needle, and the stitches and rows over 10 cm, before and after blocking. Your real gauge, not the ball band's."}</p>
+          <p>${this.swatches.length ? "The search looks through the yarn, stitch pattern, needle and notes." : "Gauge swatches: the yarn, the needle, and stitches and rows over 10 cm, before and after blocking. The real gauge, not the ball band's."}</p>
         </div>`;
       return;
     }
@@ -135,7 +135,7 @@ function cardHtml(s: Swatch, unit: MeasureUnit): string {
           ${counted ? `<span>sts × rows / ${esc(gaugeSpan(unit))}</span>` : ""}
           ${counted ? `<span class="pill ${g.blocked ? "swatch-blocked" : ""}">${g.blocked ? "Blocked" : "Not blocked yet"}</span>` : ""}
         </div>
-        ${g.blocked && (s.sts || s.rows) ? `<p class="swatch-before" title="Counted before blocking, and what blocking did">Before: ${esc(beforeCounts(s, unit))}${blockingText(s) ? ` · ${esc(blockingText(s))}` : ""}</p>` : ""}
+        ${g.blocked && (s.sts || s.rows) ? `<p class="swatch-before" title="Before blocking, and the change from blocking">Before: ${esc(beforeCounts(s, unit))}${blockingText(s) ? ` · ${esc(blockingText(s))}` : ""}</p>` : ""}
         <p class="swatch-needle">${esc([needleText(s.needleMm) ? `on ${needleText(s.needleMm)}` : "", s.stitch].filter(Boolean).join(" · ") || " ")}</p>
         <p class="swatch-yarn" title="${esc(yarn)}">${esc(yarn)}</p>
         <div class="card-tools-row">

@@ -103,9 +103,9 @@ export class AbbrTips {
     window.clearTimeout(this.hideTimer);
     const video = videoFor(found.entry, this.masterclasses);
     this.tip.innerHTML = `
-      <b class="abbr-tip-term">${esc(found.text)}</b>${found.entry.own ? ` <span class="hint">yours</span>` : ""}
+      <b class="abbr-tip-term">${esc(found.text)}</b>${found.entry.own ? ` <span class="hint">custom</span>` : ""}
       <span class="abbr-tip-meaning">${esc(found.entry.meaning)}</span>
-      ${video ? `<button class="link abbr-tip-video" data-url="${esc(video.part.url)}" title="From your masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}`;
+      ${video ? `<button class="link abbr-tip-video" data-url="${esc(video.part.url)}" title="From Masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}`;
     this.tip.hidden = false;
     // Below the word, kept on screen; above it when there is no room below.
     const w = this.tip.offsetWidth;

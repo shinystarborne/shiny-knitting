@@ -107,7 +107,7 @@ export async function verifyToolPrices() {
     set("price", "abc");
     act("save");
     await waitFor(() => !modal()!.querySelector<HTMLElement>('[data-el="error"]')!.hidden, "the error");
-    check(results, "a price that is no number is refused", /The price is a number/.test(modal()!.querySelector('[data-el="error"]')!.textContent ?? ""));
+    check(results, "a price that is no number is refused", /Price must be a number/.test(modal()!.querySelector('[data-el="error"]')!.textContent ?? ""));
     act("cancel");
     await waitFor(() => !modal(), "closed");
 

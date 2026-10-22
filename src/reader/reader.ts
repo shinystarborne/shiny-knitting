@@ -113,18 +113,18 @@ export class ReaderView {
     let projectId = this.embedded?.projectId ?? null;
     if (!projectId) {
       if (!this.liveProjects.length) {
-        return void (await say("This pattern is not being knitted, so there is no project board to put it on. Start a project from it first.", "Put on the board"));
+        return void (await say("No project uses this pattern, so there is no board to add it to. Start a project from it first.", "Add to board"));
       }
       projectId =
         this.liveProjects.length === 1
           ? this.liveProjects[0].id
-          : await askChoice("Which project's board?", this.liveProjects.map((p) => ({ value: p.id, label: p.name })), { title: "Put on the board" });
+          : await askChoice("Which project's board?", this.liveProjects.map((p) => ({ value: p.id, label: p.name })), { title: "Add to board" });
       if (!projectId) return;
     }
     try {
       const png = await new Promise<Blob | null>((r) => picture.toBlob(r, "image/png"));
       const prepared = png ? await prepareBoardImage(png) : null;
-      if (!prepared) throw new Error("The picture of the pin could not be made.");
+      if (!prepared) throw new Error("The pin picture could not be created.");
       const items = await api.listBoardItems(projectId).catch(() => []);
       const y = items.reduce((max, it) => Math.max(max, it.y + it.h), 0) + 40;
       const w = 420;
@@ -132,7 +132,7 @@ export class ReaderView {
       const item = await api.addBoardItem(projectId, { kind: "pin", x: 40, y, w, h, data: { patternId: this.pattern.id, page: pin.page, title: pin.title || pin.quote || "" } });
       await api.setBoardImage(item.id, await blobBytes(prepared.blob));
     } catch (err) {
-      return void (await say(err instanceof Error ? err.message : String(err), "Put on the board"));
+      return void (await say(err instanceof Error ? err.message : String(err), "Add to board"));
     }
     if (this.embedded?.boardChanged) this.embedded.boardChanged();
     else {
@@ -368,60 +368,60 @@ export class ReaderView {
         </div>
         <div class="reader-tools">
           <div class="mark-tools" role="toolbar" aria-label="Marking">
-            <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it, drag it to move it">➤</button>
+            <button data-mark="none" class="ghost icon-btn" aria-label="Select" title="Select: click a mark to remove it, drag to move it">➤</button>
             <button data-mark="highlight" class="ghost icon-btn" aria-label="Highlight" title="Highlighter: drag over the page">🖊</button>
-            <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click where it belongs">🅣</button>
+            <button data-mark="note" class="ghost icon-btn" aria-label="Note" title="Note: click to place">🅣</button>
             <button data-mark="draw" class="ghost icon-btn" aria-label="Draw" title="Draw: drag on the page">✏️</button>
-            <button data-mark="text" class="ghost icon-btn" aria-label="Text" title="Text: click where it goes, and type">Aa</button>
-            <button data-mark="erase" class="ghost icon-btn" aria-label="Eraser" title="Eraser: drag over a drawing to rub it out">⌫</button>
+            <button data-mark="text" class="ghost icon-btn" aria-label="Text" title="Text: click to place, then type">Aa</button>
+            <button data-mark="erase" class="ghost icon-btn" aria-label="Eraser" title="Eraser: drag over a drawing to erase it">⌫</button>
             <input type="color" data-mark-colour title="Mark colour" value="${MARK_COLOURS[0].value}" />
             <button data-act="mark-undo" class="ghost icon-btn" aria-label="Undo" title="Undo the last mark made" data-mark-undo>↶</button>
             <button data-act="mark-clear" class="ghost icon-btn" aria-label="Clear all marks" title="Remove every highlight, note and drawing on this pattern" data-mark-clear>🗑</button>
           </div>
           <div class="nav-tools" role="toolbar" aria-label="Contents">
-            <button data-act="bookmark-page" class="ghost icon-btn" aria-label="Bookmark this page" title="Bookmark this page — one click, rename later">🔖</button>
-            <button data-act="contents" class="ghost icon-btn" aria-label="Contents" title="Contents — outline and your bookmarks" data-contents-tool>📑</button>
+            <button data-act="bookmark-page" class="ghost icon-btn" aria-label="Bookmark this page" title="Bookmark this page (rename it later in Contents)">🔖</button>
+            <button data-act="contents" class="ghost icon-btn" aria-label="Contents" title="Contents: outline and bookmarks" data-contents-tool>📑</button>
           </div>
           <div class="pin-tray" role="toolbar" aria-label="Pins">
             <span class="pin-chips" data-pin-chips></span>
-            <button data-mark="pin" class="ghost icon-btn" aria-label="New pin" title="Pin: drag a box around part of the page to keep it in view" data-pin-tool>📌</button>
+            <button data-mark="pin" class="ghost icon-btn" aria-label="New pin" title="Pin: drag a box around part of the page to keep it on screen" data-pin-tool>📌</button>
           </div>
           ${
             this.pattern.format === "pdf"
               ? `<div class="zoom-tools" role="toolbar" aria-label="Zoom">
-                  <button data-act="go-page" class="ghost page-readout" data-page-readout title="The page in view, of all of them: click to go to another">1 / 1</button>
+                  <button data-act="go-page" class="ghost page-readout" data-page-readout title="Current page: click to go to another">1 / 1</button>
                   <button data-act="search" class="ghost icon-btn" aria-label="Search" title="Search in this PDF (Ctrl+F)" data-search-tool>🔎</button>
-                  <select class="size-pick" data-size-pick hidden aria-label="Your size" title="The size you knit: its numbers marked in the pattern, the other sizes dimmed"></select>
+                  <select class="size-pick" data-size-pick hidden aria-label="Size" title="Size being knitted: its numbers are marked in the pattern, the other sizes dimmed"></select>
                   <button data-act="zoom-out" class="ghost icon-btn" aria-label="Zoom out" title="Zoom out (Ctrl+-)">−</button>
                   <span class="zoom-pct" data-zoom-pct>100%</span>
                   <button data-act="zoom-in" class="ghost icon-btn" aria-label="Zoom in" title="Zoom in (Ctrl+=)">+</button>
                   <button data-act="zoom-fit" class="ghost icon-btn" aria-label="Fit width" title="Fit width (Ctrl+0)">⇔</button>
-                  <button data-act="page-mode" class="ghost" title="One page at a time, fitted whole: ← and →, PageUp and PageDown, or a swipe turn the page">Pages</button>
+                  <button data-act="page-mode" class="ghost" title="One page at a time, fitted whole. ← and →, PageUp and PageDown, or a swipe turn the page.">Pages</button>
                   <button data-act="rotate" class="ghost icon-btn" aria-label="Rotate page"
-                    title="Turn the page in view a quarter turn clockwise — for a chart printed sideways. Shift-click turns it back.">⟳</button>
+                    title="Rotate the current page a quarter turn clockwise, e.g. for a sideways chart. Shift-click rotates it back.">⟳</button>
                 </div>`
               : ""
           }
-          <button data-act="describe" class="ghost icon-btn" hidden aria-label="Describe with your model"
-            title="Describe this pattern with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
+          <button data-act="describe" class="ghost icon-btn" hidden aria-label="Describe with the model"
+            title="Describe this pattern with the model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
           <button data-act="theme" class="ghost icon-btn" aria-label="Light or dark reading" title="${readerTheme() === "light" ? "Dark reading" : "Light reading"}">${readerTheme() === "light" ? "☾" : "☀"}</button>
           ${embedded ? "" : `<button data-act="layout" class="ghost" title="Switch layout">
             ${sidebar ? "Focus view" : "Split view"}
           </button>`}
           ${this.embedded?.counter ? `<button data-act="highlight-cfg" class="ghost" title="Highlight line settings">Line</button>` : ""}
-          ${embedded ? "" : `<button data-act="beside" class="ghost" title="Open another pattern beside this one: a chart, a size table, a second pattern">Beside…</button>`}
-          ${this.embedded?.beside ? `<button data-act="close-beside" class="ghost icon-btn" aria-label="Close it" title="Close the pattern beside">✕</button>` : ""}
+          ${embedded ? "" : `<button data-act="beside" class="ghost" title="Open another pattern alongside: a chart, a size table, a second pattern">Beside…</button>`}
+          ${this.embedded?.beside ? `<button data-act="close-beside" class="ghost icon-btn" aria-label="Close" title="Close the second pattern">✕</button>` : ""}
           <button data-act="save-pages" class="ghost" title="Save some of its ${this.pattern.format === "epub" ? "chapters" : "pages"} as a PDF">Save pages…</button>
-          ${embedded ? "" : `<button data-act="cheatsheet" class="ghost" title="Keep ${this.pattern.format === "epub" ? "this chapter" : "this page, or a few"} in Cheatsheets, to look things up in">Cheatsheet…</button>`}
-          <button data-act="open-external" class="ghost" title="Open the file in your ${this.pattern.format === "epub" ? "EPUB" : "PDF"} app: to print it, or to fill in a form">Open ↗</button>
+          ${embedded ? "" : `<button data-act="cheatsheet" class="ghost" title="Save ${this.pattern.format === "epub" ? "this chapter" : "this page or pages"} to Cheatsheets">Cheatsheet…</button>`}
+          <button data-act="open-external" class="ghost" title="Open the file in the ${this.pattern.format === "epub" ? "EPUB" : "PDF"} app, e.g. to print or fill in a form">Open ↗</button>
           ${embedded ? "" : `<button data-act="edit" class="ghost" title="Edit details">Details</button>`}
         </div>
       </header>
       <div class="reader-body">
         <div class="doc-pane">
           <div class="doc-scroller" tabindex="0"></div>
-          <button class="page-turn prev" data-act="page-prev" aria-label="The page before" title="The page before (←)">‹</button>
-          <button class="page-turn next" data-act="page-next" aria-label="The next page" title="The next page (→)">›</button>
+          <button class="page-turn prev" data-act="page-prev" aria-label="Previous page" title="Previous page (←)">‹</button>
+          <button class="page-turn next" data-act="page-next" aria-label="Next page" title="Next page (→)">›</button>
         </div>
         ${embedded ? "" : `<div class="beside-pane" hidden></div>`}
         ${embedded ? "" : this.sidePaneHtml(sidebar)}
@@ -496,7 +496,7 @@ export class ReaderView {
       const fab = document.createElement("button");
       fab.className = "counter-fab";
       fab.textContent = "Notes";
-      fab.title = "Show the project and the notes";
+      fab.title = "Show project and notes";
       fab.addEventListener("click", () => {
         sidePane.hidden = false;
         sidePane.classList.add("peek");
@@ -566,7 +566,7 @@ export class ReaderView {
         return;
       }
       if (!result.changedFields.length) {
-        await say("Everything the model could fill in is already filled in.", "Describe");
+        await say("Nothing new found: every field the model reads is already filled in.", "Describe");
         return;
       }
       this.showSuggestion(result);
@@ -575,7 +575,7 @@ export class ReaderView {
     } finally {
       button.disabled = false;
       button.classList.remove("busy");
-      button.title = "Describe this pattern with your model: designer, difficulty, needles, yarn and tags";
+      button.title = "Describe this pattern with the model: designer, difficulty, needles, yarn and tags";
     }
   }
 
@@ -608,7 +608,7 @@ export class ReaderView {
       </table>
       ${
         result.applied
-          ? `<p class="hint">Already saved. You can undo it from the library card.</p>`
+          ? `<p class="hint">Already saved. It can be undone from the library card.</p>`
           : ""
       }
       <div class="modal-actions">
@@ -664,7 +664,7 @@ export class ReaderView {
       if (!file) return;
       const blob = await prepareChosenImage(file);
       if (!blob) {
-        await say("That file could not be read as an image.", "Cover");
+        await say("This file is not a readable picture.", "Cover");
         return;
       }
       await saveCover(this.pattern.id, blob);
@@ -721,7 +721,7 @@ export class ReaderView {
             { label: "Chapter", value: String(page), type: "number" },
             { label: "Name", placeholder: `Optional: “${this.pattern.title}, chapter ${page}”` },
           ],
-          { title: "Keep as a cheatsheet", okLabel: "Keep it" },
+          { title: "Save as cheatsheet", okLabel: "Save" },
         );
         if (!answer) return;
         const n = Math.max(1, Math.min(doc.pageCount, Math.round(Number(answer.Chapter) || page)));
@@ -743,7 +743,7 @@ export class ReaderView {
   /** The tab opens on it, the next time it is shown; a notice offers it now. */
   private keptAsCheatsheet(id: string): void {
     keepOpen(id);
-    showNotice("Kept in Cheatsheets.", { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true })) });
+    showNotice("Saved to Cheatsheets.", { label: "Open", run: () => void this.root.dispatchEvent(new CustomEvent("show-cheatsheets", { bubbles: true })) });
   }
 
   /**
@@ -758,7 +758,7 @@ export class ReaderView {
   }
 
   private async keepPart(page: number, rect: { x: number; y: number; w: number; h: number }): Promise<void> {
-    const answer = await askForm([{ label: "Name", placeholder: `Optional: “${this.pattern.title}, part of p. ${page}”` }], { title: "Keep as a cheatsheet", okLabel: "Keep it" });
+    const answer = await askForm([{ label: "Name", placeholder: `Optional: “${this.pattern.title}, part of p. ${page}”` }], { title: "Save as cheatsheet", okLabel: "Save" });
     if (!answer) return;
     try {
       const kept = await api.addCheatsheet({ kind: "pages", patternId: this.pattern.id, pageFrom: page, pageTo: page, region: rect, title: answer.Name.trim() });
@@ -797,8 +797,8 @@ export class ReaderView {
         <input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} />
       </label>
       <div class="row panel-buttons">
-        <button class="ghost" data-act="line-full" title="Across the whole width of its page">Full width of the page</button>
-        <button class="ghost" data-act="line-show" title="Scroll to where the line is">Bring it into view</button>
+        <button class="ghost" data-act="line-full" title="Stretch across the full page width">Full width of the page</button>
+        <button class="ghost" data-act="line-show" title="Scroll to the line">Show the line</button>
       </div>
       <label class="row">
         <span>Colour</span>
@@ -808,7 +808,7 @@ export class ReaderView {
         <span>Opacity <em>${Math.round(s.opacity * 100)}%</em></span>
         <input type="range" data-f="opacity" min="0.1" max="1" step="0.05" value="${s.opacity}" />
       </label>
-      <label class="row" title="A chart is read from the bottom row up: counting a row moves the line up to the next one">
+      <label class="row" title="Charts are read from the bottom up: counting a row moves the line up">
         <span>Rows go up the page (a chart)</span>
         <input type="checkbox" data-f="readsUp" ${s.readsUp ? "checked" : ""} />
       </label>
@@ -821,13 +821,11 @@ export class ReaderView {
         <input type="range" data-f="animationMs" min="80" max="800" step="20" value="${s.animationMs}" />
       </label>
       <p class="hint">
-        The line is on the page: it scrolls with the pattern and stays on its
-        row. Drag its <b>●</b> to move it anywhere, its <b>◢</b> to make it
-        wider, narrower, taller or shorter: as wide as the chart and as tall
-        as one of its rows, each count moves it a row.
-        <kbd>Shift</kbd> with the count key counts without moving it,
-        <kbd>Alt</kbd> moves it without counting. Double-click the <b>●</b>
-        to reopen this panel.
+        The line scrolls with the pattern and stays on its row. Drag
+        <b>●</b> to move it and <b>◢</b> to resize it; sized to one chart row,
+        each count moves it one row. <kbd>Shift</kbd> with the count key
+        counts without moving it; <kbd>Alt</kbd> moves it without counting.
+        Double-click <b>●</b> to reopen this panel.
       </p>
     `;
 
@@ -1004,7 +1002,7 @@ export class ReaderView {
         hint.className = "pin-hint";
         this.root.querySelector(".doc-pane")?.appendChild(hint);
       }
-      hint.textContent = this.pins?.cropForSheet ? "Drag a box around the part to keep as a cheatsheet" : "Drag a rectangle around the area you want to pin";
+      hint.textContent = this.pins?.cropForSheet ? "Drag a box around the part to keep as a cheatsheet" : "Drag a box around the area to pin";
     } else {
       hint?.remove();
     }
@@ -1019,10 +1017,10 @@ export class ReaderView {
   private refreshPinTool(): void {
     const button = this.root.querySelector<HTMLButtonElement>("[data-pin-tool]");
     if (!button) return;
-    const room = this.pins?.availability() ?? { ok: false, reason: "Still opening." };
+    const room = this.pins?.availability() ?? { ok: false, reason: "Still loading." };
     button.disabled = !room.ok;
     button.title = room.ok
-      ? "Pin: drag a box around part of the page to keep it in view"
+      ? "Pin: drag a box around part of the page to keep it on screen"
       : room.reason;
   }
 
@@ -1063,10 +1061,10 @@ export class ReaderView {
       return;
     }
     button.classList.add("on");
-    button.title = `Bookmarked page ${this.doc?.currentPage() ?? ""} — rename it in Contents`;
+    button.title = `Page ${this.doc?.currentPage() ?? ""} bookmarked (rename it in Contents)`;
     setTimeout(() => {
       button.classList.remove("on");
-      button.title = "Bookmark this page — one click, rename later";
+      button.title = "Bookmark this page (rename it later in Contents)";
     }, 1200);
   }
 
@@ -1123,8 +1121,8 @@ export class ReaderView {
       .filter((p) => p.id !== this.pattern.id)
       .map((p) => ({ value: p.id, label: p.designer ? `${p.title} — ${p.designer}` : p.title }))
       .sort((a, b) => a.label.localeCompare(b.label));
-    if (!choices.length) return void (await say("There is no other pattern in the library to open beside this one.", "Beside"));
-    const id = await askChoice("Which pattern, beside this one?", choices, { title: "Open beside" });
+    if (!choices.length) return void (await say("No other pattern in the library to open alongside.", "Beside"));
+    const id = await askChoice("Which pattern to open alongside?", choices, { title: "Open beside" });
     if (id) await this.openBeside(id);
   }
 
@@ -1230,10 +1228,10 @@ export class ReaderView {
   private async askGoToPage(): Promise<void> {
     const pdf = this.doc instanceof PdfView ? this.doc : null;
     if (!pdf) return;
-    const answer = await askText(`Go to which page? 1 to ${pdf.pageCount}.`, { title: "Go to page", okLabel: "Go", value: String(pdf.pageInView()) });
+    const answer = await askText(`Page number (1 to ${pdf.pageCount})`, { title: "Go to page", okLabel: "Go", value: String(pdf.pageInView()) });
     if (answer === null) return;
     const n = Math.round(Number(answer.trim()));
-    if (!Number.isFinite(n) || n < 1 || n > pdf.pageCount) return void (await say(`This PDF has pages 1 to ${pdf.pageCount}.`, "Go to page"));
+    if (!Number.isFinite(n) || n < 1 || n > pdf.pageCount) return void (await say(`Pages go from 1 to ${pdf.pageCount}.`, "Go to page"));
     pdf.goToPage(n);
     this.refreshPageReadout();
   }
@@ -1448,7 +1446,7 @@ export class ReaderView {
       <div class="reader-error">
         <h3>Could not open this pattern</h3>
         <p>${escapeHtml(message)}</p>
-        <p class="hint">The file is in your library folder. Re-adding it may help.</p>
+        <p class="hint">The file is in the library folder. Adding it again may help.</p>
       </div>`;
   }
 
@@ -1558,7 +1556,7 @@ function askWholeOrPart(): Promise<"pages" | "part" | null> {
       dialog.close();
       resolve(answer);
     };
-    const dialog = customDialog("Keep as a cheatsheet", () => finish(null));
+    const dialog = customDialog("Save as cheatsheet", () => finish(null));
     const choice = (label: string, kind: string, answer: "pages" | "part") => {
       const b = dom("button", { class: kind, type: "button", "data-keep": answer }, [label]);
       b.addEventListener("click", () => finish(answer));
@@ -1568,7 +1566,7 @@ function askWholeOrPart(): Promise<"pages" | "part" | null> {
     const cancel = dom("button", { class: "ghost", type: "button" }, ["Cancel"]);
     cancel.addEventListener("click", () => finish(null));
     dialog.card.append(
-      dom("p", { class: "dialog-message" }, ["The whole page (or a few), or only the table or chart wanted: a box drawn round it, as a pin is."]),
+      dom("p", { class: "dialog-message" }, ["Whole pages, or only part of a page (a box drawn around a table or chart, as for a pin)."]),
       dom("div", { class: "dialog-actions" }, [cancel, choice("Whole pages…", "ghost", "pages"), part]),
     );
     dialog.show(part);

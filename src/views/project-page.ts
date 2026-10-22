@@ -9,7 +9,7 @@ import { copyPicture } from "../copy-picture";
 import { openProjectCard } from "./project-card";
 import { partShown, showPart } from "./masterclasses";
 import { money, parsePrice, projectCost } from "./money";
-import { clock, hoursText, isPaused, perHour, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
+import { clock, hoursText, isPaused, sessionMs, totalMs, trueCost, typedStart } from "./knit-time";
 import { noteActivity } from "../auto-timer";
 import { openLightbox } from "../lightbox";
 import { projectPictures } from "./project-photos";
@@ -108,7 +108,7 @@ export class ProjectPage {
     const projects = await api.listProjects();
     const found = projects.find((p) => p.id === this.projectId);
     if (!found) {
-      await say("That project is no longer there.");
+      await say("This project no longer exists.");
       this.hooks.back();
       return;
     }
@@ -156,7 +156,7 @@ export class ProjectPage {
           <header class="project-pattern-bar">
             <strong data-el="pattern-title"></strong>
             <button class="ghost" data-pane="full" title="Open the pattern on its own, full size">Open full ↗</button>
-            <button class="ghost" data-pane="min" title="Minimise: it stays open at the edge" aria-label="Minimise">–</button>
+            <button class="ghost" data-pane="min" title="Minimise to the edge" aria-label="Minimise">–</button>
             <button class="ghost" data-pane="close" title="Close the pattern" aria-label="Close">×</button>
           </header>
           <div class="project-pattern-body"></div>
@@ -288,25 +288,25 @@ export class ProjectPage {
     side.innerHTML = `
       <button class="ghost back" data-act="back">← Projects</button>
 
-      <div class="project-cover" data-cover tabindex="0" title="Click to see it big; paste a picture here with Ctrl+V, drop one, or choose one">
-        <span class="project-cover-empty">Cover — click here and paste, drop a picture, or choose one</span>
+      <div class="project-cover" data-cover tabindex="0" title="Click to enlarge. Paste a picture with Ctrl+V, drop one, or choose one.">
+        <span class="project-cover-empty">Cover: click and paste, drop a picture, or choose one</span>
       </div>
       <div class="project-cover-actions">
         <button class="ghost" data-act="cover-file">Choose…</button>
-        <button class="ghost" data-act="cover-copy" title="Copy the cover, to paste anywhere" ${p.coverPath ? "" : "hidden"}>Copy</button>
+        <button class="ghost" data-act="cover-copy" title="Copy the cover" ${p.coverPath ? "" : "hidden"}>Copy</button>
         <button class="ghost" data-act="cover-remove" ${p.coverPath ? "" : "hidden"}>Remove</button>
-        <button class="ghost" data-act="card" title="A picture of the project with what there is to say about it, to post: its photos, pattern, yarn, needles, size">Card to post…</button>
+        <button class="ghost" data-act="card" title="A card to share: photos, pattern, yarn, needles and size">Share card…</button>
       </div>
 
       <input class="project-title" data-f="name" value="${esc(p.name)}" aria-label="Project name" />
       ${
         plan
           ? `<div class="project-plan-head"><span class="pill project-planned">Planned${p.planWhen || p.planDate ? `: ${esc([p.planWhen, p.planDate ? longDate(p.planDate) : ""].filter(Boolean).join(", "))}` : ""}</span>
-               <button class="primary" data-act="start-plan" title="Start knitting it: from today, its pattern in progress, its yarn in use">Start knitting</button></div>`
+               <button class="primary" data-act="start-plan" title="Starts the project today: the pattern goes in progress, the yarn and needles in use">Start knitting</button></div>`
           : p.status === "finished"
           ? `<span class="pill project-finished">Finished</span>`
           : `<label class="field project-status"><span>Status</span>
-              <select data-f="status" title="Paused keeps its needles and yarn; frogged frees them">
+              <select data-f="status" title="Paused keeps the needles and yarn in use; frogged frees them">
                 ${(["active", "paused", "frogged"] as ProjectStatus[])
                   .map((s) => `<option value="${s}" ${p.status === s ? "selected" : ""}>${s === "active" && p.status === "frogged" ? "Active (start again)" : projectStatusLabel(s)}</option>`)
                   .join("")}
@@ -334,7 +334,7 @@ export class ProjectPage {
           <option value="">No one in particular</option>
           ${this.people.map((pe) => `<option value="${esc(pe.id)}" ${pe.id === p.personId ? "selected" : ""}>${esc(pe.name)}</option>`).join("")}
         </select>
-        ${this.people.length ? "" : `<span class="hint">Add the people you knit for in the People tab.</span>`}
+        ${this.people.length ? "" : `<span class="hint">People are added in the People tab.</span>`}
       </label>
       ${this.personMeasures()}
 
@@ -422,7 +422,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     return `
       <div class="field project-masterclass">
         <span>Masterclass</span>
-        <select data-f="masterclass" title="A video it is knitted along with, from the Masterclasses tab">
+        <select data-f="masterclass" title="A masterclass to follow along with">
           <option value="">None</option>
           ${this.masterclasses.map((x) => `<option value="${esc(x.id)}" ${x.id === p.masterclassId ? "selected" : ""}>${esc(x.title)}${x.channel ? ` (${esc(x.channel)})` : ""}</option>`).join("")}
         </select>
@@ -442,7 +442,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     return `
       <div class="field project-cost-field"><span>Cost</span>
         <p class="project-cost" data-el="cost"><b>${money(c.total, this.currency)}</b>${parts ? ` <span class="hint">${esc(parts)}</span>` : ""}</p>
-        ${c.unknown.length ? `<p class="hint">Not counted, no price or no amount: ${esc(c.unknown.join(", "))}.</p>` : ""}
+        ${c.unknown.length ? `<p class="hint">Not counted (no price or amount): ${esc(c.unknown.join(", "))}.</p>` : ""}
       </div>`;
   }
 
@@ -456,36 +456,34 @@ ${plan ? "" : `      <div class="project-side-dates">
     const running = this.sessions.find((s) => s.endedAt === null);
     const total = totalMs(this.sessions);
     const cost = projectCost(this.project, this.yarns, this.patterns, this.uses).total;
-    const rate = perHour(cost, total);
     const at = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
     const n = this.sessions.length;
     return `
       <div class="side-section knit-time" data-el="knit-time">
         <h3>Knitting time</h3>
-        <p class="knit-total"><b data-el="knit-total">${n ? hoursText(total) : "Not timed yet"}</b>${n ? ` <span class="hint">in ${n} sitting${n === 1 ? "" : "s"}</span>` : ""}</p>
-        ${rate !== null ? `<p class="hint" data-el="knit-rate">${esc(money(rate, this.currency))} an hour, by what it cost</p>` : ""}
+        <p class="knit-total"><b data-el="knit-total">${n ? hoursText(total) : "Not timed yet"}</b>${n ? ` <span class="hint">in ${n} session${n === 1 ? "" : "s"}</span>` : ""}</p>
         ${this.rateHtml()}
         ${this.worthHtml(cost, total)}
         <div class="knit-actions">
           ${
             live
               ? running
-                ? `<button class="primary knit-stop" data-act="knit-stop" title="Stop the timer: you have put it down">■ Stop <span class="knit-clock" data-el="knit-clock">${clock(sessionMs(running))}</span></button>
-                   <button class="ghost knit-pause" data-act="knit-pause" title="${isPaused(running) ? "Go on: the same sitting" : "A break: the same sitting after it, the break not counted"}">${isPaused(running) ? "▶ Go on" : "⏸ Pause"}</button>`
-                : `<button class="ghost knit-start" data-act="knit-start" title="Time your knitting: start when you pick it up, stop when you put it down. It runs with the app closed too.">▶ Start knitting</button>`
+                ? `<button class="primary knit-stop" data-act="knit-stop" title="Stop the timer">■ Stop <span class="knit-clock" data-el="knit-clock">${clock(sessionMs(running))}</span></button>
+                   <button class="ghost knit-pause" data-act="knit-pause" title="${isPaused(running) ? "Resume the same session" : "Pause: the break is not counted"}">${isPaused(running) ? "▶ Resume" : "⏸ Pause"}</button>`
+                : `<button class="ghost knit-start" data-act="knit-start" title="Times the knitting from start to stop. Keeps running with the app closed.">▶ Start knitting</button>`
               : ""
           }
-          <button class="link" data-act="knit-add" title="Time knitted away from here, or before timing">+ Add time by hand</button>
+          <button class="link" data-act="knit-add" title="Time knitted without the timer">+ Add time by hand</button>
         </div>
         ${
           n
-            ? `<details class="knit-sittings"><summary>The sittings</summary><ul>${this.sessions
+            ? `<details class="knit-sittings"><summary>Sessions</summary><ul>${this.sessions
                 .map(
                   (s) => `<li>
                     <span>${esc(longDate(s.startedAt))} · ${at(s.startedAt)}${s.endedAt ? `–${at(s.endedAt)}` : " – now"}</span>
                     <b>${hoursText(sessionMs(s))}</b>
-                    <button class="link" data-act="knit-change" data-id="${esc(s.id)}" title="Put it right: a timer left running, or the wrong day">Change</button>
-                    <button class="card-remove" data-act="knit-remove" data-id="${esc(s.id)}" title="Remove this sitting">×</button>
+                    <button class="link" data-act="knit-change" data-id="${esc(s.id)}" title="Correct the date or time, e.g. a timer left running">Change</button>
+                    <button class="card-remove" data-act="knit-remove" data-id="${esc(s.id)}" title="Remove this session">×</button>
                   </li>`,
                 )
                 .join("")}</ul></details>`
@@ -506,17 +504,17 @@ ${plan ? "" : `      <div class="project-side-dates">
   private rateHtml(): string {
     const own = this.project.hourRate != null;
     const shown = this.rate();
-    const standard = this.hourRate === null ? "none set in Settings yet" : `the standard is ${esc(money(this.hourRate, this.currency))}`;
+    const standard = this.hourRate === null ? "none in Settings" : `${esc(money(this.hourRate, this.currency))} in Settings`;
     return `
       <label class="field knit-rate-field">
-        <span>Your hour on it is worth</span>
+        <span>Hour cost</span>
         <input data-rate inputmode="decimal" value="${shown === null ? "" : esc(String(shown))}" placeholder="e.g. 15" />
         <em class="hint" data-el="rate-hint">${
           own
-            ? `Its own: ${standard}. <button type="button" class="link" data-act="rate-standard">Back to the standard</button>`
+            ? `This project only (${standard}). <button type="button" class="link" data-act="rate-standard">Use the one in Settings</button>`
             : this.hourRate === null
-              ? "Say your standard in Settings, under Prices, or type one for this project."
-              : "The standard, from Settings. Type another for this project only."
+              ? "Set for all projects in Settings → Prices, or here for this project only."
+              : "From Settings. A different amount here applies to this project only."
         }</em>
       </label>`;
   }
@@ -528,9 +526,7 @@ ${plan ? "" : `      <div class="project-side-dates">
   private worthHtml(cost: number, ms: number): string {
     const rate = this.rate();
     if (!ms || rate === null) return "";
-    const time = trueCost(0, ms, rate);
-    const all = trueCost(cost, ms, rate);
-    return `<p class="knit-worth" data-el="knit-worth">With your time at ${esc(money(rate, this.currency))} an hour: <b>${esc(money(all, this.currency))}</b> <span class="hint">(${cost ? `${esc(money(cost, this.currency))} + ` : ""}${esc(money(time, this.currency))} for your time)</span></p>`;
+    return `<p class="knit-worth" data-el="knit-worth">Project cost with time: <b>${esc(money(trueCost(cost, ms, rate), this.currency))}</b></p>`;
   }
 
   /** Keeps this project's hour's worth -- null for the standard -- and draws the time again. */
@@ -596,7 +592,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     if (!answer) return null;
     const seconds = Math.round((Number(answer.Hours || 0) * 60 + Number(answer.Minutes || 0)) * 60);
     if (!Number.isFinite(seconds) || seconds < 60) {
-      await say("A sitting is a minute at least: give its hours and minutes.", title);
+      await say("A session must be at least a minute long.", title);
       return null;
     }
     let startedAt = typedStart(answer.Day, seconds);
@@ -608,7 +604,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       }
     }
     if (startedAt === null) {
-      await say("The day is a date: 2026-10-18.", title);
+      await say("Date format: 2026-10-18.", title);
       return null;
     }
     return { startedAt, seconds };
@@ -626,8 +622,8 @@ ${plan ? "" : `      <div class="project-side-dates">
           : ""
       }
       <div class="project-pattern-links">
-        ${part.videoId ? `<button class="ghost" data-act="mc-board" title="Play it on the board, as big as you make it">🎬 Put it on the board</button>` : ""}
-        <button class="link" data-act="mc-open" title="Open it in your browser">Open it ↗</button>
+        ${part.videoId ? `<button class="ghost" data-act="mc-board" title="Play the video on the board">🎬 Add to board</button>` : ""}
+        <button class="link" data-act="mc-open" title="Open in the browser">Open ↗</button>
       </div>`;
   }
 
@@ -646,7 +642,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       <div class="side-section project-person">
         <h3>${esc(person.name)}'s measurements${newest ? ` <span class="hint">${esc(longDate(newest))}</span>` : ""}</h3>
         ${rows.length ? `<ul class="person-measures">${rows.join("")}</ul>` : `<p class="hint">None taken yet.</p>`}
-        <button class="link" data-act="open-person">${rows.length ? "All their measurements" : "Measure them"} ↗</button>
+        <button class="link" data-act="open-person">${rows.length ? "All measurements" : "Add measurements"} ↗</button>
       </div>`;
   }
 
@@ -660,7 +656,7 @@ ${plan ? "" : `      <div class="project-side-dates">
 
   private async setCover(file: Blob): Promise<void> {
     const prepared = await prepareBoardImage(file, COVER_SIDE);
-    if (!prepared) return void (await say("That could not be read as a picture.", "Cover"));
+    if (!prepared) return void (await say("This file is not a readable picture.", "Cover"));
     try {
       await api.setProjectCover(this.projectId, await blobBytes(prepared.blob));
     } catch (err) {
@@ -706,7 +702,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     }
     if (act === "knit-add" || act === "knit-change") {
       const s = act === "knit-change" ? (this.sessions.find((x) => x.id === btn.dataset.id) ?? null) : null;
-      const time = await this.askTime(s ? "Put a sitting right" : "Add knitting time", s);
+      const time = await this.askTime(s ? "Edit session" : "Add knitting time", s);
       if (!time) return;
       try {
         if (s) await api.changeKnitSession(s.id, time.startedAt, time.seconds);
@@ -717,7 +713,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       await this.reloadTime();
     }
     if (act === "knit-remove" && btn.dataset.id) {
-      if (!(await askYesNo("Remove this sitting from the knitting time?", { title: "Knitting time", okLabel: "Remove", danger: true }))) return;
+      if (!(await askYesNo("Remove this session from the knitting time?", { title: "Knitting time", okLabel: "Remove", danger: true }))) return;
       await api.deleteKnitSession(btn.dataset.id).catch(() => {});
       await this.reloadTime();
     }
@@ -770,7 +766,7 @@ ${plan ? "" : `      <div class="project-side-dates">
       await this.paintCover();
     }
     if (act === "remove") {
-      const what = isLive(this.project.status) ? " Its needles and yarn go back to free; they are not removed." : "";
+      const what = isLive(this.project.status) ? " Its needles and yarn become free again; they are not deleted." : "";
       if (!(await askYesNo(`Remove the project “${this.project.name}” and its board?${what} This cannot be undone.`, { title: "Remove project", okLabel: "Remove", danger: true }))) return;
       try {
         await api.deleteProject(this.projectId);
@@ -788,7 +784,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     if (rateInput) {
       const typed = rateInput.value.trim();
       const rate = typed ? parsePrice(typed) : null;
-      if (typed && rate === null) return void (await say("What your hour is worth is a number: 15, or 12,50.", "Knitting time"));
+      if (typed && rate === null) return void (await say("Hour cost must be a number, like 15 or 12,50.", "Knitting time"));
       return this.setRate(rate === null || rate === this.hourRate ? null : rate);
     }
     const f = (e.target as HTMLElement).dataset.f;
@@ -993,7 +989,7 @@ ${plan ? "" : `      <div class="project-side-dates">
   private async changeStatus(status: ProjectStatus): Promise<void> {
     if (
       status === "frogged" &&
-      !(await askYesNo(`Frog “${this.project.name}”? Its needles go back to free and its yarn back to the stash; they stay listed on it as a record.`, { title: "Frog project", okLabel: "Frog it" }))
+      !(await askYesNo(`Frog “${this.project.name}”? Its needles become free and its yarn returns to the stash; both stay listed on the project as a record.`, { title: "Frog project", okLabel: "Frog it" }))
     ) {
       this.renderSide();
       return;

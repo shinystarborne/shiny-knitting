@@ -2151,7 +2151,7 @@ fn ensure_project_counter(conn: &Connection, pattern_id: &str, project_id: &str)
     }
     let status: Option<String> = conn.query_row("SELECT status FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
     let Some(status) = status else {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     };
     let tx = conn.unchecked_transaction()?;
     let first: bool = is_live(&status)
@@ -2518,10 +2518,10 @@ pub fn insert_annotation(
 /// A mark moved or resized: its new geometry, which must be a list of
 /// rectangles or points, as every mark's is.
 pub fn set_annotation_geometry(conn: &Connection, id: &str, geometry: &str) -> AppResult<Annotation> {
-    let parsed: serde_json::Value = serde_json::from_str(geometry).map_err(|_| AppError::Message("That is not a mark's shape.".to_string()))?;
-    let items = parsed.as_array().filter(|a| !a.is_empty()).ok_or_else(|| AppError::Message("That is not a mark's shape.".to_string()))?;
+    let parsed: serde_json::Value = serde_json::from_str(geometry).map_err(|_| AppError::Message("Invalid mark shape.".to_string()))?;
+    let items = parsed.as_array().filter(|a| !a.is_empty()).ok_or_else(|| AppError::Message("Invalid mark shape.".to_string()))?;
     if !items.iter().all(|i| i.get("x").and_then(|v| v.as_f64()).is_some_and(f64::is_finite) && i.get("y").and_then(|v| v.as_f64()).is_some_and(f64::is_finite)) {
-        return Err(AppError::Message("That is not a mark's shape.".to_string()));
+        return Err(AppError::Message("Invalid mark shape.".to_string()));
     }
     let changed = conn.execute("UPDATE annotations SET geometry = ?2 WHERE id = ?1", params![id, geometry])?;
     if changed == 0 {
@@ -2703,17 +2703,17 @@ fn place_tip(conn: &Connection, tool_id: &str, project_id: &str, tip: &str) -> A
         return Ok(());
     }
     if tip != "one" {
-        return Err(AppError::Message("Interchangeable tips are on a project both, or one.".to_string()));
+        return Err(AppError::Message("Interchangeable tips are used either both or one at a time.".to_string()));
     }
     let kind: String = conn.query_row("SELECT kind FROM tools WHERE id = ?1", params![tool_id], |r| r.get(0))?;
     if kind != "tips" {
-        return Err(AppError::Message("Only interchangeable tips are used one at a time.".to_string()));
+        return Err(AppError::Message("Only interchangeable tips can be used one at a time.".to_string()));
     }
     let status: Option<String> = conn.query_row("SELECT status FROM projects WHERE id = ?1", params![project_id], |r| r.get(0)).optional()?;
     match status.as_deref() {
-        None => return Err(AppError::Message("That project is no longer there.".to_string())),
+        None => return Err(AppError::Message("This project no longer exists.".to_string())),
         Some(s) if is_live(s) => {}
-        Some(_) => return Err(AppError::Message("That project is finished or frogged, so nothing more can go on it.".to_string())),
+        Some(_) => return Err(AppError::Message("This project is finished or frogged; nothing more can be added.".to_string())),
     }
     // Off one that has the whole pair: it has one tip fewer now.
     conn.execute(
@@ -2729,7 +2729,7 @@ fn place_tip(conn: &Connection, tool_id: &str, project_id: &str, tip: &str) -> A
         .query_map(params![tool_id, project_id], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
     if others.len() >= 2 {
-        return Err(AppError::Message(format!("Both its tips are in use already: on {} and {}.", others[0], others[1])));
+        return Err(AppError::Message(format!("Both tips are already in use: on {} and {}.", others[0], others[1])));
     }
     conn.execute(
         "INSERT INTO project_tools (project_id, tool_id, added_at, tip) VALUES (?1, ?2, ?3, ?4)
@@ -2766,11 +2766,11 @@ fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> App
             .query_row("SELECT status FROM projects WHERE id = ?1", params![p], |r| r.get(0))
             .optional()?;
         match status.as_deref() {
-            None => return Err(AppError::Message("That project is no longer there.".to_string())),
+            None => return Err(AppError::Message("This project no longer exists.".to_string())),
             Some(s) if is_live(s) => {}
             Some(_) => {
                 return Err(AppError::Message(
-                    "That project is finished or frogged, so nothing more can go on it.".to_string(),
+                    "This project is finished or frogged; nothing more can be added.".to_string(),
                 ))
             }
         }
@@ -2825,7 +2825,7 @@ pub fn list_tool_sets(conn: &Connection) -> AppResult<Vec<ToolSet>> {
 pub fn save_tool_set(conn: &Connection, input: &ToolSetInput) -> AppResult<ToolSet> {
     let name: String = input.name.trim().chars().take(120).collect();
     if name.is_empty() {
-        return Err(AppError::Message("Give the set a name, e.g. ChiaoGoo Twist Lace.".to_string()));
+        return Err(AppError::Message("Set name needed, e.g. ChiaoGoo Twist Lace.".to_string()));
     }
     let cost = price(input.price)?;
     let tx = conn.unchecked_transaction()?;
@@ -2907,7 +2907,7 @@ fn stop_knitting_on(conn: &Connection, project_id: &str, at: i64) -> AppResult<(
 pub fn start_knitting(conn: &Connection, project_id: &str) -> AppResult<KnitSession> {
     let project = get_project(conn, project_id)?;
     if !is_live(&project.status) {
-        return Err(AppError::Message("A finished or frogged project is not being knitted: add its time by hand.".to_string()));
+        return Err(AppError::Message("Finished or frogged projects can't be timed; time can be added by hand.".to_string()));
     }
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
@@ -2967,11 +2967,11 @@ pub fn stop_knitting_at(conn: &Connection, at: i64) -> AppResult<Option<KnitSess
 /// A spell's length checked: a minute at least, a day at most, not in the future.
 fn sitting(started_at: i64, seconds: i64) -> AppResult<i64> {
     if !(60..=LONGEST_SITTING_MS / 1000).contains(&seconds) {
-        return Err(AppError::Message("A spell of knitting is a minute at least, and 24 hours at most.".to_string()));
+        return Err(AppError::Message("A session must be between 1 minute and 24 hours.".to_string()));
     }
     let ended = started_at + seconds * 1000;
     if ended > now_ms() + 60_000 {
-        return Err(AppError::Message("That time is still to come.".to_string()));
+        return Err(AppError::Message("That time is in the future.".to_string()));
     }
     Ok(ended)
 }
@@ -2990,14 +2990,14 @@ pub fn add_knit_time(conn: &Connection, project_id: &str, started_at: i64, secon
 pub fn change_knit_session(conn: &Connection, id: &str, started_at: i64, seconds: i64) -> AppResult<KnitSession> {
     let ended = sitting(started_at, seconds)?;
     if conn.execute("UPDATE knit_sessions SET started_at = ?2, ended_at = ?3, paused_ms = 0, paused_at = NULL WHERE id = ?1", params![id, started_at, ended])? == 0 {
-        return Err(AppError::NotFound("That time is no longer there.".to_string()));
+        return Err(AppError::NotFound("This session no longer exists.".to_string()));
     }
     Ok(conn.query_row(&format!("SELECT {SESSION_COLUMNS} FROM knit_sessions WHERE id = ?1"), params![id], row_to_session)?)
 }
 
 pub fn delete_knit_session(conn: &Connection, id: &str) -> AppResult<()> {
     if conn.execute("DELETE FROM knit_sessions WHERE id = ?1", params![id])? == 0 {
-        return Err(AppError::NotFound("That time is no longer there.".to_string()));
+        return Err(AppError::NotFound("This session no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -3040,8 +3040,8 @@ fn row_to_project(row: &rusqlite::Row) -> rusqlite::Result<Project> {
 pub fn price(p: Option<f64>) -> AppResult<Option<f64>> {
     match p {
         None => Ok(None),
-        Some(v) if !v.is_finite() || v < 0.0 => Err(AppError::Message("A price is a number of money, 0 or more.".to_string())),
-        Some(v) if v > 1_000_000.0 => Err(AppError::Message(format!("{v} is more than anything here costs: is it right?"))),
+        Some(v) if !v.is_finite() || v < 0.0 => Err(AppError::Message("A price must be a number, 0 or more.".to_string())),
+        Some(v) if v > 1_000_000.0 => Err(AppError::Message(format!("{v} is unusually high for a price. Is it correct?"))),
         Some(v) => Ok(Some((v * 100.0).round() / 100.0)),
     }
 }
@@ -3060,7 +3060,7 @@ pub fn set_pattern_price(conn: &Connection, id: &str, value: Option<f64>) -> App
 /// mistake.
 pub fn set_pattern_size(conn: &Connection, id: &str, index: Option<i64>) -> AppResult<Pattern> {
     if index.is_some_and(|i| !(0..=30).contains(&i)) {
-        return Err(AppError::Message("A size is one of the pattern's: the first, the second…".to_string()));
+        return Err(AppError::Message("The size must be one of the pattern's sizes.".to_string()));
     }
     let changed = conn.execute("UPDATE patterns SET size_index = ?2 WHERE id = ?1", params![id, index])?;
     if changed == 0 {
@@ -3074,7 +3074,7 @@ pub fn set_project_size(conn: &Connection, id: &str, size: &str) -> AppResult<Pr
     let size: String = size.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(100).collect();
     let changed = conn.execute("UPDATE projects SET size = ?2 WHERE id = ?1", params![id, size])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     get_project(conn, id)
 }
@@ -3084,7 +3084,7 @@ pub fn set_project_size(conn: &Connection, id: &str, size: &str) -> AppResult<Pr
 pub fn set_project_hour_rate(conn: &Connection, id: &str, rate: Option<f64>) -> AppResult<Project> {
     let changed = conn.execute("UPDATE projects SET hour_rate = ?2 WHERE id = ?1", params![id, price(rate)?])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     get_project(conn, id)
 }
@@ -3100,7 +3100,7 @@ pub fn set_project_chart(conn: &Connection, id: &str, chart_id: &str, start: i64
         params![id, chart_id, start.clamp(1, 1_000_000)],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     get_project(conn, id)
 }
@@ -3157,7 +3157,7 @@ pub fn get_project(conn: &Connection, id: &str) -> AppResult<Project> {
     let project = conn
         .query_row(&format!("{PROJECT_SELECT} WHERE pr.id = ?1"), params![id], row_to_project)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That project is no longer there.".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("This project no longer exists.".to_string()))?;
     with_links(conn, project)
 }
 
@@ -3342,8 +3342,8 @@ pub fn update_project(conn: &Connection, id: &str, input: &ProjectInput) -> AppR
 /// How much a project expects to take of a yarn: grams, or None when not said.
 fn planned_grams(grams: Option<i64>) -> AppResult<Option<i64>> {
     match grams {
-        Some(g) if g < 0 => Err(AppError::Message("How much a project takes is a number of grams.".to_string())),
-        Some(g) if g > 100_000 => Err(AppError::Message(format!("{g} g is more than a project takes: is it in grams?"))),
+        Some(g) if g < 0 => Err(AppError::Message("The amount for a project must be a number of grams.".to_string())),
+        Some(g) if g > 100_000 => Err(AppError::Message(format!("{g} g is more than a project uses. Is it in grams?"))),
         Some(0) | None => Ok(None),
         Some(g) => Ok(Some(g)),
     }
@@ -3373,7 +3373,7 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
             .query_row("SELECT 1 FROM tools WHERE id = ?1", params![tool], |r| r.get(0))
             .optional()?;
         if found.is_none() {
-            return Err(AppError::Message("One of those needles or hooks is no longer there.".to_string()));
+            return Err(AppError::Message("One of those needles or hooks no longer exists.".to_string()));
         }
         place_tip(conn, tool, id, tip)?;
     }
@@ -3398,7 +3398,7 @@ fn sync_links(conn: &Connection, id: &str, input: &ProjectInput) -> AppResult<()
                 )
                 .optional()?;
             if ok.is_none() {
-                return Err(AppError::Message("That lot is not one of that yarn's.".to_string()));
+                return Err(AppError::Message("This lot belongs to a different yarn.".to_string()));
             }
         }
         match yarn.id.as_deref().filter(|e| existing.iter().any(|x| x == e)) {
@@ -3462,7 +3462,7 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
             continue;
         }
         if said > 1 {
-            return Err(AppError::Message("Say what is left of a yarn, or what it used: one of them.".to_string()));
+            return Err(AppError::Message("Enter either the amount left or the amount used, not both.".to_string()));
         }
         if left.grams.is_some_and(|g| g < 0) || left.used_grams.is_some_and(|g| g < 0) || left.used_balls.is_some_and(|b| !(b >= 0.0)) {
             return Err(AppError::Message("Yarn is a number of grams or balls, 0 or more.".to_string()));
@@ -3499,7 +3499,7 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
             Some(balls) => {
                 let per_ball: i64 = tx.query_row("SELECT grams_per_ball FROM yarns WHERE id = ?1", params![entry.yarn_id], |r| r.get(0))?;
                 if per_ball <= 0 {
-                    return Err(AppError::Message(format!("{} has no grams per ball: say what it used in grams.", entry.yarn_name)));
+                    return Err(AppError::Message(format!("{} has no grams per ball: enter the amount used in grams.", entry.yarn_name)));
                 }
                 Some((balls * per_ball as f64).round() as i64)
             }
@@ -3581,10 +3581,10 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
             pattern_in_progress(&tx, project.pattern_id.as_deref())?;
         }
         ("planned", _) => {
-            return Err(AppError::Message("A plan is started, or removed.".to_string()));
+            return Err(AppError::Message("A plan can only be started or removed.".to_string()));
         }
         (_, "planned") => {
-            return Err(AppError::Message("A project already started is not a plan again.".to_string()));
+            return Err(AppError::Message("A started project can't go back to being a plan.".to_string()));
         }
         (from, "active" | "paused") if is_live(from) => {
             tx.execute("UPDATE projects SET status = ?2 WHERE id = ?1", params![id, status])?;
@@ -3613,10 +3613,10 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
             }
         }
         ("finished", _) => {
-            return Err(AppError::Message("A finished project stays finished.".to_string()));
+            return Err(AppError::Message("A finished project can't change status.".to_string()));
         }
         (_, "finished") => {
-            return Err(AppError::Message("Finishing a project asks about its leftovers: use Finish.".to_string()));
+            return Err(AppError::Message("Use Finish to finish a project (it asks about leftovers).".to_string()));
         }
         (from, to) => {
             return Err(AppError::Message(format!("A project cannot go from {from} to {to}.")));
@@ -3633,7 +3633,7 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
 pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
     // What was wanted for it is still wanted, for nothing in particular.
@@ -3704,7 +3704,7 @@ pub fn get_inspiration_board(conn: &Connection, id: &str) -> AppResult<Inspirati
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That board is no longer there.".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("This board no longer exists.".to_string()))?;
     row_to_inspiration(conn, id.to_string(), name, c, u)
 }
 
@@ -3729,7 +3729,7 @@ pub fn rename_inspiration_board(conn: &Connection, id: &str, name: &str) -> AppR
         params![id, board_name(name), now_ms()],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That board is no longer there.".to_string()));
+        return Err(AppError::NotFound("This board no longer exists.".to_string()));
     }
     get_inspiration_board(conn, id)
 }
@@ -3739,7 +3739,7 @@ pub fn delete_inspiration_board(conn: &Connection, id: &str) -> AppResult<Vec<St
     let images = board_images(conn, id)?;
     let changed = conn.execute("DELETE FROM inspiration_boards WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That board is no longer there.".to_string()));
+        return Err(AppError::NotFound("This board no longer exists.".to_string()));
     }
     conn.execute("DELETE FROM board_items WHERE board_id = ?1", params![id])?;
     Ok(images)
@@ -3776,7 +3776,7 @@ fn item_data(data: &serde_json::Value) -> AppResult<String> {
     }
     let text = data.to_string();
     if text.len() > MAX_ITEM_DATA {
-        return Err(AppError::Message("That is too much for one item on the board.".to_string()));
+        return Err(AppError::Message("This is too large for one board item.".to_string()));
     }
     Ok(text)
 }
@@ -3804,7 +3804,7 @@ fn board_exists(conn: &Connection, board_id: &str) -> AppResult<()> {
         params![board_id],
         |r| r.get(0),
     )?;
-    if found { Ok(()) } else { Err(AppError::NotFound("That board is no longer there.".to_string())) }
+    if found { Ok(()) } else { Err(AppError::NotFound("This board no longer exists.".to_string())) }
 }
 
 /// Notes that something on an inspiration board changed, so it sorts first.
@@ -3816,14 +3816,14 @@ fn touch_board(conn: &Connection, board_id: &str) -> AppResult<()> {
 pub fn get_board_item(conn: &Connection, id: &str) -> AppResult<BoardItem> {
     conn.query_row("SELECT * FROM board_items WHERE id = ?1", params![id], row_to_item)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That is no longer on the board.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This item is no longer on the board.".to_string()))
 }
 
 /// Adds an item, on top of everything already on the board.
 pub fn insert_board_item(conn: &Connection, id: &str, board_id: &str, input: &BoardItemInput) -> AppResult<BoardItem> {
     board_exists(conn, board_id)?;
     if !BOARD_KINDS.contains(&input.kind.as_str()) {
-        return Err(AppError::Message(format!("A board cannot hold a “{}”.", input.kind)));
+        return Err(AppError::Message(format!("Unknown board item type: “{}”.", input.kind)));
     }
     // A log card shows its project's log; an inspiration board has none.
     if input.kind == "log" {
@@ -3896,7 +3896,7 @@ pub fn delete_board_item(conn: &Connection, id: &str) -> AppResult<String> {
     let (board, image): (String, String) = conn
         .query_row("SELECT board_id, image_file FROM board_items WHERE id = ?1", params![id], |r| Ok((r.get(0)?, r.get(1)?)))
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That is no longer on the board.".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("This item is no longer on the board.".to_string()))?;
     conn.execute("DELETE FROM board_items WHERE id = ?1", params![id])?;
     touch_board(conn, &board)?;
     Ok(image)
@@ -3920,7 +3920,7 @@ pub fn board_item_image(conn: &Connection, id: &str) -> AppResult<String> {
 pub fn set_board_item_image(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
     let changed = conn.execute("UPDATE board_items SET image_file = ?2 WHERE id = ?1", params![id, file])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That is no longer on the board.".to_string()));
+        return Err(AppError::NotFound("This item is no longer on the board.".to_string()));
     }
     Ok(())
 }
@@ -3938,7 +3938,7 @@ pub fn project_files(conn: &Connection, project_id: &str) -> AppResult<(String, 
 pub fn set_project_cover(conn: &Connection, project_id: &str, file: &str) -> AppResult<()> {
     let changed = conn.execute("UPDATE projects SET cover_path = ?2 WHERE id = ?1", params![project_id, file])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -4041,7 +4041,7 @@ pub fn list_shops(conn: &Connection) -> AppResult<Vec<Shop>> {
 pub fn get_shop(conn: &Connection, id: &str) -> AppResult<Shop> {
     conn.query_row(&format!("{SHOP_SELECT} WHERE s.id = ?1"), params![id], row_to_shop)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That shop is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This shop no longer exists.".to_string()))
 }
 
 /// Stores a new shop. The input is expected to have been through
@@ -4060,7 +4060,7 @@ pub fn update_shop(conn: &Connection, id: &str, input: &ShopInput) -> AppResult<
         params![id, input.name, input.url, input.comment, serde_json::to_string(&input.tags)?],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That shop is no longer there.".to_string()));
+        return Err(AppError::NotFound("This shop no longer exists.".to_string()));
     }
     get_shop(conn, id)
 }
@@ -4072,7 +4072,7 @@ pub fn delete_shop(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("UPDATE wishlist SET shop_id = NULL WHERE shop_id = ?1", params![id])?;
     let changed = conn.execute("DELETE FROM shops WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That shop is no longer there.".to_string()));
+        return Err(AppError::NotFound("This shop no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -4121,7 +4121,7 @@ pub fn list_wishes(conn: &Connection) -> AppResult<Vec<Wish>> {
 pub fn get_wish(conn: &Connection, id: &str) -> AppResult<Wish> {
     conn.query_row(&format!("{WISH_SELECT} WHERE w.id = ?1"), params![id], row_to_wish)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That is no longer on the wishlist.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This item is no longer on the wishlist.".to_string()))
 }
 
 /// Refuses a shop or project that is not there, with a message rather than
@@ -4132,12 +4132,12 @@ fn check_wish_links(conn: &Connection, input: &WishInput) -> AppResult<()> {
     };
     if let Some(shop) = input.shop_id.as_deref() {
         if !exists("SELECT 1 FROM shops WHERE id = ?1", shop)? {
-            return Err(AppError::Message("That shop is no longer there.".to_string()));
+            return Err(AppError::Message("This shop no longer exists.".to_string()));
         }
     }
     if let Some(project) = input.project_id.as_deref() {
         if !exists("SELECT 1 FROM projects WHERE id = ?1", project)? {
-            return Err(AppError::Message("That project is no longer there.".to_string()));
+            return Err(AppError::Message("This project no longer exists.".to_string()));
         }
     }
     Ok(())
@@ -4188,7 +4188,7 @@ pub fn update_wish(conn: &Connection, id: &str, input: &WishInput) -> AppResult<
         ],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+        return Err(AppError::NotFound("This item is no longer on the wishlist.".to_string()));
     }
     get_wish(conn, id)
 }
@@ -4202,7 +4202,7 @@ pub fn set_wish_got(conn: &Connection, id: &str, got: bool) -> AppResult<Wish> {
         conn.execute("UPDATE wishlist SET got_at = NULL, stashed_at = NULL WHERE id = ?1", params![id])?
     };
     if changed == 0 {
-        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+        return Err(AppError::NotFound("This item is no longer on the wishlist.".to_string()));
     }
     get_wish(conn, id)
 }
@@ -4216,7 +4216,7 @@ pub fn set_wish_stashed(conn: &Connection, id: &str) -> AppResult<Wish> {
         params![id, now],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+        return Err(AppError::NotFound("This item is no longer on the wishlist.".to_string()));
     }
     get_wish(conn, id)
 }
@@ -4224,7 +4224,7 @@ pub fn set_wish_stashed(conn: &Connection, id: &str) -> AppResult<Wish> {
 pub fn set_wish_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
     let changed = conn.execute("UPDATE wishlist SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That is no longer on the wishlist.".to_string()));
+        return Err(AppError::NotFound("This item is no longer on the wishlist.".to_string()));
     }
     Ok(())
 }
@@ -4269,7 +4269,7 @@ pub fn list_project_log(conn: &Connection, project_id: &str) -> AppResult<Vec<Lo
 pub fn get_log_entry(conn: &Connection, id: &str) -> AppResult<LogEntry> {
     conn.query_row("SELECT * FROM project_log WHERE id = ?1", params![id], row_to_log)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That log entry is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This log entry no longer exists.".to_string()))
 }
 
 /// Adds what was typed to a project's log, dated now unless a time is given.
@@ -4286,7 +4286,7 @@ pub fn insert_log_entry(conn: &Connection, id: &str, project_id: &str, text: &st
 pub fn update_log_entry(conn: &Connection, id: &str, text: &str, at: i64) -> AppResult<LogEntry> {
     let changed = conn.execute("UPDATE project_log SET text = ?2, at = ?3 WHERE id = ?1", params![id, text, at])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That log entry is no longer there.".to_string()));
+        return Err(AppError::NotFound("This log entry no longer exists.".to_string()));
     }
     get_log_entry(conn, id)
 }
@@ -4294,7 +4294,7 @@ pub fn update_log_entry(conn: &Connection, id: &str, text: &str, at: i64) -> App
 pub fn set_log_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
     let changed = conn.execute("UPDATE project_log SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That log entry is no longer there.".to_string()));
+        return Err(AppError::NotFound("This log entry no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -4357,7 +4357,7 @@ pub fn list_swatches(conn: &Connection) -> AppResult<Vec<Swatch>> {
 pub fn get_swatch(conn: &Connection, id: &str) -> AppResult<Swatch> {
     conn.query_row(&format!("{SWATCH_SELECT} WHERE s.id = ?1"), params![id], row_to_swatch)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That swatch is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This swatch no longer exists.".to_string()))
 }
 
 /// Refuses a yarn, needle or project that is not there, with a message
@@ -4369,7 +4369,7 @@ fn check_swatch_links(conn: &Connection, input: &SwatchInput) -> AppResult<()> {
     for (id, sql, what) in [
         (&input.yarn_id, "SELECT 1 FROM yarns WHERE id = ?1", "That yarn is no longer in the stash."),
         (&input.tool_id, "SELECT 1 FROM tools WHERE id = ?1", "That needle is no longer in Needles & hooks."),
-        (&input.project_id, "SELECT 1 FROM projects WHERE id = ?1", "That project is no longer there."),
+        (&input.project_id, "SELECT 1 FROM projects WHERE id = ?1", "This project no longer exists."),
     ] {
         if let Some(id) = id.as_deref() {
             if !exists(sql, id)? {
@@ -4415,7 +4415,7 @@ pub fn update_swatch(conn: &Connection, id: &str, input: &SwatchInput) -> AppRes
 pub fn set_swatch_photo(conn: &Connection, id: &str, file: &str) -> AppResult<()> {
     let changed = conn.execute("UPDATE swatches SET photo_path = ?2 WHERE id = ?1", params![id, file])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That swatch is no longer there.".to_string()));
+        return Err(AppError::NotFound("This swatch no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -4437,7 +4437,7 @@ pub fn tool_size(conn: &Connection, id: &str) -> AppResult<Option<f64>> {
 /// Marks a yarn used up (now, or at `at`), into the stash's history; or, with
 /// None, back in the stash.
 pub fn set_yarn_used_up(conn: &Connection, id: &str, at: Option<i64>) -> AppResult<Yarn> {
-    let yarn = get_yarn(conn, id).map_err(|_| AppError::NotFound("That yarn is no longer there.".to_string()))?;
+    let yarn = get_yarn(conn, id).map_err(|_| AppError::NotFound("This yarn no longer exists.".to_string()))?;
     let tx = conn.unchecked_transaction()?;
     tx.execute("UPDATE yarns SET used_up_at = ?2 WHERE id = ?1", params![id, at])?;
     match at {
@@ -4516,7 +4516,7 @@ pub fn list_charts(conn: &Connection) -> AppResult<Vec<Chart>> {
 pub fn get_chart(conn: &Connection, id: &str) -> AppResult<Chart> {
     conn.query_row("SELECT * FROM charts WHERE id = ?1", params![id], row_to_chart)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That chart is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This chart no longer exists.".to_string()))
 }
 
 /// Stores a chart already made ready by `charts::clean`.
@@ -4535,7 +4535,7 @@ pub fn update_chart(conn: &Connection, id: &str, input: &ChartInput) -> AppResul
         params![id, input.name, serde_json::to_string(&input.data)?, now_ms()],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound("That chart is no longer there.".to_string()));
+        return Err(AppError::NotFound("This chart no longer exists.".to_string()));
     }
     get_chart(conn, id)
 }
@@ -4543,7 +4543,7 @@ pub fn update_chart(conn: &Connection, id: &str, input: &ChartInput) -> AppResul
 pub fn delete_chart(conn: &Connection, id: &str) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM charts WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That chart is no longer there.".to_string()));
+        return Err(AppError::NotFound("This chart no longer exists.".to_string()));
     }
     // The projects knitted from it are knitted from none now.
     conn.execute("UPDATE projects SET chart_id = '' WHERE chart_id = ?1", params![id])?;
@@ -4587,7 +4587,7 @@ pub fn get_person(conn: &Connection, id: &str) -> AppResult<Person> {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
         })
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That person is no longer there.".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("This person no longer exists.".to_string()))?;
     person_with_sets(conn, id.to_string(), name, notes, extra, added_at)
 }
 
@@ -4639,7 +4639,7 @@ pub fn delete_person(conn: &Connection, id: &str) -> AppResult<()> {
     conn.execute("DELETE FROM measurement_sets WHERE person_id = ?1", params![id])?;
     let changed = conn.execute("DELETE FROM people WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That person is no longer there.".to_string()));
+        return Err(AppError::NotFound("This person no longer exists.".to_string()));
     }
     Ok(())
 }
@@ -4659,7 +4659,7 @@ pub fn insert_measurement_set(conn: &Connection, id: &str, person_id: &str, inpu
 pub fn set_owner(conn: &Connection, set_id: &str) -> AppResult<String> {
     conn.query_row("SELECT person_id FROM measurement_sets WHERE id = ?1", params![set_id], |r| r.get(0))
         .optional()?
-        .ok_or_else(|| AppError::NotFound("Those measurements are no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("These measurements no longer exist.".to_string()))
 }
 
 pub fn update_measurement_set(conn: &Connection, id: &str, input: &MeasurementSetInput) -> AppResult<Person> {
@@ -4684,7 +4684,7 @@ pub fn set_project_person(conn: &Connection, project_id: &str, person_id: Option
     }
     let changed = conn.execute("UPDATE projects SET person_id = ?2 WHERE id = ?1", params![project_id, person_id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     get_project(conn, project_id)
 }
@@ -5342,10 +5342,10 @@ pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult
 pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDetails) -> AppResult<()> {
     let ok = |v: f64, max: f64| v.is_finite() && (0.0..=max).contains(&v);
     if !ok(d.gauge_sts, 100.0) || !ok(d.gauge_rows, 150.0) {
-        return Err(AppError::Message("A gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.".to_string()));
+        return Err(AppError::Message("Gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.".to_string()));
     }
     if !ok(d.needle_from, 50.0) || !ok(d.needle_to, 50.0) {
-        return Err(AppError::Message("Needles are a size in mm, up to 50.".to_string()));
+        return Err(AppError::Message("Needle size must be in mm, up to 50.".to_string()));
     }
     let tenth = |v: f64| (v * 10.0).round() / 10.0;
     let hundredth = |v: f64| (v * 100.0).round() / 100.0;
@@ -5357,7 +5357,7 @@ pub fn set_yarn_details(conn: &Connection, brand: &str, name: &str, d: &YarnDeta
         to = 0.0;
     }
     if let Some(odd) = d.care.iter().find(|c| !crate::models::CARE_SYMBOLS.contains(&c.as_str())) {
-        return Err(AppError::Message(format!("“{odd}” is not a care symbol the app knows.")));
+        return Err(AppError::Message(format!("Unknown care symbol: “{odd}”.")));
     }
     // In the order a label is read, each once.
     let care: Vec<&str> = crate::models::CARE_SYMBOLS.iter().copied().filter(|c| d.care.iter().any(|x| x == c)).collect();
@@ -5641,7 +5641,7 @@ pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
             },
         )
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That masterclass is no longer there.".to_string()))?;
+        .ok_or_else(|| AppError::NotFound("This masterclass no longer exists.".to_string()))?;
     m.parts = parts_of(conn, id)?;
     m.channel = m.parts.iter().map(|p| p.channel.clone()).find(|c| !c.is_empty()).unwrap_or_default();
     Ok(m)
@@ -5650,7 +5650,7 @@ pub fn get_masterclass(conn: &Connection, id: &str) -> AppResult<Masterclass> {
 pub fn get_masterclass_part(conn: &Connection, id: &str) -> AppResult<MasterclassPart> {
     conn.query_row("SELECT * FROM masterclass_videos WHERE id = ?1", params![id], row_to_part)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That video is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This video no longer exists.".to_string()))
 }
 
 /// A new masterclass, with its first video.
@@ -5723,7 +5723,7 @@ pub fn split_masterclass_part(conn: &Connection, id: &str, new_id: &str) -> AppR
     let part = get_masterclass_part(conn, id)?;
     let rest: Vec<String> = parts_of(conn, &part.masterclass_id)?.into_iter().map(|p| p.id).filter(|x| x != id).collect();
     if rest.is_empty() {
-        return Err(AppError::Message("It is the masterclass's only video already.".into()));
+        return Err(AppError::Message("It is already the masterclass's only video.".into()));
     }
     let tx = conn.unchecked_transaction()?;
     tx.execute(
@@ -5790,7 +5790,7 @@ pub fn set_project_masterclass(conn: &Connection, id: &str, masterclass_id: &str
     }
     let changed = conn.execute("UPDATE projects SET masterclass_id = ?2 WHERE id = ?1", params![id, masterclass_id])?;
     if changed == 0 {
-        return Err(AppError::NotFound("That project is no longer there.".to_string()));
+        return Err(AppError::NotFound("This project no longer exists.".to_string()));
     }
     get_project(conn, id)
 }
@@ -5830,7 +5830,7 @@ pub fn list_cheatsheets(conn: &Connection) -> AppResult<Vec<Cheatsheet>> {
 pub fn get_cheatsheet(conn: &Connection, id: &str) -> AppResult<Cheatsheet> {
     conn.query_row("SELECT * FROM cheatsheets WHERE id = ?1", params![id], row_to_cheatsheet)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That cheatsheet is no longer there.".to_string()))
+        .ok_or_else(|| AppError::NotFound("This cheatsheet no longer exists.".to_string()))
 }
 
 /// Adds one at the top of the list.
@@ -5862,7 +5862,7 @@ pub fn delete_cheatsheet(conn: &Connection, id: &str) -> AppResult<()> {
 pub fn move_cheatsheet(conn: &Connection, id: &str, position: i64) -> AppResult<()> {
     let mut ids: Vec<String> = list_cheatsheets(conn)?.into_iter().map(|s| s.id).collect();
     let Some(at) = ids.iter().position(|x| x == id) else {
-        return Err(AppError::NotFound("That cheatsheet is no longer there.".to_string()));
+        return Err(AppError::NotFound("This cheatsheet no longer exists.".to_string()));
     };
     let moved = ids.remove(at);
     let to = position.clamp(0, ids.len() as i64) as usize;

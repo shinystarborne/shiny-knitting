@@ -104,9 +104,9 @@ export class LibraryView {
           </select>
           <button data-act="fill-covers" class="ghost" title="Add missing covers">Covers</button>
           <button data-act="duplicates" class="ghost" title="Find patterns that are in the library more than once">Duplicates…</button>
-          <button data-act="bin" class="ghost" hidden title="Patterns removed in the last 30 days, to bring back"></button>
-          <button data-act="scan" class="ghost lib-icon" hidden aria-label="Describe patterns with your model"
-            title="Describe patterns with your model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
+          <button data-act="bin" class="ghost" hidden title="Patterns removed in the last 30 days, to restore"></button>
+          <button data-act="scan" class="ghost lib-icon" hidden aria-label="Describe patterns with the model"
+            title="Describe patterns with the model: designer, difficulty, needles, yarn and tags">${ROBOT}</button>
           <button data-act="add" class="primary">${shelf.books ? "+ Add book" : "+ Add pattern"}</button>
           <button data-act="add-folder" class="ghost" title="Add every PDF and EPUB in a folder">Add folder…</button>
         </div>
@@ -298,7 +298,7 @@ export class LibraryView {
     if (card && lost) {
       // Nothing to read: say so, and offer to find it, rather than open a reader on nothing.
       const title = this.patterns.find((p) => p.id === card.dataset.open)!.title;
-      if (await askYesNo(`The file of “${title}” is not in the library any more — moved or deleted outside the app. Find it, to read it again? Everything else of it is kept.`, { title: "File missing", okLabel: "Find it…" })) {
+      if (await askYesNo(`The file of “${title}” is missing; it was moved or deleted outside the app. Locate it? All other details are kept.`, { title: "File missing", okLabel: "Locate…" })) {
         await this.relink(card.dataset.open!);
       }
       return;
@@ -400,7 +400,7 @@ export class LibraryView {
       <button role="menuitem" data-menu="cover"><span class="tick"></span>Cover…</button>
       <button role="menuitem" data-menu="project"><span class="tick"></span>Start a project…</button>
       <button role="menuitem" data-menu="plan"><span class="tick"></span>Plan it…</button>
-      <button role="menuitem" data-menu="external"><span class="tick"></span>Open in your ${pattern.format === "epub" ? "EPUB" : "PDF"} app ↗</button>`;
+      <button role="menuitem" data-menu="external"><span class="tick"></span>Open in the ${pattern.format === "epub" ? "EPUB" : "PDF"} app ↗</button>`;
     document.body.appendChild(menu);
     // Under the button, kept on screen.
     const at = button.getBoundingClientRect();
@@ -543,11 +543,11 @@ export class LibraryView {
     const unmeasured = MetadataScanner.unmeasured(this.patterns, this.settings);
     let books = 0;
     if (unmeasured.length) {
-      this.flash(`Looking at the length of ${unmeasured.length} PDF${unmeasured.length === 1 ? "" : "s"}…`);
+      this.flash(`Checking the length of ${unmeasured.length} PDF${unmeasured.length === 1 ? "" : "s"}…`);
       books = (await booksByLength(unmeasured)).length;
       if (books) await this.reload();
     }
-    const said = books ? `${books} long PDF${books === 1 ? "" : "s"} filed under Books. ` : "";
+    const said = books ? `${books} long PDF${books === 1 ? "" : "s"} moved to Books. ` : "";
     const targets = MetadataScanner.candidates(this.patterns, this.settings);
     if (!targets.length) {
       this.flash(`${said}Every pattern here is already described.`);
@@ -557,13 +557,13 @@ export class LibraryView {
 
     const confirmed = await askYesNo(
       `Describe ${targets.length} pattern${targets.length === 1 ? "" : "s"} using ${
-        this.settings.model || "your model"
+        this.settings.model || "the model"
       }?\n\n` +
         `Only the first pages of each pattern are sent, to ${
-          this.settings.isLocal ? "your own network" : this.settings.baseUrl
-        }: the part with the designer, sizes and materials, never the whole pattern.\n\n` +
-        `It keeps going while you use the rest of the app.`,
-      { title: "Describe with your model", okLabel: "Describe" },
+          this.settings.isLocal ? "the local network" : this.settings.baseUrl
+        } (designer, sizes and materials), never the whole pattern.\n\n` +
+        `It runs in the background while the app is in use.`,
+      { title: "Describe with the model", okLabel: "Describe" },
     );
     if (!confirmed) return;
     startDescribing(targets, this.settings);
@@ -575,7 +575,7 @@ export class LibraryView {
     const pattern = this.patterns.find((p) => p.id === patternId);
     if (!pattern) return;
     const kind = pattern.format === "epub" ? "EPUB" : "PDF";
-    const picked = await open({ multiple: false, title: `Where is “${pattern.title}”?`, filters: [{ name: kind, extensions: [pattern.format] }] });
+    const picked = await open({ multiple: false, title: `Locate “${pattern.title}”`, filters: [{ name: kind, extensions: [pattern.format] }] });
     if (typeof picked !== "string") return;
     try {
       await api.replacePatternFile(patternId, picked);
@@ -583,7 +583,7 @@ export class LibraryView {
       return this.flash(err instanceof Error ? err.message : String(err), true);
     }
     await this.refreshCard(patternId);
-    this.flash(`Found: “${pattern.title}” can be read again.`);
+    this.flash(`Found: “${pattern.title}” can be opened again.`);
   }
 
   private async refreshCard(patternId: string): Promise<void> {
@@ -842,7 +842,7 @@ export class LibraryView {
             this.filter.search || this.filter.status
               ? "Try removing a filter."
               : shelf.books
-                ? "A book is anything tagged “book”: every EPUB, and a PDF of several patterns — Describe tags those, or add the tag yourself."
+                ? "Books are everything tagged “book”: every EPUB, and PDFs with several patterns. Describe adds the tag, or it can be added by hand."
                 : "Add a PDF or EPUB to get started."
           }</p>
         </div>`;
@@ -886,14 +886,14 @@ export class LibraryView {
     return `
       <article class="card${p.fileMissing ? " file-missing" : ""}" data-open="${p.id}">
         <div class="cover" data-id="${p.id}">
-          ${p.fileMissing ? `<div class="cover-missing"><b>File missing</b><span>Moved or deleted outside the app</span><button data-act="relink" data-id="${p.id}" title="Point the app at the file where it is now">Find it…</button></div>` : ""}
+          ${p.fileMissing ? `<div class="cover-missing"><b>File missing</b><span>Moved or deleted outside the app</span><button data-act="relink" data-id="${p.id}" title="Locate the file in its new place">Locate…</button></div>` : ""}
           <div class="cover-photo" data-el="photo"></div>
           <div class="cover-fallback format-${p.format}">
             <span>${p.format.toUpperCase()}</span>
           </div>
           <div class="cover-tools">
             <button class="card-tool" data-act="cover" data-id="${p.id}"
-              title="Change the cover: paste a picture, drop one, or choose one">Cover…</button>
+              title="Change the cover: paste, drop or choose a picture">Cover…</button>
           </div>
         </div>
         <div class="card-body">
@@ -911,7 +911,7 @@ export class LibraryView {
             <button class="card-more" data-act="more" data-id="${p.id}" aria-label="More"
               title="Status, tags, details, cover, start a project">⋯</button>
             <button class="card-remove" data-delete="${p.id}"
-              title="Remove this pattern from your library: it waits in the Bin for 30 days, to bring back">Remove</button>
+              title="Remove from the library; it stays in the Bin for 30 days">Remove</button>
           </div>
         </div>
       </article>`;
@@ -950,7 +950,7 @@ export class LibraryView {
       return void (await say(err instanceof Error ? err.message : String(err), "Remove pattern"));
     }
     await this.afterBinChange();
-    showUndo(`Removed “${pattern?.title ?? "the pattern"}”. It is in the Bin for 30 days.`, async () => {
+    showUndo(`Removed “${pattern?.title ?? "the pattern"}”. It stays in the Bin for 30 days.`, async () => {
       await api.restorePattern(id);
       await this.afterBinChange();
     });
@@ -979,14 +979,14 @@ export class LibraryView {
     dialog.card.append(body);
     const paint = () => {
       body.innerHTML = removed.length
-        ? `<p class="hint">Removed patterns wait here for 30 days, with their file, cover, marks and counters, then are deleted for good.</p>
+        ? `<p class="hint">Removed patterns stay here for 30 days, with their file, cover, marks and counters, then are deleted permanently.</p>
            <ul class="bin-list">${removed
              .map(
                (p) => `
              <li data-id="${escapeHtml(p.id)}">
                <span><strong>${escapeHtml(p.title)}</strong>${p.designer ? ` <em>${escapeHtml(p.designer)}</em>` : ""}<small>Removed ${escapeHtml(removedDate(p.removedAt ?? 0))}</small></span>
                <button type="button" class="ghost" data-bin="restore">Restore</button>
-               <button type="button" class="ghost danger" data-bin="delete">Delete for good</button>
+               <button type="button" class="ghost danger" data-bin="delete">Delete permanently</button>
              </li>`,
              )
              .join("")}</ul>
@@ -1003,12 +1003,12 @@ export class LibraryView {
         if (act === "close") return dialog.close();
         if (act === "restore" && id) await api.restorePattern(id);
         if (act === "delete" && id) {
-          if (!(await askYesNo(`Delete “${title}” for good?\n\nIts file, cover, marks and counters go too. This cannot be undone.`, { title: "Delete for good", okLabel: "Delete", danger: true }))) return;
+          if (!(await askYesNo(`Delete “${title}” permanently?\n\nIts file, cover, marks and counters are deleted too. This cannot be undone.`, { title: "Delete permanently", okLabel: "Delete", danger: true }))) return;
           await api.deletePattern(id);
           forgetCover(id);
         }
         if (act === "empty") {
-          if (!(await askYesNo(`Delete all ${removed.length} for good?\n\nTheir files, covers, marks and counters go too. This cannot be undone.`, { title: "Empty the bin", okLabel: "Empty the bin", danger: true }))) return;
+          if (!(await askYesNo(`Delete all ${removed.length} permanently?\n\nTheir files, covers, marks and counters are deleted too. This cannot be undone.`, { title: "Empty the bin", okLabel: "Empty the bin", danger: true }))) return;
           for (const p of removed) forgetCover(p.id);
           await api.emptyBin();
         }
@@ -1069,7 +1069,7 @@ function statusPill(status: string): string {
 function wantButton(p: Pattern): string {
   const on = p.status === "want-to-knit";
   return `<button class="card-want${on ? " on" : ""}" data-act="want" data-id="${p.id}" aria-pressed="${on}"
-    title="${on ? "Planned to knit soon. Click to take it off the list." : "Mark it as one to knit soon"}">${on ? "★" : "☆"} Want to knit</button>`;
+    title="${on ? "Marked as want to knit. Click to unmark." : "Mark as want to knit"}">${on ? "★" : "☆"} Want to knit</button>`;
 }
 
 /**

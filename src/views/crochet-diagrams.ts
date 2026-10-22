@@ -12,9 +12,9 @@ import { EXAMPLES, STITCHES, STITCH_ORDER, diagramSvg, layout, legendHtml, rowLa
  */
 
 const SHAPES: { shape: Shape; label: string; hint: string }[] = [
-  { shape: "rounds", label: "In rounds", hint: "From a ring, round and round: a circle, a granny square, a flower" },
+  { shape: "rounds", label: "In rounds", hint: "Worked from a ring: a circle, a granny square, a flower" },
   { shape: "rows", label: "In rows", hint: "Back and forth, turned at each end" },
-  { shape: "spiral", label: "Along a spiral", hint: "A strip whose rows are worked along a spiral chain, as a rose is" },
+  { shape: "spiral", label: "Along a spiral", hint: "A strip worked along a spiral chain, like a crochet rose" },
   { shape: "oval", label: "Around a chain", hint: "Rounds worked along both sides of a chain: an oval, for a bag's base or an amigurumi's body" },
 ];
 
@@ -68,14 +68,14 @@ export class CrochetDiagrams {
     openId = null;
     this.host.innerHTML = `
       <div class="crochet-list">
-        <h2>Crochet diagrams <span class="hint">written as a pattern writes them, drawn in crochet symbols</span></h2>
+        <h2>Crochet diagrams <span class="hint">written as in a pattern, drawn in crochet symbols</span></h2>
         <div class="crochet-new">
           ${SHAPES.map((s) => `<button class="ghost" data-act="new" data-shape="${s.shape}" title="${esc(s.hint)}">+ ${esc(s.label)}</button>`).join("")}
         </div>
         ${
           this.diagrams.length
             ? `<div class="crochet-grid">${this.diagrams.map((d) => this.cardHtml(d)).join("")}</div>`
-            : `<div class="empty"><h2>No diagrams yet</h2><p>Start one in rounds, in rows, or along a spiral: it starts with an example to change. Write each round or row as a pattern does, <code>ch 3, 11 dc in ring, sl st to join</code>, and it is drawn as you type.</p></div>`
+            : `<div class="empty"><h2>No diagrams yet</h2><p>Start one in rounds, in rows, along a spiral or around a chain; each starts with an example. Rounds and rows are written as in a pattern, <code>ch 3, 11 dc in ring, sl st to join</code>, and drawn while typing.</p></div>`
         }
       </div>`;
   }
@@ -108,7 +108,7 @@ export class CrochetDiagrams {
             <option value="us" ${d.data.terms === "us" ? "selected" : ""}>US terms (sc, dc)</option>
             <option value="uk" ${d.data.terms === "uk" ? "selected" : ""}>UK terms (dc, tr)</option>
           </select>
-          <span class="hint" data-el="saved">Kept as you write</span>
+          <span class="hint" data-el="saved">Saved automatically</span>
         </div>
         <div class="crochet-body">
           <section class="crochet-rows">
@@ -146,8 +146,8 @@ export class CrochetDiagrams {
     // After the first, how it is worked: turned, on round, or all around the piece. Along a spiral, only as a strip is.
     const way = i > 0 && data.shape !== "spiral" ? wayOf(data, i) : null;
     const ways: { way: Exclude<Way, "">; label: string; title: string }[] = [
-      { way: "turn", label: "Row: turn", title: "Turned, and worked back along the one before" },
-      { way: "on", label: "Round: same way", title: "On round the same way, not turned" },
+      { way: "turn", label: "Row: turn", title: "Turned and worked back along the previous row" },
+      { way: "on", label: "Round: same way", title: "Continues round in the same direction, not turned" },
       { way: "around", label: "Round: all around the piece", title: "Along the top, down the side, along the bottom of the first chain and up the other side: a border, or an oval round a chain" },
     ];
     return `
@@ -220,7 +220,7 @@ export class CrochetDiagrams {
       const kept = await api.saveCrochetDiagram({ id: d.id, name: d.name, notes: d.notes, data: d.data });
       d.updatedAt = kept.updatedAt;
       const saved = this.host.querySelector<HTMLElement>('[data-el="saved"]');
-      if (saved && openId === d.id) saved.textContent = "Kept";
+      if (saved && openId === d.id) saved.textContent = "Saved";
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Crochet diagram");
     }
@@ -289,7 +289,7 @@ export class CrochetDiagrams {
 
   private async remove(id: string): Promise<void> {
     const d = this.diagrams.find((x) => x.id === id);
-    if (!d || !(await askYesNo(`Remove “${d.name}”?\n\nA board showing it says it is no longer kept. This cannot be undone.`, { title: "Remove diagram", okLabel: "Remove", danger: true }))) return;
+    if (!d || !(await askYesNo(`Remove “${d.name}”?\n\nBoards showing it will show it as removed. This cannot be undone.`, { title: "Remove diagram", okLabel: "Remove", danger: true }))) return;
     try {
       await api.deleteCrochetDiagram(id);
     } catch (err) {
@@ -379,7 +379,7 @@ export async function svgToPng(svg: string, scale: number): Promise<Blob> {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0, w, h);
-    return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The picture could not be made."))), "image/png"));
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The picture could not be created."))), "image/png"));
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -395,7 +395,7 @@ function stitchesHtml(terms: Terms, word: string): string {
   const name = (s: Stitch, t: Terms) => `<span class="${t === terms ? "on" : ""}"><b>${esc(STITCHES[s][t])}</b> ${esc(t === "us" ? STITCHES[s].usName : STITCHES[s].ukName)} <em>${t.toUpperCase()}</em></span>`;
   return `
     <section class="crochet-ref">
-      <h3>Stitches <span class="hint">Click one to add it to the ${word.toLowerCase()} you are writing, by its ${terms.toUpperCase()} name.</span></h3>
+      <h3>Stitches <span class="hint">Click a stitch to add its ${terms.toUpperCase()} name to the current ${word.toLowerCase()}.</span></h3>
       <div class="crochet-stitches">
         ${STITCH_ORDER.map(
           (s) => `
@@ -416,7 +416,7 @@ function howHtml(terms: Terms, word: string): string {
     ["A chain of 20, to start rows", "ch 20", "ch 20"],
     ["6 stitches into a magic ring, to start rounds", "6 sc in ring", "6 dc in ring"],
     ["One stitch in each of the next 3 stitches", "3 sc", "3 dc"],
-    ["Two stitches into every stitch, all the way: more stitches each round", "2 sc in each st around", "2 dc in each st around"],
+    ["2 stitches into every stitch, all round (an increase round)", "2 sc in each st around", "2 dc in each st around"],
     ["5 tall stitches all into one stitch: a fan", "5 dc in next", "5 tr in next"],
     ["A group into one place, with chains in it: a shell", "(3 dc, ch 2, 3 dc) in next sp", "(3 tr, ch 2, 3 tr) in next sp"],
     ["Into the same stitch as the one before", "dc in same st", "tr in same st"],
@@ -424,25 +424,25 @@ function howHtml(terms: Terms, word: string): string {
     ["3 stitches into the first chain, or the last: round the end of an oval", "3 sc in first", "3 dc in first"],
     ["2 stitches into each of the next 3", "2 sc in each of next 3", "2 dc in each of next 3"],
     ["Leave 2 stitches out", "sk 2", "miss 2"],
-    ["Part of it again and again: the part between stars, then how many times", "*sc, ch 3, sk 1* x 6", "*dc, ch 3, miss 1* x 6"],
-    ["The same, to the end of the round or row", "*sc, ch 3, sk 1* around", "*dc, ch 3, miss 1* around"],
-    ["Close a round, back into its first stitch", "sl st to join", "ss to join"],
+    ["Repeat a part: the part between stars, then the number of times", "*sc, ch 3, sk 1* x 6", "*dc, ch 3, miss 1* x 6"],
+    ["Repeat to the end of the round or row", "*sc, ch 3, sk 1* around", "*dc, ch 3, miss 1* around"],
+    ["Join a round into its first stitch", "sl st to join", "ss to join"],
   ];
   const col = (t: Terms) => (t === terms ? ' class="on"' : "");
   return `
     <section class="crochet-ref">
       <h3>How to write them</h3>
-      <p class="crochet-how-intro">One ${one} to a box. Write its stitches in the order you work them, with a comma between each. A number in front means that many.</p>
+      <p class="crochet-how-intro">One ${one} per box. Stitches go in working order, separated by commas. A number in front means that many.</p>
       <table class="crochet-how">
         <thead><tr><th>To make</th><th${col("us")}>In US terms</th><th${col("uk")}>In UK terms</th></tr></thead>
         <tbody>${rows.map(([want, us, uk]) => `<tr><td>${esc(want)}</td><td${col("us")}><code>${esc(us)}</code></td><td${col("uk")}><code>${esc(uk)}</code></td></tr>`).join("")}</tbody>
       </table>
       <ul class="crochet-how-notes">
-        <li>Chains written first stand up at the start of the ${one}, as its turning chain: <code>ch 3, …</code></li>
+        <li>Chains written first form the turning chain at the start of the ${one}: <code>ch 3, …</code></li>
         <li>In rows, each row is worked back along the one before. Along a spiral, the first row is a long chain that lies in a spiral, and the rows after are worked back along it, like a crochet rose.</li>
         <li>Around a chain, the first row is the chain. The first round goes along one side of it, round the end, and back along the other side: <code>3 sc in first, 18 sc, 3 sc in last, 18 sc, sl st to join</code> around a chain of 20. The rounds after go round the oval.</li>
         <li>Rows, then rounds: beside each ${one} after the first, choose how it is worked. <b>Row: turn</b> works back along the one before. <b>Round: same way</b> goes on without turning. <b>Round: all around the piece</b> goes along the top, down the side (a stitch in each row's end), along the bottom of the first chain and up the other side, with a corner at each turn: <code>3 sc in first, 8 sc, 3 sc in next, 3 sc, 3 sc in next, 8 sc, 3 sc in next, 3 sc, sl st to join</code> round a chain of 10 with 4 rows of 10 sc on it.</li>
-        <li><b>US and UK patterns call the same stitches by different names.</b> A US single crochet (sc) is a UK double crochet (dc), and a US double crochet (dc) is a UK treble (tr). Choose the terms your pattern is written in at the top: the list of stitches above shows both names.</li>
+        <li><b>US and UK patterns call the same stitches by different names.</b> A US single crochet (sc) is a UK double crochet (dc), and a US double crochet (dc) is a UK treble (tr). Choose the pattern's terms at the top; the stitch list above shows both names.</li>
       </ul>
     </section>`;
 }

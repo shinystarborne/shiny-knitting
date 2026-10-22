@@ -91,7 +91,7 @@ export async function verifyBackup() {
     check(results, "Settings has Restore a backup", !!restore());
     restore().click();
     await waitFor(() => !!ask(), "the question");
-    check(results, "…which says plainly that it takes the place of everything, and that what is here is saved first", /in place of everything in the app now/.test(ask()!.textContent ?? "") && /saved first/.test(ask()!.textContent ?? ""), ask()!.textContent ?? "");
+    check(results, "…which says plainly that it takes the place of everything, and that what is here is saved first", /replaces everything in the app/.test(ask()!.textContent ?? "") && /saved first/.test(ask()!.textContent ?? ""), ask()!.textContent ?? "");
     answer(ask()!, /Cancel/);
     await wait(300);
     check(results, "…said no to, nothing is asked for or done", store.restoreBeforeName === undefined && !store.restarted);
@@ -116,7 +116,7 @@ export async function verifyBackup() {
     restore().click();
     await waitFor(() => !!ask(), "the question");
     answer(ask()!, /Choose the backup/);
-    await waitFor(() => /Saving what is here now first: \d of 3 files/.test(restored()), "saving first");
+    await waitFor(() => /Saving the current library first: \d of 3 files/.test(restored()), "saving first");
     check(results, "…it saves what is here first, saying how far it has got", restore().disabled && button().disabled, restored());
     await waitFor(() => /Reading the backup: \d of 3 files/.test(restored()), "reading back");
     check(results, "…then reads the backup back in", true);

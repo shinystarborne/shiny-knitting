@@ -124,7 +124,7 @@ pub fn list(conn: &Connection) -> AppResult<Vec<CrochetDiagram>> {
 pub fn get(conn: &Connection, id: &str) -> AppResult<CrochetDiagram> {
     conn.query_row(&format!("SELECT {COLUMNS} FROM crochet_diagrams WHERE id = ?1"), params![id], row)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That diagram is no longer there.".into()))
+        .ok_or_else(|| AppError::NotFound("This diagram no longer exists.".into()))
 }
 
 /// A new diagram, or the one named changed.

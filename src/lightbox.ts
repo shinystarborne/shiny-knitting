@@ -62,19 +62,19 @@ class Lightbox {
     this.root.className = "lightbox";
     this.root.setAttribute("role", "dialog");
     this.root.setAttribute("aria-modal", "true");
-    this.root.setAttribute("aria-label", "The picture, big");
+    this.root.setAttribute("aria-label", "Enlarged picture");
     this.root.tabIndex = -1;
     this.root.innerHTML = `
       <div class="lightbox-stage" data-el="stage"><img data-el="img" alt="" draggable="false" /><p class="lightbox-note" data-el="note" hidden></p></div>
-      ${several ? `<button type="button" class="lightbox-nav prev" data-act="prev" title="The one before (←)" aria-label="The one before">‹</button><button type="button" class="lightbox-nav next" data-act="next" title="The next (→)" aria-label="The next">›</button>` : ""}
+      ${several ? `<button type="button" class="lightbox-nav prev" data-act="prev" title="Previous (←)" aria-label="Previous">‹</button><button type="button" class="lightbox-nav next" data-act="next" title="Next (→)" aria-label="Next">›</button>` : ""}
       <div class="lightbox-bar">
         ${several ? `<span class="lightbox-count" data-el="count"></span>` : ""}
         <span class="lightbox-caption" data-el="caption"></span>
         <span class="lightbox-tools">
           <button type="button" data-act="out" title="Zoom out (−)" aria-label="Zoom out">−</button>
-          <button type="button" class="lightbox-zoom" data-act="fit" data-el="zoom" title="Fit it to the window (0)">Fit</button>
+          <button type="button" class="lightbox-zoom" data-act="fit" data-el="zoom" title="Fit to window (0)">Fit</button>
           <button type="button" data-act="in" title="Zoom in (+)" aria-label="Zoom in">+</button>
-          <button type="button" data-act="copy" title="Copy it, to paste anywhere (Ctrl+C)">Copy</button>
+          <button type="button" data-act="copy" title="Copy (Ctrl+C)">Copy</button>
           <button type="button" data-act="close" title="Close (Esc)" aria-label="Close">✕</button>
         </span>
       </div>`;
@@ -108,7 +108,7 @@ class Lightbox {
     const url = await picture.url().catch(() => null);
     if (which !== this.shown) return;
     this.url = url;
-    if (!url) return this.note("This picture is not there any more.");
+    if (!url) return this.note("This picture no longer exists.");
     this.img.src = url;
     try {
       await this.img.decode();

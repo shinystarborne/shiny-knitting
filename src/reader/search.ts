@@ -102,7 +102,7 @@ export class SearchBar {
     // A scanned pattern is pictures of pages with no text in them at all, so
     // say so, rather than offer a field that will only ever answer "0 / 0".
     if (!this.texts.some((t) => t)) {
-      input.placeholder = "No searchable text — this PDF is scanned pages";
+      input.placeholder = "No searchable text: this PDF is scanned pages";
       el.classList.add("no-text");
       return;
     }

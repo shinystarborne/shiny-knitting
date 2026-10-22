@@ -92,7 +92,7 @@ export async function verifyYarnWeights() {
     type("yarnWeight", "Worsted");
     type("metresPerBall", "90");
     check(results, "a typed weight is kept", f("yarnWeight").value === "Worsted");
-    check(results, "…with the figures' weight said beside it", /: Aran/.test(hint().textContent ?? "") && /stays filed as Worsted, as you wrote it/.test(hint().textContent ?? ""), hint().textContent ?? "");
+    check(results, "…with the figures' weight said beside it", /: Aran/.test(hint().textContent ?? "") && /Filed as Worsted, as entered/.test(hint().textContent ?? ""), hint().textContent ?? "");
 
     type("metresPerBall", "");
     type("gramsPerBall", "500");
@@ -159,7 +159,7 @@ export async function verifyYarnWeights() {
     f("name").value = "merino dk";
     f("name").dispatchEvent(new Event("change", { bubbles: true }));
     check(results, "a name already in the stash fills in its brand, weight and ball band", f("brand").value === "Cascade" && f("yarnWeight").value === "DK" && f("metresPerBall").value === "220" && f("gramsPerBall").value === "100");
-    check(results, "…and says from which", /from your Merino DK \(Heather\)/.test(modal()!.querySelector('[data-el="known-hint"]')?.textContent ?? ""));
+    check(results, "…and says from which", /from Merino DK \(Heather\)/.test(modal()!.querySelector('[data-el="known-hint"]')?.textContent ?? ""));
     f("colourway").value = "Teal";
     const count2 = store.yarns.length;
     (modal()!.querySelector('[data-act="save"]') as HTMLElement).click();

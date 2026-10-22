@@ -172,7 +172,7 @@ export class StashView {
       const yarn = this.yarns.find((y) => y.id === usedUp.dataset.usedUp);
       if (!yarn) return;
       const name = [yarn.brand, yarn.name, yarn.colourway].filter(Boolean).join(" ");
-      if (!(await askYesNo(`Used up ${name}? It moves to the stash's History, where Back in the stash brings it back.`, { title: "Used up", okLabel: "Used up" }))) return;
+      if (!(await askYesNo(`Mark ${name} as used up? It moves to the stash's History, where Back in the stash restores it.`, { title: "Used up", okLabel: "Used up" }))) return;
       try {
         await api.setYarnUsedUp(yarn.id, true);
       } catch (err) {
@@ -289,7 +289,7 @@ export class StashView {
       </label>`;
     this.root.querySelector('[data-slot="fibre"] .facet-list')!.innerHTML = names.length
       ? names.map((n) => box("fibre", n.toLowerCase(), n, count(n), this.fibre.has(n.toLowerCase()))).join("")
-      : '<p class="hint">None recorded yet. Add a yarn\'s fibres in its form.</p>';
+      : '<p class="hint">None recorded yet. Fibres are set in each yarn\'s form.</p>';
     this.root.querySelector('[data-slot="made"] .facet-list')!.innerHTML = MADE.map((m) =>
       box("made", m.value, m.label, this.yarns.filter((y) => madeOf(y, m.value)).length, this.made.has(m.value)),
     ).join("");
@@ -345,8 +345,8 @@ export class StashView {
     const count = `${yarns.length} yarn${yarns.length === 1 ? "" : "s"}`;
     el.textContent = `${filtered ? "Shown" : "In the stash"}: ${metres.toLocaleString("en-GB")} m · ${weight(grams)} in ${count}`;
     el.title = unknown
-      ? `${unknown} of them ${unknown === 1 ? "has" : "have"} no metres per ball, so ${unknown === 1 ? "its" : "their"} grams are in the weight but not the metres.`
-      : "What there is now: whole balls by the ball band, started ones as weighed, and the metres they come to.";
+      ? `${unknown} of them ${unknown === 1 ? "has" : "have"} no metres per ball, so ${unknown === 1 ? "its" : "their"} grams count in the weight but not in the metres.`
+      : "Current amount: whole balls by ball band weight, started balls as weighed, and the metres they make.";
     if (unknown) el.textContent += ` (${unknown} without metres)`;
   }
 
@@ -365,9 +365,9 @@ export class StashView {
           <p class="designer">${where ? escapeHtml(where) : "No brand"}</p>
           <div class="card-meta">
             ${yarnPill(y)}
-            ${y.details?.deadstock ? `<span class="pill yarn-deadstock" title="Deadstock or cone yarn, sold by weight: its price is for 100 g">Deadstock${per100gOf(y) ? ` · ${grouped(per100gOf(y))} m/100 g` : ""}</span>` : ""}
-            ${y.lots.some((l) => l.leftover) ? `<span class="pill yarn-leftover" title="What a finished project left over">Leftover</span>` : ""}
-            ${y.superwash ? `<span class="pill" title="Can go in the washing machine">Superwash</span>` : ""}
+            ${y.details?.deadstock ? `<span class="pill yarn-deadstock" title="Deadstock or cone yarn sold by weight; the price is per 100 g">Deadstock${per100gOf(y) ? ` · ${grouped(per100gOf(y))} m/100 g` : ""}</span>` : ""}
+            ${y.lots.some((l) => l.leftover) ? `<span class="pill yarn-leftover" title="Left over from a finished project">Leftover</span>` : ""}
+            ${y.superwash ? `<span class="pill" title="Machine washable">Superwash</span>` : ""}
           </div>
           ${y.fibres.length ? `<p class="card-fibres" title="${escapeHtml(describeFibres(y.fibres))}">${escapeHtml(describeFibres(y.fibres))}</p>` : ""}
           ${
@@ -376,8 +376,8 @@ export class StashView {
               : ""
           }
           ${this.planLine(y)}
-          ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Its newest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
-          ${detailsParts(y.details, this.unit).length ? `<p class="card-details" title="From its ball band, for every colour of it">${detailsParts(y.details, this.unit).map((p) => `<span>${escapeHtml(p)}</span>`).join(" · ")}</p>` : ""}
+          ${this.swatched.has(y.id) ? `<p class="card-swatched" title="Latest swatch">Swatched: ${escapeHtml(swatchLine(this.swatched.get(y.id)!, this.unit))}</p>` : ""}
+          ${detailsParts(y.details, this.unit).length ? `<p class="card-details" title="From the ball band, for every colour">${detailsParts(y.details, this.unit).map((p) => `<span>${escapeHtml(p)}</span>`).join(" · ")}</p>` : ""}
           ${careHtml(y)}
           <p class="card-qty">${escapeHtml(quantityLine(y))}</p>
           <p class="card-lots">${y.lots.length} lot${y.lots.length === 1 ? "" : "s"}</p>
@@ -385,9 +385,9 @@ export class StashView {
             <button class="card-remove card-colour" data-colour="${y.id}"
               title="Add another colour of this yarn: brand, weight and metres per ball filled in">+ Colour</button>
             <button class="card-remove" data-used-up="${y.id}"
-              title="Had, but used: it moves to the stash's History, with what it went into">Used up</button>
+              title="Moves it to the stash's History, with the projects it went into">Used up</button>
             <button class="card-remove" data-delete="${y.id}"
-              title="Remove this yarn from your stash">Remove</button>
+              title="Remove this yarn from the stash">Remove</button>
           </div>
         </div>
       </article>`;
@@ -401,7 +401,7 @@ export class StashView {
     const names = [...new Set([...y.plannedIn, ...y.plans.map((p) => p.title)])];
     if (!names.length) return "";
     const open = y.plans.find((p) => !y.plannedIn.some((n) => n.toLowerCase() === p.title.toLowerCase()));
-    const make = open ? ` <button class="link card-make-plan" data-make-plan="${y.id}" title="Make a plan of it, with this yarn on it">Make a plan</button>` : "";
+    const make = open ? ` <button class="link card-make-plan" data-make-plan="${y.id}" title="Make a plan with this yarn">Make a plan</button>` : "";
     return `<p class="card-plan" title="${escapeHtml(names.join(", "))}">Planned for: ${escapeHtml(names.join(", "))}${make}</p>`;
   }
 
@@ -421,7 +421,7 @@ export class StashView {
     const name = yarn ? `"${yarn.name}"` : "this yarn";
     if (
       !(await askYesNo(
-        `Remove ${name} from your stash?\n\nIts photo will be deleted too. This cannot be undone.`,
+        `Remove ${name} from the stash?\n\nIts photo is deleted too. This cannot be undone.`,
         { title: "Remove yarn", okLabel: "Remove", danger: true },
       ))
     ) {
@@ -537,7 +537,7 @@ function quantityLine(y: Yarn): string {
 function careHtml(y: Yarn): string {
   const symbols = (y.details?.care ?? []).map(careSymbol).filter((c) => !!c);
   if (!symbols.length) return "";
-  return `<ul class="card-care" title="Care, from its ball band">${symbols.map((c) => `<li>${careIcon(c)}<span>${escapeHtml(c.label)}</span></li>`).join("")}</ul>`;
+  return `<ul class="card-care" title="Care, from the ball band">${symbols.map((c) => `<li>${careIcon(c)}<span>${escapeHtml(c.label)}</span></li>`).join("")}</ul>`;
 }
 
 function fmt(n: number): string {

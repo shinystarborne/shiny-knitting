@@ -32,7 +32,7 @@ export class ProjectLog {
     this.host.innerHTML = `
       <div class="log-inner">
         <div class="log-compose">
-          <textarea data-f="text" rows="3" placeholder="What happened? What you changed in the pattern, where you stopped, how the yarn behaves… (Ctrl+Enter adds it)"></textarea>
+          <textarea data-f="text" rows="3" placeholder="Changes to the pattern, where knitting stopped, how the yarn behaves… (Ctrl+Enter adds it)"></textarea>
           <div class="log-compose-bar">
             <div class="log-photo-box" data-el="compose-photo" title="Paste a picture with Ctrl+V, drop one here, or choose one"></div>
             <button class="ghost" data-act="photo-file">Add a photo…</button>
@@ -76,7 +76,7 @@ export class ProjectLog {
     this.editPhoto = null;
     const list = this.host.querySelector<HTMLElement>('[data-el="list"]')!;
     if (!this.entries.length) {
-      list.innerHTML = `<p class="hint log-empty">Nothing in the log yet. What you add here is dated by itself, and the project writes when it starts, pauses and finishes.</p>`;
+      list.innerHTML = `<p class="hint log-empty">Nothing in the log yet. Entries are dated automatically; starting, pausing and finishing the project are logged too.</p>`;
       return;
     }
     // A heading a day, the entries under it.
@@ -123,7 +123,7 @@ export class ProjectLog {
           <span class="log-time">${esc(time)}</span>
           ${e.milestone ? `<span class="log-milestone">${esc(e.text)}</span>` : ""}
           <span class="spacer"></span>
-          ${e.photoPath ? `<button class="card-remove" data-act="copy" data-id="${esc(e.id)}" title="Copy its photo, to paste anywhere">Copy</button><button class="card-remove" data-act="crop" data-id="${esc(e.id)}" title="Crop its photo">Crop</button>` : ""}
+          ${e.photoPath ? `<button class="card-remove" data-act="copy" data-id="${esc(e.id)}" title="Copy the photo">Copy</button><button class="card-remove" data-act="crop" data-id="${esc(e.id)}" title="Crop the photo">Crop</button>` : ""}
           <button class="card-remove" data-act="edit" data-id="${esc(e.id)}" title="Change it">Edit</button>
           <button class="card-remove" data-act="remove" data-id="${esc(e.id)}" title="Take it out of the log">Remove</button>
         </div>
@@ -197,7 +197,7 @@ export class ProjectLog {
     const text = this.host.querySelector<HTMLTextAreaElement>('[data-f="edit-text"]')?.value ?? "";
     const when = this.host.querySelector<HTMLInputElement>('[data-f="edit-at"]')?.value ?? "";
     const at = when ? new Date(when).getTime() : NaN;
-    if (Number.isNaN(at)) return void (await say("Give the day and time it happened.", "Log"));
+    if (Number.isNaN(at)) return void (await say("Date and time needed.", "Log"));
     try {
       await api.updateLogEntry(id, text, at);
       if (this.editPhoto?.pending) {

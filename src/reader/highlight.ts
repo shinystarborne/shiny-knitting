@@ -72,7 +72,7 @@ export class HighlightLine {
 
     this.sizer = document.createElement("div");
     this.sizer.className = "highlight-size";
-    this.sizer.title = "Drag to make the line wider, narrower, taller or shorter: as wide as the chart, as tall as one of its rows";
+    this.sizer.title = "Drag to resize the line, e.g. as wide as the chart and as tall as one row";
     this.el.appendChild(this.sizer);
 
     this.host.appendChild(this.el);
@@ -349,8 +349,8 @@ export class HighlightLine {
     this.ready = on;
     this.el.classList.toggle("ready", on);
     this.grip.title = on
-      ? "Click in the pattern to put the line there (Esc: not now)"
-      : "Drag to move it anywhere on the page; click, then click in the pattern, to put it there; double-click for its settings";
+      ? "Click in the pattern to place the line (Esc to cancel)"
+      : "Drag to move the line, or click and then click in the pattern to place it. Double-click for settings.";
   }
 
   /** Puts the line's top where the content was clicked, if it was readied for it. Returns whether it moved. */

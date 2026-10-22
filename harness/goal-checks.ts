@@ -90,7 +90,7 @@ export async function verifyGoals() {
     (panel()!.querySelector('[data-act="goal-add"]') as HTMLElement).click();
     await setGoal("own", "3", " ");
     await waitFor(() => !!dialog()?.querySelector('[data-el="error"]:not([hidden])'), "the refusal");
-    check(results, "your own goal needs its words", /Say what your own goal is/.test(dialog()!.textContent ?? ""));
+    check(results, "your own goal needs its words", /custom goal needs a description/.test(dialog()!.textContent ?? ""));
     await setGoal("own", "3", "learn brioche");
     await waitFor(() => goals().length === 2, "your own goal");
     const own = () => goals()[1];

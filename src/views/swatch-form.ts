@@ -157,13 +157,13 @@ export class SwatchForm {
 
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="How it felt, how it washed, what you would change…">${esc(e?.notes ?? "")}</textarea>
+          <textarea data-f="notes" placeholder="How it felt, how it washed, what to change…">${esc(e?.notes ?? "")}</textarea>
         </label>
 
         <div class="modal-actions">
           ${e ? `<button class="ghost danger-text" data-act="remove">Remove swatch</button><span class="spacer"></span>` : ""}
           <button class="ghost" data-act="cancel">Cancel</button>
-          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save this one and start the next, in the same yarn">Save and add another</button>`}
+          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save and start the next one in the same yarn">Save and add another</button>`}
           <button class="primary" data-act="save">${e ? "Save changes" : "Add"}</button>
         </div>
         <p class="form-error" data-el="error" hidden></p>
@@ -211,7 +211,7 @@ export class SwatchForm {
     const read = (f: string) => readGauge(this.field(f).value, this.unit) || 0;
     const text = blockingText({ sts: read("sts"), rows: read("rows"), stsBlocked: read("stsBlocked"), rowsBlocked: read("rowsBlocked") });
     const el = this.root.querySelector<HTMLElement>('[data-el="blocking"]')!;
-    el.textContent = text ? `Blocking made it ${text.replace(", ", " and ")}.` : "";
+    el.textContent = text ? `After blocking: ${text.replace(", ", " and ")}.` : "";
     el.hidden = !text;
   }
 
@@ -246,7 +246,7 @@ export class SwatchForm {
       counts[f] = n;
     }
     const size = Number(value("needleMm").replace(",", ".") || 0);
-    if (Number.isNaN(size)) throw new Error("Give the needle size in millimetres, e.g. 4 or 3.75.");
+    if (Number.isNaN(size)) throw new Error("Needle size in millimetres needed, e.g. 4 or 3.75.");
     const yarnId = value("yarn") || null;
     const toolId = value("tool") || null;
     const made = value("madeAt");
@@ -286,7 +286,7 @@ export class SwatchForm {
         for (const f of ["sts", "rows", "stsBlocked", "rowsBlocked", "notes"]) this.field(f).value = "";
         this.showBlocking();
         this.photo?.reset();
-        this.showSaved("Added. Change what differs and add the next.");
+        this.showSaved("Added. Change what differs for the next one.");
         this.field("stsBlocked").focus();
         this.onDone(saved);
       } else {

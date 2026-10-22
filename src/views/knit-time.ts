@@ -47,12 +47,6 @@ export function hoursText(ms: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-/** What a project came to an hour of knitting; null with no time or no cost. */
-export function perHour(cost: number, ms: number): number | null {
-  if (!(cost > 0) || ms < 60000) return null;
-  return Math.round((cost / (ms / 3600000)) * 100) / 100;
-}
-
 /** What a project really costs: what it cost, and its knitting time at what an hour is worth. */
 export function trueCost(cost: number, ms: number, hourRate: number): number {
   return Math.round((cost + (ms / 3600000) * hourRate) * 100) / 100;

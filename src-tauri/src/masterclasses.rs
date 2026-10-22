@@ -40,12 +40,12 @@ pub fn youtube_id(url: &reqwest::Url) -> Option<String> {
 pub fn address(typed: &str) -> Result<reqwest::Url, AppError> {
     let t = typed.trim();
     if t.is_empty() {
-        return Err(AppError::Message("Give the video's link: a YouTube address.".into()));
+        return Err(AppError::Message("Video link needed (a YouTube address).".into()));
     }
     let whole = if t.contains("://") { t.to_string() } else { format!("https://{t}") };
     let url = reqwest::Url::parse(&whole).map_err(|_| AppError::Message("That is not a web address.".into()))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(AppError::Message("A masterclass is a web page: an address starting http:// or https://.".into()));
+        return Err(AppError::Message("A masterclass needs an address starting with http:// or https://.".into()));
     }
     Ok(url)
 }

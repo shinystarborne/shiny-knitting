@@ -51,7 +51,7 @@ export function changeCover(pattern: Pattern): Promise<boolean> {
       box.classList.add("busy");
       try {
         const blob = file instanceof File ? await prepareChosenImage(file) : file;
-        if (!blob) return say("That could not be read as a picture.");
+        if (!blob) return say("This file is not a readable picture.");
         await saveCover(pattern.id, blob);
         changed = true;
         await paint();
@@ -65,7 +65,7 @@ export function changeCover(pattern: Pattern): Promise<boolean> {
     // While this is up, any picture pasted is the cover.
     const onPaste = (e: ClipboardEvent) => {
       const file = [...(e.clipboardData?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
-      if (!file) return say("There is no picture on the clipboard. Copy one first (right-click it, then Copy image).");
+      if (!file) return say("No picture on the clipboard. Copy one first (right-click it, then Copy image).");
       e.preventDefault();
       void use(file);
     };

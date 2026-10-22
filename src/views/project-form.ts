@@ -84,7 +84,7 @@ export class ProjectForm {
     this.root.innerHTML = `
       <div class="modal project-form" role="dialog" aria-modal="true">
         <h2>${plan ? (e ? "Edit plan" : "Plan a project") : e ? (finished ? `${projectStatusLabel(e.status)} project` : "Edit project") : "Start a project"}</h2>
-        ${plan && !e ? `<p class="hint">Not started yet: its yarn is meant for it, not in use. Choose the needles when you start it.</p>` : ""}
+        ${plan && !e ? `<p class="hint">Not started yet: its yarn is reserved, not in use. Needles are chosen when it starts.</p>` : ""}
         ${finished ? `<p class="hint">${projectStatusLabel(e!.status)} ${escapeHtml(longDate(e!.finishedAt ?? Date.now()))}. What it used stays listed here.</p>` : ""}
 
         <div class="field-row">
@@ -109,7 +109,7 @@ export class ProjectForm {
           plan
             ? `<div class="field-row plan-when-row">
           <label class="field"><span>When <em class="hint">roughly</em></span>
-            <input data-f="plan-when" value="${escapeAttr(e?.planWhen ?? "")}" placeholder="e.g. autumn, before the baby comes" maxlength="80" /></label>
+            <input data-f="plan-when" value="${escapeAttr(e?.planWhen ?? "")}" placeholder="e.g. autumn, before the baby arrives" maxlength="80" /></label>
           <label class="field"><span>Or on <em class="hint">a date</em></span>
             <input data-f="plan-date" type="date" value="${planDate}" /></label>
         </div>`
@@ -183,7 +183,7 @@ export class ProjectForm {
 
   private namePlaceholder(patternId: string | null): string {
     const title = this.patterns.find((p) => p.id === patternId)?.title;
-    return title ? `${title} — or a name of its own` : "e.g. Gift hat for Sam";
+    return title ? `${title} or its own name` : "e.g. Gift hat for Sam";
   }
 
   /**
@@ -198,7 +198,7 @@ export class ProjectForm {
       const uses = t.uses.filter((u) => u.projectId !== id);
       return { ...t, uses, projectId: uses[0]?.projectId ?? null, projectName: uses[0]?.projectName ?? "" };
     });
-    this.toolPicker?.render(view, this.chosenTools, "None chosen yet.", this.chosenTips);
+    this.toolPicker?.render(view, this.chosenTools, "None chosen.", this.chosenTips);
   }
 
   private renderYarns(): void {
@@ -297,7 +297,7 @@ export class ProjectForm {
   private async remove(): Promise<void> {
     const e = this.editing;
     if (!e) return;
-    const what = isLive(e.status) ? " Its needles and yarn go back to free; they are not removed." : "";
+    const what = isLive(e.status) ? " Its needles and yarn become free again; they are not deleted." : "";
     if (!(await askYesNo(`Remove the project “${e.name}”?${what} This cannot be undone.`, { title: "Remove project", okLabel: "Remove", danger: true }))) {
       return;
     }

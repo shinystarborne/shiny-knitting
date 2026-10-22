@@ -46,7 +46,7 @@ export class ShopForm {
           </label>
           <label class="field">
             <span>Web address</span>
-            <input data-f="url" value="${escapeAttr(e?.url ?? "")}" placeholder="Paste it: the name fills itself in" autocomplete="off" spellcheck="false" />
+            <input data-f="url" value="${escapeAttr(e?.url ?? "")}" placeholder="Paste the address; the name fills in automatically" autocomplete="off" spellcheck="false" />
           </label>
         </div>
         <p class="hint" data-el="name-status" hidden></p>
@@ -60,7 +60,7 @@ export class ShopForm {
         <label class="field">
           <span>Comment</span>
           <textarea data-f="comment" rows="5" placeholder="What it is good for: Drops is cheapest here, great prices on deadstock, slow to ship…">${escapeHtml(e?.comment ?? "")}</textarea>
-          <span class="hint">The Shops tab's search looks through comments and tags, so a word here finds the shop again.</span>
+          <span class="hint">The Shops search covers comments and tags.</span>
         </label>
         <div class="modal-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
@@ -123,10 +123,10 @@ export class ShopForm {
     this.autoName = name.value;
     this.nameStatus(
       found
-        ? "Named from the shop's page. Change it if you like."
+        ? "Named from the shop's page. Can be changed."
         : readable
-          ? "The shop's page does not say its name, so it is named after its address."
-          : "The shop's page could not be read, so it is named after its address.",
+          ? "The shop's page does not state its name, so the address is used."
+          : "The shop's page could not be read, so the address is used.",
     );
   }
 

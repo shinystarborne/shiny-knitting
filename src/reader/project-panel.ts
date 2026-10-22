@@ -47,9 +47,9 @@ export class ProjectPanel {
     if (!active.length) {
       this.root.innerHTML = `
         <h3>Project</h3>
-        <p class="hint">Not being knitted right now.</p>
+        <p class="hint">No project with this pattern.</p>
         ${before}
-        <button class="ghost" data-act="project-start" title="Start a project from this pattern, and choose its needles and yarn">+ Start a project</button>`;
+        <button class="ghost" data-act="project-start" title="Start a project from this pattern and choose its needles and yarn">+ Start a project</button>`;
       return;
     }
     this.root.innerHTML = `
@@ -67,7 +67,7 @@ export class ProjectPanel {
               ${
                 lines.length
                   ? `<ul class="tool-list">${lines.map((l) => `<li><span>${escapeHtml(l)}</span></li>`).join("")}</ul>`
-                  : `<p class="hint">No needles or yarn on it yet.</p>`
+                  : `<p class="hint">No needles or yarn yet.</p>`
               }
               <button class="ghost" data-act="project-open" data-id="${p.id}">Needles, yarn, finish…</button>
             </div>`;

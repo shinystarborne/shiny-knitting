@@ -141,11 +141,11 @@ export class PinLayer {
       return {
         ok: false,
         reason:
-          "Pinning needs a PDF. An EPUB's text can be reflowed and rewrapped, so there is no fixed region of the page to crop.",
+          "Pins work only in PDFs. An EPUB's text reflows, so it has no fixed page area to crop.",
       };
     }
     if (this.pins.length >= MAX_PINS) {
-      return { ok: false, reason: `This pattern already has ${MAX_PINS} pins. Remove one from its numbered chip first.` };
+      return { ok: false, reason: `This pattern already has ${MAX_PINS} pins. Remove one first (✕ on its numbered chip).` };
     }
     return { ok: true, reason: "" };
   }
@@ -258,7 +258,7 @@ export class PinLayer {
       return;
     }
     if (!shot) {
-      this.report(new Error("That page has not finished drawing, so there is nothing to crop yet."));
+      this.report(new Error("The page has not finished loading yet."));
       return;
     }
 
@@ -323,7 +323,7 @@ export class PinLayer {
       chip.type = "button";
       chip.className = pin.hidden ? "pin-chip" : "pin-chip on";
       chip.textContent = String(index + 1);
-      chip.title = `Pin ${index + 1} · p.${pin.page} — click to show or hide${pin.title ? `\n${pin.title}` : ""}`;
+      chip.title = `Pin ${index + 1} · p.${pin.page} (click to show or hide)${pin.title ? `\n${pin.title}` : ""}`;
       chip.addEventListener("click", () => void this.setHidden(pin, !pin.hidden));
 
       const remove = document.createElement("span");
@@ -356,7 +356,7 @@ export class PinLayer {
       label,
       barButton("−", "Zoom out", () => void this.zoomPin(pin, card, 1 / ZOOM_STEP)),
       barButton("+", "Zoom in", () => void this.zoomPin(pin, card, ZOOM_STEP)),
-      ...(this.toBoard ? [barButton("⤴", "Put it on the project's board", () => void this.sendToBoard(pin))] : []),
+      ...(this.toBoard ? [barButton("⤴", "Add to the project's board", () => void this.sendToBoard(pin))] : []),
       barButton("✕", "Hide", () => void this.setHidden(pin, true)),
     );
 

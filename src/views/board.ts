@@ -141,20 +141,20 @@ export interface BoardOptions {
  */
 const TOOLBAR: { kind: BoardKind; html: string; tabs?: Tab[] }[] = [
   { kind: "note", html: `<button data-add="note" title="A sticky note">🗒<span>Note</span></button>` },
-  { kind: "text", html: `<button data-add="text" title="Words on the board">T<span>Text</span></button>` },
+  { kind: "text", html: `<button data-add="text" title="A text box">T<span>Text</span></button>` },
   { kind: "link", html: `<button data-add="link" title="A web address">🔗<span>Link</span></button>` },
-  { kind: "image", html: `<button data-add="image" title="A picture: choose one, paste it with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>` },
+  { kind: "image", html: `<button data-add="image" title="A picture: choose one, paste with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>` },
   { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>`, tabs: ["patterns"] },
   { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>`, tabs: ["stash"] },
   { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>`, tabs: ["tools"] },
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
-  { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
-  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>`, tabs: ["masterclasses"] },
-  { kind: "chart", html: `<button data-add="chart" title="A chart: one drawn in Constructors, as it is now, or a picture from Charts">▦<span>Chart</span></button>`, tabs: ["calculators", "charts"] },
-  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>`, tabs: ["cheatsheets"] },
-  { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern, on the board">🔢<span>Counter</span></button>` },
-  { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
-  { kind: "calc", html: `<button data-add="calc" title="A calculator: + − × ÷, for the sums as you knit">🧮<span>Calculator</span></button>` },
+  { kind: "log", html: `<button data-add="log" title="The project's log, to read and add to on the board">📓<span>Log</span></button>` },
+  { kind: "video", html: `<button data-add="video" title="A video from Masterclasses">🎬<span>Video</span></button>`, tabs: ["masterclasses"] },
+  { kind: "chart", html: `<button data-add="chart" title="A chart drawn in Constructors, or a chart picture from Charts">▦<span>Chart</span></button>`, tabs: ["calculators", "charts"] },
+  { kind: "sheet", html: `<button data-add="sheet" title="A page from Cheatsheets">📋<span>Cheatsheet</span></button>`, tabs: ["cheatsheets"] },
+  { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern">🔢<span>Counter</span></button>` },
+  { kind: "timer", html: `<button data-add="timer" title="The knitting timer; can start when a row is counted">⏱<span>Timer</span></button>` },
+  { kind: "calc", html: `<button data-add="calc" title="A calculator: + − × ÷">🧮<span>Calculator</span></button>` },
 ];
 
 /** The width a counter's or timer's card is laid out at, then zoomed to its card's size. */
@@ -172,9 +172,9 @@ export const BOARD_CALCULATORS: { key: string; label: string }[] = [
   { key: "crochet", label: "Crochet diagram" },
 ];
 
-const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
+const PROJECT_HINT = `Everything for this project in one place: notes, pictures, links, the pattern, yarn,
   needles and colours. Paste a picture or a link with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or drop one here.
-  Drag the board to move around; <kbd>Ctrl</kbd>+scroll zooms.`;
+  Drag the board to move it; <kbd>Ctrl</kbd>+scroll zooms.`;
 
 /** How long after the last keystroke a note's words are saved. */
 const TYPING_SAVE_MS = 700;
@@ -249,7 +249,7 @@ export class Board {
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
         ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => (t.tabs ? t.html.replace("<button ", `<button data-tab="${t.tabs.join(" ")}" `) : t.html)).join("")}
-        ${this.hooks.openCalculator ? `<button data-act="calculator" data-tab="calculators" title="A constructor -- a raglan, a yoke, socks… -- its result saved to this board">📐<span>Constructors</span></button>` : ""}
+        ${this.hooks.openCalculator ? `<button data-act="calculator" data-tab="calculators" title="A constructor (raglan, yoke, socks…); its result is saved to this board">📐<span>Constructors</span></button>` : ""}
       </div>
       <div class="board-zoom">
         <button data-act="zoom-out" title="Zoom out">−</button>
@@ -394,14 +394,14 @@ export class Board {
 
   private logPendingHtml(): string {
     return this.logPhotoUrl
-      ? `<div class="board-log-pending" data-el="log-pending"><img src="${this.logPhotoUrl}" alt="The photo to add" /><span>Goes with the entry: Add, or Enter</span><button data-act="log-photo-clear" title="Not this photo" aria-label="Not this photo">×</button></div>`
+      ? `<div class="board-log-pending" data-el="log-pending"><img src="${this.logPhotoUrl}" alt="The photo to add" /><span>Added with the entry (Add, or Enter)</span><button data-act="log-photo-clear" title="Not this photo" aria-label="Not this photo">×</button></div>`
       : `<div data-el="log-pending" hidden></div>`;
   }
 
   /** A picture for the log card's next entry: downscaled as the log's photos are. */
   private async takeLogPhoto(file: Blob): Promise<void> {
     const blob = await prepareChosenImage(file);
-    if (!blob) return void (await say("That could not be read as a picture.", "Log"));
+    if (!blob) return void (await say("This file is not a readable picture.", "Log"));
     this.setLogPhoto(blob);
     this.world.querySelector<HTMLInputElement>('.board-item[data-kind="log"] input[data-f="log-text"]')?.focus();
   }
@@ -650,7 +650,7 @@ export class Board {
       btn.dataset.title ??= btn.title;
       btn.classList.toggle("tab-hidden", off);
       btn.setAttribute("aria-disabled", String(off));
-      btn.title = off ? `${hiddenNames(tabs)} hidden in Settings: show it there to add from it` : btn.dataset.title;
+      btn.title = off ? `${hiddenNames(tabs)} hidden in Settings. Show it there to add from it.` : btn.dataset.title;
     }
   }
 
@@ -659,7 +659,7 @@ export class Board {
     if (!btn) return;
     if (btn.classList.contains("tab-hidden")) {
       const tabs = btn.dataset.tab!.split(" ") as Tab[];
-      return void (await say(`${hiddenNames(tabs)} hidden, so nothing can be added from it. Show it again in Settings (the gear), under Tabs.`, tabLabel(tabs[0])));
+      return void (await say(`${hiddenNames(tabs)} hidden, so nothing can be added from it. It can be shown again in Settings → Tabs.`, tabLabel(tabs[0])));
     }
     const add = btn.dataset.add as BoardKind | undefined;
     if (add) return void (await this.addFromToolbar(add));
@@ -940,7 +940,7 @@ export class Board {
       const answer = await askForm([{ label: "Address", placeholder: "e.g. ravelry.com/patterns/…" }, { label: "Title", placeholder: "Optional" }], { title: "Add a link", okLabel: "Add" });
       if (!answer) return;
       const url = linkFrom(answer.Address);
-      if (!url) return void (await say("That is not a web address. It should look like ravelry.com/… or https://…", "Add a link"));
+      if (!url) return void (await say("Not a web address. It should look like ravelry.com/… or https://…", "Add a link"));
       await this.add("link", at, { url, title: answer.Title.trim() || hostOf(url) });
     } else if (kind === "image") {
       const input = document.createElement("input");
@@ -1010,7 +1010,7 @@ export class Board {
     } else if (kind === "sheet") {
       this.sheets = await api.listCheatsheets().catch(() => this.sheets);
       const choices: Choice[] = this.sheets.map((s) => ({ value: s.id, label: s.title, group: s.kind === "web" ? "Web pages" : "From books" }));
-      if (!choices.length) return void (await say("There are no cheatsheets yet: keep a web page or a book's pages in the Cheatsheets tab.", "Add a cheatsheet"));
+      if (!choices.length) return void (await say("No cheatsheets yet. Add web pages or book pages in the Cheatsheets tab.", "Add a cheatsheet"));
       const id = await askChoice("Which cheatsheet?", choices, { title: "Add a cheatsheet" });
       if (id) await this.add("sheet", at, { sheetId: id });
     } else if (kind === "video") {
@@ -1020,7 +1020,7 @@ export class Board {
         .flatMap((m) => m.parts.map((p, i) => ({ value: p.id, label: m.parts.length > 1 ? `${i + 1}. ${p.title}` : p.title, group: m.id === own ? `This project's: ${m.title}` : m.title, own: m.id === own })))
         .sort((a, b) => Number(b.own) - Number(a.own))
         .map(({ value, label, group }) => ({ value, label, group }));
-      if (!choices.length) return void (await say("There are no videos yet: keep them in the Masterclasses tab.", "Add a video"));
+      if (!choices.length) return void (await say("No videos yet. Add them in the Masterclasses tab.", "Add a video"));
       const id = await askChoice("Which video?", choices, { title: "Add a video" });
       const m = classes.find((x) => x.parts.some((p) => p.id === id));
       const part = m?.parts.find((p) => p.id === id);
@@ -1030,7 +1030,7 @@ export class Board {
       // Picked, so the keyboard's figures go to it at once.
       if (item) this.root.focus({ preventScroll: true });
     } else if (kind === "counter") {
-      if (!this.hooks.counter?.()) return void (await say("The counter counts the rows of the project's pattern: choose its pattern first, on the side.", "Counter"));
+      if (!this.hooks.counter?.()) return void (await say("The counter counts rows of the project's pattern. Choose a pattern first, in the side panel.", "Counter"));
       // One counter, as one timer.
       const there = this.items.find((i) => i.kind === "counter");
       if (there) {
@@ -1086,7 +1086,7 @@ export class Board {
   /** A picture: downscaled, then stored, at the shape it is; placed in free space unless dropped somewhere. */
   private async addImage(file: Blob, at: { x: number; y: number } | null): Promise<void> {
     const prepared = await prepareBoardImage(file);
-    if (!prepared) return void (await say("That could not be read as a picture.", "Board"));
+    if (!prepared) return void (await say("This file is not a readable picture.", "Board"));
     const w = 300;
     const h = Math.max(40, Math.round((w * prepared.height) / prepared.width));
     const item = await this.add("image", at ?? this.placeFor("image", [w, h]), {}, [w, h]);
@@ -1111,7 +1111,7 @@ export class Board {
     const cropped = await cropImage(url);
     if (!cropped) return;
     const prepared = await prepareBoardImage(cropped);
-    if (!prepared) return void (await say("The cropped picture could not be made.", "Crop"));
+    if (!prepared) return void (await say("The picture could not be cropped.", "Crop"));
     try {
       const stored = await api.setBoardImage(id, await blobBytes(prepared.blob));
       const i = this.items.findIndex((x) => x.id === id);
@@ -1387,7 +1387,7 @@ export class Board {
     // A picture, or a pin, can be cropped and copied: labelled buttons as it is pointed at or selected, or C and Ctrl+C.
     const crop =
       item.hasImage && (item.kind === "image" || item.kind === "pin")
-        ? `<span class="board-pic-tools"><button class="board-crop" data-act="view" title="See it big (double-click it, or Space with it selected)">⤢ View</button><button class="board-crop" data-act="crop" title="Crop the picture (C, with it selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy the picture, to paste anywhere (Ctrl+C, with it selected)">⧉ Copy</button></span>`
+        ? `<span class="board-pic-tools"><button class="board-crop" data-act="view" title="Enlarge (double-click, or Space when selected)">⤢ View</button><button class="board-crop" data-act="crop" title="Crop (C when selected)">✂ Crop</button><button class="board-crop" data-act="copy" title="Copy (Ctrl+C when selected)">⧉ Copy</button></span>`
         : "";
     const remove = `${crop}<button class="board-x" data-act="remove" title="Remove from the board">✕</button>`;
     const grip = `<span class="board-grip" title="Drag to resize"></span>`;
@@ -1448,7 +1448,7 @@ export class Board {
         const t = this.tools.find((x) => x.id === d.toolId);
         body = t
           ? `<div class="board-tool"><span class="tool-size">${esc(headline(t))}</span><span>${esc(kindLabel(t.kind))}</span><small>${esc(describe(t))}</small></div>`
-          : `<div class="board-caption missing">A needle no longer in the box</div>`;
+          : `<div class="board-caption missing">A needle no longer in Needles & hooks</div>`;
         break;
       }
       case "log":
@@ -1458,8 +1458,8 @@ export class Board {
         // Moved by its bar: the player takes the presses on itself.
         const videoId = String(d.videoId ?? "");
         body = `
-          <div class="board-video-bar" title="Drag here to move it"><span>🎬 ${esc(String(d.title ?? ""))}</span><button data-act="open" title="Open it in your browser">↗</button></div>
-          ${videoId ? playerHtml({ videoId, title: String(d.title ?? "") }, "board-video") : `<div class="board-caption missing">Only YouTube videos play on the board: ↗ opens it.</div>`}`;
+          <div class="board-video-bar" title="Drag to move"><span>🎬 ${esc(String(d.title ?? ""))}</span><button data-act="open" title="Open in the browser">↗</button></div>
+          ${videoId ? playerHtml({ videoId, title: String(d.title ?? "") }, "board-video") : `<div class="board-caption missing">Only YouTube videos play on the board. ↗ opens it in the browser.</div>`}`;
         break;
       }
       case "steps":
@@ -1475,7 +1475,7 @@ export class Board {
         // The page's own counter is moved in after: it keeps its state and its keys.
         body = this.hooks.counter?.()
           ? `<div class="board-counter-slot board-fit"></div>`
-          : `<div class="board-caption missing">The counter counts the rows of the project's pattern: choose one, on the side.</div>`;
+          : `<div class="board-caption missing">The counter counts rows of the project's pattern. Choose a pattern in the side panel.</div>`;
         break;
       case "sheet": {
         // Moved by its bar; a web page in a frame, a book's pages drawn after.
@@ -1486,13 +1486,13 @@ export class Board {
         }
         const web = s.kind === "web";
         const book = this.patterns.find((p) => p.id === s.patternId);
-        const bar = `<div class="board-chart-bar board-sheet-bar" title="Drag here to move it"><span>📋 ${esc(s.title)}</span>${
-          web ? `<button data-act="sheet-window" title="In a window of its own, beside the app">Window ↗</button>` : ""
-        }<button data-act="open" title="Open it in Cheatsheets">Open ↗</button></div>`;
+        const bar = `<div class="board-chart-bar board-sheet-bar" title="Drag to move"><span>📋 ${esc(s.title)}</span>${
+          web ? `<button data-act="sheet-window" title="Open in a separate window">Window ↗</button>` : ""
+        }<button data-act="open" title="Open in Cheatsheets">Open ↗</button></div>`;
         const inner = web
           ? s.framable
             ? sheetFrameHtml(s, "board-sheet-frame")
-            : `<div class="board-sheet-refused"><p>${esc(hostOf(s.url))} will not be shown inside another app.</p><button data-act="sheet-window">Open in a window of its own</button><button class="ghost" data-act="sheet-browser">In your browser</button></div>`
+            : `<div class="board-sheet-refused"><p>${esc(hostOf(s.url))} cannot be shown inside the app.</p><button data-act="sheet-window">Open in a separate window</button><button class="ghost" data-act="sheet-browser">Open in the browser</button></div>`
           : s.kind === "pages" && !book
             ? `<div class="board-caption missing">The book these pages are from is no longer in the library.</div>`
             : `<div class="board-sheet" data-sheet-of="${esc(s.id)}"></div>`;
@@ -1503,7 +1503,7 @@ export class Board {
         // Moved by its bar; drawn after, from the chart as it is now.
         const chart = this.charts.find((c) => c.id === d.chartId);
         body = chart
-          ? `<div class="board-chart-bar" title="${esc(describeChart(decode(chart.data)))}"><span>▦ ${esc(chart.name)}</span><button data-act="open" title="Open the chart, to change it">Open ↗</button></div>
+          ? `<div class="board-chart-bar" title="${esc(describeChart(decode(chart.data)))}"><span>▦ ${esc(chart.name)}</span><button data-act="open" title="Open the chart to edit it">Open ↗</button></div>
              <div class="board-chart"><canvas data-chart-of="${esc(chart.id)}"></canvas></div>`
           : `<div class="board-caption missing">A chart no longer in Constructors</div>`;
         break;
@@ -1512,7 +1512,7 @@ export class Board {
         // A crochet diagram, drawn from it as it is now: moved by its bar.
         const c = this.crochet.find((x) => x.id === d.diagramId);
         body = c
-          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>⊛ ${esc(c.name)}</span><button data-act="open" title="Open it in Constructors, to change it">Open ↗</button></div>
+          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>⊛ ${esc(c.name)}</span><button data-act="open" title="Open in Constructors to edit it">Open ↗</button></div>
              <div class="board-crochet">${diagramSvg(c.data, c.name)}</div>`
           : `<div class="board-caption missing">A crochet diagram no longer in Constructors</div>`;
         break;
@@ -1521,7 +1521,7 @@ export class Board {
         // A chart kept as a picture: moved by its bar, the picture as big as the card lets it.
         const c = this.chartPictures.find((x) => x.id === d.chartPictureId);
         body = c
-          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>▦ ${esc(c.name)}</span><button data-act="open" title="See it big (or double-click it)">⤢ View</button></div>
+          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>▦ ${esc(c.name)}</span><button data-act="open" title="Enlarge (or double-click)">⤢ View</button></div>
              <div class="board-chartpic" data-chartpic="${esc(c.id)}"></div>`
           : `<div class="board-caption missing">A chart no longer kept in Charts</div>`;
         break;
@@ -1561,7 +1561,7 @@ export class Board {
     ];
     return `
       <div class="board-fit board-sum">
-        <div class="board-sum-bar" title="Drag here to move it; selected, it takes the keyboard's figures and + − * /">🧮 Calculator</div>
+        <div class="board-sum-bar" title="Drag to move. When selected, it takes typed numbers and + − * /">🧮 Calculator</div>
         <ol class="board-sum-tape" data-el="sum-tape">${s.tape.slice(-3).map((t) => `<li>${esc(t)}</li>`).join("")}</ol>
         <div class="board-sum-expr" data-el="sum-expr">${esc(sumExpression(s))}</div>
         <div class="board-sum-display" data-el="sum-display">${esc(sumDisplay(s))}</div>
@@ -1631,21 +1631,21 @@ export class Board {
     const paused = isPaused(running);
     const go = running
       ? `<div class="board-timer-buttons">
-           <button class="board-timer-go${paused ? " primary" : ""}" data-act="timer-pause" title="${paused ? "Go on: the same sitting" : "A break: the same sitting after it, the break not counted"}">${paused ? "▶ Go on" : "⏸ Pause"}</button>
-           <button class="board-timer-go${paused ? "" : " primary"}" data-act="timer-go" title="Stop the timer: you have put it down">■ Stop</button>
+           <button class="board-timer-go${paused ? " primary" : ""}" data-act="timer-pause" title="${paused ? "Resume the same session" : "Pause: the break is not counted"}">${paused ? "▶ Resume" : "⏸ Pause"}</button>
+           <button class="board-timer-go${paused ? "" : " primary"}" data-act="timer-go" title="Stop the timer">■ Stop</button>
          </div>`
-      : `<button class="board-timer-go" data-act="timer-go" title="Time your knitting: it runs with the app closed too">▶ Start</button>`;
+      : `<button class="board-timer-go" data-act="timer-go" title="Start timing; keeps running with the app closed">▶ Start</button>`;
     return `
       <div class="board-fit board-timer-fit">
-      <div class="board-timer-bar" title="Drag here to move it">⏱ Knitting time</div>
+      <div class="board-timer-bar" title="Drag to move">⏱ Knitting time</div>
       <div class="board-timer">
         <div class="board-timer-clock${running && !paused ? " running" : ""}" data-el="timer-clock">${running ? clock(sessionMs(running)) : "0:00:00"}</div>
         ${paused ? `<div class="board-timer-paused">Paused</div>` : ""}
         <div class="board-timer-total" data-el="timer-total">${this.sessions.length ? `${hoursText(totalMs(this.sessions))} in all` : "Not timed yet"}</div>
-        ${live ? go : `<p class="board-timer-total">Finished: its time is added by hand, on the side.</p>`}
-        <label class="board-timer-auto" title="Counting a row starts the timer, or goes on after a pause; thirty minutes without one stops it, as at the last row counted">
+        ${live ? go : `<p class="board-timer-total">Finished: time can be added by hand in the side panel.</p>`}
+        <label class="board-timer-auto" title="Counting a row starts or resumes the timer; 30 minutes without a counted row stops it at the last one">
           <input type="checkbox" data-f="timer-auto" ${d.auto !== false ? "checked" : ""} />
-          <span>Start with a row counted, stop after 30 minutes without one</span>
+          <span>Start on a counted row; stop after 30 minutes without one</span>
         </label>
       </div>
       </div>`;
@@ -1679,13 +1679,13 @@ export class Board {
       .map(
         (s, i) => `
         <li class="board-step${s.done ? " done" : ""}${i === now ? " now" : ""}">
-          <button class="step-tick" data-act="step-tick" data-step="${i}" title="${s.done ? "Not done after all" : "Done"}" aria-pressed="${s.done}">${s.done ? "✓" : ""}</button>
+          <button class="step-tick" data-act="step-tick" data-step="${i}" title="${s.done ? "Mark as not done" : "Mark as done"}" aria-pressed="${s.done}">${s.done ? "✓" : ""}</button>
           <div class="step-body">
             ${i === now ? `<span class="step-now">Knitting now</span>` : ""}
             <p>${esc(s.text)}</p>
             ${
               s.times
-                ? `<div class="step-count" title="Times done, of the times it is worked">
+                ? `<div class="step-count" title="Times done, out of the total">
                     <button data-act="step-less" data-step="${i}" aria-label="One fewer" ${s.count ? "" : "disabled"}>−</button>
                     <b>${s.count}</b> of ${s.times}
                     <button data-act="step-more" data-step="${i}" aria-label="One more" ${s.count >= s.times ? "disabled" : ""}>+</button>
@@ -1698,7 +1698,7 @@ export class Board {
       .join("");
     return `
       <div class="board-steps">
-        <div class="board-steps-head" title="Drag here to move it">
+        <div class="board-steps-head" title="Drag to move">
           <strong>${esc(list.title || "Steps")}</strong>
           <span class="board-steps-done">${done === total && total ? "All done" : `${done} of ${total} done`}</span>
         </div>
@@ -1719,7 +1719,7 @@ export class Board {
         <div class="board-log-entry${e.milestone ? " milestone" : ""}">
           <span class="board-log-when">${esc(when(e.at))}</span>
           ${e.text ? (e.milestone ? `<b>${esc(e.text)}</b>` : `<p>${esc(e.text)}</p>`) : ""}
-          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><span class="board-pic-tools"><button class="board-crop" data-act="log-view" data-entry="${esc(e.id)}" title="See this photo big">⤢ View</button><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop this photo">✂ Crop</button><button class="board-crop" data-act="log-copy" data-entry="${esc(e.id)}" title="Copy this photo, to paste anywhere">⧉ Copy</button></span></div>` : ""}
+          ${e.photoPath ? `<div class="board-log-photo" data-log-photo="${esc(e.id)}"><span class="board-pic-tools"><button class="board-crop" data-act="log-view" data-entry="${esc(e.id)}" title="Enlarge">⤢ View</button><button class="board-crop" data-act="log-crop" data-entry="${esc(e.id)}" title="Crop">✂ Crop</button><button class="board-crop" data-act="log-copy" data-entry="${esc(e.id)}" title="Copy">⧉ Copy</button></span></div>` : ""}
         </div>`,
       )
       .join("");
@@ -1727,11 +1727,11 @@ export class Board {
       <div class="board-log">
         <div class="board-log-head">
           <strong>📓 Log</strong>
-          <button data-act="open-log" title="The whole log, to change or remove entries and add photos">Open ↗</button>
+          <button data-act="open-log" title="The full log: edit or remove entries, add photos">Open ↗</button>
         </div>
         <div class="board-log-compose">
-          <input data-f="log-text" value="${esc(this.logDraft)}" placeholder="What happened? Enter adds it" />
-          <button data-act="log-photo" title="A photo to go with it: or paste one here with Ctrl+V, or drop one on the card" aria-label="Add a photo">📷</button>
+          <input data-f="log-text" value="${esc(this.logDraft)}" placeholder="New entry (Enter adds it)" />
+          <button data-act="log-photo" title="Add a photo, paste one with Ctrl+V, or drop one on the card" aria-label="Add a photo">📷</button>
           <button data-act="log-add">Add</button>
         </div>
         ${this.logPendingHtml()}
@@ -1741,7 +1741,7 @@ export class Board {
 
   /** A calculator chosen, opened with this board's project to save its result to. */
   private async pickCalculator(): Promise<void> {
-    const calc = await askChoice("Which constructor? Its result is saved to this board.", BOARD_CALCULATORS.map((c) => ({ value: c.key, label: c.label })), { title: "Constructors" });
+    const calc = await askChoice("Which constructor? The result is saved to this board.", BOARD_CALCULATORS.map((c) => ({ value: c.key, label: c.label })), { title: "Constructors" });
     if (calc) this.hooks.openCalculator?.(calc);
   }
 

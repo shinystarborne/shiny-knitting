@@ -8,7 +8,7 @@
  *   window.__knitTimeChecks()
  */
 import type { KnitSession, Pattern } from "../src/api";
-import { clock, hoursText, knittedSince, perHour, sessionMs, totalMs, trueCost, typedStart } from "../src/views/knit-time";
+import { clock, hoursText, knittedSince, sessionMs, totalMs, trueCost, typedStart } from "../src/views/knit-time";
 
 interface CheckResult {
   name: string;
@@ -41,7 +41,6 @@ function pure(results: CheckResult[]): void {
   const sessions = [s(now - 3600000, now - 1800000), s(now - 600000, null), s(now - 400 * 86400000, now - 400 * 86400000 + 7200000)];
   check(results, "a spell's length, a running one to now", sessionMs(sessions[0], now) === 1800000 && sessionMs(sessions[1], now) === 600000);
   check(results, "all of them, and those since a day", totalMs(sessions, now) === 1800000 + 600000 + 7200000 && knittedSince(sessions, now - 365 * 86400000, now) === 2400000);
-  check(results, "what it came to an hour; nothing with no time or no cost", perHour(30, 2 * 3600000) === 15 && perHour(30, 0) === null && perHour(0, 3600000) === null);
   check(results, "what it really costs: what it cost, and the time at an hour's worth", trueCost(30, 3 * 3600000, 15) === 75 && trueCost(0, 90 * 60000, 12) === 18);
   check(results, "time typed for a day is at its noon; for today, ended by now", typedStart("2026-10-10", 3600, now) === new Date(2026, 9, 10, 12).getTime() && typedStart("2026-10-18", 4 * 3600, now) === now - 4 * 3600000 && typedStart("last week", 60, now) === null);
 }
@@ -97,7 +96,7 @@ export async function verifyKnitTime() {
     check(results, "the tab bar's timer opens the project timed", page()!.querySelector<HTMLInputElement>('[data-f="name"]')?.value === "Timed hat" && !!box()!.querySelector('[data-act="knit-stop"]'), box()?.textContent?.replace(/\s+/g, " ") ?? "no box");
     act("knit-stop");
     await waitFor(() => !!box()?.querySelector('[data-act="knit-start"]') && pill().hidden, "stopped");
-    check(results, "Stop: one sitting kept, and the tab bar's timer gone", /in 1 sitting/.test(box()!.textContent ?? "") && (store.knitSessions ?? []).filter((s) => s.projectId === hat.id && s.endedAt).length === 1);
+    check(results, "Stop: one session kept, and the tab bar's timer gone", /in 1 session/.test(box()!.textContent ?? "") && (store.knitSessions ?? []).filter((s) => s.projectId === hat.id && s.endedAt).length === 1);
 
     // By hand.
     act("knit-add");
@@ -105,7 +104,7 @@ export async function verifyKnitTime() {
     const yesterday = new Date(Date.now() - 86400000);
     const day = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
     fill([day, "2", "30"]);
-    await waitFor(() => /in 2 sittings/.test(box()?.textContent ?? ""), "the time added");
+    await waitFor(() => /in 2 sessions/.test(box()?.textContent ?? ""), "the time added");
     check(results, "time added by hand: 2 hours 30 the day before", total() === "2 h 30 min", total());
     const typed = (store.knitSessions ?? []).find((s) => s.projectId === hat.id && s.endedAt! - s.startedAt === 9000000)!;
     check(results, "…at its noon", new Date(typed.startedAt).getHours() === 12);
@@ -118,9 +117,9 @@ export async function verifyKnitTime() {
     const fixed = (store.knitSessions ?? []).find((s) => s.id === typed.id)!;
     check(results, "a sitting put right: from a quarter past six, three hours", new Date(fixed.startedAt).getHours() === 18 && new Date(fixed.startedAt).getMinutes() === 15 && fixed.endedAt! - fixed.startedAt === 3 * 3600000, JSON.stringify(fixed));
     check(results, "…the sittings left open as they were", box()!.querySelector<HTMLDetailsElement>(".knit-sittings")!.open);
-    check(results, "what it came to an hour: the pattern's 30 over three hours", /€10\.00 an hour|10,00\s*€ an hour/.test(box()!.querySelector('[data-el="knit-rate"]')?.textContent ?? ""), box()!.querySelector('[data-el="knit-rate"]')?.textContent ?? "");
+    check(results, "no cost per hour of knitting shown", !box()!.querySelector('[data-el="knit-rate"]') && !/an hour/.test(box()!.querySelector(".knit-total")?.textContent ?? ""));
     // What it really costs, with an hour's worth said in Settings.
-    check(results, "with no hour's worth said, it says where to say it", /Say your standard in Settings/.test(box()!.querySelector('[data-el="rate-hint"]')?.textContent ?? "") && !box()!.querySelector('[data-el="knit-worth"]'));
+    check(results, "with no hour's worth said, it says where to say it", /Set for all projects in Settings/.test(box()!.querySelector('[data-el="rate-hint"]')?.textContent ?? "") && !box()!.querySelector('[data-el="knit-worth"]'));
     store.hourRate = null;
     page()!.dispatchEvent(new CustomEvent("open-settings", { bubbles: true }));
     const settings = () => document.querySelector<HTMLInputElement>('.modal-backdrop:not(.hidden) [data-f="hourRate"]');
@@ -128,39 +127,39 @@ export async function verifyKnitTime() {
     settings()!.value = "abc";
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="save"]')!.click();
     await waitFor(() => !document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-el="error"]')?.hidden, "the refusal");
-    check(results, "Settings refuse an hour's worth that is no number", /a number: 15/.test(document.querySelector('.modal-backdrop:not(.hidden) [data-el="error"]')?.textContent ?? ""));
+    check(results, "Settings refuse an hour's worth that is no number", /must be a number, like 15/.test(document.querySelector('.modal-backdrop:not(.hidden) [data-el="error"]')?.textContent ?? ""));
     settings()!.value = "15";
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="save"]')!.click();
     await waitFor(() => !settings(), "saved");
     check(results, "…and keep one that is", store.hourRate === 15, String(store.hourRate));
     // The page open all along takes it up, not only once opened again.
     await waitFor(() => !!box()?.querySelector(".knit-worth"), "the open page to take up the standard", 5000).catch(() => {});
-    check(results, "the project page open while Settings were saved takes up the new standard", !!page() && box()?.querySelector<HTMLInputElement>("[data-rate]")?.value === "15" && /€15\.00 an hour/.test(box()?.querySelector('[data-el="knit-worth"]')?.textContent ?? ""), box()?.querySelector<HTMLInputElement>("[data-rate]")?.value ?? "no page");
+    check(results, "the project page open while Settings were saved takes up the new standard", !!page() && box()?.querySelector<HTMLInputElement>("[data-rate]")?.value === "15" && /€75\.0\d/.test(box()?.querySelector('[data-el="knit-worth"]')?.textContent ?? ""), box()?.querySelector<HTMLInputElement>("[data-rate]")?.value ?? "no page");
     tab("patterns");
     await waitFor(() => !page(), "the library");
     document.querySelector(".library")!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: hat.id }));
     await waitFor(() => !!box()?.querySelector(".knit-worth"), "the page again");
     const worth = box()!.querySelector<HTMLElement>('[data-el="knit-worth"]')!.innerText.replace(/\s+/g, " ");
     // Three hours, and the few seconds the timer ran.
-    check(results, "the hour's worth shows the standard, said so", box()!.querySelector<HTMLInputElement>("[data-rate]")!.value === "15" && /The standard, from Settings/.test(box()!.querySelector('[data-el="rate-hint"]')!.textContent ?? ""));
-    check(results, "what it really costs: 30 for the pattern, 3 hours at 15", /With your time at €15\.00 an hour: €75\.0\d \(€30\.00 \+ €45\.0\d for your time\)/.test(worth), worth);
+    check(results, "the hour's worth shows the standard, said so", box()!.querySelector<HTMLInputElement>("[data-rate]")!.value === "15" && /^From Settings/.test(box()!.querySelector('[data-el="rate-hint"]')!.textContent ?? ""));
+    check(results, "project cost with time: 30 for the pattern, 3 hours at 15", /^Project cost with time: €75\.0\d$/.test(worth.trim()), worth);
 
     // This project's own hour's worth, and back to the standard.
     const rateInput = () => box()!.querySelector<HTMLInputElement>("[data-rate]")!;
     rateInput().value = "22";
     rateInput().dispatchEvent(new Event("change", { bubbles: true }));
-    await waitFor(() => /€22\.00 an hour/.test(box()?.querySelector('[data-el="knit-worth"]')?.textContent ?? ""), "its own rate");
-    check(results, "a project's own hour's worth, typed over the standard, counts", (await invoke<{ hourRate?: number | null }[]>("list_projects")).find((p) => (p as { id: string }).id === hat.id)?.hourRate === 22 && /Its own: the standard is €15\.00/.test(box()!.querySelector('[data-el="rate-hint"]')!.textContent ?? ""));
+    await waitFor(() => /€96\.0\d/.test(box()?.querySelector('[data-el="knit-worth"]')?.textContent ?? ""), "its own rate");
+    check(results, "a project's own hour's worth, typed over the standard, counts", (await invoke<{ hourRate?: number | null }[]>("list_projects")).find((p) => (p as { id: string }).id === hat.id)?.hourRate === 22 && /This project only \(€15\.00 in Settings\)/.test(box()!.querySelector('[data-el="rate-hint"]')!.textContent ?? ""));
     box()!.querySelector<HTMLElement>('[data-act="rate-standard"]')!.click();
     await waitFor(() => rateInput().value === "15", "the standard again");
-    check(results, "…and Back to the standard follows Settings again", (await invoke<{ id: string; hourRate?: number | null }[]>("list_projects")).find((p) => p.id === hat.id)?.hourRate == null && /€15\.00 an hour/.test(box()!.querySelector('[data-el="knit-worth"]')!.textContent ?? ""));
+    check(results, "…and Use the one in Settings follows Settings again", (await invoke<{ id: string; hourRate?: number | null }[]>("list_projects")).find((p) => p.id === hat.id)?.hourRate == null && /€75\.0\d/.test(box()!.querySelector('[data-el="knit-worth"]')!.textContent ?? ""));
 
     // Removed.
     const short = (store.knitSessions ?? []).find((s) => s.projectId === hat.id && s.id !== typed.id)!;
     box()!.querySelector<HTMLElement>(`[data-act="knit-remove"][data-id="${short.id}"]`)!.click();
     await waitFor(() => !!dialog(), "the question");
     [...dialog()!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Remove")!.click();
-    await waitFor(() => /in 1 sitting/.test(box()?.textContent ?? ""), "removed");
+    await waitFor(() => /in 1 session/.test(box()?.textContent ?? ""), "removed");
     check(results, "a sitting removed", (store.knitSessions ?? []).filter((s) => s.projectId === hat.id).length === 1);
 
     // Statistics.

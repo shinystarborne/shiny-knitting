@@ -81,8 +81,8 @@ export type Spread = { to: number; text: string; gaps: number[] } | { error: str
 export function spreadEvenly(stitches: number, change: number, inRound: boolean): Spread {
   const n = Math.round(stitches);
   const c = Math.round(change);
-  if (n < 1) return { error: "Give the stitches you have now." };
-  if (!c) return { error: "Give how many stitches to increase (e.g. 8) or decrease (e.g. −8)." };
+  if (n < 1) return { error: "Current stitch count needed." };
+  if (!c) return { error: "Number of stitches to increase (e.g. 8) or decrease (e.g. −8) needed." };
   const inc = c > 0;
   const count = Math.abs(c);
   // Plain stitches to share out: a decrease uses two stitches (k2tog).
@@ -254,9 +254,9 @@ export interface Pieces {
 export function pieces(i: RaglanInput, depthName = "armhole depth"): Pieces | { error: string } {
   const spc = i.gauge.sts / 10;
   const rpc = i.gauge.rows / 10;
-  if (!(spc > 0) || !(rpc > 0)) return { error: "Give the gauge: stitches and rows." };
+  if (!(spc > 0) || !(rpc > 0)) return { error: "Gauge needed: stitches and rows." };
   for (const [v, what] of [[i.chest, "chest"], [i.upperArm, "upper arm"], [i.wrist, "wrist"], [i.neck, "neck"], [i.yokeDepth, depthName], [i.armLength, "arm length"], [i.bodyLength, "body length"]] as const) {
-    if (!(v > 0)) return { error: `Give the ${what}.` };
+    if (!(v > 0)) return { error: `${what[0].toUpperCase()}${what.slice(1)} needed.` };
   }
   const warnings: string[] = [];
   // A whole number of rib repeats round the hem and the cuff, kept even for the halves.
@@ -277,7 +277,7 @@ export function pieces(i: RaglanInput, depthName = "armhole depth"): Pieces | { 
   const sleeveRounds = Math.max(0, Math.round((i.armLength - i.cuffRib) * rpc));
   const sleeveEvery = sleeveDecreases ? Math.floor(sleeveRounds / (sleeveDecreases + 1)) : 0;
   if (sleeveDecreases && sleeveEvery < 2) {
-    warnings.push(`The sleeve narrows by ${sleeveDecreases * 2} stitches in only ${sleeveRounds} rounds: decrease on every round, or give more wrist ease.`);
+    warnings.push(`The sleeve narrows by ${sleeveDecreases * 2} stitches in only ${sleeveRounds} rounds: decrease on every round, or add more wrist ease.`);
   }
   return {
     spc,
@@ -317,8 +317,8 @@ export function raglan(i: RaglanInput): RaglanResult | { error: string } {
     front0 = Math.round((neckTarget - 2 * sleeve0) / 2);
     if ((front - front0) % 2) front0 += 1;
   }
-  if (front0 < 2) return { error: "The neck opening is wider than the yoke needs: give less neck ease, or more body ease." };
-  if (front0 > front || sleeve0 > sleeve) return { error: "The neck opening is as wide as the yoke: give less neck ease, or more body ease." };
+  if (front0 < 2) return { error: "The neck opening is wider than the yoke needs: reduce neck ease or add body ease." };
+  if (front0 > front || sleeve0 > sleeve) return { error: "The neck opening is as wide as the yoke: reduce neck ease or add body ease." };
   const castOn = 2 * front0 + 2 * sleeve0;
   const bodyIncreases = (front - front0) / 2;
   const sleeveIncreases = (sleeve - sleeve0) / 2;
@@ -437,7 +437,7 @@ export function roundYoke(i: RaglanInput, increases = 3, repeat = 1, chartWidth 
   const warnings = [...p.warnings];
   const yokeTotal = 2 * p.front + 2 * p.sleeve;
   const neckTarget = (i.neck + i.neckEase) * p.spc;
-  if (neckTarget >= yokeTotal) return { error: "The neck opening is as wide as the yoke: give less neck ease, or more body ease." };
+  if (neckTarget >= yokeTotal) return { error: "The neck opening is as wide as the yoke: reduce neck ease or add body ease." };
   const k = Math.max(1, Math.min(8, Math.round(increases)));
   const rep = Math.max(1, Math.round(repeat));
   // Counts from the underarm up: the yoke, each step smaller by the same
@@ -625,7 +625,7 @@ export function raglanBottomUpSteps(r: RaglanResult, i: RaglanInput, len: (cm: n
       only ? ` ${both} of them decrease at all 8 places; on the other ${only}, decrease only on ${where} (4 stitches fewer), spread among the rest.` : ""
     } The yoke measures ${len(r.finished.yokeDepth)}.`,
   );
-  steps.push(`You have ${r.front0} stitches each for the back and front, and ${r.sleeve0} for each sleeve: ${r.castOn} in all.`);
+  steps.push(`Now ${r.front0} stitches each for the back and front, and ${r.sleeve0} for each sleeve: ${r.castOn} in all.`);
   const raised = backNeck(i, r.sleeve0, r.front0);
   if (raised) steps.push(...backNeckSteps(raised, r.front0, "", false, len));
   if (r.neckRibSts !== r.castOn) steps.push(evenRound(r.castOn, r.neckRibSts, "Next round, to a count the rib fits"));
@@ -671,7 +671,7 @@ export interface CardiganResult {
 export function cardigan(i: RaglanInput, bandWidth: number, buttons: number): CardiganResult | { error: string } {
   const r = raglan(i);
   if ("error" in r) return r;
-  if (!(bandWidth > 0)) return { error: "Give the front band's width." };
+  if (!(bandWidth > 0)) return { error: "Front band width needed." };
   const spc = i.gauge.sts / 10;
   const rpc = i.gauge.rows / 10;
   const bandSts = Math.max(2, even(bandWidth * spc));
@@ -693,7 +693,7 @@ export function cardigan(i: RaglanInput, bandWidth: number, buttons: number): Ca
   // Evenly spaced along the band, the top and bottom ones near the ends.
   const holeEvery = holes > 1 ? Math.floor((bandPickUp - 6) / (holes - 1)) : 0;
   const firstHole = holes ? Math.max(2, Math.floor((bandPickUp - (holes - 1) * holeEvery) / 2)) : 0;
-  if (holes > 1 && holeEvery < 4) warnings.push(`${holes} buttons are too many for a ${bandPickUp}-stitch band: give fewer.`);
+  if (holes > 1 && holeEvery < 4) warnings.push(`${holes} buttons are too many for a ${bandPickUp}-stitch band: use fewer.`);
   const neckPickUp = ribCount(castOn + 2 * Math.max(2, Math.round((bandRows * 3) / 4)), i.rib, true);
   const hemRibSts = ribCount(body, i.rib, true);
   return { r, bandSts, front0: f0, front, castOn, body, bandPickUp, bandRows, buttons: holes, firstHole, holeEvery, neckPickUp, hemRibSts, warnings };
@@ -723,7 +723,7 @@ export function cardiganSteps(c: CardiganResult, i: RaglanInput, len: (cm: numbe
     }`,
   );
   if (r.plainRounds) steps.push(`Work ${r.plainRounds} rows plain, until the yoke measures ${len(r.finished.yokeDepth)} from the cast-on.`);
-  steps.push(`You have ${c.front} stitches for each front, ${r.front} for the back, and ${r.sleeve} for each sleeve.`);
+  steps.push(`Now ${c.front} stitches for each front, ${r.front} for the back, and ${r.sleeve} for each sleeve.`);
   steps.push(
     `Separate (right side): knit the left front's ${c.front}, put the sleeve's ${r.sleeve} on hold, cast on ${r.underarmSts} for the underarm, knit the back's ${r.front}, put the other sleeve on hold, cast on ${r.underarmSts}, knit the right front's ${c.front}. The body has ${c.body} stitches.`,
   );
@@ -805,7 +805,7 @@ function backNeckSteps(b: BackNeck, back: number, lead: string, flat: boolean, l
   }
   steps.push(
     flat
-      ? "Make a double stitch and knit to the end of the row, knitting the double stitch you come to as one. Next row (wrong side): purl to the end, purling the other as one."
+      ? "Make a double stitch and knit to the end of the row, knitting the double stitch as one. Next row (wrong side): purl to the end, purling the other as one."
       : "Make a double stitch and knit to the end of the round. Next round: knit all round, knitting both double stitches each as one.",
   );
   return steps;
@@ -849,7 +849,7 @@ export function raglanSteps(r: RaglanResult, i: RaglanInput, len: (cm: number) =
     }`,
   );
   if (r.plainRounds) steps.push(`Knit ${r.plainRounds} rounds plain, until the yoke measures ${len(r.finished.yokeDepth)} from the neckband.`);
-  steps.push(`You have ${r.front} stitches each for the back and front, and ${r.sleeve} for each sleeve: ${2 * r.front + 2 * r.sleeve} in all.`);
+  steps.push(`Now ${r.front} stitches each for the back and front, and ${r.sleeve} for each sleeve: ${2 * r.front + 2 * r.sleeve} in all.`);
   steps.push(...belowTheYoke(r, i, len));
   return steps;
 }

@@ -41,8 +41,8 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
       `
       <p class="dialog-hint">${
         epub
-          ? "An EPUB has chapters rather than pages: each chapter chosen is laid out on A4 pages, as pictures of the pages, to print."
-          : "The pages are copied as they are: sharp, and their words still selectable."
+          ? "EPUBs have chapters instead of pages: each chosen chapter is laid out on A4 pages as pictures, for printing."
+          : "Pages are copied as they are: sharp, with selectable text."
       }</p>
       <label class="dialog-field"><span class="dialog-label">${epub ? "Chapters" : "Pages"} <em>of ${max}</em></span>
         <input class="dialog-input" data-f="pages" value="${source.currentPage()}" placeholder="e.g. 1-3, 7" /></label>
@@ -127,7 +127,7 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
       const pages = chosen();
       error.hidden = true;
       if (!pages.length) {
-        error.textContent = `Choose the ${word}s to save: tick them, or type them, as 1-3, 7.`;
+        error.textContent = `Choose the ${word}s to save: tick them or type them, e.g. 1-3, 7.`;
         error.hidden = false;
         return;
       }
@@ -144,7 +144,7 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
               (done, total) => (status.textContent = `Laying the chapters out on pages: ${done} of ${total}…`),
             )
           : await pdfPages(toBytes(await api.readFile(pattern.id)), pages, name);
-        status.textContent = "Choose where to save it…";
+        status.textContent = "Choose where to save…";
         const path = await api.saveFile("pdf", name, bytes);
         if (path === null) {
           status.hidden = true;

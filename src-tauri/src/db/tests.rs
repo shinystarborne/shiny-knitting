@@ -3730,7 +3730,7 @@ fn a_pair_of_tips_is_shared_a_tip_each() {
     assert_eq!(uses(&conn), "b:one c:one");
     // A fourth wanting a tip: both are in use.
     let err = insert_project(&conn, "d", &project("d", Some("one"))).unwrap_err().to_string();
-    assert!(err.contains("Both its tips are in use already: on b and c"), "{err}");
+    assert!(err.contains("Both tips are already in use: on b and c"), "{err}");
     // The pair taken back: from both.
     update_project(&conn, "a", &project("a", None)).unwrap();
     assert_eq!(uses(&conn), "a:");

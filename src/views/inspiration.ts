@@ -9,9 +9,9 @@ import { paintLazily } from "./lazy";
 /** What an inspiration board offers: everything but needles, which belong to projects. */
 const KINDS = ["note", "text", "link", "image", "pattern", "yarn", "swatch"] as const;
 
-const HINT = `Gather what inspires you: pictures from anywhere (paste them with <kbd>Ctrl</kbd>+<kbd>V</kbd>
+const HINT = `Inspiration in one place: pictures from anywhere (paste with <kbd>Ctrl</kbd>+<kbd>V</kbd>
   or drop them here), patterns from the library, yarn, links, colours and notes.
-  Drag the board to move around; <kbd>Ctrl</kbd>+scroll zooms. Everything saves as you go.`;
+  Drag the board to move it; <kbd>Ctrl</kbd>+scroll zooms. Everything is saved automatically.`;
 
 /**
  * The Inspiration tab: boards of their own, not tied to a project, for
@@ -57,7 +57,7 @@ export class InspirationView {
   private async onClick(e: MouseEvent): Promise<void> {
     const btn = closestEl(e.target, "button[data-act]");
     if (btn?.dataset.act === "add") {
-      const name = await askText("What is this board for?", { title: "New board", placeholder: "e.g. Autumn cardigans", okLabel: "Make the board" });
+      const name = await askText("Board name", { title: "New board", placeholder: "e.g. Autumn cardigans", okLabel: "Create" });
       if (name === null) return;
       try {
         const board = await api.addInspirationBoard(name);
@@ -91,7 +91,7 @@ export class InspirationView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${this.boards.length ? "No board by that name" : "No boards yet"}</h2>
-          <p>${this.boards.length ? "Try another word." : "Make a board to gather ideas: pictures from anywhere, patterns, yarn, links and colours."}</p>
+          <p>${this.boards.length ? "Try another word." : "Boards collect ideas: pictures from anywhere, patterns, yarn, links and colours."}</p>
         </div>`;
       return;
     }
@@ -160,7 +160,7 @@ export class InspirationPage {
     try {
       info = await api.getInspirationBoard(this.boardId);
     } catch {
-      await say("That board is no longer there.");
+      await say("This board no longer exists.");
       this.hooks.back();
       return;
     }

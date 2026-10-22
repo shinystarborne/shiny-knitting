@@ -118,7 +118,7 @@ export class ChartPicturesView {
           <h2>${none ? "No charts yet" : "No chart matches that"}</h2>
           <p>${
             none
-              ? "Keep the charts you knit or crochet from as pictures: only the chart, from a book, a pattern or a screenshot. <b>+ Add a chart</b>, or paste one with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or drop one here. A project's board can show one, from its Chart button."
+              ? "Knitting and crochet charts kept as pictures: only the chart, from a book, a pattern or a screenshot. <b>+ Add a chart</b>, paste one with <kbd>Ctrl</kbd>+<kbd>V</kbd>, or drop one here. A project's board can show one through its Chart button."
               : "The search looks through the names and notes."
           }</p>
         </div>`;
@@ -173,7 +173,7 @@ export class ChartPicturesView {
     for (const file of files.filter((f) => f.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name))) {
       const prepared = await prepareBoardImage(file, CHART_SIZE);
       if (!prepared) {
-        await say(`${file.name || "That"} could not be read as a picture.`, "Add a chart");
+        await say(`${file.name || "That"} is not a readable picture.`, "Add a chart");
         continue;
       }
       const name = file.name && !/^image\.\w+$/i.test(file.name) ? file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ") : "";
@@ -208,7 +208,7 @@ export class ChartPicturesView {
   }
 
   private async remove(chart: ChartPicture): Promise<void> {
-    const ok = await askYesNo(`Remove “${chart.name}”, and its picture?\n\nA board showing it says it is no longer kept. This cannot be undone.`, {
+    const ok = await askYesNo(`Remove “${chart.name}”, and its picture?\n\nBoards showing it will show it as removed. This cannot be undone.`, {
       title: "Remove chart",
       okLabel: "Remove",
       danger: true,

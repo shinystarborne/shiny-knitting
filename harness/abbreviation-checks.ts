@@ -88,7 +88,7 @@ export async function verifyAbbreviations() {
     field("abbr-meaning").value = "Centred double decrease, the designer's way.";
     panel()!.querySelector<HTMLFormElement>("form")!.requestSubmit();
     await waitFor(() => !!row("CDD2"), "your own added");
-    check(results, "one of your own is added, marked yours, and kept", /Yours/.test(row("CDD2")!.textContent ?? "") && store.abbreviations.some((a) => a.term === "CDD2"));
+    check(results, "a custom one is added, marked so, and kept", /Custom/.test(row("CDD2")!.textContent ?? "") && store.abbreviations.some((a) => a.term === "CDD2"));
     (row("CDD2")!.querySelector('[data-act="abbr-edit"]') as HTMLElement).click();
     check(results, "…Change puts it back in the form", field("abbr-term").value === "CDD2" && /Save/.test(panel()!.querySelector('[data-el="abbr-save"]')!.textContent ?? ""));
     field("abbr-meaning").value = "Slip 2 together, k1, pass both over.";

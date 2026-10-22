@@ -218,7 +218,7 @@ export async function verifyPeople() {
     await waitFor(() => !!card("pe2"), "the cards");
     (card("pe2")!.querySelector('[data-act="remove"]') as HTMLElement).click();
     await waitFor(() => !!dialog(), "the confirm");
-    check(results, "removing someone says their projects stay", /project for them stays/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
+    check(results, "removing someone says their projects stay", /project made for them is kept/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
     await answer("Remove");
     await waitFor(() => !card("pe2"), "the card to go");
     check(results, "they are gone, and the project is for no one", !store.people.some((p) => p.id === "pe2") && !store.projects.find((p) => p.id === "pr2")?.personId);

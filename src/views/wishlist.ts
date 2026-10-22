@@ -175,12 +175,12 @@ export class WishlistView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${filtering ? "Nothing matches those filters" : "Nothing on the wishlist yet"}</h2>
-          <p>${filtering ? "Try removing a filter." : "Save the yarn, needles and patterns you want to get, with where to get them."}</p>
+          <p>${filtering ? "Try removing a filter." : "Yarn, needles and patterns to get, with where to get them."}</p>
         </div>`;
       return;
     }
     this.results.innerHTML = `
-      ${wanted.length ? wanted.map(cardHtml).join("") : `<p class="wish-none">Nothing still wanted${isFiltering(this.filter) ? " that matches" : ""}: it is all got.</p>`}
+      ${wanted.length ? wanted.map(cardHtml).join("") : `<p class="wish-none">Nothing left to get${isFiltering(this.filter) ? " that matches" : ""}.</p>`}
       ${
         got.length
           ? `<div class="wish-section">
@@ -215,7 +215,7 @@ export class WishlistView {
   private async remove(id: string): Promise<void> {
     const wish = this.wishes.find((w) => w.id === id);
     if (!wish) return;
-    const ok = await askYesNo(`Take “${wish.name}” off the wishlist?\n\nThis cannot be undone.`, {
+    const ok = await askYesNo(`Remove “${wish.name}” from the wishlist?\n\nThis cannot be undone.`, {
       title: "Remove from wishlist",
       okLabel: "Remove",
       danger: true,
@@ -281,7 +281,7 @@ function cardHtml(w: Wish): string {
             ? `<button class="card-remove" data-act="want" data-id="${escapeHtml(w.id)}" title="Put it back as still wanted">Want again</button>`
             : `<button class="card-remove wish-got-btn" data-act="got" data-id="${escapeHtml(w.id)}" title="Got it: move it to Got">✓ Got it</button>`
         }
-        <button class="card-remove" data-act="remove" data-id="${escapeHtml(w.id)}" title="Take it off the wishlist">Remove</button>
+        <button class="card-remove" data-act="remove" data-id="${escapeHtml(w.id)}" title="Remove from the wishlist">Remove</button>
       </div>
     </article>`;
 }

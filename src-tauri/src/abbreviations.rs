@@ -58,20 +58,20 @@ pub fn save(conn: &Connection, input: &AbbreviationInput) -> AppResult<Abbreviat
     let term = input.term.split_whitespace().collect::<Vec<_>>().join(" ");
     let meaning = input.meaning.trim().to_string();
     if term.is_empty() || meaning.is_empty() {
-        return Err(AppError::Message("An abbreviation needs both: what the pattern writes, and what it means.".into()));
+        return Err(AppError::Message("An abbreviation needs both the abbreviation and its meaning.".into()));
     }
     if term.chars().count() > 40 {
-        return Err(AppError::Message("An abbreviation is short: up to 40 characters.".into()));
+        return Err(AppError::Message("An abbreviation can be up to 40 characters.".into()));
     }
     if meaning.chars().count() > 1000 {
-        return Err(AppError::Message("Its meaning is up to 1000 characters.".into()));
+        return Err(AppError::Message("The meaning can be up to 1000 characters.".into()));
     }
     let same: Option<String> = conn
         .query_row("SELECT id FROM abbreviations WHERE term = ?1", params![term], |r| r.get(0))
         .ok();
     let id = match (input.id.clone().filter(|i| !i.is_empty()), same) {
         (Some(id), Some(other)) if other != id => {
-            return Err(AppError::Message(format!("“{term}” is one of yours already.")));
+            return Err(AppError::Message(format!("“{term}” is already a custom abbreviation.")));
         }
         (Some(id), _) => id,
         (None, Some(other)) => other,
@@ -125,7 +125,7 @@ mod tests {
         let mb = save(&conn, &input(None, "MB", "make bobble")).unwrap();
         assert_eq!(list(&conn).unwrap().iter().map(|a| a.term.as_str()).collect::<Vec<_>>(), vec!["cdd", "MB"], "as last typed");
         // Renamed to one there is: refused.
-        assert!(save(&conn, &input(Some(&mb.id), "CDD", "x")).unwrap_err().to_string().contains("one of yours already"));
+        assert!(save(&conn, &input(Some(&mb.id), "CDD", "x")).unwrap_err().to_string().contains("already a custom abbreviation"));
         assert!(save(&conn, &input(None, "x", " ")).is_err(), "a meaning is needed");
         assert!(save(&conn, &input(None, &"k".repeat(41), "long")).is_err());
         remove(&conn, &mb.id).unwrap();

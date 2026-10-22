@@ -81,7 +81,7 @@ export class SettingsDialog {
         </div>
 
         <h3>Updates</h3>
-        <p class="modal-intro">You have ${escapeHtml(u.currentVersion)}.</p>
+        <p class="modal-intro">Installed version: ${escapeHtml(u.currentVersion)}</p>
 
         <label class="check">
           <input type="checkbox" data-f="includeBeta" ${u.includeBeta ? "checked" : ""} />
@@ -89,22 +89,21 @@ export class SettingsDialog {
         </label>
         <label class="check">
           <input type="checkbox" data-f="checkOnStartup" ${u.checkOnStartup ? "checked" : ""} />
-          <span>Check for updates automatically (at start, and every hour)</span>
+          <span>Check for updates automatically (at start and every hour)</span>
         </label>
 
         <div class="model-row">
           <button class="ghost" data-act="check-updates">Check for updates</button>
-          <button class="ghost" data-act="go-back" title="Something wrong since the last update? The version before is installed in its place; your library is kept">Go back to the previous version…</button>
+          <button class="ghost" data-act="go-back" title="Installs the previous version in place of this one. The library is kept.">Go back to the previous version…</button>
         </div>
         <em class="hint block" data-el="update-result"></em>
 
         <h3>Backup</h3>
         <p class="hint block">
-          Saves the whole library — every pattern, cover and photo, and everything
-          you have written down — to one zip file, where you choose. Keep it
-          somewhere other than this computer: a USB stick, or a cloud folder.
-          Restoring one puts it in place of what is here, after saving what is
-          here first.
+          Saves the whole library (patterns, covers, photos and all notes) to one
+          zip file. Best kept somewhere other than this computer, such as a USB
+          stick or a cloud folder. Restoring a backup replaces everything in the
+          app; the current library is saved first.
         </p>
         <div class="model-row">
           <button class="ghost" data-act="backup">Make a backup…</button>
@@ -115,8 +114,8 @@ export class SettingsDialog {
 
         <h3>Tabs</h3>
         <p class="hint block">
-          Untick a tab you do not use: it leaves the tab bar, and nothing from it
-          can be put on a board. What is in it is kept, and comes back with it.
+          Unticked tabs are hidden from the tab bar, and nothing from them can be
+          added to a board. Their contents are kept.
         </p>
         <div class="settings-tabs" data-el="tabs">
           ${TABS.map((t) => `<label class="check"><input type="checkbox" data-tab="${t.tab}" checked /><span>${escapeHtml(t.label)}</span></label>`).join("")}
@@ -135,31 +134,31 @@ export class SettingsDialog {
               )
               .join("")}
           </select>
-          <em class="hint">How the needle size filter in the library spells each size.</em>
+          <em class="hint">Used by the needle size filter in the library.</em>
         </label>
 
         <h3>Measurements</h3>
         <label class="field">
-          <span>Show and type people's measurements in</span>
+          <span>Measurement unit</span>
           <select data-f="measureUnit">
             <option value="cm" ${this.measureUnit === "cm" ? "selected" : ""}>Centimetres</option>
             <option value="in" ${this.measureUnit === "in" ? "selected" : ""}>Inches</option>
           </select>
-          <em class="hint">They are kept in centimetres either way, so changing this changes nothing you measured. A figure typed with its unit, like 36 in, is read as that.</em>
+          <em class="hint">Measurements are stored in centimetres, so switching changes no values. A figure typed with a unit, like 36 in, is read in that unit.</em>
         </label>
 
         <h3>Prices</h3>
         <label class="field">
-          <span>Prices are in</span>
+          <span>Currency</span>
           <select data-f="currency">
             ${CURRENCIES.map((c) => `<option value="${c.code}">${c.label}</option>`).join("")}
           </select>
-          <em class="hint">What yarn and patterns cost is a plain number in this currency, so it all adds up. Changing it changes no number, only how it is written.</em>
+          <em class="hint">Prices are stored as plain numbers. Changing the currency changes only the symbol shown.</em>
         </label>
         <label class="field">
-          <span>Your hour is worth</span>
+          <span>Hour cost</span>
           <input data-f="hourRate" inputmode="decimal" placeholder="e.g. 15" />
-          <em class="hint">The standard for every project, in the currency above: a project's page adds its knitting time at this to what its yarn and pattern cost, for what it really costs. A project can have its own, on its page.</em>
+          <em class="hint">Used for every project's cost with time: knitting time at this rate, added to the yarn and pattern cost. A project can set its own on its page.</em>
         </label>
 
         <h3>Describe patterns with a model</h3>
@@ -168,9 +167,9 @@ export class SettingsDialog {
           <span>Use a model to fill in a pattern's details (designer, difficulty, needles, yarn, tags)</span>
         </label>
         <p class="hint block ai-rights">
-          The model never gets the whole pattern. Only its first pages are sent, the part
-          with the designer, sizes, gauge and materials, out of respect for the designer's
-          work; the rest of the pattern stays on your computer.
+          Only the first pages of a pattern are sent (designer, sizes, gauge and
+          materials), out of respect for the designer's work. The rest stays on this
+          computer.
         </p>
 
         <div data-el="ai-section" ${s.enabled ? "" : "hidden"}>
@@ -183,7 +182,7 @@ export class SettingsDialog {
           <span>Server address</span>
           <input data-f="baseUrl" value="${escapeAttr(s.baseUrl)}"
             placeholder="http://192.168.1.20:1234/v1" />
-          <em class="hint">The <code>/v1</code> is added for you if you leave it off.</em>
+          <em class="hint"><code>/v1</code> is added if missing.</em>
         </label>
 
         <div class="privacy" data-el="privacy"></div>
@@ -201,11 +200,11 @@ export class SettingsDialog {
         <label class="field">
           <span>API key <em class="optional">optional</em></span>
           <input data-f="apiKey" type="password" autocomplete="off"
-            placeholder="${s.hasApiKey ? "A key is saved. Type to replace it." : "Usually not needed for a local model"}" />
+            placeholder="${s.hasApiKey ? "A key is saved. Type a new one to replace it." : "Usually not needed for a local model"}" />
           <em class="hint">
             ${
               s.hasApiKey
-                ? "A key is saved and encrypted with Windows. Leave this empty to keep it."
+                ? "A key is saved, encrypted by Windows. Empty keeps it."
                 : "A local model server usually needs none."
             }
           </em>
@@ -227,8 +226,8 @@ export class SettingsDialog {
                 .join("")}
             </select>
             <em class="hint">
-              Lower is faster and cheaper. A reasoning model can otherwise use
-              its whole reply budget thinking and send back nothing.
+              Lower is faster and cheaper. On high, a reasoning model may spend its
+              whole reply budget thinking and return nothing.
             </em>
           </label>
 
@@ -237,8 +236,8 @@ export class SettingsDialog {
             <input type="range" data-f="maxCharacters" min="500" max="20000" step="500"
               value="${s.maxCharacters}" />
             <em class="hint">
-              The start of the pattern only. Gauge, size and materials are all
-              in the first page or two.
+              Only the start of the pattern is sent: gauge, sizes and materials are
+              usually on the first page or two.
             </em>
           </label>
 
@@ -247,8 +246,8 @@ export class SettingsDialog {
             <span>Only fill in fields that are still empty</span>
           </label>
           <em class="hint block">
-            On by default, so a scan never overwrites something you have already
-            written. Turn it off to let a scan replace your wording.
+            On by default, so a scan never overwrites details already filled in.
+            Off lets a scan replace them.
           </em>
 
           <label class="check">
@@ -256,8 +255,8 @@ export class SettingsDialog {
             <span>Save results without asking</span>
           </label>
           <em class="hint block">
-            On by default. You can still undo any pattern afterwards, and edit
-            anything the model got wrong.
+            On by default. A pattern's changes can still be undone or edited
+            afterwards.
           </em>
 
           <label class="check">
@@ -343,7 +342,7 @@ export class SettingsDialog {
    */
   private async restore(): Promise<void> {
     const ok = await askYesNo(
-      "Restoring a backup puts it in place of everything in the app now: every pattern, project, yarn, chart and note. What is here now is saved first, as a backup in the same folder as the one you choose, so nothing is lost. Then the app starts again.",
+      "Restoring a backup replaces everything in the app: patterns, projects, yarn, charts and notes. The current library is saved first, as a backup in the same folder as the chosen one, so nothing is lost. The app then restarts.",
       { title: "Restore a backup", okLabel: "Choose the backup…", danger: true },
     );
     if (!ok) return;
@@ -354,7 +353,7 @@ export class SettingsDialog {
       void api.backupProgress().then((p) => {
         if (!p.running || !p.total) return;
         out.hidden = false;
-        out.textContent = p.restoring ? `Reading the backup: ${p.done} of ${p.total} files…` : `Saving what is here now first: ${p.done} of ${p.total} files…`;
+        out.textContent = p.restoring ? `Reading the backup: ${p.done} of ${p.total} files…` : `Saving the current library first: ${p.done} of ${p.total} files…`;
       });
     }, 400);
     try {
@@ -368,7 +367,7 @@ export class SettingsDialog {
       }
       out.hidden = false;
       out.textContent = `Restored from ${done.from}.`;
-      await say(`The backup is restored: ${done.files} files. What was here before is saved in ${done.savedTo}. The app starts again now.`, "Backup restored");
+      await say(`Backup restored: ${done.files} files. The previous library is saved in ${done.savedTo}. The app restarts now.`, "Backup restored");
       await api.restartApp();
     } catch (err) {
       out.hidden = false;
@@ -525,7 +524,7 @@ export class SettingsDialog {
     await api.saveCurrency((this.root.querySelector('[data-f="currency"]') as HTMLSelectElement).value);
     const typed = (this.root.querySelector('[data-f="hourRate"]') as HTMLInputElement).value.trim();
     const rate = typed ? parsePrice(typed) : null;
-    if (typed && rate === null) throw new Error("What your hour is worth is a number: 15, or 12,50.");
+    if (typed && rate === null) throw new Error("Hour cost must be a number, like 15 or 12,50.");
     await api.saveHourRate(rate);
     return saved;
   }
@@ -548,7 +547,7 @@ export class SettingsDialog {
         // rather than leaving the same sentence there as if nothing happened.
         // checkedAt is in seconds, as the backend stores it.
         const at = new Date(outcome.checkedAt ? outcome.checkedAt * 1000 : Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        result.textContent = `You're on the newest version (${outcome.currentVersion}). Checked at ${at}.`;
+        result.textContent = `Up to date (${outcome.currentVersion}). Checked at ${at}.`;
       } else {
         this.availableUpdate = outcome.update;
         this.renderAvailable(result, outcome.update);
@@ -572,7 +571,7 @@ export class SettingsDialog {
     button.className = "ghost";
     button.dataset.act = "download-update";
     button.textContent = "Update now";
-    button.title = "Downloads it, then the app closes, updates itself and opens again. Your library is not touched.";
+    button.title = "Downloads the update; the app closes, updates and reopens. The library is not affected.";
     return button;
   }
 
@@ -618,7 +617,7 @@ export class SettingsDialog {
       }
       result.textContent = "";
       const ok = await askYesNo(
-        `Go back to version ${before.version || before.tag}? It is downloaded and installed in place of this one, and the app opens again.\n\nYour patterns, projects, stash and everything else are kept: only the app changes. Turn off the automatic update check if you want to stay on it.`,
+        `Go back to version ${before.version || before.tag}? It is downloaded and installed in place of this one, and the app reopens.\n\nPatterns, projects, stash and everything else are kept; only the app changes. To stay on it, turn off the automatic update check.`,
         { title: "Go back to the previous version", okLabel: "Go back" },
       );
       if (!ok) return;
@@ -664,7 +663,7 @@ function privacyNote(url: string): string {
   if (!raw) {
     return `<div class="privacy neutral">
       <strong>No server set.</strong>
-      Until you enter an address, scanning is switched off.
+      Scanning is off until an address is entered.
     </div>`;
   }
 
@@ -672,11 +671,11 @@ function privacyNote(url: string): string {
     return `<div class="privacy local">
       <strong>Private address.</strong>
       The excerpt is sent to <code>${escapeHtml(raw)}</code>, which is this
-      machine or your own network. Nothing reaches the internet.
+      computer or the local network. Nothing reaches the internet.
     </div>`;
   }
   return `<div class="privacy remote">
-    <strong>This is outside your network.</strong>
+    <strong>This address is outside the local network.</strong>
     The excerpt will be sent to <code>${escapeHtml(raw)}</code> over the
     internet. Only the first part of each pattern is sent, but it does leave
     this machine.

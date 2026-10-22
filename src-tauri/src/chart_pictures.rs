@@ -62,7 +62,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
 /// A name of one line, a known craft, notes of a sensible length.
 pub fn clean(input: &ChartPictureInput) -> AppResult<ChartPictureInput> {
     if !CRAFTS.contains(&input.craft.as_str()) {
-        return Err(AppError::Message("Say whether the chart is for knitting or crochet.".into()));
+        return Err(AppError::Message("Choose knitting or crochet for the chart.".into()));
     }
     let name: String = input.name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect();
     Ok(ChartPictureInput {
@@ -88,7 +88,7 @@ pub fn list(conn: &Connection) -> AppResult<Vec<ChartPicture>> {
 pub fn get(conn: &Connection, id: &str) -> AppResult<ChartPicture> {
     conn.query_row(&format!("SELECT {COLUMNS} FROM chart_pictures WHERE id = ?1"), params![id], row)
         .optional()?
-        .ok_or_else(|| AppError::NotFound("That chart is no longer there.".into()))
+        .ok_or_else(|| AppError::NotFound("This chart no longer exists.".into()))
 }
 
 pub fn insert(conn: &Connection, id: &str, input: &ChartPictureInput) -> AppResult<ChartPicture> {

@@ -93,7 +93,7 @@ pub async fn make_backup(app: tauri::AppHandle, state: State<'_, AppState>, name
         .add_filter("Zip file", &["zip"])
         .blocking_save_file();
     let Some(picked) = picked else { return Ok(None) };
-    let out = picked.into_path().map_err(|e| AppError::Message(format!("That place cannot be saved to: {e}")))?;
+    let out = picked.into_path().map_err(|e| AppError::Message(format!("Cannot save there: {e}")))?;
 
     set_progress(BackupProgress { running: true, ..Default::default() });
     let snapshot = std::env::temp_dir().join(format!("shiny-knitting-backup-{}.db", uuid::Uuid::new_v4()));
@@ -144,7 +144,7 @@ pub async fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, b
     let name = if name.trim().is_empty() { "Shiny Knitting before restoring.zip".to_string() } else { name.trim().to_string() };
     let before = from.with_file_name(name);
     if before == from {
-        return Err(AppError::Message("The backup of what is here now would go over the one being restored.".into()));
+        return Err(AppError::Message("Saving the current library would overwrite the backup being restored.".into()));
     }
 
     set_progress(BackupProgress { running: true, ..Default::default() });
@@ -161,8 +161,8 @@ pub async fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, b
             })
         })
         .await
-        .map_err(|e| AppError::Message(format!("The backup of what is here now stopped: {e}")))?
-        .map_err(|e| AppError::Message(format!("What is here now could not be saved first, so nothing was restored: {e}")))?;
+        .map_err(|e| AppError::Message(format!("Saving the current library stopped: {e}")))?
+        .map_err(|e| AppError::Message(format!("The current library could not be saved first, so nothing was restored: {e}")))?;
         // The backup, unpacked beside the library and its database opened.
         let (zip, stage) = (from.clone(), staging.clone());
         tauri::async_runtime::spawn_blocking(move || {
@@ -189,7 +189,7 @@ pub fn restart_app(app: tauri::AppHandle) {
 /// Whether a zip is a Shiny Knitting backup, with a database in it; how many
 /// files it holds when it is.
 pub fn check_backup(path: &Path) -> Result<u64, AppError> {
-    let not = |why: &str| AppError::Message(format!("That is not a Shiny Knitting backup: {why}."));
+    let not = |why: &str| AppError::Message(format!("Not a Shiny Knitting backup: {why}."));
     let mut zip = zip::ZipArchive::new(File::open(path)?).map_err(|_| not("it is not a zip file"))?;
     let manifest: serde_json::Value = {
         let mut text = String::new();
@@ -233,7 +233,7 @@ pub fn unpack_backup(from: &Path, to: &Path, progress: impl Fn(u64, u64)) -> Res
     }
     let db = to.join("library.db");
     if !db.exists() {
-        return Err(AppError::Message("That backup has no library in it.".into()));
+        return Err(AppError::Message("This backup contains no library.".into()));
     }
     let conn = crate::db::open(&db).map_err(|e| AppError::Message(format!("The library in that backup cannot be opened: {e}")))?;
     drop(conn);
@@ -284,7 +284,7 @@ pub fn swap_in(conn: &Mutex<Connection>, library: &Path, staging: &Path) -> Resu
         }
         *guard = crate::db::open(&db_path)?;
         let _ = std::fs::remove_dir_all(&aside);
-        return Err(AppError::Message(format!("The backup could not be put in place, so the library is as it was: {e}")));
+        return Err(AppError::Message(format!("The backup could not be restored; the library is unchanged: {e}")));
     }
     *guard = crate::db::open(&db_path)?;
     drop(guard);
@@ -489,7 +489,7 @@ mod tests {
         zip.write_all(b"hello").unwrap();
         zip.finish().unwrap();
         let err = check_backup(&other).unwrap_err().to_string();
-        assert!(err.contains("not a Shiny Knitting backup"), "{err}");
+        assert!(err.contains("Not a Shiny Knitting backup"), "{err}");
         std::fs::write(dir.join("text.zip"), b"not a zip").unwrap();
         assert!(check_backup(&dir.join("text.zip")).is_err());
 

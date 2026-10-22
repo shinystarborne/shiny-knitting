@@ -167,7 +167,7 @@ export async function verifyYokeChart() {
     type("yokeDepth", "10");
     await waitFor(() => !!act("fit-chart"), "unfitted again");
     act("fit-chart")!.click();
-    await waitFor(() => /colourwork on them/.test(dialog()?.textContent ?? ""), "the question");
+    await waitFor(() => /have colourwork/.test(dialog()?.textContent ?? ""), "the question");
     dialog()!.querySelector<HTMLElement>("button.ghost")!.click();
     await wait(200);
     check(results, "fitting a chart to a shallower yoke asks first, saying the rounds would go; Cancel keeps them", store.charts.find((c) => c.id === snow.id)!.data.height === rounds && !!act("fit-chart"));

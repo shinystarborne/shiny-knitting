@@ -93,7 +93,7 @@ export async function verifyConnectors() {
     check(results, "a project with ChiaoGoo small tips is offered the Lotus Yarns small cable, and one not said", offered.includes(lotus.id) && offered.includes(unsure.id), offered.join());
     check(results, "…not the KnitPro cable, nor a large one", !offered.includes(knitpro.id) && !offered.includes(large.id));
     const hint = modal()!.querySelector('[data-el="tool-unfit"]')?.textContent ?? "";
-    check(results, "…and says what it leaves out, and why", /^2 that do not fit what is on it are not offered: /.test(hint) && /KnitPro/.test(hint), hint);
+    check(results, "…and says what it leaves out, and why", /^2 that do not fit the project's needles are not listed: /.test(hint) && /KnitPro/.test(hint), hint);
     // The tips taken off: every cable is offered again.
     modal()!.querySelector<HTMLElement>(`[data-act="tool-free"][data-id="${tips.id}"]`)!.click();
     await waitFor(() => !modal()!.querySelector('[data-el="tool-unfit"]'), "everything offered");
@@ -119,7 +119,7 @@ export async function verifyConnectors() {
     document.querySelector(".projects")!.dispatchEvent(new CustomEvent("edit-project", { bubbles: true, detail: second }));
     await waitFor(() => !!modal()?.querySelector('[data-el="tool-add"]'), "the second project's needles");
     const option = (id: string) => modal()!.querySelector<HTMLOptionElement>(`[data-el="tool-add"] option[value="${id}"]`);
-    check(results, "a project on a small cable is offered large tips through the adapter, saying so", /with the adapter, large tips on a small cable \(ChiaoGoo\): add it too/.test(option(big.id)?.textContent ?? ""), option(big.id)?.textContent ?? "not offered");
+    check(results, "a project on a small cable is offered large tips through the adapter, saying so", /with the adapter, large tips on a small cable \(ChiaoGoo\) \(add it too\)/.test(option(big.id)?.textContent ?? ""), option(big.id)?.textContent ?? "not offered");
     const pick = modal()!.querySelector<HTMLSelectElement>('[data-el="tool-add"]')!;
     pick.value = adapter.id;
     pick.dispatchEvent(new Event("change", { bubbles: true }));

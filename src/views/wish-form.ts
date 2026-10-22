@@ -69,7 +69,7 @@ export class WishForm {
         <label class="field">
           <span>Link</span>
           <div class="wish-link-row">
-            <input data-f="url" value="${escapeAttr(e?.url ?? this.template.url ?? "")}" placeholder="Paste the page from the shop: the rest fills itself in" autocomplete="off" spellcheck="false" />
+            <input data-f="url" value="${escapeAttr(e?.url ?? this.template.url ?? "")}" placeholder="Paste the shop page link; the rest fills in automatically" autocomplete="off" spellcheck="false" />
             <button class="ghost" type="button" data-act="fetch" title="Read the name, brand, price and picture from the page">Fetch details</button>
           </div>
           <span class="hint" data-el="fetch-status" hidden></span>
@@ -78,7 +78,7 @@ export class WishForm {
         <div class="wish-main-row">
           <div class="field">
             <span>Picture</span>
-            <div class="wish-photo-box" data-el="photobox" title="Fetched from the link, or paste one with Ctrl+V, or drop one here"></div>
+            <div class="wish-photo-box" data-el="photobox" title="Fetched from the link; or paste one with Ctrl+V, or drop one here"></div>
             <div class="wish-photo-actions">
               <button class="ghost" data-act="photo-file" type="button">Choose…</button>
               <button class="ghost" data-act="photo-remove" type="button">Remove</button>
@@ -133,12 +133,12 @@ export class WishForm {
 
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="A colour number, a size, wait for the sale…">${escapeHtml(e?.notes ?? "")}</textarea>
+          <textarea data-f="notes" placeholder="Colour number, size, waiting for a sale…">${escapeHtml(e?.notes ?? "")}</textarea>
         </label>
 
         <div class="modal-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
-          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save this one and start the next, from the same shop">Save and add another</button>`}
+          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save and start the next one from the same shop">Save and add another</button>`}
           <button class="primary" data-act="save">${e ? "Save changes" : "Add"}</button>
         </div>
         <p class="form-error" data-el="error" hidden></p>
@@ -214,8 +214,8 @@ export class WishForm {
         filled.length
           ? `Filled in the ${list(filled)} from the page.`
           : preview.title || preview.price
-            ? "Nothing new on the page: what it says is filled in already."
-            : "The page did not say what is on it. Fill the details in yourself.",
+            ? "Nothing new on the page; everything is already filled in."
+            : "The page gave no details. Fill them in by hand.",
         filled.length ? "ok" : "",
       );
     } catch (err) {
@@ -303,7 +303,7 @@ export class WishForm {
 
   private async takePhoto(file: Blob): Promise<void> {
     const blob = await prepareChosenImage(file);
-    if (!blob) return this.showError("That could not be read as a picture.");
+    if (!blob) return this.showError("This file is not a readable picture.");
     this.pendingPhoto = blob;
     this.photoRemoved = false;
     await this.paintPhoto();
@@ -364,7 +364,7 @@ export class WishForm {
       suggested = (await api.fetchShopName(normalised(this.field("url").value)).catch(() => "")) || site;
       this.status("");
     }
-    const name = await askText("What is the shop called?", {
+    const name = await askText("Shop name", {
       title: "New shop",
       value: suggested,
       placeholder: "e.g. Wolle Rödel",

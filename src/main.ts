@@ -97,9 +97,9 @@ class App {
     this.tabBar.innerHTML = `
       ${TABS.map((t) => `<button class="tab${t.tab === "patterns" ? " active" : ""}" data-tab="${t.tab}">${escapeText(t.label)}</button>`).join("")}
       <span class="tab-spacer"></span>
-      <button class="timer-pill" data-act="timer" hidden title="Knitting being timed: open its project"></button>
-      <button class="timer-stop" data-act="timer-pause" hidden title="Pause: a break, the same sitting after it" aria-label="Pause the timer">⏸</button>
-      <button class="timer-stop" data-act="timer-stop" hidden title="Stop the timer: you have put it down" aria-label="Stop the timer">■</button>
+      <button class="timer-pill" data-act="timer" hidden title="Timer running: open its project"></button>
+      <button class="timer-stop" data-act="timer-pause" hidden title="Pause: the break is not counted" aria-label="Pause the timer">⏸</button>
+      <button class="timer-stop" data-act="timer-stop" hidden title="Stop the timer" aria-label="Stop the timer">■</button>
       <button class="tab-gear" data-act="settings" title="Settings" aria-label="Settings">${GEAR}</button>
     `;
     this.screen = document.createElement("div");
@@ -346,7 +346,7 @@ class App {
     paint();
     const paused = isPaused(session);
     pause.textContent = paused ? "▶" : "⏸";
-    pause.title = paused ? "Go on: the same sitting" : "Pause: a break, the same sitting after it";
+    pause.title = paused ? "Resume the same session" : "Pause: the break is not counted";
     pause.setAttribute("aria-label", paused ? "Go on with the timer" : "Pause the timer");
     pill.hidden = false;
     stop.hidden = false;
@@ -377,10 +377,10 @@ class App {
     card.innerHTML = `
       <div class="update-card-head">
         <strong>A new version is ready</strong>
-        <button class="ghost" data-act="later" aria-label="Later" title="Later: the button by the gear stays">×</button>
+        <button class="ghost" data-act="later" aria-label="Later" title="Later: the button by the gear stays available">×</button>
       </div>
       <p>${escapeText(update.name || update.tag)}${update.prerelease ? " <span class=\"pill\">beta</span>" : ""}</p>
-      <p class="hint">It updates in place and opens again by itself. Your library is not touched.</p>
+      <p class="hint">Installs in place and reopens. The library is not affected.</p>
       <div class="update-card-actions">
         ${update.pageUrl ? `<button class="link" data-act="notes">What's new</button>` : ""}
         <span class="spacer"></span>
@@ -411,8 +411,8 @@ class App {
     if (!update) return void this.openSettings();
     const ok = await askYesNo(
       `Update to ${update.name}${update.prerelease ? " (beta)" : ""} now?\n\n` +
-        "It downloads, then the app closes, updates itself and opens again in a moment. " +
-        "Your patterns, stash and projects are not touched.",
+        "It downloads, then the app closes, updates and reopens. " +
+        "Patterns, stash and projects are not affected.",
       { title: "Update", okLabel: "Update now" },
     );
     if (!ok) return;
@@ -439,7 +439,7 @@ class App {
     const button = document.createElement("button");
     button.className = "ghost tab-update";
     button.dataset.act = "update-available";
-    button.title = `${tag} is available: click to update`;
+    button.title = `${tag} is available. Click to update.`;
     button.textContent = "Update available";
     this.tabBar.querySelector(".tab-gear")?.before(button);
   }
@@ -805,7 +805,7 @@ class App {
   private async editProject(id: string): Promise<void> {
     const project = (await api.listProjects().catch(() => [] as Project[])).find((p) => p.id === id);
     if (!project) {
-      await say("That project is no longer there.");
+      await say("This project no longer exists.");
       return;
     }
     await this.openProjectForm(project, null);

@@ -45,7 +45,7 @@ export async function verifyMissingFile() {
 
     card()!.querySelector("h3")!.click();
     await waitFor(() => !!dialog(), "the question");
-    check(results, "opened, it explains and offers to find the file, not a reader on nothing", /not in the library any more/.test(dialog()!.textContent ?? "") && !document.querySelector(".reader"));
+    check(results, "opened, it explains and offers to find the file, not a reader on nothing", /is missing; it was moved or deleted/.test(dialog()!.textContent ?? "") && !document.querySelector(".reader"));
     w.__nextDialogPick = "C:/Downloads/socks.epub";
     (dialog()!.querySelector("button.primary") as HTMLElement).click();
     await wait(500);

@@ -209,7 +209,7 @@ export function drawLegend(p: Painter, g: Grid, x: number, y: number, width: num
     g.colours.forEach((c, i) => {
       if (!counts[i]) return;
       const s = stitchAt(g, i);
-      const label = s.key === NO_STITCH_KEY ? "No stitch: go on to the next" : `${s.abbr}: ${s.name.toLowerCase()}${g.flat && s.ws !== s.abbr ? `; on a WS row ${s.ws}` : ""}`;
+      const label = s.key === NO_STITCH_KEY ? "No stitch: skip to the next" : `${s.abbr}: ${s.name.toLowerCase()}${g.flat && s.ws !== s.abbr ? `; on a WS row ${s.ws}` : ""}`;
       const itemW = box + gap + p.measure(label, size) + size * 2;
       if (cx > x && cx + itemW > x + width) {
         cx = x;
@@ -441,7 +441,7 @@ export async function chartPng(name: string, g: Grid, o: { maxSide?: number; asK
   const gx = pad + m.left + Math.max(0, (width - pad * 2 - m.left - m.right - gridW) / 2);
   drawChart(p, g, { x: gx, y: top, cw, ch, numbers: true });
   drawLegend(p, g, pad, top + gridH + m.bottom + 18, width - pad * 2, legendSize);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The picture could not be made."))), "image/png"));
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The picture could not be created."))), "image/png"));
 }
 
 /** A painter that only measures: for working out how much room a drawing takes. */

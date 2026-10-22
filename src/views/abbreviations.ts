@@ -50,11 +50,11 @@ export const KNOWN: Known[] = [
   { term: "m1l", meaning: "Make 1 left: lift the bar between two stitches from front to back, and knit it through the back loop. An increase that leans left.", names: ["make one left", "make 1 left"] },
   { term: "m1r", meaning: "Make 1 right: lift the bar between two stitches from back to front, and knit it through the front loop. An increase that leans right.", names: ["make one right", "make 1 right"] },
   { term: "m1p", meaning: "Make 1 purlwise: lift the bar between two stitches, and purl it through the back loop." },
-  { term: "MB", meaning: "Make bobble: as the pattern says how.", names: ["bobble"] },
+  { term: "MB", meaning: "Make bobble: as described in the pattern.", names: ["bobble"] },
   { term: "MC", meaning: "Main colour." },
   { term: "p", meaning: "Purl." },
   { term: "p2tog", meaning: "Purl 2 together, as one stitch: a decrease.", names: ["purl two together", "purl 2 together"] },
-  { term: "patt", meaning: "Pattern: work as the pattern says." },
+  { term: "patt", meaning: "Pattern: work as set in the pattern." },
   { term: "pfb", meaning: "Purl front and back: purl into the stitch, then into its back loop. One stitch becomes two." },
   { term: "pm", meaning: "Place marker." },
   { term: "psso", meaning: "Pass the slipped stitch over: lift it over the stitch just made and off the needle." },
@@ -68,7 +68,7 @@ export const KNOWN: Known[] = [
   { term: "RS", meaning: "Right side: the side that shows." },
   { term: "sk2p", meaning: "Slip 1 knitwise, knit 2 together, pass the slipped stitch over: a double decrease that leans left.", also: ["sl1-k2tog-psso", "slip1-k2tog-psso", "s1-k2tog-psso", "sl1 k2tog psso", "sk2po"] },
   { term: "skp", meaning: "Slip 1 knitwise, knit 1, pass the slipped stitch over: a decrease that leans left.", also: ["skpo", "sl1-k1-psso", "sl1 k1 psso"] },
-  { term: "sl", meaning: "Slip: move the stitch to the right needle without working it, purlwise unless it says." },
+  { term: "sl", meaning: "Slip: move the stitch to the right needle without working it, purlwise unless stated otherwise." },
   { term: "sl1 wyif", meaning: "Slip 1 with the yarn in front.", also: ["sl 1 wyif", "s1 wyif"] },
   { term: "sl1 wyib", meaning: "Slip 1 with the yarn in back.", also: ["sl 1 wyib", "s1 wyib"] },
   { term: "sm", meaning: "Slip marker: move it from the left needle to the right." },
@@ -90,7 +90,7 @@ export const KNOWN: Known[] = [
 const COUNTED: { re: RegExp; meaning: (m: RegExpExecArray) => string }[] = [
   { re: /^k(\d+)$/i, meaning: (m) => `Knit ${m[1]}.` },
   { re: /^p(\d+)$/i, meaning: (m) => `Purl ${m[1]}.` },
-  { re: /^sl ?(\d+)$/i, meaning: (m) => `Slip ${m[1]}, purlwise unless it says.` },
+  { re: /^sl ?(\d+)$/i, meaning: (m) => `Slip ${m[1]}, purlwise unless stated otherwise.` },
   {
     re: /^c(\d+)([fb])$/i,
     meaning: (m) => {
@@ -205,12 +205,12 @@ export class AbbreviationsPanel {
       <div class="abbr-body">
         <input class="abbr-search" data-f="abbr-search" type="search" placeholder="Look one up: ssk, m1l, wrap…" aria-label="Look one up" />
         <form class="abbr-add" data-el="abbr-add">
-          <input data-f="abbr-term" placeholder="Your own: e.g. CDD" aria-label="The abbreviation" maxlength="40" />
+          <input data-f="abbr-term" placeholder="Custom: e.g. CDD" aria-label="The abbreviation" maxlength="40" />
           <input data-f="abbr-meaning" placeholder="What it means" aria-label="What it means" maxlength="1000" />
           <button class="primary" type="submit" data-el="abbr-save">Add</button>
           <button class="ghost" type="button" data-act="abbr-cancel" hidden>Cancel</button>
         </form>
-        <p class="hint abbr-add-hint">One of yours with the same letters as one here is shown in its place: a designer's own meaning, say.</p>
+        <p class="hint abbr-add-hint">A custom one with the same letters replaces the standard one, e.g. a designer's own meaning.</p>
         <table class="abbr-table"><tbody data-el="abbr-rows"></tbody></table>
       </div>`;
     this.host.addEventListener("input", (e) => {
@@ -246,12 +246,12 @@ export class AbbreviationsPanel {
             <th>${esc(e.term)}${e.also?.length ? `<span class="hint abbr-also">${esc(e.also.join(", "))}</span>` : ""}</th>
             <td>
               ${esc(e.meaning)}
-              ${video ? `<button class="link abbr-video" data-act="abbr-video" data-url="${esc(video.part.url)}" title="From your masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}
+              ${video ? `<button class="link abbr-video" data-act="abbr-video" data-url="${esc(video.part.url)}" title="From Masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}
             </td>
             <td class="abbr-tools">
               ${
                 e.own
-                  ? `<span class="pill" title="One of yours">Yours</span>
+                  ? `<span class="pill" title="Custom abbreviation">Custom</span>
                      <button class="ghost" data-act="abbr-edit" data-id="${esc(e.own.id)}">Change</button>
                      <button class="ghost danger-text" data-act="abbr-remove" data-id="${esc(e.own.id)}">Remove</button>`
                   : ""
@@ -260,7 +260,7 @@ export class AbbreviationsPanel {
           </tr>`;
           })
           .join("")
-      : `<tr><td class="hint">None by that. Add it as one of your own, above.</td></tr>`;
+      : `<tr><td class="hint">None found. It can be added as a custom one above.</td></tr>`;
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
@@ -280,7 +280,7 @@ export class AbbreviationsPanel {
     if (act === "abbr-cancel") this.clearForm();
     if (act === "abbr-remove") {
       const own = this.entries.find((x) => x.own?.id === btn.dataset.id)?.own;
-      if (!own || !(await askYesNo(`Take “${own.term}” out of your abbreviations?`, { okLabel: "Remove", danger: true }))) return;
+      if (!own || !(await askYesNo(`Remove “${own.term}” from the custom abbreviations?`, { okLabel: "Remove", danger: true }))) return;
       await api.removeAbbreviation(own.id);
       if (this.editing === own.id) this.clearForm();
       await this.reload();
@@ -337,7 +337,7 @@ export function stitchMeaning(s: Stitch, entries: Entry[]): { meaning: string; e
 /** A stitch said in full, as markup: its symbol, abbreviation, meaning, wrong-side stitch, and a video. */
 export function stitchHtml(s: Stitch, entries: Entry[], masterclasses: Masterclass[], o: { ws?: boolean } = {}): string {
   if (s.key === NO_STITCH_KEY) {
-    return `<div class="stitch-said">${symbolSvg(s.key, 28)}<div><b>No stitch</b><span>A grey square: there is no stitch here. Go on to the next square.</span></div></div>`;
+    return `<div class="stitch-said">${symbolSvg(s.key, 28)}<div><b>No stitch</b><span>A grey square: no stitch here. Continue with the next square.</span></div></div>`;
   }
   const { meaning, entry } = stitchMeaning(s, entries);
   const video = entry ? videoFor(entry, masterclasses) : null;
@@ -346,7 +346,7 @@ export function stitchHtml(s: Stitch, entries: Entry[], masterclasses: Mastercla
       <b>${esc(s.abbr)}</b> <span class="hint">${esc(s.name)}</span>
       ${meaning.replace(/\.$/, "").toLowerCase() === s.name.toLowerCase() ? "" : `<span>${esc(meaning)}</span>`}
       ${s.ws !== s.abbr ? `<span class="hint">${o.ws ? "On this wrong-side row" : "On a wrong-side row"}, worked as <b>${esc(s.ws)}</b>, so the right side shows it.</span>` : ""}
-      ${video ? `<button class="link" data-act="stitch-video" data-url="${esc(video.part.url)}" title="From your masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}
+      ${video ? `<button class="link" data-act="stitch-video" data-url="${esc(video.part.url)}" title="From Masterclasses: ${esc(video.masterclass.title)}">▶ ${esc(video.part.title)}</button>` : ""}
     </div></div>`;
 }
 
@@ -371,11 +371,11 @@ export class SymbolsPanel {
     this.host.innerHTML = `
       <header class="sheet-head">
         <h2 class="abbr-title">Chart symbols</h2>
-        <span class="hint sheet-source">What each square of a chart means. Drawn as most charts draw them; a lace chart says them when you point at a square.</span>
+        <span class="hint sheet-source">What each chart square means, drawn as most charts draw them. On a lace chart, pointing at a square shows its stitch.</span>
       </header>
       <div class="abbr-body">
         <div class="symbol-list">${STITCHES.map((s) => `<div class="symbol-row" data-stitch="${s.key}">${stitchHtml(s, entries, masterclasses)}</div>`).join("")}</div>
-        <p class="hint">A designer may draw one differently: their chart's own legend says so, and goes first.</p>
+        <p class="hint">Some designers draw symbols differently; a chart's own legend always takes priority.</p>
       </div>`;
     this.host.addEventListener("click", (e) => {
       const btn = closestEl(e.target, '[data-act="stitch-video"]');

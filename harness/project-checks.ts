@@ -238,7 +238,7 @@ export async function verifyProjects() {
     const hatAmount = finish()!.querySelector<HTMLInputElement>("input[data-entry]")!;
     const hatUnit = finish()!.querySelector<HTMLSelectElement>("select[data-unit]")!;
     check(results, "a lot never weighed held its balls by the ball band, not 0 g", /50 g before \(2 whole balls\)/.test(hatText()) && !/\b0 g before/.test(hatText()), hatText());
-    check(results, "…filled in with the 20 g it was to take, saying what that leaves", hatAmount.value === "20" && hatUnit.value === "used-g" && /→ 30 g left/.test(hatText()) && /Filled in from what the project was to take/.test(hatText()), `${hatAmount.value} ${hatUnit.value} ${hatText()}`);
+    check(results, "…filled in with the 20 g it was to take, saying what that leaves", hatAmount.value === "20" && hatUnit.value === "used-g" && /→ 30 g left/.test(hatText()) && /Filled in from the planned amounts/.test(hatText()), `${hatAmount.value} ${hatUnit.value} ${hatText()}`);
     hatAmount.value = "1";
     hatUnit.value = "used-balls";
     hatUnit.dispatchEvent(new Event("change", { bubbles: true }));
@@ -300,7 +300,7 @@ export async function verifyProjects() {
     await waitFor(() => !!page()?.querySelector('.project-side [data-act="remove"]'), "the project to remove");
     (side().querySelector('[data-act="remove"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector(".dialog-card"), "the confirm");
-    check(results, "removing asks, and says the needles go back to free", /go back to free/.test(document.querySelector(".dialog-card .dialog-message")?.textContent ?? ""));
+    check(results, "removing asks, and says the needles become free", /become free again/.test(document.querySelector(".dialog-card .dialog-message")?.textContent ?? ""));
     [...document.querySelectorAll<HTMLButtonElement>(".dialog-card button")].find((b) => b.textContent === "Remove")!.click();
     await waitFor(() => !store.projects.some((p) => p.id === "pr1"), "the removal");
     check(results, "its needles are free", !activeOn("t1") && !activeOn("t3"));

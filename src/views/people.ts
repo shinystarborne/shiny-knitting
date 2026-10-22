@@ -94,7 +94,7 @@ export class PeopleView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${this.people.length ? "No one matches that" : "No one here yet"}</h2>
-          <p>${this.people.length ? "The search looks through names and notes." : "Add the people you knit for, with their measurements: chest, head, feet… and the date, since children grow."}</p>
+          <p>${this.people.length ? "The search looks through names and notes." : "People to knit for, with their measurements (chest, head, feet…) and the date, since children grow."}</p>
         </div>`;
       return;
     }
@@ -104,7 +104,7 @@ export class PeopleView {
 
 function confirmRemove(person: Person): Promise<boolean> {
   const projects = person.projectCount
-    ? `\n\n${person.projectCount === 1 ? "The project for them stays" : `The ${person.projectCount} projects for them stay`}, for no one in particular.`
+    ? `\n\n${person.projectCount === 1 ? "The project made for them is kept" : `The ${person.projectCount} projects made for them are kept`}, without a person.`
     : "";
   return askYesNo(`Remove ${person.name} and all their measurements?${projects}\n\nThis cannot be undone.`, {
     title: "Remove person",
@@ -184,7 +184,7 @@ export class PersonPage {
         api.getMeasureUnit().catch(() => "cm" as const),
       ]);
     } catch {
-      await say("That person is no longer there.");
+      await say("This person no longer exists.");
       this.hooks.back();
       return;
     }
@@ -305,7 +305,7 @@ export class PersonPage {
       ${
         mine.length
           ? `<ul class="person-projects">${mine.map((p) => `<li><button class="link" data-act="open-project" data-id="${esc(p.id)}">${esc(p.name)}</button></li>`).join("")}</ul>`
-          : `<p class="hint">None yet. A project's page says who it is for.</p>`
+          : `<p class="hint">None yet. Set on a project's page.</p>`
       }`;
   }
 
@@ -338,13 +338,13 @@ export class PersonPage {
           return `<td>
             <input data-set="${esc(s.id)}" data-key="${esc(key)}" inputmode="decimal" value="${esc(showLength(s.values[key], this.unit))}"
               placeholder="${esc(i === 0 && before ? showLength(before, this.unit) : "")}" aria-label="${esc(measurementLabel(key))}" />
-            ${delta ? `<span class="measure-delta" title="Since they were last measured">${esc(delta)}</span>` : ""}
+            ${delta ? `<span class="measure-delta" title="Change since the last measurement">${esc(delta)}</span>` : ""}
           </td>`;
         })
         .join("");
       return `<tr>${label}${cells}</tr>`;
     };
-    const shoe = `<tr><th class="measure-label" title="As you buy them: EU 39, US 8">Shoe size</th>${sets
+    const shoe = `<tr><th class="measure-label" title="As sold: EU 39, US 8">Shoe size</th>${sets
       .map((s) => `<td><input data-set="${esc(s.id)}" data-key="shoe" value="${esc(s.shoeSize)}" placeholder="" aria-label="Shoe size" /></td>`)
       .join("")}</tr>`;
     const host = this.root.querySelector<HTMLElement>('[data-el="table"]')!;
@@ -353,7 +353,7 @@ export class PersonPage {
           <thead><tr><th class="measure-corner">${esc(unitLabel(this.unit))}</th>${header}</tr></thead>
           <tbody>${keys.map(row).join("")}${shoe}</tbody>
         </table>`
-      : `<p class="hint">No measurements yet: + Measure again starts a set dated today.</p>`;
+      : `<p class="hint">No measurements yet. + Measure again starts a set dated today.</p>`;
     if (keep) host.querySelector<HTMLInputElement>(keep)?.focus();
   }
 
@@ -377,7 +377,7 @@ export class PersonPage {
     } else {
       const cm = readLength(input.value, this.unit);
       if (Number.isNaN(cm)) {
-        await say(`“${input.value}” is not a length. Type a number, like 91.5, or one with its unit: 36 in, 91 cm.`, measurementLabel(key));
+        await say(`“${input.value}” is not a length. Type a number, like 91.5, or one with a unit: 36 in, 91 cm.`, measurementLabel(key));
         return this.renderTable();
       }
       if (cm) next.values[key] = cm;
@@ -405,14 +405,14 @@ export class PersonPage {
       if (ok && (await this.save(() => api.deleteMeasurementSet(set.id)))) this.renderTable();
     }
     if (act === "add-extra") {
-      const name = await askText("What is the measurement called?", { title: "A measurement of their own", placeholder: "e.g. Thumb length, Calf", okLabel: "Add" });
+      const name = await askText("Measurement name", { title: "Custom measurement", placeholder: "e.g. Thumb length, Calf", okLabel: "Add" });
       if (!name?.trim()) return;
       await this.saveDetails([...this.person.extra, name.trim()]);
       this.renderTable();
     }
     if (act === "remove-extra") {
       const name = btn!.dataset.name!;
-      const ok = await askYesNo(`Remove “${name}”, and what it measured on every date?`, { title: "Remove measurement", okLabel: "Remove", danger: true });
+      const ok = await askYesNo(`Remove “${name}” and its values on every date?`, { title: "Remove measurement", okLabel: "Remove", danger: true });
       if (!ok) return;
       await this.saveDetails(this.person.extra.filter((e) => e !== name));
       this.renderTable();
@@ -435,8 +435,8 @@ function esc(v: string): string {
 
 /** How a measurement is taken, for the panel beside the table: its drawing, if it has one, and its hint. */
 function howHtml(key: string | null): string {
-  if (!key) return `<h3>How to measure</h3><p class="hint">Click into a measurement to see how it is taken.</p>`;
-  if (key === "shoe") return `<h3>Shoe size</h3><p>As you buy them: EU 39, or US 8.</p>`;
+  if (!key) return `<h3>How to measure</h3><p class="hint">Click a measurement to see how it is taken.</p>`;
+  if (key === "shoe") return `<h3>Shoe size</h3><p>As sold: EU 39, or US 8.</p>`;
   const standard = MEASUREMENTS.find((m) => m.key === key);
-  return `<h3>${esc(measurementLabel(key))}</h3>${measureFigure(key, 170)}<p>${esc(standard?.hint ?? "One of their own: measured as you decided.")}</p>`;
+  return `<h3>${esc(measurementLabel(key))}</h3>${measureFigure(key, 170)}<p>${esc(standard?.hint ?? "A custom measurement.")}</p>`;
 }

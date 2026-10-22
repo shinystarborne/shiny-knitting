@@ -131,7 +131,7 @@ export class ContentsPanel {
       return;
     }
     if (!this.outline.length) {
-      into.append(empty("This PDF has no built-in outline — use bookmarks instead."));
+      into.append(empty("This PDF has no built-in outline. Bookmarks can be used instead."));
       return;
     }
     const walk = (items: OutlineItem[], depth: number) => {

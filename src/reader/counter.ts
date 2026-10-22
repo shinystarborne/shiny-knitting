@@ -59,7 +59,7 @@ export class RowCounter {
       <div class="counter-head">
         <h3>Row counter</h3>
         <button class="ghost counter-sound counter-setting" data-act="sound" title="Counting sound">♪</button>
-        <button class="ghost counter-gear" data-act="settings" title="Settings: the sound, the keys, ±10 and Reset, and adding or changing counters" aria-label="Counter settings" aria-pressed="false">⚙</button>
+        <button class="ghost counter-gear" data-act="settings" title="Settings: sound, keys, ±10, Reset, and counters" aria-label="Counter settings" aria-pressed="false">⚙</button>
       </div>
       <div class="counter-body">
         <div class="counter-total">
@@ -75,7 +75,7 @@ export class RowCounter {
             <button data-act="total-reset" title="Reset to zero">Reset</button>
           </div>
           <p class="hint counter-setting">
-            Counts every row, and every counter that is switched on.
+            Counts every row, along with every counter that is on.
           </p>
         </div>
 
@@ -84,8 +84,8 @@ export class RowCounter {
           <ul data-el="counterlist" class="counter-list"></ul>
           <button class="ghost counter-setting" data-act="add-counter">+ Add counter</button>
           <p class="hint counter-setting">
-            The dot switches a counter on and off. Off keeps its count but stops
-            it moving. Several can be on at once.
+            The dot turns a counter on or off. An off counter keeps its count but
+            stops counting. Several can be on at once.
           </p>
         </div>
 
@@ -97,20 +97,19 @@ export class RowCounter {
           </div>
           <div class="key-row">
             <span>Count down</span>
-            <button class="key-chip" data-act="key-down" title="Choose the key that takes a row back"></button>
+            <button class="key-chip" data-act="key-down" title="Choose the key that counts a row back"></button>
           </div>
           <div class="key-row">
             <span>Sound</span>
-            <select class="counter-sound-pick" data-el="sound-pick" title="The sound a count makes: picking one plays it">
+            <select class="counter-sound-pick" data-el="sound-pick" title="Sound for each count (plays when chosen)">
               ${CLICK_SOUNDS.map((s) => `<option value="${s.key}" ${s.key === clickSound() ? "selected" : ""}>${s.label}</option>`).join("")}
             </select>
           </div>
           <p class="hint">
-            These count the total and every counter that is on, and step the row
-            line. Shift counts without moving the line; Alt moves it without
-            counting. Give a counter its own key with its <em>Key</em> button:
-            that key works like the counter's own + button, and Shift with it like
-            its −.
+            These keys count the total and every counter that is on, and move the
+            highlight line. Shift counts without moving the line; Alt moves it
+            without counting. A counter can have its own key (its <em>Key</em>
+            button): the key works like its + button, and Shift with it like −.
           </p>
         </div>
       </div>
@@ -331,17 +330,17 @@ export class RowCounter {
       {
         title: "Edit counter",
         checkbox: {
-          label: "Leave the project total alone when this counter's own buttons are used",
+          label: "Don't change the project total with this counter's own buttons",
           checked: current.excludedFromTotal,
           hint:
-            "For setup rows and other counts that are not part of the pattern's " +
-            "main row total. Counting rows normally still moves the total either way.",
+            "For setup rows and other counts outside the pattern's main row total. " +
+            "Counting rows normally still changes the total.",
         },
       },
     );
     if (!answer) return;
     const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
-    const excluded = answer["Leave the project total alone when this counter's own buttons are used"] === "yes";
+    const excluded = answer["Don't change the project total with this counter's own buttons"] === "yes";
     await api.updateCounter(id, (answer["Name"] ?? "").trim() || "Counter", target, excluded);
     await this.refresh();
   }
@@ -434,7 +433,7 @@ export class RowCounter {
 
     if (!this.counters.length) {
       this.counterList.innerHTML =
-        '<li class="counter-empty">No counters yet: ⚙ to add one for each part you count separately.</li>';
+        '<li class="counter-empty">No counters yet. ⚙ adds one for each part counted separately.</li>';
       return;
     }
 
@@ -445,13 +444,13 @@ export class RowCounter {
         // A short badge, because a long one eats the name. The explanation
         // lives in the tooltip rather than in the two words.
         const excluded = c.excludedFromTotal
-          ? ' <span class="badge" title="This counter’s own buttons leave the project total alone">own</span>'
+          ? ' <span class="badge" title="This counter’s own buttons don’t change the project total">own</span>'
           : "";
         return `
           <li class="counter-row${c.enabled ? " on" : ""}" data-id="${c.id}">
             <button class="counter-toggle counter-setting" data-act="c-toggle" data-id="${c.id}"
-              title="${c.enabled ? "Counting — click to set aside" : "Set aside — click to count it"}"
-              aria-label="${c.enabled ? "Counting" : "Set aside"}"
+              title="${c.enabled ? "On: click to turn off" : "Off: click to turn on"}"
+              aria-label="${c.enabled ? "On" : "Off"}"
               aria-pressed="${c.enabled}">${c.enabled ? "●" : "○"}</button>
             <div class="counter-info">
               <span class="counter-name">${escapeHtml(c.name)}${excluded}</span>
@@ -463,7 +462,7 @@ export class RowCounter {
             </div>
             <div class="counter-more counter-setting">
               <button class="ghost key-chip${c.hotkey ? " set" : ""}" data-act="c-key" data-id="${c.id}"
-                title="${c.hotkey ? `${escapeHtml(keyLabel(c.hotkey))} counts this counter; Shift+${escapeHtml(keyLabel(c.hotkey))} counts it down. Click to change.` : "Give this counter its own key"}"
+                title="${c.hotkey ? `${escapeHtml(keyLabel(c.hotkey))} counts this counter; Shift+${escapeHtml(keyLabel(c.hotkey))} counts it down. Click to change.` : "Set a key for this counter"}"
                 >${c.hotkey ? escapeHtml(keyLabel(c.hotkey)) : "Key"}</button>
               <button class="ghost" data-act="c-edit" data-id="${c.id}" title="Rename or set a target">Edit</button>
               <button class="ghost" data-act="c-reset" data-id="${c.id}" title="Reset to zero">Reset</button>

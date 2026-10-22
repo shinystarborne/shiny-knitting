@@ -953,8 +953,8 @@ export function readingNote(g: Grid): string {
   }
   if (isLace(g)) {
     return g.flat
-      ? "Worked flat: right-side rows (odd numbers) are read from the right, wrong-side rows (even numbers) from the left, each square worked so the right side shows its symbol: a blank square purled, a dot knitted. A grey square is no stitch: go on to the next."
-      : "Worked in the round: every round read from the right. A grey square is no stitch: go on to the next.";
+      ? "Worked flat: right-side rows (odd numbers) are read from the right, wrong-side rows (even numbers) from the left, each square worked so the right side shows its symbol: a blank square purled, a dot knitted. A grey square means no stitch: skip to the next."
+      : "Worked in the round: every round read from the right. A grey square means no stitch: skip to the next.";
   }
   if (g.kind === "yoke") {
     return `Knitted in the round ${g.topDown ? "from the neck down" : "from the hem up"}, every round read from the right. The ${g.width}-stitch repeat goes ${g.repeats} times around; a grey square is no stitch.`;

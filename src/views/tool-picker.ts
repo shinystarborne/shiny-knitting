@@ -64,7 +64,7 @@ export class ToolPicker {
     const rest = others.filter((t) => fit.get(t.id)!.fits);
     const unfit = others.filter((t) => !fit.get(t.id)!.fits);
     const unfitHint = unfit.length
-      ? `<p class="hint" data-el="tool-unfit">${unfit.length} ${unfit.length === 1 ? `${kindLabel(unfit[0].kind).toLowerCase()} that does` : "that do"} not fit what is on it ${unfit.length === 1 ? "is" : "are"} not offered: ${escapeHtml(
+      ? `<p class="hint" data-el="tool-unfit">${unfit.length} ${unfit.length === 1 ? `${kindLabel(unfit[0].kind).toLowerCase()} that does` : "that do"} not fit the project's needles ${unfit.length === 1 ? "is" : "are"} not listed: ${escapeHtml(
           [...new Set(unfit.map((t) => describe(t)))].slice(0, 3).join("; "),
         )}${unfit.length > 3 ? "…" : ""}.</p>`
       : "";
@@ -73,9 +73,9 @@ export class ToolPicker {
     const option = (t: Tool, note = "") => {
       // Said when it only fits through an adapter, and whether that is on it yet.
       const via = fit.get(t.id)?.via;
-      const through = via ? `with the ${describe(via).replace(/^Adapter/, "adapter")}${chosen.has(via.id) ? "" : ": add it too"}` : "";
+      const through = via ? `with the ${describe(via).replace(/^Adapter/, "adapter")}${chosen.has(via.id) ? "" : " (add it too)"}` : "";
       // A pair with one tip on another project: the other is free.
-      const half = t.kind === "tips" && tipsFree(t) === 1 && !chosen.has(t.id) ? `one tip free, the other on ${t.uses.find((u) => u.projectId)?.projectName ?? "a project"}` : "";
+      const half = t.kind === "tips" && tipsFree(t) === 1 && !chosen.has(t.id) ? `one tip free, the other in use on ${t.uses.find((u) => u.projectId)?.projectName ?? "a project"}` : "";
       const notes = [note, half, through].filter(Boolean).join("; ");
       return `<option value="${t.id}">${escapeHtml(describe(t))}${notes ? ` — ${escapeHtml(notes)}` : ""}</option>`;
     };
@@ -89,13 +89,13 @@ export class ToolPicker {
                   <span>${escapeHtml(describe(t))}</span>
                   ${
                     t.kind === "tips"
-                      ? `<select data-tip="${t.id}" aria-label="Both tips, or one" title="Both tips, or only one: the other stays free for another project">
+                      ? `<select data-tip="${t.id}" aria-label="Both tips, or one" title="Both tips, or only one (the other stays free for another project)">
                           ${(["", "one"] as const).map((v) => `<option value="${v}" ${(tips.get(t.id) ?? "") === v ? "selected" : ""}>${v ? "One tip" : "Both tips"}</option>`).join("")}
                         </select>`
                       : ""
                   }
                   <button type="button" class="ghost" data-act="tool-free" data-id="${t.id}"
-                    title="Take it off this project; it goes back to free">✕</button>
+                    title="Remove from this project; it becomes free">✕</button>
                 </li>`,
               )
               .join("")}</ul>`
@@ -115,9 +115,9 @@ export class ToolPicker {
                     : ""
                 }
               </select>
-              <button type="button" class="ghost" data-act="tool-use" disabled title="Use it on this project">Use</button>
+              <button type="button" class="ghost" data-act="tool-use" disabled title="Use on this project">Use</button>
             </div>`
-          : `<p class="hint">${tools.length ? (unfit.length ? "Nothing else you have fits what is on it." : "Every needle and hook you have is on this project.") : "Add your needles and hooks in the Needles &amp; hooks tab."}</p>`
+          : `<p class="hint">${tools.length ? (unfit.length ? "Nothing else fits the needles on this project." : "Every needle and hook is already on this project.") : "Needles and hooks are added in the Needles &amp; hooks tab."}</p>`
       }
       ${unfitHint}
     `;

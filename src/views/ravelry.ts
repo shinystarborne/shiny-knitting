@@ -55,8 +55,8 @@ export class RavelryView {
       <header class="lib-bar">
         <h1>Ravelry</h1>
         <div class="lib-actions">
-          <span class="hint">Connected as <b>${esc(this.account.username || "you")}</b></span>
-          <button class="ghost" data-act="disconnect" title="Forget the sign-in: the tab asks for it again">Disconnect</button>
+          <span class="hint">Connected as <b>${esc(this.account.username || "unknown")}</b></span>
+          <button class="ghost" data-act="disconnect" title="Remove the sign-in">Disconnect</button>
         </div>
       </header>
       <form class="rav-search" data-el="search">
@@ -78,7 +78,7 @@ export class RavelryView {
   }
 
   private resultsHtml(): string {
-    if (!this.found.length) return `<div class="empty"><h2>Search Ravelry's patterns</h2><p>What you find shows here, with its photos. Open one to see what Ravelry says of it, put it on your wishlist, or buy it on Ravelry.</p></div>`;
+    if (!this.found.length) return `<div class="empty"><h2>Search Ravelry's patterns</h2><p>Results show here with their photos. Open one for Ravelry's details, add it to the wishlist, or buy it on Ravelry.</p></div>`;
     return `
       <p class="hint rav-count">${this.results.toLocaleString()} pattern${this.results === 1 ? "" : "s"}</p>
       <div class="rav-grid">${this.found
@@ -104,12 +104,12 @@ export class RavelryView {
           <h2>Sign in with Ravelry</h2>
           ${
             this.account.available
-              ? `<p>Search Ravelry's patterns here, see them with their photos, and put the ones you like on your wishlist. Sign in once with your Ravelry account: Ravelry asks you, in your browser, to let the app in.</p>
+              ? `<p>Search Ravelry's patterns with their photos, and add any to the wishlist. Signing in once with a Ravelry account is needed: Ravelry asks in the browser to allow the app.</p>
                  <div><button class="primary" data-act="sign-in">Sign in with Ravelry</button></div>
-                 <p class="hint" data-el="waiting" hidden>Waiting for Ravelry, in your browser: allow the app there, and come back.</p>
+                 <p class="hint" data-el="waiting" hidden>Waiting for Ravelry in the browser: allow the app there, then return.</p>
                  <p class="form-error" data-el="error" hidden></p>
-                 <p class="hint">Only reading: the app searches Ravelry for you, and changes nothing there. Disconnect forgets the sign-in.</p>`
-              : `<p>This copy of the app was built without Ravelry's sign-in, so Ravelry can't be searched from it.</p>`
+                 <p class="hint">Read only: the app searches Ravelry and changes nothing there. Disconnect removes the sign-in.</p>`
+              : `<p>This build has no Ravelry sign-in, so Ravelry can't be searched.</p>`
           }
         </section>
       </div>`;
@@ -160,7 +160,7 @@ export class RavelryView {
     if (act === "sign-in") await this.signIn();
     if (act === "more") await this.search(this.page + 1);
     if (act === "disconnect") {
-      if (!(await askYesNo("Sign out of Ravelry here? The tab asks you to sign in again.", { title: "Disconnect Ravelry", okLabel: "Disconnect" }))) return;
+      if (!(await askYesNo("Sign out of Ravelry? Signing in again is needed to search.", { title: "Disconnect Ravelry", okLabel: "Disconnect" }))) return;
       await api.disconnectRavelry().catch(() => {});
       this.account = { ...this.account, connected: false, username: "" };
       this.found = [];
@@ -199,8 +199,8 @@ export class RavelryView {
       </div>
       <div class="dialog-actions">
         <button class="ghost" data-act="close">Close</button>
-        <button class="ghost" data-act="ravelry" ${p.url ? "" : "disabled"} title="Its page on Ravelry, in your browser: to buy it, or read more">Ravelry page ↗</button>
-        <button class="primary" data-act="wish" ${p.url ? "" : "disabled"} title="On the wishlist, its name, designer, price and picture filled in">To the wishlist</button>
+        <button class="ghost" data-act="ravelry" ${p.url ? "" : "disabled"} title="Its Ravelry page in the browser, to buy it or read more">Ravelry page ↗</button>
+        <button class="primary" data-act="wish" ${p.url ? "" : "disabled"} title="Add to the wishlist with its name, designer, price and picture">To the wishlist</button>
       </div>`,
     );
     dialog.card.addEventListener("click", (e) => {

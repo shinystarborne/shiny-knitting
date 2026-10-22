@@ -19,11 +19,11 @@ type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held"
 const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "raglan", label: "Raglan sweater", hint: "Top-down, bottom-up, or a cardigan" },
   { key: "yoke", label: "Round yoke (lopapeysa)", hint: "Top-down, in the round" },
-  { key: "socks", label: "Socks", hint: "Cuff-down or toe-up, with the heel you like" },
+  { key: "socks", label: "Socks", hint: "Cuff-down or toe-up, with a choice of heels" },
   { key: "size", label: "Stitches for a size", hint: "Cast on for a width, rows for a length" },
   { key: "evenly", label: "Increase or decrease evenly", hint: "Spread across a row or round" },
-  { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
-  { key: "held", label: "Yarns held together", hint: "Two strands or more, as one yarn" },
+  { key: "regauge", label: "Re-gauge a pattern", hint: "From the pattern's gauge to another" },
+  { key: "held", label: "Yarns held together", hint: "Two or more strands knitted as one" },
   { key: "charts", label: "Charts", hint: "Colourwork or lace, or a round yoke's" },
   { key: "crochet", label: "Crochet diagrams", hint: "Rounds or rows, drawn in crochet symbols" },
 ];
@@ -251,7 +251,7 @@ export class CalculatorsView {
   }
 
   /** The gauge picker: one of your swatches, or typed in. */
-  private gaugeBlock(prefix = "", title = "Your gauge"): string {
+  private gaugeBlock(prefix = "", title = "Gauge"): string {
     const chosen = kept.values[`${prefix}swatch`] ?? "";
     const usable = this.swatches.filter((s) => gaugeOf(s).sts);
     const span = gaugeSpan(this.unit);
@@ -276,7 +276,7 @@ export class CalculatorsView {
           <label class="field"><span>Rows <em class="hint">per ${span}</em></span>
             <input data-k="${prefix}rows" data-kind="gauge" inputmode="decimal" value="${esc(kept.values[`${prefix}rows`] ?? "")}" placeholder="e.g. 30" /></label>
         </div>
-        ${usable.length ? "" : `<p class="hint">Log your swatches in the Stash to pick their gauge here.</p>`}
+        ${usable.length ? "" : `<p class="hint">Swatches logged in the Stash can be picked here.</p>`}
       </div>`;
   }
 
@@ -334,7 +334,7 @@ export class CalculatorsView {
               <input data-k="buttons" inputmode="numeric" value="${esc(kept.values.buttons ?? "6")}" /></label>
           </div>`
           }
-          <label class="field" title="Someone in People: their latest measurements fill the ones below">
+          <label class="field" title="A person from People: their latest measurements fill the fields below">
             <span>For</span>
             <select data-k="person">
               <option value="">Measurements typed in</option>
@@ -349,7 +349,7 @@ export class CalculatorsView {
             <aside class="calc-how" data-el="calc-how" aria-live="polite">${howToMeasure("chest")}</aside>
           </div>
           <div class="calc-person-save">
-            <button class="ghost" data-act="save-measurements" title="Keep these measurements in People, dated today: for the person chosen, or someone new">Save to People…</button>
+            <button class="ghost" data-act="save-measurements" title="Save these measurements to People, dated today, for the chosen person or a new one">Save to People…</button>
             <span class="hint" data-el="people-saved"></span>
           </div>
           ${
@@ -376,7 +376,7 @@ export class CalculatorsView {
             <span>How loose</span>
             <select data-k="fit">${FITS.map((f) => `<option value="${f.key}" ${f.key === fit ? "selected" : ""}>${f.label}</option>`).join("")}</select>
           </label>
-          <label class="field" title="The counts at the neck, hem and cuffs are fitted to it, so the rib comes out even">
+          <label class="field" title="Stitch counts at the neck, hem and cuffs are fitted to the rib, so it comes out even">
             <span>Rib</span>
             <select data-k="rib">${RIBS.map((r) => `<option value="${r.sts}" ${String(r.sts) === (kept.values.rib ?? "2") ? "selected" : ""}>${r.label}</option>`).join("")}</select>
           </label>
@@ -404,7 +404,7 @@ export class CalculatorsView {
               <option value="up" ${dir === "up" ? "selected" : ""}>Toe-up: from the toe to the cuff</option>
             </select>
           </label>
-          <label class="field" title="Someone in People: their foot fills the measurements below">
+          <label class="field" title="A person from People: their foot measurements fill the fields below">
             <span>For</span>
             <select data-k="person">
               <option value="">Measurements typed in</option>
@@ -414,12 +414,12 @@ export class CalculatorsView {
           <p class="hint calc-person-note" data-el="person-note">${esc(this.personNote())}</p>
           ${this.gaugeBlock()}
           <h3>The foot</h3>
-          <p class="hint">Measured standing, with the weight on it.</p>
+          <p class="hint">Measured standing, with weight on the foot.</p>
           <div class="calc-foot">
             ${SOCK_FIELDS.map((f) => `<div class="calc-foot-one" data-figure="${f.from}">${measureFigure(f.from!, 104)}<div>${this.lengthField(f.key, f.label, f.hint, f.start)}<p class="hint">${esc(figureCaption(f.from!))}</p></div></div>`).join("")}
           </div>
           <div class="calc-person-save">
-            <button class="ghost" data-act="save-measurements" title="Keep the foot in People, dated today: for the person chosen, or someone new">Save to People…</button>
+            <button class="ghost" data-act="save-measurements" title="Save the foot measurements to People, dated today, for the chosen person or a new one">Save to People…</button>
             <span class="hint" data-el="people-saved"></span>
           </div>
           <h3>The sock</h3>
@@ -433,7 +433,7 @@ export class CalculatorsView {
               <select data-k="sockToe">${TOES.map((t) => `<option value="${t.key}" ${t.key === toe ? "selected" : ""} title="${esc(t.hint)}">${esc(t.label)}</option>`).join("")}</select></label>
             <label class="field calc-field"><span>Rib</span>
               <select data-k="sockRib">${RIBS.filter((r) => r.sts).map((r) => `<option value="${r.sts}" ${String(r.sts) === (kept.values.sockRib ?? "4") ? "selected" : ""}>${r.label}</option>`).join("")}</select></label>
-            <label class="field calc-field" title="How much smaller round than the foot the sock is, so it hugs it: 10% is usual, less for a thick yarn"><span>Negative ease <em class="hint">%</em></span>
+            <label class="field calc-field" title="How much smaller the sock is than the foot, for a snug fit: 10% is usual, less for thick yarn"><span>Negative ease <em class="hint">%</em></span>
               <input data-k="sockEase" inputmode="decimal" value="${esc(kept.values.sockEase ?? "10")}" /></label>
             ${this.lengthField("sockShorter", "Shorter than the foot", "The sock's foot is a little shorter than the foot, so it does not bag at the toe", 1)}
             ${this.lengthField("sockLeg", "Leg", "From the top of the heel to the cuff's edge, the cuff included", 15)}
@@ -490,7 +490,7 @@ export class CalculatorsView {
       <div class="calc-grid">
         <section class="calc-inputs">
           <h2>Yarns held together</h2>
-          <p class="hint">Knitting two strands or more as one: how thick that yarn is, by its metres per 100 g.</p>
+          <p class="hint">Two or more strands knitted as one: the combined thickness, in metres per 100 g.</p>
           <label class="field">
             <span>Each strand, in metres per 100 g</span>
             <input data-k="strands" value="${esc(kept.values.strands ?? "")}" placeholder="e.g. 350, 1066, 1500" />
@@ -505,7 +505,7 @@ export class CalculatorsView {
               : ""
           }
           <div class="calc-fields">
-            <label class="field calc-field" title="How much of the yarn held together you need, if you know: each strand is needed as long"><span>Metres needed <em class="hint">optional</em></span>
+            <label class="field calc-field" title="Length of the held-together yarn needed, if known; each strand is needed in the same length"><span>Metres needed <em class="hint">optional</em></span>
               <input data-k="heldNeed" inputmode="decimal" value="${esc(kept.values.heldNeed ?? "")}" placeholder="e.g. 800" /></label>
             <label class="field calc-field" title="The yarn it is to match, as for the rest of the project: within 10% is close enough"><span>Compare with <em class="hint">m/100 g, optional</em></span>
               <input data-k="heldMatch" inputmode="decimal" value="${esc(kept.values.heldMatch ?? "")}" placeholder="e.g. 200" /></label>
@@ -520,7 +520,7 @@ export class CalculatorsView {
       .split(/[,;\s]+/)
       .map((t) => Number(t.replace(",", ".")))
       .filter((n) => n > 0);
-    this.need(strands.length > 0, "Give each strand's metres per 100 g: 1066, 1500.");
+    this.need(strands.length > 0, "Metres per 100 g of each strand needed, e.g. 1066, 1500.");
     const held = heldTogether(strands)!;
     const m = Math.round(held.metres);
     const weight = familyByMetres(held.metres);
@@ -537,7 +537,7 @@ export class CalculatorsView {
         ? ""
         : `<p class="${Math.abs(diff) <= 10 ? "hint" : "calc-warnings-p"}">${esc(
             `Against ${match} m/100 g it is ${Math.abs(diff) < 0.5 ? "the same" : `${Math.abs(Math.round(diff))}% ${diff > 0 ? "thinner" : "thicker"}`}: ${
-              Math.abs(diff) <= 10 ? "close enough, within 10%." : "more than 10% apart, so it will knit up differently. Add or take a strand, or change one."
+              Math.abs(diff) <= 10 ? "close enough, within 10%." : "more than 10% apart, so it knits up differently. Add, remove or change a strand."
             }`,
           )}</p>`;
     const text = `${strands.length} strands held together (${strands.map((s) => `${s}`).join(", ")} m/100 g) make ${m} m/100 g: ${weight.label}.`;
@@ -547,9 +547,9 @@ export class CalculatorsView {
     };
     return `${this.resultHead("Held together")}
       <p class="calc-big"><b>${m} m/100 g</b> <span class="hint">${esc(`${weight.label} (${weight.aka}), on ${weight.needles} needles`)}</span></p>
-      ${strands.length > 1 ? table(rows.map((r) => (need > 0 ? r : r.slice(0, 2))), need > 0 ? ["Strand", "In 100 g of it", "For what you need"] : ["Strand", "In 100 g of it"]) : `<p class="hint">One strand is itself: add another to hold with it.</p>`}
+      ${strands.length > 1 ? table(rows.map((r) => (need > 0 ? r : r.slice(0, 2))), need > 0 ? ["Strand", "In 100 g", "For the length needed"] : ["Strand", "In 100 g"]) : `<p class="hint">Add a second strand to hold together.</p>`}
       ${compare}
-      <p class="hint">A metre of the yarn held together weighs what a metre of each strand weighs, added up. Knit a swatch: strands held together knit up a little thicker than one yarn of the same weight.</p>
+      <p class="hint">A metre of held-together yarn weighs the sum of a metre of each strand. A swatch is recommended: held strands knit up a little thicker than a single yarn of the same weight.</p>
       ${this.actions()}`;
   }
 
@@ -573,7 +573,7 @@ export class CalculatorsView {
             <span>The pattern's counts</span>
             <input data-k="counts" value="${esc(kept.values.counts ?? "")}" placeholder="Stitches or rows, e.g. 96, 104, 112" />
           </label>
-          <label class="field calc-field"><span>They are</span>
+          <label class="field calc-field"><span>Counts are</span>
             <select data-k="countsAre">
               <option value="sts" ${(kept.values.countsAre ?? "sts") === "sts" ? "selected" : ""}>Stitches</option>
               <option value="rows" ${kept.values.countsAre === "rows" ? "selected" : ""}>Rows</option>
@@ -612,8 +612,8 @@ export class CalculatorsView {
   }
 
   private needGauge(g: Gauge, rows = true): void {
-    this.need(g.sts > 0, `Give your gauge: pick a swatch, or type the stitches per ${gaugeSpan(this.unit)}.`);
-    if (rows) this.need(g.rows > 0, `Give the rows per ${gaugeSpan(this.unit)} too: lengths are counted in rows.`);
+    this.need(g.sts > 0, `Gauge needed: pick a swatch, or type the stitches per ${gaugeSpan(this.unit)}.`);
+    if (rows) this.need(g.rows > 0, `Rows per ${gaugeSpan(this.unit)} needed too: lengths are counted in rows.`);
   }
 
   /** The raglan's or round yoke's input, as typed; a field that is not a length stops it. */
@@ -623,7 +623,7 @@ export class CalculatorsView {
     const input = { gauge: g } as RaglanInput;
     for (const f of [...RAGLAN_FIELDS, ...EASE_FIELDS]) {
       const v = this.num(f.key);
-      this.need(!Number.isNaN(v), `The ${f.label.toLowerCase()} is not a length.`);
+      this.need(!Number.isNaN(v), `${f.label} must be a length.`);
       (input as unknown as Record<string, number>)[f.key] = v;
     }
     input.rib = Number(kept.values.rib ?? "2");
@@ -697,12 +697,12 @@ export class CalculatorsView {
           <p><b>${esc(chart.name)}</b>: a ${g.width}-stitch repeat, ${fit.repeats} times round, ${neck} stitches in each at the neck; ${fit.height} rounds.</p>
           ${
             fitted
-              ? `<p class="hint" data-el="chart-fitted">The chart is this yoke: its rounds, its repeats and its increase rounds are these.</p>`
-              : `<p class="calc-warnings-p" data-el="chart-unfitted">The chart is not this yoke's shape yet${g.height !== fit.height ? ` (${g.height} rounds, not ${fit.height})` : ""}. Fit it to give it these counts: what is drawn on it stays.</p>`
+              ? `<p class="hint" data-el="chart-fitted">The chart matches this yoke: same rounds, repeats and increase rounds.</p>`
+              : `<p class="calc-warnings-p" data-el="chart-unfitted">The chart does not match this yoke yet${g.height !== fit.height ? ` (${g.height} rounds, not ${fit.height})` : ""}. Fitting gives it these counts; what is drawn stays.</p>`
           }
           <div class="calc-chart-actions">
             ${fitted ? "" : `<button class="primary" data-act="fit-chart">Fit the chart</button>`}
-            <button class="ghost" data-act="open-yoke-chart" title="Open the chart to draw on it; ← Round yoke comes back here">Draw on the chart ↗</button>
+            <button class="ghost" data-act="open-yoke-chart" title="Open the chart to draw on it (← Round yoke returns here)">Draw on the chart ↗</button>
           </div>
         </div>
       </div>`;
@@ -726,8 +726,8 @@ export class CalculatorsView {
     const lost = fitLoses(g, fit);
     if (lost) {
       const ok = await askYesNo(
-        `The yoke is ${fit.height} rounds, and the chart ${g.height}. Fitting it takes away the chart's last ${g.height - fit.height} rounds, nearest the underarm: ${lost} of them have colourwork on them.`,
-        { title: "Fit the chart", okLabel: "Fit it", danger: true },
+        `The yoke has ${fit.height} rounds and the chart ${g.height}. Fitting removes the chart's last ${g.height - fit.height} rounds (nearest the underarm); ${lost} of them have colourwork.`,
+        { title: "Fit the chart", okLabel: "Fit", danger: true },
       );
       if (!ok) return;
     }
@@ -752,7 +752,7 @@ export class CalculatorsView {
     );
     if (!answer) return;
     const width = Math.round(Number(answer["Stitches in the repeat"]));
-    if (!(width >= 2 && width <= MAX_SIDE)) return say(`A repeat is 2 to ${MAX_SIDE} stitches.`, "New yoke chart");
+    if (!(width >= 2 && width <= MAX_SIDE)) return say(`A repeat must be 2 to ${MAX_SIDE} stitches.`, "New yoke chart");
     try {
       const chart = await api.addChart(answer.Name.trim() || "Yoke", encode(newGrid({ kind: "yoke", width, height: 40, repeats: 1 })));
       this.charts = [chart, ...this.charts];
@@ -836,7 +836,7 @@ export class CalculatorsView {
 
   private sockResult(): string {
     const lengths = { footAround: this.num("footAround"), footLength: this.num("footLength"), shorter: this.num("sockShorter"), leg: this.num("sockLeg"), cuff: this.num("sockCuff") };
-    for (const [k, v] of Object.entries(lengths)) this.need(!Number.isNaN(v), `The ${k === "footAround" ? "measurement around the foot" : k === "footLength" ? "foot length" : k === "shorter" ? "shortening" : k} is not a length.`);
+    for (const [k, v] of Object.entries(lengths)) this.need(!Number.isNaN(v), `The ${k === "footAround" ? "measurement around the foot" : k === "footLength" ? "foot length" : k === "shorter" ? "shortening" : k} must be a length.`);
     const input: SockInput = {
       gauge: this.gauge(),
       ...lengths,
@@ -902,7 +902,7 @@ export class CalculatorsView {
     const length = this.num("length");
     const multiple = this.num("multiple") || 1;
     const plus = this.num("plus") || 0;
-    this.need(width > 0 || length > 0, "Give a width, a length, or both.");
+    this.need(width > 0 || length > 0, "Width, length, or both needed.");
     this.needGauge(g, length > 0);
     const rows: [string, string, string][] = [];
     const lines: string[] = [];
@@ -924,8 +924,8 @@ export class CalculatorsView {
   private evenlyResult(): string {
     const now = this.num("now");
     const change = this.num("change");
-    this.need(now > 0, "Give the stitches you have now.");
-    this.need(!!change && !Number.isNaN(change), "Give how many to increase (8) or decrease (−8).");
+    this.need(now > 0, "Current stitch count needed.");
+    this.need(!!change && !Number.isNaN(change), "Number to increase (8) or decrease (−8) needed.");
     const round = (kept.values.round ?? "round") === "round";
     const s = spreadEvenly(now, change, round);
     if ("error" in s) throw new Error(s.error);
@@ -943,22 +943,22 @@ export class CalculatorsView {
     const mine = this.gauge();
     const rowsMode = kept.values.countsAre === "rows";
     const key = rowsMode ? "rows" : "sts";
-    this.need(pattern[key] > 0, `Give the pattern's ${rowsMode ? "rows" : "stitches"} per ${gaugeSpan(this.unit)}.`);
-    this.need(mine[key] > 0, `Give your ${rowsMode ? "rows" : "stitches"} per ${gaugeSpan(this.unit)}: pick a swatch, or type it.`);
+    this.need(pattern[key] > 0, `Pattern's ${rowsMode ? "rows" : "stitches"} per ${gaugeSpan(this.unit)} needed.`);
+    this.need(mine[key] > 0, `Own ${rowsMode ? "rows" : "stitches"} per ${gaugeSpan(this.unit)} needed: pick a swatch, or type it.`);
     const counts = (kept.values.counts ?? "").split(/[,;\s]+/).map(Number).filter((n) => n > 0);
-    this.need(counts.length > 0, `Give the pattern's ${rowsMode ? "row" : "stitch"} counts: 96, 104, 112.`);
+    this.need(counts.length > 0, `Pattern's ${rowsMode ? "row" : "stitch"} counts needed, e.g. 96, 104, 112.`);
     const lines = counts.map((c) => ({ c, ...regauge(c, pattern[key], mine[key]) }));
     const unit = rowsMode ? "rows" : "sts";
     this.plan = {
-      title: "Pattern at my gauge",
+      title: "Pattern at a new gauge",
       text: lines.map((l) => `${l.c} ${unit} → ${l.mine} ${unit} (${this.len(l.patternCm)}; as written it would be ${this.len(l.asWrittenCm)})`).join("\n"),
     };
-    return `${this.resultHead("At your gauge")}
+    return `${this.resultHead("At the new gauge")}
       ${table(
         lines.map((l) => [`${l.c} ${unit}`, `${l.mine} ${unit}`, `${this.len(l.patternCm)}; as written ${this.len(l.asWrittenCm)}`]),
-        ["Pattern", "Yours", rowsMode ? "Long" : "Wide"],
+        ["Pattern", "New", rowsMode ? "Length" : "Width"],
       )}
-      <p class="hint">Knit your count for the pattern's size. Knitted as written at your gauge, it comes out the size in the last column.</p>
+      <p class="hint">Knit the new count for the pattern's size. Knitted as written at the new gauge, it comes out at the size in the last column.</p>
       ${this.actions()}`;
   }
 
@@ -978,18 +978,18 @@ export class CalculatorsView {
     const name = (y: Yarn) => `${[y.brand, y.name].filter(Boolean).join(" ")}${y.colourway ? ` (${y.colourway})` : ""}`;
     const balls = (n: number) => `${n} ball${n === 1 ? "" : "s"}`;
     const inOwn = own && need.balls !== null ? `${need.grams !== null ? `${grouped(need.grams)} g, ` : ""}${balls(need.balls)} of ${name(own)}` : "";
-    const yarnLine = `Yarn: about ${grouped(need.metres)} m, with a tenth to spare${inOwn ? `: ${inOwn}` : ""}.`;
+    const yarnLine = `Yarn: about ${grouped(need.metres)} m, with 10% extra${inOwn ? `: ${inOwn}` : ""}.`;
     if (this.plan) this.plan.text += `\n\n${yarnLine}`;
     if (this.plan?.intro !== undefined) this.plan.intro += ` ${yarnLine}`;
     return `
       <h3>Yarn</h3>
-      <p class="calc-big" data-el="yarn-need"><b>About ${grouped(need.metres)} m</b> <span class="hint">by your gauge, with a tenth to spare</span></p>
+      <p class="calc-big" data-el="yarn-need"><b>About ${grouped(need.metres)} m</b> <span class="hint">at this gauge, with 10% extra</span></p>
       ${
         inOwn
-          ? `<p data-el="yarn-own">In your swatch's yarn: <b>${esc(inOwn)}</b>${own!.metresLeft ? ` <span class="hint">(${grouped(Math.round(own!.metresLeft))} m of it in the stash)</span>` : ""}</p>`
-          : `<p class="hint">Pick the swatch you knitted for it, in a yarn from the stash, to have it in grams and balls.</p>`
+          ? `<p data-el="yarn-own">In the swatch's yarn: <b>${esc(inOwn)}</b>${own!.metresLeft ? ` <span class="hint">(${grouped(Math.round(own!.metresLeft))} m of it in the stash)</span>` : ""}</p>`
+          : `<p class="hint">Pick a swatch knitted in a stash yarn to see the amount in grams and balls.</p>`
       }
-      <p class="hint">${esc(label)} in your stash:</p>
+      <p class="hint">${esc(label)} in the stash:</p>
       ${
         fits.length
           ? `<ul class="calc-stash" data-el="yarn-stash">${fits
@@ -1172,7 +1172,7 @@ export class CalculatorsView {
    */
   private personNote(): string {
     const person = this.people.find((p) => p.id === kept.values.person);
-    if (!person) return this.people.length ? "Pick someone from People to fill in their measurements." : "Add the people you knit for in People, to fill in their measurements here.";
+    if (!person) return this.people.length ? "Pick a person from People to fill in their measurements." : "People added in the People tab can fill in measurements here.";
     const from = this.personFields().filter((f) => f.from);
     const had = from.filter((f) => latestValue(person, f.from!));
     const lacking = from.filter((f) => !latestValue(person, f.from!));
@@ -1244,7 +1244,7 @@ export class CalculatorsView {
     });
     // Someone just added is asked nothing more: it is what they are for.
     if (person.sets.some((x) => Object.keys(x.values).length) || person.sets.length > 1) {
-      const ok = await askYesNo(`Keep in ${person.name}'s measurements, dated today: ${said.join(", ")}?`, { title: "Save to People", okLabel: "Save" });
+      const ok = await askYesNo(`Save to ${person.name}'s measurements, dated today: ${said.join(", ")}?`, { title: "Save to People", okLabel: "Save" });
       if (!ok) return;
     }
     const values = Object.fromEntries(changed.map((k) => [k, typed[k]]));

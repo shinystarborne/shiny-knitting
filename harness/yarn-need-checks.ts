@@ -117,13 +117,13 @@ export async function verifyYarnNeed() {
     type("sockHeel", "flap");
     await waitFor(() => /About \d+ m/.test(out()), "the yarn");
     const metres = Number(/About ([\d ]+) m/.exec(out())![1].replace(/ /g, ""));
-    check(results, "the socks say how much yarn: about 300 m, a tenth to spare", metres > 260 && metres < 400 && /with a tenth to spare/.test(out()), out().slice(0, 300));
-    check(results, "…and without a stash yarn's swatch, how to have it in grams and balls", /Pick the swatch you knitted for it/.test(out()));
-    check(results, "…the stash's fingering yarns: Need Sock has enough", /Fingering in your stash: .*Drops Need Sock \(Peat\) [\d ]+ m enough/.test(out()), out());
+    check(results, "the socks say how much yarn: about 300 m, a tenth to spare", metres > 260 && metres < 400 && /with 10% extra/.test(out()), out().slice(0, 300));
+    check(results, "…and without a stash yarn's swatch, how to have it in grams and balls", /Pick a swatch knitted in a stash yarn/.test(out()));
+    check(results, "…the stash's fingering yarns: Need Sock has enough", /Fingering in the stash: .*Drops Need Sock \(Peat\) [\d ]+ m enough/.test(out()), out());
 
     type("swatch", swatchId);
-    await waitFor(() => /In your swatch's yarn/.test(out()), "the swatch's yarn");
-    check(results, "the swatch's own yarn: grams and balls of it", new RegExp(`In your swatch's yarn: ${Math.ceil(metres / 400 * 100)} g, 1 ball of Drops Need Sock \\(Peat\\)`).test(out()), out());
+    await waitFor(() => /In the swatch's yarn/.test(out()), "the swatch's yarn");
+    check(results, "the swatch's own yarn: grams and balls of it", new RegExp(`In the swatch's yarn: ${Math.ceil(metres / 400 * 100)} g, 1 ball of Drops Need Sock \\(Peat\\)`).test(out()), out());
     // What Copy puts on the clipboard says it too.
     let copied = "";
     const clipboard = navigator.clipboard;
@@ -135,7 +135,7 @@ export async function verifyYarnNeed() {
     } finally {
       Object.defineProperty(clipboard, "writeText", { configurable: true, value: writeText });
     }
-    check(results, "…said in the plan to copy", /Yarn: about [\d ]+ m, with a tenth to spare: \d+ g, 1 ball of Drops Need Sock \(Peat\)\.$/.test(copied), copied.slice(-200));
+    check(results, "…said in the plan to copy", /Yarn: about [\d ]+ m, with 10% extra: \d+ g, 1 ball of Drops Need Sock \(Peat\)\.$/.test(copied), copied.slice(-200));
 
     // A sweater.
     (view()!.querySelector('[data-calc="raglan"]') as HTMLElement).click();
@@ -146,7 +146,7 @@ export async function verifyYarnNeed() {
     for (const [k, v] of [["chest", "92"], ["upperArm", "30"], ["wrist", "16"], ["neck", "36"], ["yokeDepth", "20"], ["armLength", "45"]]) type(k, v);
     await waitFor(() => /About [\d ]+ m/.test(out()), "the sweater's yarn");
     const sweater = Number(/About ([\d ]+) m/.exec(out())![1].replace(/ /g, ""));
-    check(results, "a raglan says its yarn too: a DK sweater, over 1 000 m", sweater > 1000 && sweater < 1800 && /DK in your stash/.test(out()), `${sweater} ${out().slice(0, 200)}`);
+    check(results, "a raglan says its yarn too: a DK sweater, over 1 000 m", sweater > 1000 && sweater < 1800 && /DK in the stash/.test(out()), `${sweater} ${out().slice(0, 200)}`);
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

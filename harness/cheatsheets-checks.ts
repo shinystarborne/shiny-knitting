@@ -95,7 +95,7 @@ export async function verifyCheatsheets() {
     act("add-web")!.click();
     await answer(["https://shop.example/refuses-frames", "Yarn weights"]);
     await waitFor(() => !!view()!.querySelector(".sheet-refused"), "the refusal");
-    check(results, "a site that refuses frames is not framed: it says so, and offers a window", !view()!.querySelector("iframe") && /will not be shown inside another app/.test(view()!.textContent ?? ""));
+    check(results, "a site that refuses frames is not framed: it says so, and offers a window", !view()!.querySelector("iframe") && /cannot be shown inside the app/.test(view()!.textContent ?? ""));
     view()!.querySelector<HTMLElement>('.sheet-refused [data-act="window"]')!.click();
     await waitFor(() => (w.__sheetWindows ?? []).length > 0, "the window");
     check(results, "…Open in a window of its own opens one, at its address", w.__sheetWindows!.at(-1)!.url === "https://shop.example/refuses-frames");

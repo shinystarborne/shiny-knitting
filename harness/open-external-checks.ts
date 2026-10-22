@@ -41,7 +41,7 @@ export async function verifyOpenExternal() {
     (document.querySelector('.library [data-open="p1"] [data-act="more"]') as HTMLElement).click();
     const item = () => document.querySelector<HTMLElement>('[data-menu="external"]');
     await waitFor(() => !!item(), "the ⋯ menu");
-    check(results, "a pattern's ⋯ menu has Open in your PDF app", /Open in your PDF app/.test(item()!.textContent ?? ""), item()!.textContent ?? "");
+    check(results, "a pattern's ⋯ menu has Open in the PDF app", /Open in the PDF app/.test(item()!.textContent ?? ""), item()!.textContent ?? "");
     item()!.click();
     await waitFor(() => w.__opened!.length === 1, "the file to open");
     check(results, "…which opens its file", w.__opened![0] === path("p1"), w.__opened!.join());

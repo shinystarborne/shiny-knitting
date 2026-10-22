@@ -96,7 +96,7 @@ export class StashStatsView {
       <section class="usage-panel">
         <div class="usage-head">
           <div><h2>Added and used, month by month</h2>
-            <p class="hint">Each calendar month, first day to last. Added: the lots as bought, dated when bought (or when the yarn was added). Used: what finished projects took, weighed before and after, and what was left of yarn marked used up; counted from version 0.3.23 on.</p></div>
+            <p class="hint">Per calendar month. Added: lots as bought, by purchase date (or the date the yarn was added). Used: what finished projects took, and the remainder of yarn marked used up; counted since version 0.3.23.</p></div>
           ${unitSwitch}
         </div>
         <div class="usage-body">
@@ -112,7 +112,7 @@ export class StashStatsView {
           ${
             bought.items.length
               ? `<ul class="usage-list">${bought.items.map((x) => `<li><span>${esc(x.name)}</span><b>${money(x.amount, this.currency)}</b><em>${x.kind === "tool" ? "needles &amp; hooks" : x.kind} · ${day(x.at)}</em></li>`).join("")}</ul>`
-              : `<p class="hint">Nothing bought with a price this month. A yarn's price (a ball's, or 100 g's for deadstock), a pattern's price and a needle's or a set's are in their forms.</p>`
+              : `<p class="hint">No priced purchases this month. Prices are set in the yarn, pattern, needle and set forms.</p>`
           }
         </div>
         <details class="usage-table"><summary>The months as a table</summary>

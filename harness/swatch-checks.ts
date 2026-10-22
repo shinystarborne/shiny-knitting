@@ -120,7 +120,7 @@ export async function verifySwatches() {
     set("stsBlocked", "20");
     set("rowsBlocked", "28");
     const blocking = modal("swatch-form")!.querySelector<HTMLElement>('[data-el="blocking"]')!;
-    check(results, "the form says what blocking did, as the counts are typed", !blocking.hidden && blocking.textContent === "Blocking made it 5% wider and 5% longer.", blocking.textContent ?? "");
+    check(results, "the form says what blocking did, as the counts are typed", !blocking.hidden && blocking.textContent === "After blocking: 5% wider and 5% longer.", blocking.textContent ?? "");
     check(results, "after blocking comes first, before blocking is optional", /After blocking[\s\S]*Before blocking[\s\S]*optional/.test(modal("swatch-form")!.querySelector(".gauge-table")!.textContent ?? ""));
     // A photo dropped on the box.
     const canvas = document.createElement("canvas");

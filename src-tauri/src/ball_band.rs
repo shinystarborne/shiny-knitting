@@ -157,7 +157,7 @@ pub async fn read_ball_band(state: State<'_, AppState>, image: String) -> CmdRes
         return Err(AppError::Message("No model server is set up. Open Settings to enter its address.".into()));
     }
     if !image.starts_with("data:image/") {
-        return Err(AppError::Message("That is not a picture.".into()));
+        return Err(AppError::Message("This file is not a picture.".into()));
     }
     let request = CompletionRequest {
         system: system_prompt(),

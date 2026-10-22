@@ -64,7 +64,7 @@ export class StashHistoryView {
           <p>${
             this.yarns.length
               ? "Try another word."
-              : "Yarn you had and used goes here: mark it Used up on its card, or finish a project with 0 g of it left."
+              : "Used-up yarn appears here: mark it Used up on its card, or finish a project with 0 g of it left."
           }</p>
         </div>`;
       return;
@@ -93,7 +93,7 @@ export class StashHistoryView {
       try {
         if (act === "restore") await api.setYarnUsedUp(yarn.id, false);
         if (act === "remove") {
-          if (!(await askYesNo(`Remove ${yarn.name} from the history for good? Its photo goes too. This cannot be undone.`, { title: "Remove yarn", okLabel: "Remove", danger: true }))) return;
+          if (!(await askYesNo(`Remove ${yarn.name} permanently from the history? Its photo is deleted too. This cannot be undone.`, { title: "Remove yarn", okLabel: "Remove", danger: true }))) return;
           await api.deleteYarn(yarn.id);
         }
       } catch (err) {
@@ -123,7 +123,7 @@ function cardHtml(y: Yarn): string {
         ${y.fibres.length ? `<p class="card-fibres">${esc(describeFibres(y.fibres))}</p>` : ""}
         <div class="card-tools-row">
           <button class="card-remove card-colour" data-act="restore" data-id="${esc(y.id)}" title="Not used up after all: back in the stash">Back in the stash</button>
-          <button class="card-remove" data-act="remove" data-id="${esc(y.id)}" title="Remove it from the history for good">Remove</button>
+          <button class="card-remove" data-act="remove" data-id="${esc(y.id)}" title="Remove permanently from the history">Remove</button>
         </div>
       </div>
     </article>`;

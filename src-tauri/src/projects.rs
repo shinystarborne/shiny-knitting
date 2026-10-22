@@ -194,7 +194,7 @@ pub fn add_log_entry(state: State<'_, AppState>, project_id: String, text: Strin
 #[tauri::command]
 pub fn update_log_entry(state: State<'_, AppState>, id: String, text: String, at: i64) -> CmdResult<LogEntry> {
     if at <= 0 {
-        return Err(AppError::Message("Give the day it happened.".into()));
+        return Err(AppError::Message("Date needed.".into()));
     }
     db::update_log_entry(&state.db(), &id, &log_text(&text), at)
 }

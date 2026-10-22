@@ -65,13 +65,13 @@ export class ToolSetsDialog {
             </div>
             <span class="tool-set-price">${s.price != null ? money(s.price, this.currency) : `<span class="hint">No price</span>`}</span>
             <button class="ghost" data-act="edit-set" data-id="${s.id}">Change</button>
-            <button class="ghost" data-act="remove-set" data-id="${s.id}" title="The set goes; its pieces stay">Remove</button>
+            <button class="ghost" data-act="remove-set" data-id="${s.id}" title="Removes the set; its pieces stay">Remove</button>
           </li>`;
       })
       .join("");
     return `
       <h2>Sets</h2>
-      <p class="modal-intro">Needles and hooks bought together, for one price: its pieces are each in Needles &amp; hooks, and the set has the price. Several sizes added at once are a set already.</p>
+      <p class="modal-intro">Needles and hooks bought together for one price. Each piece is listed in Needles &amp; hooks; the set holds the price. Several sizes added at once already form a set.</p>
       ${this.sets.length ? `<ul class="tool-set-list">${rows}</ul>` : `<p class="hint">No sets yet.</p>`}
       <div class="modal-actions">
         <button class="ghost" data-act="new-set">+ New set</button>
@@ -105,14 +105,14 @@ export class ToolSetsDialog {
       })
       .join("");
     return `
-      <h2>${e.id ? "Change the set" : "A new set"}</h2>
+      <h2>${e.id ? "Edit set" : "New set"}</h2>
       <div class="field-row">
         <label class="field"><span>Name</span><input data-f="set-name" value="${esc(e.name)}" placeholder="e.g. ChiaoGoo Twist Lace Complete" maxlength="120" /></label>
         <label class="field tool-price"><span>Price of the set</span><input data-f="set-price" inputmode="decimal" value="${esc(e.price)}" placeholder="e.g. 120" /></label>
       </div>
       <div class="field">
         <span>Its pieces <em class="hint" data-el="picked">${this.pickedText()}</em></span>
-        <p class="hint">A piece taken from another set leaves that one. A price a piece had alone is not counted while it is in a set.</p>
+        <p class="hint">A piece moved from another set leaves that set. While in a set, a piece's own price is not counted.</p>
         <div class="tool-set-pieces">${this.tools.length ? groups : `<p class="hint">Nothing in Needles &amp; hooks yet.</p>`}</div>
       </div>
       <div class="modal-actions">
@@ -123,7 +123,7 @@ export class ToolSetsDialog {
 
   private pickedText(): string {
     const n = this.editing?.picked.size ?? 0;
-    return n ? `${n} chosen` : "none chosen yet";
+    return n ? `${n} chosen` : "none chosen";
   }
 
   private onChange = (ev: Event): void => {
@@ -164,7 +164,7 @@ export class ToolSetsDialog {
     const typed = this.root.querySelector<HTMLInputElement>('[data-f="set-price"]')!.value.trim();
     const price = typed ? parsePrice(typed) : null;
     try {
-      if (typed && price === null) throw new Error("The price is a number: 120 or 119,90.");
+      if (typed && price === null) throw new Error("Price must be a number, like 120 or 119,90.");
       await api.saveToolSet({ id: e.id || null, name: this.root.querySelector<HTMLInputElement>('[data-f="set-name"]')!.value, price, toolIds: [...e.picked] });
       this.changed = true;
       this.editing = null;
@@ -178,7 +178,7 @@ export class ToolSetsDialog {
   private async remove(id: string): Promise<void> {
     const set = this.sets.find((s) => s.id === id);
     if (!set) return;
-    const ok = await askYesNo(`Remove the set “${set.name}”?\n\nIts pieces stay in Needles & hooks, in no set, and its price goes with it.`, {
+    const ok = await askYesNo(`Remove the set “${set.name}”?\n\nIts pieces stay in Needles & hooks, without a set, and the set price is removed.`, {
       title: "Remove a set",
       okLabel: "Remove",
       danger: true,

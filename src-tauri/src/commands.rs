@@ -66,7 +66,7 @@ pub fn save_hour_rate(state: State<'_, AppState>, rate: Option<f64>) -> CmdResul
 pub fn save_currency(state: State<'_, AppState>, code: String) -> CmdResult<String> {
     let code = code.trim().to_uppercase();
     if code.len() != 3 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err(AppError::Message("A currency is three letters: EUR, USD, GBP…".into()));
+        return Err(AppError::Message("Currency must be a three-letter code: EUR, USD, GBP…".into()));
     }
     db::set_setting(&state.db(), "currency", &code)?;
     Ok(code)
@@ -262,7 +262,7 @@ fn replace_pattern_file_in(state: &AppState, id: &str, source_path: &str) -> Cmd
     let source = PathBuf::from(source_path);
     let ext = source.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if ext != pattern.format {
-        return Err(AppError::Message(format!("That is not a {}: this pattern is one.", pattern.format.to_uppercase())));
+        return Err(AppError::Message(format!("This file is not a {}, like this pattern.", pattern.format.to_uppercase())));
     }
     let bytes = std::fs::read(&source).map_err(|e| AppError::Message(format!("Could not read {}: {}", source.display(), e)))?;
     let dir = state.library_dir.join("originals");
@@ -567,7 +567,7 @@ pub fn get_hidden_tabs(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
 pub fn save_hidden_tabs(state: State<'_, AppState>, tabs: Vec<String>) -> CmdResult<Vec<String>> {
     let tabs = hidden_tabs(&tabs);
     if tabs.len() == TABS.len() {
-        return Err(AppError::Message("Keep at least one tab: with every tab hidden there is nothing to show.".into()));
+        return Err(AppError::Message("At least one tab must stay visible.".into()));
     }
     db::set_setting(&state.db(), "hidden_tabs", &tabs)?;
     Ok(tabs)

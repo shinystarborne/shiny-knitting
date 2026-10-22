@@ -24,7 +24,7 @@ pub fn web_address(value: &str) -> Result<String, AppError> {
     if typed.is_empty() {
         return Ok(String::new());
     }
-    let refuse = || AppError::Message(format!("“{}” is not a web address. Give one like https://www.drops.com, or drops.com.", short(typed)));
+    let refuse = || AppError::Message(format!("“{}” is not a web address. Example: https://www.drops.com or drops.com.", short(typed)));
     if typed.chars().any(|c| c.is_whitespace() || c.is_control()) || typed.len() > MAX_URL {
         return Err(refuse());
     }
@@ -110,7 +110,7 @@ pub fn clean_shop(input: ShopInput) -> Result<ShopInput, AppError> {
         name = h.strip_prefix("www.").unwrap_or(&h).to_string();
     }
     if name.is_empty() {
-        return Err(AppError::Message("Give the shop a name, or its web address.".to_string()));
+        return Err(AppError::Message("Shop name or web address needed.".to_string()));
     }
     Ok(ShopInput {
         name,
@@ -124,11 +124,11 @@ pub fn clean_shop(input: ShopInput) -> Result<ShopInput, AppError> {
 pub fn clean_wish(input: WishInput) -> Result<WishInput, AppError> {
     let kind = input.kind.trim().to_lowercase();
     if !WISH_KINDS.contains(&kind.as_str()) {
-        return Err(AppError::Message("Choose what kind of thing this is.".to_string()));
+        return Err(AppError::Message("Choose a type.".to_string()));
     }
     let name = line(&input.name, 200);
     if name.is_empty() {
-        return Err(AppError::Message("Say what it is you want to get.".to_string()));
+        return Err(AppError::Message("Item name needed.".to_string()));
     }
     Ok(WishInput {
         kind,
@@ -239,7 +239,7 @@ pub async fn fetch_shop_name(url: String) -> CmdResult<String> {
     let url = web_address(&url)?;
     let home = reqwest::Url::parse(&url)
         .map(|u| format!("{}/", u.origin().ascii_serialization()))
-        .map_err(|_| AppError::Message("Give the shop's web address first.".into()))?;
+        .map_err(|_| AppError::Message("Shop web address needed first.".into()))?;
     Ok(crate::link_preview::fetch(&home).await?.shop_name)
 }
 

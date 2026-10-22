@@ -96,7 +96,7 @@ export async function verifyMasterclasses() {
     act("add")!.click();
     await answer(["https://vimeo.com/76979871", "Steeking, step by step"]);
     await waitFor(() => items().length === 2, "the second");
-    check(results, "another site's video is kept as it is, named as given, at the top, opened in the browser", /Steeking, step by step/.test(items()[0].textContent ?? "") && !view()!.querySelector("iframe") && /Played where it is kept/.test(view()!.textContent ?? ""));
+    check(results, "another site's video is kept as it is, named as given, at the top, opened in the browser", /Steeking, step by step/.test(items()[0].textContent ?? "") && !view()!.querySelector("iframe") && /Plays on its own site/.test(view()!.textContent ?? ""));
 
     // A main page of cards; one opened on a page of its own, and back.
     check(results, "one added opens on its page, the cards hidden, the way back to them", view()!.classList.contains("sheet-open") && !!act("back"));
@@ -207,7 +207,7 @@ export async function verifyMasterclasses() {
     const pattern = (store as unknown as { patterns: { id: string; title: string }[] }).patterns[0];
     act("add")!.click();
     await waitFor(() => !!dialog()?.querySelector('[data-el="pattern"] .pattern-pick-input'), "the add dialog's pattern");
-    check(results, "adding a video asks, besides its link and name, the pattern it goes with, if any", /optional: the one it goes with/.test(dialog()!.textContent ?? ""));
+    check(results, "adding a video asks, besides its link and name, the pattern it goes with, if any", /optional: the pattern used with it/.test(dialog()!.textContent ?? ""));
     dialog()!.querySelector<HTMLInputElement>('[data-f="link"]')!.value = "https://youtu.be/ccccccccccc";
     dialog()!.querySelector<HTMLInputElement>('[data-f="name"]')!.value = "Riddari yoke, step by step";
     // Picked as a hand picks it: pressed on the pattern in the list, which
@@ -298,7 +298,7 @@ export async function verifyMasterclasses() {
     check(results, "the masterclass lists the projects knitted along with it, and counts them", /Cast-on practice/.test(view()!.querySelector("[data-project]")!.textContent ?? "") && /1 project/.test(items().find((i) => /The cast-on course/.test(i.textContent ?? ""))!.textContent ?? ""));
     act("remove")!.click();
     await waitFor(() => !!dialog(), "the question");
-    check(results, "removing it says its videos go, and the project keeps going", /All its 2 videos go with it\. The project knitted along with it keeps going without it/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
+    check(results, "removing it says its videos go, and the project keeps going", /All its 2 videos go with it\. The project using it is kept, without the link/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
     dialog()!.querySelector<HTMLElement>("button.danger, button.primary")!.click();
     await waitFor(() => items().length === 1, "one fewer");
     check(results, "…and it goes; the project has none", store.projects.find((p) => p.id === projectId)?.masterclassId === "");

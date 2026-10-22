@@ -149,33 +149,33 @@ export class YarnForm {
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal yarn-form" role="dialog" aria-modal="true">
-        <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : this.start ? "Add to the stash, from the wishlist" : "Add a yarn"}</h2>
+        <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : this.start ? "Add to stash from wishlist" : "Add a yarn"}</h2>
 
         <div class="field">
           <span>Photo</span>
           <div class="cover-row">
-            <div class="cover-preview" data-el="photobox" title="Drop a picture here, or paste one with Ctrl+V"></div>
+            <div class="cover-preview" data-el="photobox" title="Drop a picture here or paste one with Ctrl+V"></div>
             <div class="cover-actions">
               <button class="ghost" data-act="photo-file" type="button">Choose an image…</button>
               <button class="ghost" data-act="photo-remove" type="button">Remove</button>
-              <p class="hint">Or paste one with <kbd>Ctrl</kbd>+<kbd>V</kbd> — a picture copied from a shop's page — or drop one on the box. It is scaled down before it is stored.</p>
+              <p class="hint">Or paste one with <kbd>Ctrl</kbd>+<kbd>V</kbd> (for example from a shop's page), or drop one on the box. Pictures are scaled down when saved.</p>
             </div>
           </div>
         </div>
 
         <div class="band-read" data-el="band-read" hidden>
-          <button class="ghost" data-act="read-band" type="button" title="A photo of the yarn's label, read by the model set in Settings">📷 Read the ball band…</button>
-          <span class="hint" data-el="band-status">From a photo of the label: what is empty here filled in, to check before saving.</span>
+          <button class="ghost" data-act="read-band" type="button" title="Reads a photo of the yarn label with the model set in Settings">📷 Read the ball band…</button>
+          <span class="hint" data-el="band-status">Fills in empty fields from a photo of the label, to check before saving.</span>
         </div>
 
         <div class="field-row">
           <div class="field">
             <span>Brand</span>
-            <input data-f="brand" aria-label="Brand" value="${escapeAttr(base?.brand ?? this.start?.brand ?? "")}" placeholder="Type, or pick one you have" />
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(base?.brand ?? this.start?.brand ?? "")}" placeholder="Type or pick from the list" />
           </div>
           <div class="field yarn-name-field">
             <span>Name</span>
-            <input data-f="name" aria-label="Name" value="${escapeAttr(base?.name ?? this.start?.name ?? "")}" placeholder="e.g. Felted Tweed — or pick one you have" />
+            <input data-f="name" aria-label="Name" value="${escapeAttr(base?.name ?? this.start?.name ?? "")}" placeholder="e.g. Felted Tweed, or pick from the list" />
           </div>
         </div>
         <p class="hint" data-el="known-hint" hidden></p>
@@ -186,7 +186,7 @@ export class YarnForm {
           </label>
           <label class="field">
             <span class="label-with-help">Yarn weight
-              <button class="ghost help-btn" data-act="weight-help" type="button" title="Which weight is which">Weights ?</button>
+              <button class="ghost help-btn" data-act="weight-help" type="button" title="Yarn weight table">Weights ?</button>
             </span>
             <input
               data-f="yarnWeight"
@@ -211,7 +211,7 @@ export class YarnForm {
         </div>
         <label class="check deadstock">
           <input type="checkbox" data-f="deadstock" ${this.details.deadstock ? "checked" : ""} />
-          <span>Deadstock or cone yarn <em class="hint">sold by weight: its metres and its price per 100 g, and a count such as 2/28 read</em></span>
+          <span>Deadstock or cone yarn <em class="hint">sold by weight: metres and price are per 100 g, and counts such as 2/28 are understood</em></span>
         </label>
         <p class="hint weight-hint" data-el="weight-hint" hidden></p>
         <div class="weight-help" data-el="weight-help" hidden>
@@ -225,9 +225,9 @@ export class YarnForm {
           </table>
           <p class="hint">
             Type a name, a figure such as <em>230 m/100g</em>, or fill in metres and grams per
-            ball and the weight is worked out for you. Cone yarn is labelled by its count:
-            <em>2/28</em> is two strands of 28 m to the gram, so 1 400 m/100 g — a lace weight.
-            <em>2/2800</em> gives the single strand per 100 g, and is the same yarn.
+            ball to work out the weight. Cone yarn is labelled by its count:
+            <em>2/28</em> means two strands of 28 m per gram, so 1 400 m/100 g (lace weight).
+            <em>2/2800</em> gives the single strand per 100 g and means the same yarn.
           </p>
         </div>
         <div class="field yarn-details">
@@ -235,7 +235,7 @@ export class YarnForm {
           <div class="yarn-details-row" data-el="details"></div>
           <span class="care-heading">Care</span>
           <div class="care-pick" data-el="care"></div>
-          <p class="hint" data-el="details-hint">The gauge to expect, the needles to use, and how to wash it. Kept for every colour of this yarn.</p>
+          <p class="hint" data-el="details-hint">Gauge, needles and care. Shared by every colour of this yarn.</p>
         </div>
         <div class="field yarn-price">
           <label class="yarn-price-input">
@@ -244,7 +244,7 @@ export class YarnForm {
           </label>
           <label class="check per-cone" data-el="per-cone" ${this.details.deadstock ? "" : "hidden"}>
             <input type="checkbox" data-f="perCone" ${this.details.deadstock && this.details.perCone ? "checked" : ""} />
-            <span>Price per cone <em class="hint">what a whole cone cost; its price per 100 g is worked out from the grams per cone</em></span>
+            <span>Price per cone <em class="hint">the price of a whole cone; the price per 100 g is worked out from the grams per cone</em></span>
           </label>
           <p class="hint cone-price" data-el="cone-price" hidden></p>
           <em class="hint" data-el="price-hint">${priceHint(this.details)}</em>
@@ -254,12 +254,12 @@ export class YarnForm {
           <div class="fibre-list" data-el="fibres"></div>
           <div class="fibre-actions">
             <button class="ghost" data-act="add-fibre" type="button">+ Add fibre</button>
-            <input data-el="fibre-text" placeholder="or type it as the ball band does: 75% wool, 25% polyamide" />
+            <input data-el="fibre-text" placeholder="or type it as on the ball band: 75% wool, 25% polyamide" />
           </div>
           <p class="hint" data-el="fibre-total" hidden></p>
           <label class="check superwash">
             <input type="checkbox" data-f="superwash" ${base?.superwash ? "checked" : ""} />
-            <span>Superwash <em class="hint">treated, so it can go in the washing machine</em></span>
+            <span>Superwash <em class="hint">treated to be machine washable</em></span>
           </label>
           <label class="check share-fibres" data-el="share-fibres" hidden>
             <input type="checkbox" data-f="shareFibres" checked />
@@ -268,7 +268,7 @@ export class YarnForm {
         </div>
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="Anything worth remembering about this yarn.">${escapeHtml(
+          <textarea data-f="notes" placeholder="Notes about this yarn">${escapeHtml(
             e?.notes ?? this.start?.notes ?? "",
           )}</textarea>
         </label>
@@ -277,10 +277,10 @@ export class YarnForm {
           <span>Planned for</span>
           <ul class="plan-list" data-el="plans"></ul>
           <div class="plan-add">
-            <input data-el="plan-input" placeholder="Search your patterns, or type a title" aria-label="Planned for" />
+            <input data-el="plan-input" placeholder="Search patterns, or type a title" aria-label="Planned for" />
             <button class="ghost" data-act="add-plan" type="button">Add</button>
           </div>
-          <p class="hint">A pattern from your library, or the title of one you do not have yet.</p>
+          <p class="hint">A pattern from the library, or the title of one not in it yet.</p>
         </div>
 
         <div class="field">
@@ -289,7 +289,7 @@ export class YarnForm {
           <div>
             <button class="ghost" data-act="add-lot" type="button">+ Add lot</button>
           </div>
-          <p class="hint">Weigh a partial ball and put the grams in; the metres left are worked out from that.</p>
+          <p class="hint">For a started ball, enter its weight in grams; the metres left are worked out from it.</p>
         </div>
 
         ${e && this.swatchHooks ? `<div class="field"><span>Swatches</span><div class="yarn-swatches" data-el="swatches"><p class="hint">…</p></div></div>` : ""}
@@ -367,10 +367,10 @@ export class YarnForm {
       })
       .catch(() => {});
     if (this.start) {
-      this.showKnownHint("Filled in from the wishlist. Check the name and colourway, and add what the ball band says.");
+      this.showKnownHint("Filled in from the wishlist. Check the name and colourway, and add the ball band details.");
     }
     if (this.template) {
-      this.showKnownHint(`Filled in from ${this.template.name}${this.template.colourway ? ` (${this.template.colourway})` : ""}. Add the colourway, and its lots.`);
+      this.showKnownHint(`Filled in from ${this.template.name}${this.template.colourway ? ` (${this.template.colourway})` : ""}. Add the colourway and lots.`);
       (this.root.querySelector('[data-f="colourway"]') as HTMLInputElement | null)?.focus();
     }
   }
@@ -407,7 +407,7 @@ export class YarnForm {
   /** Editing a colour that has no fibres: they come from another colour of the same yarn, to save or change. */
   private fillFibresFromKnown(): void {
     const from = this.takeFibresFrom(this.otherColours());
-    if (from) this.showKnownHint(`Filled in the fibres from your ${from.name}${from.colourway ? ` (${from.colourway})` : ""}. Save to keep them.`);
+    if (from) this.showKnownHint(`Fibres filled in from ${from.name}${from.colourway ? ` (${from.colourway})` : ""}. Save to keep them.`);
   }
 
   /**
@@ -424,8 +424,8 @@ export class YarnForm {
     label.hidden = !differ.length;
     if (!differ.length) return;
     const yarn = `${this.value("brand").trim()} ${this.value("name").trim()}`.trim();
-    const count = differ.length === 1 ? "other colour" : `${differ.length} other colours`;
-    this.root.querySelector('[data-el="share-fibres-text"]')!.textContent = `Give the ${count} of ${yarn} the same fibre content and superwash`;
+    const count = differ.length === 1 ? "the other colour" : `the ${differ.length} other colours`;
+    this.root.querySelector('[data-el="share-fibres-text"]')!.textContent = `Apply the same fibre content and superwash to ${count} of ${yarn}`;
   }
 
   /**
@@ -486,7 +486,7 @@ export class YarnForm {
       this.weightAuto = false;
       this.weightHint();
       const list = filled.length > 1 ? `${filled.slice(0, -1).join(", ")} and ${filled[filled.length - 1]}` : filled[0];
-      this.showKnownHint(`Filled in the ${list} from your ${from.name}${from.colourway ? ` (${from.colourway})` : ""}.`);
+      this.showKnownHint(`${list[0].toUpperCase()}${list.slice(1)} filled in from ${from.name}${from.colourway ? ` (${from.colourway})` : ""}.`);
     }
   }
 
@@ -523,7 +523,7 @@ export class YarnForm {
       box.classList.remove("over");
       const file = [...(e.dataTransfer?.files ?? [])].find((f) => f.type.startsWith("image/"));
       if (file) void this.takePhoto(file);
-      else this.showError("That is not a picture. Drop an image file, or paste a picture.");
+      else this.showError("Not a picture. Drop an image file or paste a picture.");
     });
   }
 
@@ -547,7 +547,7 @@ export class YarnForm {
     // photo should never cross the boundary at full size.
     const blob = await prepareChosenImage(file);
     if (!blob) {
-      this.showError("That could not be read as a picture.");
+      this.showError("This file is not a readable picture.");
       return;
     }
     this.pendingPhoto = blob;
@@ -598,7 +598,7 @@ export class YarnForm {
     const fixed = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     el.textContent = cone
       ? `${fixed(price!)} for ${grouped(cone)} g is ${fixed((price! / cone) * 100)} per 100 g.`
-      : "Say the grams per cone, and its price per 100 g is worked out from them.";
+      : "Enter the grams per cone to work out the price per 100 g.";
   }
 
   /**
@@ -684,7 +684,7 @@ export class YarnForm {
         const stated = familyOf(typed);
         // The ball band and the stated weight disagree -- common at the edges:
         // Drops Paris is sold as Aran at 150 m/100 g. The stated one is kept.
-        if (stated && stated !== family.key) parts.push(`It stays filed as ${weightLabel(stated)}, as you wrote it.`);
+        if (stated && stated !== family.key) parts.push(`Filed as ${weightLabel(stated)}, as entered.`);
       }
     } else if (this.weightAuto) {
       weight.value = "";
@@ -723,7 +723,7 @@ export class YarnForm {
         this.weightAuto = true;
       } else {
         const stated = familyOf(typed);
-        if (stated && stated !== family.key) parts.push(`It stays filed as ${weightLabel(stated)}, as you wrote it.`);
+        if (stated && stated !== family.key) parts.push(`Filed as ${weightLabel(stated)}, as entered.`);
       }
     } else if (this.weightAuto) {
       weight.value = "";
@@ -837,11 +837,11 @@ export class YarnForm {
         (lot, i) => `
           <div class="lot-row" data-lot="${i}">
             <input data-lf="dyeLot" value="${escapeAttr(lot.dyeLot)}" placeholder="Dye lot" />
-            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="${this.details.deadstock ? "Cones bought" : "Balls bought"}" title="Balls bought, for the Statistics. What there is now is the grams left, once balls are started." />
-            <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once balls are started: what is left, weighed. Empty: whole balls, by the ball band." />
-            <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Where it lives" />
-            <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="When it was bought" />
-            <label class="lot-leftover" title="What a finished project left over">
+            <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="${this.details.deadstock ? "Cones bought" : "Balls bought"}" title="Balls bought, for Statistics. Once balls are started, the current amount is the grams left." />
+            <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once started: the weight left. Empty means whole balls, by the ball band." />
+            <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Location" />
+            <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="Date bought" />
+            <label class="lot-leftover" title="Left over from a finished project">
               <input type="checkbox" data-lf="leftover" ${lot.leftover ? "checked" : ""} /> Leftover
             </label>
             <button class="ghost" data-act="remove-lot" data-lot="${i}" type="button" title="Remove this lot">×</button>
@@ -894,7 +894,7 @@ export class YarnForm {
     };
     const bad = Object.entries(read).find(([, v]) => Number.isNaN(v));
     if (bad) {
-      if (strict) throw new Error(bad[0].startsWith("gauge") ? "The gauge is a number of stitches or rows: 22, or 22.5." : "Needles are a size in mm: 4, or 3.5.");
+      if (strict) throw new Error(bad[0].startsWith("gauge") ? "Gauge must be a number of stitches or rows, like 22 or 22.5." : "Needle size must be in mm, like 4 or 3.5.");
       return;
     }
     this.details = { ...this.details, ...read };
@@ -944,8 +944,8 @@ export class YarnForm {
         (p, i) => `
           <li class="plan-item">
             <span class="plan-title">${escapeHtml(p.title)}</span>
-            <span class="hint">${p.patternId ? "in your library" : "not in your library"}</span>
-            <button class="ghost" data-act="remove-plan" data-plan="${i}" type="button" title="Not planned for this">×</button>
+            <span class="hint">${p.patternId ? "in the library" : "not in the library"}</span>
+            <button class="ghost" data-act="remove-plan" data-plan="${i}" type="button" title="Remove from plans">×</button>
           </li>`,
       )
       .join("");
@@ -1007,7 +1007,7 @@ export class YarnForm {
     const total = fibreTotal(values);
     hint.hidden = !values.some((v) => v.percent);
     hint.classList.toggle("bad", total !== 100);
-    hint.textContent = total === 100 ? "Adds up to 100%." : `Adds up to ${total}%; a ball band's shares make 100%.`;
+    hint.textContent = total === 100 ? "Adds up to 100%." : `Adds up to ${total}%; should be 100%.`;
   }
 
   /** "75% wool, 25% polyamide" typed in one go becomes the rows. */
@@ -1054,11 +1054,11 @@ export class YarnForm {
     status.textContent = "Reading the ball band…";
     try {
       const image = await readableImage(file);
-      if (!image) throw new Error("That file could not be read as an image.");
+      if (!image) throw new Error("This file is not a readable picture.");
       const filled = this.fillFromBand(await api.readBallBand(image));
       status.textContent = filled.length
-        ? `Read from the ball band: ${filled.join(", ")}. Check them before saving: a model can misread.`
-        : "The ball band said nothing that is not filled in already.";
+        ? `Read from the ball band: ${filled.join(", ")}. Check before saving; the model can misread.`
+        : "Nothing new found on the ball band.";
     } catch (err) {
       status.textContent = `The ball band could not be read: ${err instanceof Error ? err.message : String(err)}`;
     } finally {
@@ -1147,7 +1147,7 @@ export class YarnForm {
       // photo should never cross the boundary at full size.
       const blob = await prepareChosenImage(file);
       if (!blob) {
-        this.showError("That file could not be read as an image.");
+        this.showError("This file is not a readable picture.");
         return;
       }
       this.pendingPhoto = blob;
@@ -1169,7 +1169,7 @@ export class YarnForm {
 
     try {
       const name = this.value("name").trim();
-      if (!name) throw new Error("Give the yarn a name.");
+      if (!name) throw new Error("The yarn needs a name.");
       this.readLots();
 
       // Numbers parse or are 0; a row with nothing in it at all is not a lot.
@@ -1194,9 +1194,9 @@ export class YarnForm {
       this.readDetails(true);
       const typed = this.value("price").trim();
       const price = typed ? parsePrice(typed) : null;
-      if (typed && price === null) throw new Error(`The ${priceLabel(this.details).toLowerCase()} is a number: 4,95 or 4.95.`);
+      if (typed && price === null) throw new Error(`The ${priceLabel(this.details).toLowerCase()} must be a number, like 4,95 or 4.95.`);
       const perCone = !!this.details.deadstock && !!this.details.perCone;
-      if (perCone && price != null && !num(this.value("gramsPerBall"))) throw new Error("A price per cone needs the grams per cone: its price per 100 g is worked out from them.");
+      if (perCone && price != null && !num(this.value("gramsPerBall"))) throw new Error("A price per cone needs the grams per cone, to work out the price per 100 g.");
       // Deadstock's metres per 100 g and cone, kept as figures per ball.
       let figures = { metresPerBall: num(this.value("metresPerBall")), gramsPerBall: num(this.value("gramsPerBall")) };
       if (this.details.deadstock) {
@@ -1287,9 +1287,9 @@ function priceLabel(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
 }
 
 function priceHint(d: Pick<YarnDetails, "deadstock" | "perCone">): string {
-  const same = "The same for every colour and every lot of this yarn, by its brand and name.";
-  if (!d.deadstock) return `${same} A lot costs its balls times this.`;
-  return d.perCone ? `${same} A lot costs its grams at this, by the cone's weight.` : `${same} A lot costs its grams at this.`;
+  const same = "The same for every colour and lot of this yarn (same brand and name).";
+  if (!d.deadstock) return `${same} A lot costs its number of balls times this.`;
+  return d.perCone ? `${same} A lot costs its grams at this rate, by the cone's weight.` : `${same} A lot costs its grams at this rate.`;
 }
 
 /** A new lot row: bought today, as near as it matters; the date can be changed. */

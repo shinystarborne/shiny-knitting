@@ -41,7 +41,7 @@ fn has_connector(kind: &str) -> bool {
 /// below zero, and when it is over `max`.
 fn measurement(value: f64, places: i32, max: f64, what: &str, unit: &str) -> Result<f64, AppError> {
     if !value.is_finite() || value < 0.0 {
-        return Err(AppError::Message(format!("The {what} has to be a number of {unit}.")));
+        return Err(AppError::Message(format!("The {what} must be a number of {unit}.")));
     }
     if value > max {
         return Err(AppError::Message(format!(
@@ -150,7 +150,7 @@ pub fn clean(input: ToolInput) -> Result<ToolInput, AppError> {
     let adapter_to = if kind == "adapter" {
         let to = one_of(&input.adapter_to, CABLE_SIZES, "cable size")?;
         if !to.is_empty() && to == cable_size {
-            return Err(AppError::Message("An adapter joins two sizes: give its tip end and its cable end different ones.".to_string()));
+            return Err(AppError::Message("An adapter joins two sizes: the tip end and cable end must differ.".to_string()));
         }
         to
     } else {

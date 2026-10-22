@@ -86,7 +86,7 @@ export async function verifyCrop() {
     (document.querySelector(`.projects .project-card[data-open="${projectId}"]`) as HTMLElement).click();
     const scissors = () => page()?.querySelector<HTMLElement>(`.board-item[data-id="${item.id}"] [data-act="crop"]`);
     await waitFor(() => !!scissors(), "the picture's ✂ on the board");
-    check(results, "a picture on the board has ✂ Crop, said in words", /Crop/.test(scissors()!.textContent ?? "") && /Crop the picture/.test(scissors()!.title));
+    check(results, "a picture on the board has ✂ Crop, said in words", /Crop/.test(scissors()!.textContent ?? "") && /^Crop/.test(scissors()!.title));
     scissors()!.click();
     await waitFor(() => !!crop(), "the crop dialog");
     check(results, "…which opens it to crop, Crop waiting for a box", (crop()!.querySelector('[data-act="crop"]') as HTMLButtonElement).disabled);

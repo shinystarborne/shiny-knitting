@@ -129,10 +129,10 @@ function thirds(h: number): { sides: number; middle: number } {
 
 export function sock(input: SockInput): SockResult | { error: string } {
   const { gauge } = input;
-  if (!(gauge.sts > 0)) return { error: "Give your gauge: pick a swatch, or type the stitches." };
-  if (!(gauge.rows > 0)) return { error: "Give the rows of your gauge too: a foot and a leg are counted in rounds." };
-  if (!(input.footAround > 0)) return { error: "Give the measurement around the foot, at its widest part." };
-  if (!(input.footLength > 0)) return { error: "Give the foot's length, heel to longest toe." };
+  if (!(gauge.sts > 0)) return { error: "Gauge needed: pick a swatch, or type the stitches." };
+  if (!(gauge.rows > 0)) return { error: "Rows of the gauge needed too: foot and leg are counted in rounds." };
+  if (!(input.footAround > 0)) return { error: "Foot circumference needed, at the widest part." };
+  if (!(input.footLength > 0)) return { error: "Foot length needed, heel to longest toe." };
   if (!(input.ease >= 0 && input.ease < 40)) return { error: "Negative ease is a percentage of the foot: 10 is usual." };
   const spc = gauge.sts / 10;
   const rpc = gauge.rows / 10;

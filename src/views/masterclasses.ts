@@ -158,8 +158,8 @@ export class MasterclassesView {
         ? `<p class="hint sheet-none">Nothing matches the search.</p>`
         : `<div class="empty sheet-none">
             <h2>No masterclasses yet</h2>
-            <p>Keep the videos you learn from: a cast-on, a technique, a whole course. Paste a YouTube link with <b>+ Add a video</b>: its title, channel and picture come with it. A course in several videos is one masterclass: add its other videos to it, or bundle the ones you have.</p>
-            <p class="hint">Start a project from one, or choose it on a project's page, and watch it there.</p>
+            <p>Videos to learn from: a cast-on, a technique, a whole course. <b>+ Add a video</b> takes a YouTube link and brings its title, channel and picture. A course with several videos is one masterclass: add more videos to it, or bundle existing ones.</p>
+            <p class="hint">A project can be started from a masterclass, or linked to one on its page, to watch it there.</p>
           </div>`;
     paintThumbs(list);
     // The cards, or the one open on its page.
@@ -185,29 +185,29 @@ export class MasterclassesView {
         <span class="hint sheet-source">${esc([m.channel || host(part.url), partsSummary(m)].filter(Boolean).join(" · "))}</span>
         <span class="sheet-tools">
           <button class="primary" data-act="start" title="A new project, knitted along with this${m.patternTitle ? `, and its pattern` : ""}">Start a project…</button>
-          <button class="ghost" data-act="browser" title="This video in your web browser">Browser ↗</button>
-          <button class="ghost" data-act="window" title="This video in a window of its own, beside the app">Window ↗</button>
+          <button class="ghost" data-act="browser" title="Open this video in the browser">Browser ↗</button>
+          <button class="ghost" data-act="window" title="Open this video in a separate window">Window ↗</button>
           <button class="ghost" data-act="bundle" title="Make this and others one masterclass, a course in several videos" ${this.classes.length > 1 ? "" : "disabled"}>Bundle with…</button>
           <button class="ghost danger-text" data-act="remove">Remove</button>
         </span>
       </header>
       <div class="mc-body">
-        <div class="field mc-pattern"><span>📄 Pattern <em class="hint">the one it goes with, if you have it: choose or change it here any time; a project started from either has both</em></span>
+        <div class="field mc-pattern"><span>📄 Pattern <em class="hint">the pattern used with it, if in the library; a project started from either gets both</em></span>
           <div class="mc-pattern-row"><div data-el="mc-pattern"></div>${m.patternTitle ? `<button class="ghost" data-act="open-pattern" title="Read it">Open ↗</button>` : ""}</div>
         </div>
         ${many ? `<p class="mc-now"><b>${m.parts.indexOf(part) + 1} of ${m.parts.length}:</b> ${esc(part.title)}</p>` : ""}
         ${
           part.videoId
-            ? `${playerHtml(part)}<p class="hint mc-player-note">Not playing here? Some videos only play on YouTube: <button class="link" data-act="browser">open it in your browser</button>.</p>`
-            : `<div class="empty mc-elsewhere"><h2>Played where it is kept</h2><p>Only YouTube videos play here. This one opens in your browser, or in a window of its own.</p></div>`
+            ? `${playerHtml(part)}<p class="hint mc-player-note">Not playing here? Some videos only play on YouTube: <button class="link" data-act="browser">open it in the browser</button>.</p>`
+            : `<div class="empty mc-elsewhere"><h2>Plays on its own site</h2><p>Only YouTube videos play here. This one opens in the browser or in a separate window.</p></div>`
         }
-        <div class="field"><span>Its videos <em class="hint">in order; tick them as you watch</em></span>
+        <div class="field"><span>Its videos <em class="hint">in order; ticked when watched</em></span>
           <ol class="mc-parts">${m.parts.map((p, i) => this.partHtml(p, i, m.parts.length, p.id === part.id)).join("")}</ol>
-          <div class="mc-part-add"><button class="ghost" data-act="add-part" title="Another video of the same course or knit-along, after these">+ Add a video to it</button></div>
+          <div class="mc-part-add"><button class="ghost" data-act="add-part" title="Another video of the same course or knit-along, added after these">+ Add a video to it</button></div>
         </div>
         <label class="field"><span>Notes</span>
-          <textarea data-f="notes" rows="4" placeholder="What it teaches, where the good bit starts (12:30), what to remember…" maxlength="4000">${esc(m.notes)}</textarea></label>
-        <div class="field"><span>Knitted along with it</span>
+          <textarea data-f="notes" rows="4" placeholder="What it teaches, key timestamps (12:30), what to remember…" maxlength="4000">${esc(m.notes)}</textarea></label>
+        <div class="field"><span>Projects using it</span>
           ${
             along.length
               ? `<div class="mc-projects">${along.map((p) => `<button class="ghost" data-project="${esc(p.id)}" title="Open the project">${esc(p.name)}</button>`).join("")}</div>`
@@ -231,7 +231,7 @@ export class MasterclassesView {
             ? `<span class="mc-part-tools">
                 <button class="ghost icon-btn" data-act="part-up" title="Earlier" aria-label="Earlier" ${i === 0 ? "disabled" : ""}>↑</button>
                 <button class="ghost icon-btn" data-act="part-down" title="Later" aria-label="Later" ${i === count - 1 ? "disabled" : ""}>↓</button>
-                <button class="ghost" data-act="part-split" title="Take it out, to be a masterclass of its own">Its own</button>
+                <button class="ghost" data-act="part-split" title="Move it out into a separate masterclass">Separate</button>
                 <button class="ghost icon-btn danger-text" data-act="part-remove" title="Take it out of the masterclass" aria-label="Take it out">✕</button>
               </span>`
             : ""
@@ -284,7 +284,7 @@ export class MasterclassesView {
       if (act === "add-part") await this.addPart(m);
       if (act === "bundle") await this.bundle(m);
       if (act === "remove") {
-        const along = m.projectCount ? ` ${m.projectCount === 1 ? "The project knitted along with it keeps going" : "The projects knitted along with it keep going"} without it.` : "";
+        const along = m.projectCount ? ` ${m.projectCount === 1 ? "The project using it is kept" : "The projects using it are kept"}, without the link.` : "";
         const videos = m.parts.length > 1 ? ` All its ${m.parts.length} videos go with it.` : "";
         if (!(await askYesNo(`Remove the masterclass “${m.title}”?${videos}${along}`, { title: "Remove masterclass", okLabel: "Remove", danger: true }))) return;
         await api.deleteMasterclass(m.id);
@@ -402,7 +402,7 @@ export class MasterclassesView {
       dialog.card.insertAdjacentHTML(
         "beforeend",
         `
-        <p class="dialog-message">Its videos come first, then the others' in the order you tick them. They become one masterclass; their notes and projects come with them.</p>
+        <p class="dialog-message">This masterclass's videos come first, then the others' in the order ticked. They become one masterclass, keeping their notes and projects.</p>
         <label class="dialog-field"><span class="dialog-label">Name</span><input class="dialog-input" data-f="bundle-name" value="${esc(m.title)}" maxlength="200" /></label>
         <div class="mc-bundle-list">${others
           .map(
@@ -456,7 +456,7 @@ export class MasterclassesView {
 
   /** Says YouTube is being asked, at the top of the list, until it answers. */
   private asking(): void {
-    this.root.querySelector<HTMLElement>('[data-el="list"]')!.insertAdjacentHTML("afterbegin", `<p class="hint sheet-none" data-el="asking">Asking YouTube for it…</p>`);
+    this.root.querySelector<HTMLElement>('[data-el="list"]')!.insertAdjacentHTML("afterbegin", `<p class="hint sheet-none" data-el="asking">Getting video details from YouTube…</p>`);
   }
 }
 
@@ -476,11 +476,11 @@ function askVideo(patterns: Pattern[]): Promise<{ url: string; title: string; pa
       `
       <label class="dialog-field"><span class="dialog-label">Link</span><input class="dialog-input" data-f="link" placeholder="https://www.youtube.com/watch?v=…" /></label>
       <label class="dialog-field"><span class="dialog-label">Name</span><input class="dialog-input" data-f="name" placeholder="Optional: the video's own title is used" /></label>
-      <div class="dialog-field"><span class="dialog-label">Pattern <em class="hint">optional: the one it goes with, if you have it</em></span><div data-el="pattern"></div></div>
+      <div class="dialog-field"><span class="dialog-label">Pattern <em class="hint">optional: the pattern used with it, if in the library</em></span><div data-el="pattern"></div></div>
       <p class="form-error" data-el="error" hidden></p>
       <div class="dialog-actions">
         <button class="ghost" data-act="cancel">Cancel</button>
-        <button class="primary" data-act="keep">Keep it</button>
+        <button class="primary" data-act="keep">Save</button>
       </div>`,
     );
     const card = dialog.card;
@@ -489,7 +489,7 @@ function askVideo(patterns: Pattern[]): Promise<{ url: string; title: string; pa
       const url = card.querySelector<HTMLInputElement>('[data-f="link"]')!.value.trim();
       if (!url) {
         const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
-        error.textContent = "Give the video's link: a YouTube address.";
+        error.textContent = "Video link needed (a YouTube address).";
         error.hidden = false;
         return;
       }

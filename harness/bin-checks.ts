@@ -60,7 +60,7 @@ export async function verifyBin() {
     (card(shawl)!.querySelector("[data-delete]") as HTMLElement).click();
     await waitFor(() => !card(shawl) && !!toast(), "the pattern to go");
     check(results, "Remove takes a pattern out at once, asking nothing", !document.querySelector(".dialog-card") && inBin(shawl));
-    check(results, "…and says it is in the Bin, with Undo", /Removed “Bin shawl”\. It is in the Bin for 30 days\./.test(toast()!.textContent ?? ""), toast()!.textContent ?? "");
+    check(results, "…and says it is in the Bin, with Undo", /Removed “Bin shawl”\. It stays in the Bin for 30 days\./.test(toast()!.textContent ?? ""), toast()!.textContent ?? "");
     await waitFor(() => !binButton()!.hidden, "the Bin button");
     check(results, "the library's Bin button says how many are in it", binButton()!.textContent === "Bin (1)", binButton()!.textContent ?? "");
 
@@ -85,7 +85,7 @@ export async function verifyBin() {
     check(results, "Restore puts it back in the library", !inBin(shawl) && store.patterns.some((p) => p.id === shawl));
 
     (rows()[0].querySelector('[data-bin="delete"]') as HTMLElement).click();
-    const confirm = () => [...document.querySelectorAll<HTMLElement>(".dialog-card")].find((d) => /Delete “Bin hat” for good/.test(d.textContent ?? ""));
+    const confirm = () => [...document.querySelectorAll<HTMLElement>(".dialog-card")].find((d) => /Delete “Bin hat” permanently/.test(d.textContent ?? ""));
     await waitFor(() => !!confirm(), "the question");
     check(results, "Delete for good asks first", /cannot be undone/.test(confirm()!.textContent ?? ""));
     (confirm()!.querySelector("button.danger") as HTMLElement).click();
@@ -101,7 +101,7 @@ export async function verifyBin() {
     binButton()!.click();
     await waitFor(() => !!bin()?.querySelector('[data-bin="empty"]'), "the Bin");
     (bin()!.querySelector('[data-bin="empty"]') as HTMLElement).click();
-    const emptyAsk = () => [...document.querySelectorAll<HTMLElement>(".dialog-card")].find((d) => /Delete all 1 for good/.test(d.textContent ?? ""));
+    const emptyAsk = () => [...document.querySelectorAll<HTMLElement>(".dialog-card")].find((d) => /Delete all 1 permanently/.test(d.textContent ?? ""));
     await waitFor(() => !!emptyAsk(), "the question");
     (emptyAsk()!.querySelector("button.danger") as HTMLElement).click();
     await waitFor(() => /The Bin is empty/.test(bin()?.textContent ?? ""), "the Bin emptied");

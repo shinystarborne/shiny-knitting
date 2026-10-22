@@ -27,13 +27,13 @@ type CmdResult<T> = Result<T, AppError>;
 pub fn web_address(input: &str) -> Result<String, AppError> {
     let text = input.trim();
     let raw = if text.to_ascii_lowercase().starts_with("<iframe") {
-        iframe_src(text).ok_or_else(|| AppError::Message("That embed code has no address in it.".into()))?
+        iframe_src(text).ok_or_else(|| AppError::Message("This embed code contains no address.".into()))?
     } else {
         text.to_string()
     };
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err(AppError::Message("Give the page's address.".into()));
+        return Err(AppError::Message("Page address needed.".into()));
     }
     let with_scheme = if raw.starts_with("//") {
         format!("https:{raw}")
@@ -44,7 +44,7 @@ pub fn web_address(input: &str) -> Result<String, AppError> {
     };
     let url = reqwest::Url::parse(&with_scheme).map_err(|_| AppError::Message("That is not a web address.".into()))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(AppError::Message("A cheatsheet is a web page: an address starting http:// or https://.".into()));
+        return Err(AppError::Message("A web page cheatsheet needs an address starting with http:// or https://.".into()));
     }
     Ok(youtube_embed(&url).unwrap_or_else(|| url.to_string()))
 }
@@ -192,7 +192,7 @@ pub async fn add_cheatsheet(state: State<'_, AppState>, input: CheatsheetInput) 
                 std::fs::write(&path, html)?;
             }
         }
-        _ => return Err(AppError::Message("A cheatsheet is a web page, pages of a PDF, or a chapter.".into())),
+        _ => return Err(AppError::Message("A cheatsheet must be a web page, PDF pages, or a chapter.".into())),
     }
     db::insert_cheatsheet(&state.db(), &sheet)
 }
@@ -237,7 +237,7 @@ pub fn move_cheatsheet(state: State<'_, AppState>, id: String, position: i64) ->
 /// An EPUB chapter's copy, as it was kept.
 #[tauri::command]
 pub fn read_cheatsheet_copy(state: State<'_, AppState>, id: String) -> CmdResult<String> {
-    std::fs::read_to_string(copy_path(&state, &id)).map_err(|_| AppError::NotFound("The copy of that chapter is not there any more.".into()))
+    std::fs::read_to_string(copy_path(&state, &id)).map_err(|_| AppError::NotFound("The saved copy of this chapter no longer exists.".into()))
 }
 
 /// A page that will not be framed, in a window of its own: a browser window

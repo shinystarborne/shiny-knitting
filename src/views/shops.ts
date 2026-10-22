@@ -35,7 +35,7 @@ export class ShopsView {
         <h1>Shops</h1>
         <div class="lib-actions">
           <input class="search" type="search" placeholder="Search shops, tags, comments..." />
-          <button data-act="lookup-names" class="ghost" hidden title="Name the shops still named after their address, from their own pages">Look up names</button>
+          <button data-act="lookup-names" class="ghost" hidden title="Look up names for shops still named after their address">Look up names</button>
           <button data-act="add" class="primary">+ Add a shop</button>
         </div>
       </header>
@@ -105,7 +105,7 @@ export class ShopsView {
     await this.reload();
     const message = [
       named ? `Named ${named === 1 ? "1 shop" : `${named} shops`} from their own pages.` : "No shop could be named from its page.",
-      kept.length ? `${kept.length === 1 ? "This one keeps its address" : "These keep their addresses"} as the name: ${kept.join(", ")}. Some shops do not say their name, or will not let apps read their pages; rename them by hand.` : "",
+      kept.length ? `${kept.length === 1 ? "This one keeps its address" : "These keep their addresses"} as the name: ${kept.join(", ")}. Some shops do not state their name or block apps from reading their pages; they can be renamed by hand.` : "",
     ];
     await say(message.filter(Boolean).join("\n\n"), "Look up names");
   }
@@ -153,7 +153,7 @@ export class ShopsView {
     this.tags = this.tags.filter((t) => facets.some((f) => f.key === t));
     this.root.querySelector(".facet-list")!.innerHTML = facets.length
       ? facets.map((f) => facetHtml(f, this.tags.includes(f.key))).join("")
-      : `<p class="hint">Give a shop tags — yarn, needles, deadstock, sale — and they are here to filter by.</p>`;
+      : `<p class="hint">Shop tags (yarn, needles, deadstock, sale…) appear here as filters.</p>`;
   }
 
   private paint(): void {
@@ -163,7 +163,7 @@ export class ShopsView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${searching ? "No shop matches that" : "No shops yet"}</h2>
-          <p>${searching ? "The search looks through names, addresses, tags and your comments." : "Add the shops you buy from, with a comment on each: what is cheap there, what they are good for."}</p>
+          <p>${searching ? "The search looks through names, addresses, tags and comments." : "Shops to buy from, with a comment on each: what is cheap there, what they are good for."}</p>
         </div>`;
       return;
     }
@@ -174,7 +174,7 @@ export class ShopsView {
   private async remove(id: string): Promise<void> {
     const shop = this.shops.find((s) => s.id === id);
     if (!shop) return;
-    const items = shop.wanted ? `\n\nThe ${shop.wanted === 1 ? "thing" : `${shop.wanted} things`} on the wishlist from here stay on it, with no shop.` : "";
+    const items = shop.wanted ? `\n\nThe ${shop.wanted === 1 ? "item" : `${shop.wanted} items`} on the wishlist from this shop stay on it, without a shop.` : "";
     const ok = await askYesNo(`Remove ${shop.name}?${items}`, { title: "Remove shop", okLabel: "Remove", danger: true });
     if (!ok) return;
     try {
@@ -197,7 +197,7 @@ function facetHtml(f: Facet, checked: boolean): string {
 
 function cardHtml(s: Shop, ticked: string[]): string {
   const site = siteOf(s.url);
-  const wanted = s.wanted === 1 ? "1 thing on your wishlist" : `${s.wanted} things on your wishlist`;
+  const wanted = s.wanted === 1 ? "1 item on the wishlist" : `${s.wanted} items on the wishlist`;
   // Ticked tags first, so the ones filtered by are never folded away.
   const tags = [...s.tags]
     .sort((a, b) => Number(ticked.includes(b.toLowerCase())) - Number(ticked.includes(a.toLowerCase())))

@@ -111,10 +111,10 @@ export async function verifyBoardTimer() {
     // A pause, and on: one sitting, the break left out.
     const sitting = running()!.id;
     go().closest(".board-timer")!.querySelector<HTMLElement>('[data-act="timer-pause"]')!.click();
-    await waitFor(() => running()?.pausedAt != null && /Go on/.test(card()?.textContent ?? ""), "paused", 5000).catch(() => {});
+    await waitFor(() => running()?.pausedAt != null && /Resume/.test(card()?.textContent ?? ""), "paused", 5000).catch(() => {});
     const frozen = card()!.querySelector('[data-el="timer-clock"]')!.textContent;
     await wait(1300);
-    check(results, "Pause pauses it: the clock still, said Paused, the side and the tab bar too", running()?.pausedAt != null && card()!.querySelector('[data-el="timer-clock"]')!.textContent === frozen && /Paused/.test(card()!.textContent ?? "") && /Go on/.test(page()!.querySelector('[data-act="knit-pause"]')?.textContent ?? "") && pill().classList.contains("paused") && /^⏸/.test(pill().textContent ?? ""), `${frozen} ${pill().textContent}`);
+    check(results, "Pause pauses it: the clock still, said Paused, the side and the tab bar too", running()?.pausedAt != null && card()!.querySelector('[data-el="timer-clock"]')!.textContent === frozen && /Paused/.test(card()!.textContent ?? "") && /Resume/.test(page()!.querySelector('[data-act="knit-pause"]')?.textContent ?? "") && pill().classList.contains("paused") && /^⏸/.test(pill().textContent ?? ""), `${frozen} ${pill().textContent}`);
     // Left paused long: a break, not stopped.
     localStorage.setItem(lastKey(), String(Date.now() - 60 * 60_000));
     running()!.startedAt = Date.now() - 90 * 60_000;

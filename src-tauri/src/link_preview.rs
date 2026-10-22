@@ -47,9 +47,9 @@ fn client() -> Result<reqwest::Client, AppError> {
 
 fn unreachable(e: reqwest::Error) -> AppError {
     if e.is_timeout() {
-        AppError::Message("The page took too long to answer.".into())
+        AppError::Message("The page took too long to respond.".into())
     } else {
-        AppError::Message("The page could not be reached. Check the link, and that you are online.".into())
+        AppError::Message("The page could not be reached. Check the link and the internet connection.".into())
     }
 }
 
@@ -61,13 +61,13 @@ fn refused(status: reqwest::StatusCode) -> AppError {
         404 | 410 => " The page may have moved, or the item is gone.",
         _ => "",
     };
-    AppError::Message(format!("The page answered {code}.{why}"))
+    AppError::Message(format!("The page returned {code}.{why}"))
 }
 
 /// Reads a response's body up to `max` bytes. A page is cut there; anything
 /// else that long is refused.
 async fn body(mut response: reqwest::Response, max: usize, cut: bool) -> Result<Vec<u8>, AppError> {
-    let too_big = || AppError::Message("That is too large to be a picture of something to buy.".into());
+    let too_big = || AppError::Message("This picture is too large.".into());
     if !cut && response.content_length().is_some_and(|n| n as usize > max) {
         return Err(too_big());
     }
@@ -109,7 +109,7 @@ pub async fn fetch(url: &str) -> Result<LinkPreview, AppError> {
         return Ok(LinkPreview { url: base.to_string(), image_url: base.to_string(), ..Default::default() });
     }
     if !content_type.is_empty() && !content_type.contains("html") && !content_type.contains("xml") {
-        return Err(AppError::Message("That link is not a web page.".into()));
+        return Err(AppError::Message("This link is not a web page.".into()));
     }
     let bytes = body(response, MAX_PAGE, true).await?;
     let html = decode(&bytes, &content_type);
@@ -151,7 +151,7 @@ pub async fn fetch_json(url: &str) -> Result<serde_json::Value, AppError> {
         return Err(refused(response.status()));
     }
     let bytes = body(response, 256 * 1024, false).await?;
-    serde_json::from_slice(&bytes).map_err(|_| AppError::Message("The answer could not be read.".into()))
+    serde_json::from_slice(&bytes).map_err(|_| AppError::Message("The response could not be read.".into()))
 }
 
 /// Fetches a picture's bytes, refusing anything that is not a picture.
@@ -172,7 +172,7 @@ pub async fn fetch_image(url: &str) -> Result<Vec<u8>, AppError> {
         .is_some_and(|t| t.to_ascii_lowercase().starts_with("image/"));
     let bytes = body(response, MAX_IMAGE, false).await?;
     if bytes.is_empty() || !(typed_image || crate::covers::sniff_extension(&bytes).is_some()) {
-        return Err(AppError::Message("The page's picture could not be read as a picture.".into()));
+        return Err(AppError::Message("The page's picture could not be read.".into()));
     }
     Ok(bytes)
 }

@@ -332,7 +332,7 @@ export class MarkLayer {
 
   /** Text typed onto the page where it was clicked, in the mark colour. */
   private async addTextAt(x: number, y: number, pageNumber: number, page: HTMLElement): Promise<void> {
-    const text = (await askText("Type what goes on the page. Enter starts a new line; Ctrl+Enter puts it there.", { title: "Text on the page", okLabel: "Put it there", multiline: true }))?.replace(/\r/g, "");
+    const text = (await askText("Text to place on the page. Enter starts a new line; Ctrl+Enter places it.", { title: "Text on the page", okLabel: "Place", multiline: true }))?.replace(/\r/g, "");
     if (!text?.trim()) return;
     const at = pointFrom(x, y, page);
     if (!at) return;
@@ -354,7 +354,7 @@ export class MarkLayer {
 
   /** Changes typed text, keeping the size of its letters. */
   private async editText(mark: Annotation): Promise<void> {
-    const text = (await askText("Change the text, or clear it to remove it.", { title: "Text on the page", okLabel: "Save", value: mark.text, multiline: true }))?.replace(/\r/g, "");
+    const text = (await askText("Edit the text, or clear it to remove it.", { title: "Text on the page", okLabel: "Save", value: mark.text, multiline: true }))?.replace(/\r/g, "");
     if (text === null || text === undefined) return;
     if (!text.trim()) {
       await this.removeById(mark.id);

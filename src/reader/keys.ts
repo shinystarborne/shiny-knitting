@@ -100,8 +100,8 @@ export function captureKey(title: string, current: string): Promise<string | nul
     const prompt = document.createElement("p");
     prompt.className = "dialog-message";
     prompt.textContent = current
-      ? `Now: ${keyLabel(current)}. Press the key you want instead.`
-      : "Press the key you want to use.";
+      ? `Current: ${keyLabel(current)}. Press a new key.`
+      : "Press a key.";
     const actions = document.createElement("div");
     actions.className = "dialog-actions";
     const clear = document.createElement("button");

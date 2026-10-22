@@ -512,7 +512,7 @@ function cleanTool(input) {
 function adapterEnd(input) {
   const to = String(input.adapterTo || "").trim().toLowerCase();
   if (to && !CABLE_SIZES.includes(to)) throw new Error(`“${input.adapterTo}” is not a cable size this knows.`);
-  if (to && to === String(input.cableSize || "").trim().toLowerCase()) throw new Error("An adapter joins two sizes: give its tip end and its cable end different ones.");
+  if (to && to === String(input.cableSize || "").trim().toLowerCase()) throw new Error("An adapter joins two sizes: the tip end and cable end must differ.");
   return to;
 }
 // `models::CONNECTORS`, and `tools::connector_of_brand`.
@@ -547,7 +547,7 @@ function cleanShop(input) {
   const url = webAddress(input.url);
   let name = oneLine(input.name, 120);
   if (!name && url) name = url.split("://")[1].split(/[/?#:]/)[0].toLowerCase().replace(/^www\./, "");
-  if (!name) throw new Error("Give the shop a name, or its web address.");
+  if (!name) throw new Error("Shop name or web address needed.");
   const tags = [];
   for (const raw of input.tags || []) {
     const tag = oneLine(String(raw).trim().replace(/^#+/, ""), 40);
@@ -557,9 +557,9 @@ function cleanShop(input) {
 }
 function cleanWish(input) {
   const kind = String(input.kind || "").trim().toLowerCase();
-  if (!WISH_KINDS.includes(kind)) throw new Error("Choose what kind of thing this is.");
+  if (!WISH_KINDS.includes(kind)) throw new Error("Choose a type.");
   const name = oneLine(input.name, 200);
-  if (!name) throw new Error("Say what it is you want to get.");
+  if (!name) throw new Error("Item name needed.");
   const link = (v) => (v && String(v).trim() ? String(v).trim() : null);
   const out = {
     kind,
@@ -572,8 +572,8 @@ function cleanWish(input) {
     projectId: link(input.projectId),
     notes: String(input.notes || "").trim().slice(0, 4000),
   };
-  if (out.shopId && !store.shops.some((x) => x.id === out.shopId)) throw new Error("That shop is no longer there.");
-  if (out.projectId && !store.projects.some((x) => x.id === out.projectId)) throw new Error("That project is no longer there.");
+  if (out.shopId && !store.shops.some((x) => x.id === out.shopId)) throw new Error("This shop no longer exists.");
+  if (out.projectId && !store.projects.some((x) => x.id === out.projectId)) throw new Error("This project no longer exists.");
   return out;
 }
 /** A shop as the backend returns it, with how many wanted things are to be got there. */
@@ -609,11 +609,11 @@ function cleanSwatch(input) {
   const toolId = link(input.toolId);
   const toolSize = toolId ? store.tools.find((t) => t.id === toolId)?.sizeMm : 0;
   const needle = toolSize > 0 ? toolSize : Number(input.needleMm || 0);
-  if (!Number.isFinite(needle) || needle < 0 || needle > 50) throw new Error("Give the needle size in millimetres, e.g. 4 or 3.75.");
+  if (!Number.isFinite(needle) || needle < 0 || needle > 50) throw new Error("Needle size in millimetres needed, e.g. 4 or 3.75.");
   if (yarnId && !store.yarns.some((y) => y.id === yarnId)) throw new Error("That yarn is no longer in the stash.");
   if (toolId && !store.tools.some((t) => t.id === toolId)) throw new Error("That needle is no longer in Needles & hooks.");
   const projectId = link(input.projectId);
-  if (projectId && !store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
+  if (projectId && !store.projects.some((p) => p.id === projectId)) throw new Error("This project no longer exists.");
   return {
     yarnId,
     yarnText: yarnId ? "" : oneLine(input.yarnText, 120),
@@ -644,7 +644,7 @@ function swatchOut(s) {
 const MEASUREMENT_KEYS = ["height", "chest", "waist", "hips", "neck", "shoulders", "upper_arm", "wrist", "arm_length", "armhole_depth", "back_length", "head", "hand", "foot_length", "foot_around"];
 function cleanPerson(input) {
   const name = oneLine(input.name, 120);
-  if (!name) throw new Error("Give them a name.");
+  if (!name) throw new Error("Name needed.");
   const extra = [];
   for (const raw of input.extra || []) {
     const e = oneLine(raw, 40);
@@ -657,11 +657,11 @@ function cleanSet(input, extra) {
   for (const [key, value] of Object.entries(input.values || {})) {
     const known = MEASUREMENT_KEYS.includes(key) || (key.startsWith("x:") && extra.includes(key.slice(2)));
     if (!known) throw new Error(`“${key}” is not one of their measurements.`);
-    if (!Number.isFinite(value) || value < 0) throw new Error("A measurement has to be a number of centimetres.");
+    if (!Number.isFinite(value) || value < 0) throw new Error("A measurement must be a number of centimetres.");
     if (value > 300) throw new Error(`${value} cm is more than anyone measures — is it in the right unit?`);
     if (value > 0) values[key] = Math.round(value * 100) / 100;
   }
-  if (!(input.measuredAt > 0)) throw new Error("Give the date they were measured.");
+  if (!(input.measuredAt > 0)) throw new Error("Measurement date needed.");
   return { measuredAt: input.measuredAt, values, shoeSize: oneLine(input.shoeSize, 20) };
 }
 /** A person as the backend returns them: every set, newest first, and their project count. */
@@ -675,7 +675,7 @@ function personOut(p) {
 }
 function findPerson(id) {
   const p = store.people.find((x) => x.id === id);
-  if (!p) throw new Error("That person is no longer there.");
+  if (!p) throw new Error("This person no longer exists.");
   return p;
 }
 function setOwner(id) {
@@ -708,11 +708,11 @@ function placeTip(toolId, projectId, tip) {
     for (const l of store.projectTools) if (l.toolId === toolId && l.projectId === projectId) l.tip = "";
     return;
   }
-  if (tip !== "one") throw new Error("Interchangeable tips are on a project both, or one.");
-  if (store.tools.find((t) => t.id === toolId)?.kind !== "tips") throw new Error("Only interchangeable tips are used one at a time.");
+  if (tip !== "one") throw new Error("Interchangeable tips are used either both or one at a time.");
+  if (store.tools.find((t) => t.id === toolId)?.kind !== "tips") throw new Error("Only interchangeable tips can be used one at a time.");
   const pr = store.projects.find((x) => x.id === projectId);
-  if (!pr) throw new Error("That project is no longer there.");
-  if (!isLive(pr.status)) throw new Error("That project is finished or frogged, so nothing more can go on it.");
+  if (!pr) throw new Error("This project no longer exists.");
+  if (!isLive(pr.status)) throw new Error("This project is finished or frogged; nothing more can be added.");
   const live = (l) => isLive(store.projects.find((x) => x.id === l.projectId)?.status);
   store.projectTools = store.projectTools.filter((l) => !(l.toolId === toolId && l.projectId !== projectId && !l.tip && live(l)));
   const others = store.projectTools.filter((l) => l.toolId === toolId && l.projectId !== projectId && live(l));
@@ -808,8 +808,8 @@ function inProgress(patternId) {
 function placeTool(toolId, projectId) {
   if (projectId) {
     const pr = store.projects.find((x) => x.id === projectId);
-    if (!pr) throw new Error("That project is no longer there.");
-    if (!isLive(pr.status)) throw new Error("That project is finished or frogged, so nothing more can go on it.");
+    if (!pr) throw new Error("This project no longer exists.");
+    if (!isLive(pr.status)) throw new Error("This project is finished or frogged; nothing more can be added.");
   }
   store.projectTools = store.projectTools.filter(
     (l) => !(l.toolId === toolId && l.projectId !== projectId && ["active", "paused"].includes(store.projects.find((pr) => pr.id === l.projectId)?.status)),
@@ -828,14 +828,14 @@ function planWhen(text) {
 /** As masterclasses.rs: a link made whole, a YouTube one known by its video. */
 function stubVideo(typedUrl, typedTitle) {
   const typed = String(typedUrl ?? "").trim();
-  if (!typed) throw new Error("Give the video's link: a YouTube address.");
+  if (!typed) throw new Error("Video link needed (a YouTube address).");
   let url;
   try {
     url = new URL(typed.includes("://") ? typed : `https://${typed}`);
   } catch {
     throw new Error("That is not a web address.");
   }
-  if (!/^https?:$/.test(url.protocol)) throw new Error("A masterclass is a web page: an address starting http:// or https://.");
+  if (!/^https?:$/.test(url.protocol)) throw new Error("A masterclass needs an address starting with http:// or https://.");
   const host = url.host.replace(/^(www|m|music)\./, "");
   const seg = url.pathname.split("/").filter(Boolean);
   let video = host === "youtu.be" ? seg[0] : host === "youtube.com" ? (seg[0] === "watch" ? url.searchParams.get("v") : ["shorts", "live", "embed"].includes(seg[0]) ? seg[1] : null) : null;
@@ -876,7 +876,7 @@ function ravelryPatterns() {
 }
 function findMasterclass(id) {
   const m = store.masterclasses.find((x) => x.id === id);
-  if (!m) throw new Error("That masterclass is no longer there.");
+  if (!m) throw new Error("This masterclass no longer exists.");
   return m;
 }
 /** As masterclasses.rs: a pattern in the library, or none. */
@@ -930,7 +930,7 @@ function projectOut(pr) {
 /** As db::planned_grams: grams, or null when not said; nothing a project could not take. */
 function plannedGrams(g) {
   if (g == null || g === 0) return null;
-  if (g < 0) throw new Error("How much a project takes is a number of grams.");
+  if (g < 0) throw new Error("The amount for a project must be a number of grams.");
   if (g > 100000) throw new Error(`${g} g is more than a project takes: is it in grams?`);
   return g;
 }
@@ -951,7 +951,7 @@ function syncLinks(id, input) {
   for (const y of input.yarns || []) {
     const yarn = store.yarns.find((x) => x.id === y.yarnId);
     if (!yarn) throw new Error("One of those yarns is no longer in the stash.");
-    if (y.lotId && !yarn.lots.some((l) => l.id === y.lotId)) throw new Error("That lot is not one of that yarn's.");
+    if (y.lotId && !yarn.lots.some((l) => l.id === y.lotId)) throw new Error("This lot belongs to a different yarn.");
     const existing = y.id && store.projectYarns.find((e) => e.id === y.id);
     if (existing) {
       existing.yarnId = y.yarnId;
@@ -1000,7 +1000,7 @@ function needleSizesOf(pattern) {
  */
 /** As chart_pictures.rs::clean: a known craft, a name of one line. */
 function chartPictureInput(input) {
-  if (!["knitting", "crochet"].includes(input.craft)) throw new Error("Say whether the chart is for knitting or crochet.");
+  if (!["knitting", "crochet"].includes(input.craft)) throw new Error("Choose knitting or crochet for the chart.");
   const name = String(input.name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
   return { name: name || "A chart", craft: input.craft, notes: String(input.notes ?? "").trim().slice(0, 4000) };
 }
@@ -1083,8 +1083,8 @@ function yarnDetailsOf(brand, name) {
 /** As db::set_yarn_details: checked, a range turned the right way, all 0 gone. */
 function setYarnDetails(brand, name, d) {
   const ok = (v, max) => Number.isFinite(v) && v >= 0 && v <= max;
-  if (!ok(d.gaugeSts || 0, 100) || !ok(d.gaugeRows || 0, 150)) throw new Error("A gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.");
-  if (!ok(d.needleFrom || 0, 50) || !ok(d.needleTo || 0, 50)) throw new Error("Needles are a size in mm, up to 50.");
+  if (!ok(d.gaugeSts || 0, 100) || !ok(d.gaugeRows || 0, 150)) throw new Error("Gauge is stitches and rows per 10 cm: up to 100 stitches and 150 rows.");
+  if (!ok(d.needleFrom || 0, 50) || !ok(d.needleTo || 0, 50)) throw new Error("Needle size must be in mm, up to 50.");
   const tenth = (v) => Math.round((v || 0) * 10) / 10;
   const hundredth = (v) => Math.round((v || 0) * 100) / 100;
   let [from, to] = [hundredth(d.needleFrom), hundredth(d.needleTo)];
@@ -1158,7 +1158,7 @@ function scopedCounters(patternId, projectId) {
 function ensureProjectCounter(patternId, projectId) {
   if (!projectId || store.progress.has(progressKey(patternId, projectId))) return;
   const project = store.projects.find((p) => p.id === projectId);
-  if (!project) throw new Error("That project is no longer there.");
+  if (!project) throw new Error("This project no longer exists.");
   // Only one on the needles takes the pattern's counts.
   const first = isLive(project.status) && ![...store.progress.entries()].some(([k, v]) => k.endsWith(`|${patternId}`) && v.tookCounts);
   for (const c of scopedCounters(patternId, "")) store.counters.push({ ...clone(c), id: `c${store.nextId++}`, projectId, current: first ? c.current : 0 });
@@ -1242,15 +1242,15 @@ function cleanChart({ name, data }) {
 
 function findChart(id) {
   const c = store.charts.find((x) => x.id === id);
-  if (!c) throw new Error("That chart is no longer there.");
+  if (!c) throw new Error("This chart no longer exists.");
   return c;
 }
 
 /** A sitting's end, as db::sitting checks it: a minute to a day long, not in the future. */
 function knitSitting(startedAt, seconds) {
-  if (!(seconds >= 60 && seconds <= 86400)) throw new Error("A spell of knitting is a minute at least, and 24 hours at most.");
+  if (!(seconds >= 60 && seconds <= 86400)) throw new Error("A session must be between 1 minute and 24 hours.");
   const endedAt = startedAt + seconds * 1000;
-  if (endedAt > Date.now() + 60000) throw new Error("That time is still to come.");
+  if (endedAt > Date.now() + 60000) throw new Error("That time is in the future.");
   return endedAt;
 }
 
@@ -1532,7 +1532,7 @@ const handlers = {
   save_hidden_tabs: ({ tabs }) => {
     const order = ["patterns", "projects", "people", "calculators", "charts", "cheatsheets", "masterclasses", "ravelry", "inspiration", "stash", "tools", "wishlist", "shops"];
     const kept = order.filter((t) => tabs.includes(t));
-    if (kept.length === order.length) throw new Error("Keep at least one tab: with every tab hidden there is nothing to show.");
+    if (kept.length === order.length) throw new Error("At least one tab must stay visible.");
     store.hiddenTabs = kept;
     return [...kept];
   },
@@ -1641,7 +1641,7 @@ const handlers = {
   list_chart_pictures: () => clone([...store.chartPictures].sort((a, b) => b.addedAt - a.addedAt || b.seq - a.seq)),
   add_chart_picture: (bytes, options) => {
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    if (!data.length || !sniffImage(data)) throw new Error("That file does not look like an image.");
+    if (!data.length || !sniffImage(data)) throw new Error("This file is not an image.");
     const input = chartPictureInput(JSON.parse(decodeURIComponent(options?.headers?.["x-input"] ?? "")));
     const [width, height] = (options?.headers?.["x-size"] ?? "0x0").split("x").map((n) => Number(n) || 0);
     const c = { id: `chartpic-${store.nextId++}`, seq: store.nextId, ...input, width, height, addedAt: Date.now() };
@@ -1651,22 +1651,22 @@ const handlers = {
   },
   update_chart_picture: ({ id, input }) => {
     const c = store.chartPictures.find((x) => x.id === id);
-    if (!c) throw new Error("That chart is no longer there.");
+    if (!c) throw new Error("This chart no longer exists.");
     Object.assign(c, chartPictureInput(input));
     return clone(c);
   },
   replace_chart_picture: (bytes, options) => {
     const c = store.chartPictures.find((x) => x.id === decodeURIComponent(options?.headers?.["x-id"] ?? ""));
-    if (!c) throw new Error("That chart is no longer there.");
+    if (!c) throw new Error("This chart no longer exists.");
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    if (!data.length || !sniffImage(data)) throw new Error("That file does not look like an image.");
+    if (!data.length || !sniffImage(data)) throw new Error("This file is not an image.");
     [c.width, c.height] = (options?.headers?.["x-size"] ?? "0x0").split("x").map((n) => Number(n) || 0);
     store.covers.set(`chartpic:${c.id}`, Array.from(data));
     return clone(c);
   },
   get_chart_picture: ({ id }) => {
     const bytes = store.covers.get(`chartpic:${id}`);
-    if (!bytes) throw new Error("That chart's picture is no longer there.");
+    if (!bytes) throw new Error("This chart's picture no longer exists.");
     return Uint8Array.from(bytes).buffer;
   },
   delete_chart_picture: ({ id }) => {
@@ -1678,9 +1678,9 @@ const handlers = {
   list_goals: () => clone([...store.goals].sort((a, b) => b.year - a.year || a.addedAt - b.addedAt)),
   save_goal: ({ input }) => {
     if (!["projects", "grams", "metres", "own"].includes(input.kind)) throw new Error(`“${input.kind}” is not a goal the app knows.`);
-    if (!(input.target > 0)) throw new Error("A goal is a number more than 0.");
+    if (!(input.target > 0)) throw new Error("A goal must be a number above 0.");
     const label = input.kind === "own" ? input.label.split(/\s+/).filter(Boolean).join(" ") : "";
-    if (input.kind === "own" && !label) throw new Error("Say what your own goal is.");
+    if (input.kind === "own" && !label) throw new Error("A custom goal needs a description.");
     let g = input.id && store.goals.find((x) => x.id === input.id);
     if (!g) store.goals.push((g = { id: `goal-${store.nextId++}`, done: 0, addedAt: Date.now() }));
     Object.assign(g, { year: input.year, kind: input.kind, label, target: Math.round(input.target * 100) / 100 });
@@ -1688,7 +1688,7 @@ const handlers = {
   },
   set_goal_done: ({ id, done }) => {
     const g = store.goals.find((x) => x.id === id);
-    if (!g) throw new Error("That goal is no longer there.");
+    if (!g) throw new Error("This goal no longer exists.");
     if (g.kind === "own") g.done = Math.max(0, done);
     return clone(g);
   },
@@ -1700,7 +1700,7 @@ const handlers = {
   save_abbreviation: ({ input }) => {
     const term = input.term.split(/\s+/).filter(Boolean).join(" ");
     const meaning = input.meaning.trim();
-    if (!term || !meaning) throw new Error("An abbreviation needs both: what the pattern writes, and what it means.");
+    if (!term || !meaning) throw new Error("An abbreviation needs both the abbreviation and its meaning.");
     const same = store.abbreviations.find((a) => a.term.toLowerCase() === term.toLowerCase());
     if (input.id && same && same.id !== input.id) throw new Error(`“${term}” is one of yours already.`);
     const id = input.id || same?.id || `abbr-${store.nextId++}`;
@@ -1737,7 +1737,7 @@ const handlers = {
   },
   update_masterclass_part: ({ part }) => {
     const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === part.id));
-    if (!m) throw new Error("That video is no longer there.");
+    if (!m) throw new Error("This video no longer exists.");
     const kept = m.parts.find((p) => p.id === part.id);
     if (part.title.trim()) kept.title = part.title.trim().slice(0, 200);
     kept.watched = !!part.watched;
@@ -1745,14 +1745,14 @@ const handlers = {
   },
   move_masterclass_part: ({ id, position }) => {
     const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
-    if (!m) throw new Error("That video is no longer there.");
+    if (!m) throw new Error("This video no longer exists.");
     const [part] = m.parts.splice(m.parts.findIndex((p) => p.id === id), 1);
     m.parts.splice(Math.max(0, Math.min(position, m.parts.length)), 0, part);
     return masterclassOut(m);
   },
   remove_masterclass_part: ({ id }) => {
     const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
-    if (!m) throw new Error("That video is no longer there.");
+    if (!m) throw new Error("This video no longer exists.");
     if (m.parts.length < 2) throw new Error("It is the masterclass's only video: remove the masterclass instead.");
     m.parts = m.parts.filter((p) => p.id !== id);
     store.covers.delete(`masterclass:${id}`);
@@ -1760,8 +1760,8 @@ const handlers = {
   },
   split_masterclass_part: ({ id }) => {
     const m = store.masterclasses.find((x) => x.parts.some((p) => p.id === id));
-    if (!m) throw new Error("That video is no longer there.");
-    if (m.parts.length < 2) throw new Error("It is the masterclass's only video already.");
+    if (!m) throw new Error("This video no longer exists.");
+    if (m.parts.length < 2) throw new Error("It is already the masterclass's only video.");
     const part = m.parts.find((p) => p.id === id);
     m.parts = m.parts.filter((p) => p.id !== id);
     const own = { id: `mc${store.nextId++}`, title: part.title, notes: "", parts: [part], addedAt: Date.now() + store.nextId };
@@ -1802,8 +1802,8 @@ const handlers = {
   },
   set_project_masterclass: ({ id, masterclassId }) => {
     const pr = store.projects.find((x) => x.id === id);
-    if (!pr) throw new Error("That project is no longer there.");
-    if (masterclassId && !store.masterclasses.some((m) => m.id === masterclassId)) throw new Error("That masterclass is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
+    if (masterclassId && !store.masterclasses.some((m) => m.id === masterclassId)) throw new Error("This masterclass no longer exists.");
     pr.masterclassId = masterclassId || "";
     return projectOut(pr);
   },
@@ -1822,7 +1822,7 @@ const handlers = {
     if (input.kind === "web") {
       let raw = String(input.url ?? "").trim();
       if (/^<iframe/i.test(raw)) raw = (/src=["']?([^"'\s>]+)/i.exec(raw) ?? [])[1] ?? "";
-      if (!raw) throw new Error("Give the page's address.");
+      if (!raw) throw new Error("Page address needed.");
       if (raw.startsWith("//")) raw = `https:${raw}`;
       else if (!raw.includes("://")) raw = `https://${raw}`;
       let url;
@@ -1831,7 +1831,7 @@ const handlers = {
       } catch {
         throw new Error("That is not a web address.");
       }
-      if (!/^https?:$/.test(url.protocol)) throw new Error("A cheatsheet is a web page: an address starting http:// or https://.");
+      if (!/^https?:$/.test(url.protocol)) throw new Error("A web page cheatsheet needs an address starting with http:// or https://.");
       const host = url.host.replace(/^(www|m)\./, "");
       const yt = host === "youtu.be" ? url.pathname.slice(1) : host === "youtube.com" && url.pathname === "/watch" ? url.searchParams.get("v") : null;
       sheet.url = yt ? `https://www.youtube.com/embed/${yt}` : url.toString();
@@ -1859,7 +1859,7 @@ const handlers = {
   },
   update_cheatsheet: ({ sheet }) => {
     const kept = (store.cheatsheets ?? []).find((x) => x.id === sheet.id);
-    if (!kept) throw new Error("That cheatsheet is no longer there.");
+    if (!kept) throw new Error("This cheatsheet no longer exists.");
     if (sheet.title.trim()) kept.title = sheet.title.trim();
     kept.notes = sheet.notes.trim();
     kept.framable = sheet.framable;
@@ -1877,7 +1877,7 @@ const handlers = {
   move_cheatsheet: ({ id, position }) => {
     const list = store.cheatsheets ?? [];
     const at = list.findIndex((x) => x.id === id);
-    if (at < 0) throw new Error("That cheatsheet is no longer there.");
+    if (at < 0) throw new Error("This cheatsheet no longer exists.");
     const [moved] = list.splice(at, 1);
     list.splice(Math.max(0, Math.min(position, list.length)), 0, moved);
     list.forEach((x, i) => (x.position = i));
@@ -1885,7 +1885,7 @@ const handlers = {
   },
   read_cheatsheet_copy: ({ id }) => {
     const html = store.cheatsheetCopies?.get(id);
-    if (html === undefined) throw new Error("The copy of that chapter is not there any more.");
+    if (html === undefined) throw new Error("The saved copy of this chapter no longer exists.");
     return html;
   },
   open_cheatsheet_window: ({ id, url, title }) => {
@@ -1977,9 +1977,9 @@ const handlers = {
     try {
       parsed = JSON.parse(geometry);
     } catch {
-      throw new Error("That is not a mark's shape.");
+      throw new Error("Invalid mark shape.");
     }
-    if (!Array.isArray(parsed) || !parsed.length || !parsed.every((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))) throw new Error("That is not a mark's shape.");
+    if (!Array.isArray(parsed) || !parsed.length || !parsed.every((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))) throw new Error("Invalid mark shape.");
     a.geometry = geometry;
     return clone(a);
   },
@@ -2092,7 +2092,7 @@ const handlers = {
       throw new Error("That image is too large to be a cover (limit 20 MB).");
     }
     const found = sniffImage(bytes);
-    if (!found) throw new Error("That file does not look like an image.");
+    if (!found) throw new Error("This file is not an image.");
     const [ext, mime] = found;
     const fileName = `${patternId}.${ext}`;
     const p = store.patterns.find((x) => x.id === patternId);
@@ -2154,7 +2154,7 @@ const handlers = {
   // As db::save_tool_set: its pieces exactly those given.
   save_tool_set: ({ input }) => {
     const name = String(input.name || "").trim().slice(0, 120);
-    if (!name) throw new Error("Give the set a name, e.g. ChiaoGoo Twist Lace.");
+    if (!name) throw new Error("Set name needed, e.g. ChiaoGoo Twist Lace.");
     const price = cents(input.price);
     let set = input.id ? store.toolSets.find((x) => x.id === input.id) : null;
     if (input.id && !set) throw new Error(`No set with id ${input.id}.`);
@@ -2212,7 +2212,7 @@ const handlers = {
   },
   update_project: ({ id, input }) => {
     const pr = store.projects.find((x) => x.id === id);
-    if (!pr) throw new Error("That project is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
     pr.name = projectName(input);
     if (pr.status === "active" && (input.patternId || null) !== pr.patternId) inProgress(input.patternId);
@@ -2243,8 +2243,8 @@ const handlers = {
   // As db::set_project_chart: a chart that is there, or none; from row 1 on.
   set_project_chart: ({ id, chartId, start }) => {
     const p = store.projects.find((x) => x.id === id);
-    if (!p) throw new Error("That project is no longer there.");
-    if (chartId && !store.charts.some((c) => c.id === chartId)) throw new Error("That chart is no longer there.");
+    if (!p) throw new Error("This project no longer exists.");
+    if (chartId && !store.charts.some((c) => c.id === chartId)) throw new Error("This chart no longer exists.");
     p.chartId = chartId;
     p.chartStart = Math.max(1, Math.round(start) || 1);
     return projectOut(p);
@@ -2252,20 +2252,20 @@ const handlers = {
   // As db::set_project_hour_rate: its own, to the cent, or null for the standard.
   set_project_hour_rate: ({ id, rate }) => {
     const p = store.projects.find((x) => x.id === id);
-    if (!p) throw new Error("That project is no longer there.");
+    if (!p) throw new Error("This project no longer exists.");
     p.hourRate = cents(rate);
     return projectOut(p);
   },
   // As db::set_project_size: one line, trimmed.
   set_project_size: ({ id, size }) => {
     const p = store.projects.find((x) => x.id === id);
-    if (!p) throw new Error("That project is no longer there.");
+    if (!p) throw new Error("This project no longer exists.");
     p.size = String(size ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 100);
     return projectOut(p);
   },
   set_project_gallery: ({ id, hidden, skip }) => {
     const pr = store.projects.find((x) => x.id === id);
-    if (!pr) throw new Error("That project is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
     const own = new Set(["cover", ...store.projectLog.filter((e) => e.projectId === id).map((e) => e.id)]);
     pr.galleryHidden = !!hidden;
     pr.gallerySkip = [...new Set(skip || [])].filter((k) => own.has(k));
@@ -2281,21 +2281,21 @@ const handlers = {
   set_project_status: ({ id, status }) => {
     if (!isLive(status)) for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
     const pr = store.projects.find((x) => x.id === id);
-    if (!pr) throw new Error("That project is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
     if (!["planned", "active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
     if (pr.status === status) return projectOut(pr);
     const now = Date.now();
     if (pr.status === "planned") {
-      if (status !== "active") throw new Error("A plan is started, or removed.");
+      if (status !== "active") throw new Error("A plan can only be started or removed.");
       pr.status = "active";
       pr.startedAt = now;
       logMilestone(id, "Started", now);
       inProgress(pr.patternId);
       return projectOut(pr);
     }
-    if (status === "planned") throw new Error("A project already started is not a plan again.");
-    if (pr.status === "finished") throw new Error("A finished project stays finished.");
-    if (status === "finished") throw new Error("Finishing a project asks about its leftovers: use Finish.");
+    if (status === "planned") throw new Error("A started project can't go back to being a plan.");
+    if (pr.status === "finished") throw new Error("A finished project can't change status.");
+    if (status === "finished") throw new Error("Use Finish to finish a project (it asks about leftovers).");
     if (isLive(pr.status) && isLive(status)) {
       pr.status = status;
       logMilestone(id, status === "paused" ? "Paused" : "Back on the needles", now);
@@ -2320,14 +2320,14 @@ const handlers = {
   finish_project: ({ id, input }) => {
     for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
     const pr = store.projects.find((x) => x.id === id);
-    if (!pr) throw new Error("That project is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
     if (!isLive(pr.status)) throw new Error("That project is already finished or frogged.");
     const now = Date.now();
     // As db::finish_project: what is left, or grams or balls used -- one of them.
     const said = (left) => [left.grams, left.usedGrams, left.usedBalls].filter((v) => v != null).length;
     for (const left of input.leftovers || []) {
       if (!said(left)) continue;
-      if (said(left) > 1) throw new Error("Say what is left of a yarn, or what it used: one of them.");
+      if (said(left) > 1) throw new Error("Enter either the amount left or the amount used, not both.");
       if ([left.grams, left.usedGrams, left.usedBalls].some((v) => v != null && !(v >= 0))) throw new Error("Yarn is a number of grams or balls, 0 or more.");
       const e = store.projectYarns.find((x) => x.id === left.entryId && x.projectId === id);
       if (!e) throw new Error("That yarn is not on this project.");
@@ -2365,7 +2365,7 @@ const handlers = {
   },
   delete_project: ({ id }) => {
     store.knitSessions = (store.knitSessions ?? []).filter((k) => k.projectId !== id);
-    if (!store.projects.some((x) => x.id === id)) throw new Error("That project is no longer there.");
+    if (!store.projects.some((x) => x.id === id)) throw new Error("This project no longer exists.");
     for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
     store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
     store.covers.delete(`project:${id}`);
@@ -2383,8 +2383,8 @@ const handlers = {
 
   set_project_cover: ({ projectId, bytes }) => {
     const pr = store.projects.find((x) => x.id === projectId);
-    if (!pr) throw new Error("That project is no longer there.");
-    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    if (!pr) throw new Error("This project no longer exists.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("This file is not an image.");
     pr.coverPath = `${projectId}.${sniffImage(bytes)[0]}`;
     store.covers.set(`project:${projectId}`, bytes);
   },
@@ -2404,7 +2404,7 @@ const handlers = {
     clone(store.boardItems.filter((i) => i.boardId === boardId).sort((a, b) => a.z - b.z || a.createdAt - b.createdAt)),
   add_board_item: ({ boardId, input }) => {
     if (!store.projects.some((x) => x.id === boardId) && !store.inspirationBoards.some((b) => b.id === boardId)) {
-      throw new Error("That board is no longer there.");
+      throw new Error("This board no longer exists.");
     }
     const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc", "chartpic", "crochet"];
     if (input.kind === "log" && !store.projects.some((x) => x.id === boardId)) throw new Error("Only a project's board can show its log.");
@@ -2424,7 +2424,7 @@ const handlers = {
   },
   update_board_item: ({ id, patch }) => {
     const item = store.boardItems.find((i) => i.id === id);
-    if (!item) throw new Error("That is no longer on the board.");
+    if (!item) throw new Error("This item is no longer on the board.");
     const size = (v, f) => (Number.isFinite(v) && v > 0 ? Math.min(4000, Math.max(40, v)) : f);
     if (patch.x != null) item.x = patch.x;
     if (patch.y != null) item.y = patch.y;
@@ -2440,22 +2440,22 @@ const handlers = {
   },
   delete_board_item: ({ id }) => {
     const gone = store.boardItems.find((i) => i.id === id);
-    if (!gone) throw new Error("That is no longer on the board.");
+    if (!gone) throw new Error("This item is no longer on the board.");
     touchBoard(gone.boardId);
     store.boardItems = store.boardItems.filter((i) => i.id !== id);
     store.covers.delete(`board:${id}`);
   },
   set_board_image: ({ id, bytes }) => {
     const item = store.boardItems.find((i) => i.id === id);
-    if (!item) throw new Error("That is no longer on the board.");
-    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    if (!item) throw new Error("This item is no longer on the board.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("This file is not an image.");
     store.covers.set(`board:${id}`, bytes);
     item.hasImage = true;
     return clone(item);
   },
   get_board_image: ({ id }) => {
     const bytes = store.covers.get(`board:${id}`);
-    if (!bytes) throw new Error("That picture is no longer there.");
+    if (!bytes) throw new Error("This picture no longer exists.");
     return Uint8Array.from(bytes).buffer;
   },
 
@@ -2466,28 +2466,28 @@ const handlers = {
       .sort((a, b) => b.at - a.at || b.seq - a.seq)
       .map(logOut),
   add_log_entry: ({ projectId, text }) => {
-    if (!store.projects.some((p) => p.id === projectId)) throw new Error("That project is no longer there.");
+    if (!store.projects.some((p) => p.id === projectId)) throw new Error("This project no longer exists.");
     const e = { id: `lg${store.nextId++}`, projectId, at: Date.now(), text: String(text || "").trim().slice(0, 10000), milestone: false, photoPath: "", seq: store.nextId };
     store.projectLog.push(e);
     return logOut(e);
   },
   update_log_entry: ({ id, text, at }) => {
     const e = store.projectLog.find((x) => x.id === id);
-    if (!e) throw new Error("That log entry is no longer there.");
-    if (!(at > 0)) throw new Error("Give the day it happened.");
+    if (!e) throw new Error("This log entry no longer exists.");
+    if (!(at > 0)) throw new Error("Date needed.");
     e.text = String(text || "").trim().slice(0, 10000);
     e.at = at;
     return logOut(e);
   },
   delete_log_entry: ({ id }) => {
-    if (!store.projectLog.some((x) => x.id === id)) throw new Error("That log entry is no longer there.");
+    if (!store.projectLog.some((x) => x.id === id)) throw new Error("This log entry no longer exists.");
     store.covers.delete(`log:${id}`);
     store.projectLog = store.projectLog.filter((x) => x.id !== id);
   },
   set_log_photo: ({ id, bytes }) => {
     const e = store.projectLog.find((x) => x.id === id);
-    if (!e) throw new Error("That log entry is no longer there.");
-    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    if (!e) throw new Error("This log entry no longer exists.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("This file is not an image.");
     store.covers.set(`log:${id}`, Uint8Array.from(bytes));
     e.photoPath = `${id}.jpg`;
   },
@@ -2498,7 +2498,7 @@ const handlers = {
   },
   remove_log_photo: ({ id }) => {
     const e = store.projectLog.find((x) => x.id === id);
-    if (!e) throw new Error("That log entry is no longer there.");
+    if (!e) throw new Error("This log entry no longer exists.");
     store.covers.delete(`log:${id}`);
     e.photoPath = "";
   },
@@ -2514,20 +2514,20 @@ const handlers = {
   },
   update_swatch: ({ id, input }) => {
     const s = store.swatches.find((x) => x.id === id);
-    if (!s) throw new Error("That swatch is no longer there.");
+    if (!s) throw new Error("This swatch no longer exists.");
     const clean = cleanSwatch(input);
     Object.assign(s, clean, { madeAt: clean.madeAt ?? s.madeAt });
     return swatchOut(s);
   },
   delete_swatch: ({ id }) => {
-    if (!store.swatches.some((x) => x.id === id)) throw new Error("That swatch is no longer there.");
+    if (!store.swatches.some((x) => x.id === id)) throw new Error("This swatch no longer exists.");
     store.covers.delete(`swatch:${id}`);
     store.swatches = store.swatches.filter((x) => x.id !== id);
   },
   set_swatch_photo: ({ id, bytes }) => {
     const s = store.swatches.find((x) => x.id === id);
-    if (!s) throw new Error("That swatch is no longer there.");
-    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    if (!s) throw new Error("This swatch no longer exists.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("This file is not an image.");
     store.covers.set(`swatch:${id}`, Uint8Array.from(bytes));
     s.photoPath = `${id}.jpg`;
   },
@@ -2538,7 +2538,7 @@ const handlers = {
   },
   remove_swatch_photo: ({ id }) => {
     const s = store.swatches.find((x) => x.id === id);
-    if (!s) throw new Error("That swatch is no longer there.");
+    if (!s) throw new Error("This swatch no longer exists.");
     store.covers.delete(`swatch:${id}`);
     s.photoPath = "";
   },
@@ -2546,7 +2546,7 @@ const handlers = {
   // ---------- used up ----------
   set_yarn_used_up: ({ id, used }) => {
     const y = store.yarns.find((x) => x.id === id);
-    if (!y) throw new Error("That yarn is no longer there.");
+    if (!y) throw new Error("This yarn no longer exists.");
     const left = y.lots.reduce((n, l) => n + lotGrams(l, y), 0);
     if (used && !y.usedUpAt && left > 0) recordUse(y, null, Date.now(), left, "used-up");
     if (!used) {
@@ -2638,7 +2638,7 @@ const handlers = {
   set_project_person: ({ projectId, personId }) => {
     const pr = store.projects.find((x) => x.id === projectId);
     if (personId) findPerson(personId);
-    if (!pr) throw new Error("That project is no longer there.");
+    if (!pr) throw new Error("This project no longer exists.");
     pr.personId = personId || null;
     return projectOut(pr);
   },
@@ -2687,7 +2687,7 @@ const handlers = {
   },
   save_currency: ({ code }) => {
     const c = String(code).trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(c)) throw new Error("A currency is three letters: EUR, USD, GBP…");
+    if (!/^[A-Z]{3}$/.test(c)) throw new Error("Currency must be a three-letter code: EUR, USD, GBP…");
     store.currency = c;
     return c;
   },
@@ -2704,8 +2704,8 @@ const handlers = {
   running_knit_session: () => clone((store.knitSessions ?? []).find((s) => s.endedAt === null) ?? null),
   start_knitting: ({ projectId }) => {
     const p = store.projects.find((x) => x.id === projectId);
-    if (!p) throw new Error("That project is no longer there.");
-    if (!isLive(p.status)) throw new Error("A finished or frogged project is not being knitted: add its time by hand.");
+    if (!p) throw new Error("This project no longer exists.");
+    if (!isLive(p.status)) throw new Error("Finished or frogged projects can't be timed; time can be added by hand.");
     const now = Date.now();
     store.knitSessions = store.knitSessions ?? [];
     for (const s of store.knitSessions) if (s.endedAt === null) Object.assign(s, { endedAt: Math.max(s.startedAt, s.pausedAt ?? now), pausedAt: null });
@@ -2748,7 +2748,7 @@ const handlers = {
     return clone(s);
   },
   add_knit_time: ({ projectId, startedAt, seconds }) => {
-    if (!store.projects.some((x) => x.id === projectId)) throw new Error("That project is no longer there.");
+    if (!store.projects.some((x) => x.id === projectId)) throw new Error("This project no longer exists.");
     const endedAt = knitSitting(startedAt, seconds);
     const s = { id: `ks${store.nextId++}`, projectId, startedAt, endedAt };
     (store.knitSessions = store.knitSessions ?? []).push(s);
@@ -2756,20 +2756,20 @@ const handlers = {
   },
   change_knit_session: ({ id, startedAt, seconds }) => {
     const s = (store.knitSessions ?? []).find((x) => x.id === id);
-    if (!s) throw new Error("That time is no longer there.");
+    if (!s) throw new Error("This session no longer exists.");
     Object.assign(s, { startedAt, endedAt: knitSitting(startedAt, seconds), pausedMs: 0, pausedAt: null });
     return clone(s);
   },
   delete_knit_session: ({ id }) => {
     const before = (store.knitSessions ?? []).length;
     store.knitSessions = (store.knitSessions ?? []).filter((x) => x.id !== id);
-    if (store.knitSessions.length === before) throw new Error("That time is no longer there.");
+    if (store.knitSessions.length === before) throw new Error("This session no longer exists.");
   },
   // As db::set_pattern_size: a place among the sizes, 0 to 30, or none.
   set_pattern_size: ({ id, index }) => {
     const p = store.patterns.find((x) => x.id === id);
     if (!p) throw new Error(`pattern not found: ${id}`);
-    if (index != null && !(Number.isInteger(index) && index >= 0 && index <= 30)) throw new Error("A size is one of the pattern's: the first, the second…");
+    if (index != null && !(Number.isInteger(index) && index >= 0 && index <= 30)) throw new Error("The size must be one of the pattern's sizes.");
     p.sizeIndex = index ?? null;
     return clone(p);
   },
@@ -2792,12 +2792,12 @@ const handlers = {
   },
   update_shop: ({ id, input }) => {
     const sh = store.shops.find((x) => x.id === id);
-    if (!sh) throw new Error("That shop is no longer there.");
+    if (!sh) throw new Error("This shop no longer exists.");
     Object.assign(sh, cleanShop(input));
     return shopOut(sh);
   },
   delete_shop: ({ id }) => {
-    if (!store.shops.some((x) => x.id === id)) throw new Error("That shop is no longer there.");
+    if (!store.shops.some((x) => x.id === id)) throw new Error("This shop no longer exists.");
     for (const w of store.wishes) if (w.shopId === id) w.shopId = null;
     store.shops = store.shops.filter((x) => x.id !== id);
   },
@@ -2813,34 +2813,34 @@ const handlers = {
   },
   update_wish: ({ id, input }) => {
     const w = store.wishes.find((x) => x.id === id);
-    if (!w) throw new Error("That is no longer on the wishlist.");
+    if (!w) throw new Error("This item is no longer on the wishlist.");
     Object.assign(w, cleanWish(input));
     return wishOut(w);
   },
   set_wish_got: ({ id, got }) => {
     const w = store.wishes.find((x) => x.id === id);
-    if (!w) throw new Error("That is no longer on the wishlist.");
+    if (!w) throw new Error("This item is no longer on the wishlist.");
     w.gotAt = got ? Date.now() : null;
     if (!got) w.stashedAt = null;
     return wishOut(w);
   },
   set_wish_stashed: ({ id }) => {
     const w = store.wishes.find((x) => x.id === id);
-    if (!w) throw new Error("That is no longer on the wishlist.");
+    if (!w) throw new Error("This item is no longer on the wishlist.");
     const now = Date.now();
     w.gotAt = w.gotAt ?? now;
     w.stashedAt = now;
     return wishOut(w);
   },
   delete_wish: ({ id }) => {
-    if (!store.wishes.some((x) => x.id === id)) throw new Error("That is no longer on the wishlist.");
+    if (!store.wishes.some((x) => x.id === id)) throw new Error("This item is no longer on the wishlist.");
     store.covers.delete(`wish:${id}`);
     store.wishes = store.wishes.filter((x) => x.id !== id);
   },
   set_wish_photo: ({ id, bytes }) => {
     const w = store.wishes.find((x) => x.id === id);
-    if (!w) throw new Error("That is no longer on the wishlist.");
-    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("That file does not look like an image.");
+    if (!w) throw new Error("This item is no longer on the wishlist.");
+    if (!bytes || !bytes.length || !sniffImage(bytes)) throw new Error("This file is not an image.");
     store.covers.set(`wish:${id}`, Uint8Array.from(bytes));
     w.photoPath = `${id}.jpg`;
   },
@@ -2851,7 +2851,7 @@ const handlers = {
   },
   remove_wish_photo: ({ id }) => {
     const w = store.wishes.find((x) => x.id === id);
-    if (!w) throw new Error("That is no longer on the wishlist.");
+    if (!w) throw new Error("This item is no longer on the wishlist.");
     store.covers.delete(`wish:${id}`);
     w.photoPath = "";
   },
@@ -2863,7 +2863,7 @@ const handlers = {
     if (!clean) throw new Error("Paste a link first.");
     (window.__linkReads ??= []).push(clean);
     const page = (window.__linkPages ?? {})[clean];
-    if (page === undefined) throw new Error("The page could not be reached. Check the link, and that you are online.");
+    if (page === undefined) throw new Error("The page could not be reached. Check the link and the internet connection.");
     if (typeof page === "string") throw new Error(page);
     return clone({ url: clean, title: "", brand: "", price: "", imageUrl: "", siteName: "", ...page });
   },
@@ -2871,7 +2871,7 @@ const handlers = {
   // a shop that refuses to be read. A site not seeded does not say its name.
   fetch_shop_name: ({ url }) => {
     const clean = webAddress(url);
-    if (!clean) throw new Error("Give the shop's web address first.");
+    if (!clean) throw new Error("Shop web address needed first.");
     const site = clean.split("://")[1].split(/[/?#:]/)[0].toLowerCase().replace(/^www[.]/, "");
     (window.__shopLookups ??= []).push(site);
     const named = (window.__shopNames ?? {})[site];
@@ -2896,7 +2896,7 @@ const handlers = {
     [...store.inspirationBoards].sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt).map(inspirationOut),
   get_inspiration_board: ({ id }) => {
     const b = store.inspirationBoards.find((x) => x.id === id);
-    if (!b) throw new Error("That board is no longer there.");
+    if (!b) throw new Error("This board no longer exists.");
     return inspirationOut(b);
   },
   add_inspiration_board: ({ name }) => {
@@ -2907,13 +2907,13 @@ const handlers = {
   },
   rename_inspiration_board: ({ id, name }) => {
     const b = store.inspirationBoards.find((x) => x.id === id);
-    if (!b) throw new Error("That board is no longer there.");
+    if (!b) throw new Error("This board no longer exists.");
     b.name = boardName(name);
     b.updatedAt = Date.now();
     return inspirationOut(b);
   },
   delete_inspiration_board: ({ id }) => {
-    if (!store.inspirationBoards.some((x) => x.id === id)) throw new Error("That board is no longer there.");
+    if (!store.inspirationBoards.some((x) => x.id === id)) throw new Error("This board no longer exists.");
     for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
     store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
     store.inspirationBoards = store.inspirationBoards.filter((x) => x.id !== id);
@@ -3047,7 +3047,7 @@ const handlers = {
       throw new Error("That image is too large to be a photo (limit 20 MB).");
     }
     const found = sniffImage(bytes);
-    if (!found) throw new Error("That file does not look like an image.");
+    if (!found) throw new Error("This file is not an image.");
     const y = store.yarns.find((x) => x.id === yarnId);
     if (!y) throw new Error(`yarn not found: ${yarnId}`);
     const [ext, mime] = found;

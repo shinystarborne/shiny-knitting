@@ -12,7 +12,7 @@ export const GOAL_KINDS: { kind: Goal["kind"]; label: string; unit: string }[] =
   { kind: "projects", label: "Projects finished", unit: "projects" },
   { kind: "grams", label: "Grams of the stash used", unit: "g" },
   { kind: "metres", label: "Metres of the stash used", unit: "m" },
-  { kind: "own", label: "Your own", unit: "" },
+  { kind: "own", label: "Custom", unit: "" },
 ];
 
 /** The first and last moments of a year, here. */
@@ -95,13 +95,13 @@ export class GoalsPanel {
     this.host.innerHTML = `
       <div class="usage-head">
         <div><h2>Goals for ${years.length > 1 ? `<select data-el="goal-year" aria-label="The year">${years.map((y) => `<option value="${y}" ${y === this.year ? "selected" : ""}>${y}</option>`).join("")}</select>` : this.year}</h2>
-          <p class="hint">Projects finished, yarn from the stash used (finished projects and yarn marked used up), or your own.</p></div>
+          <p class="hint">Projects finished, stash yarn used (finished projects and yarn marked used up), or a custom goal.</p></div>
         <button class="ghost" data-act="goal-add">+ A goal</button>
       </div>
       ${
         goals.length
           ? `<div class="goals-list">${goals.map((g) => this.goalHtml(g)).join("")}</div>`
-          : `<p class="hint goals-none">No goals for ${this.year} yet. Set one: how many projects to finish, how much of the stash to knit up, or one of your own.</p>`
+          : `<p class="hint goals-none">No goals for ${this.year} yet. Set one: projects to finish, stash to knit up, or a custom goal.</p>`
       }`;
   }
 
@@ -145,7 +145,7 @@ export class GoalsPanel {
     try {
       if (act === "goal-edit") return await this.edit(goal);
       if (act === "goal-remove") {
-        if (!(await askYesNo(`Take away the goal “${goalTitle(goal)}”?`, { okLabel: "Remove", danger: true }))) return;
+        if (!(await askYesNo(`Remove the goal “${goalTitle(goal)}”?`, { okLabel: "Remove", danger: true }))) return;
         await api.removeGoal(goal.id);
         this.goals = this.goals.filter((g) => g.id !== goal.id);
       }
@@ -166,14 +166,14 @@ export class GoalsPanel {
         dialog.close();
         resolve();
       };
-      const dialog = customDialog(goal ? "Change the goal" : `A goal for ${this.year}`, finish, "goal-dialog");
+      const dialog = customDialog(goal ? "Edit goal" : `Goal for ${this.year}`, finish, "goal-dialog");
       const kind = goal?.kind ?? "projects";
       dialog.card.insertAdjacentHTML(
         "beforeend",
         `
         <label class="dialog-field"><span class="dialog-label">What it counts</span>
           <select class="dialog-input" data-f="kind">${GOAL_KINDS.map((k) => `<option value="${k.kind}" ${k.kind === kind ? "selected" : ""}>${k.label}</option>`).join("")}</select></label>
-        <label class="dialog-field" data-el="label-field" ${kind === "own" ? "" : "hidden"}><span class="dialog-label">Your goal</span>
+        <label class="dialog-field" data-el="label-field" ${kind === "own" ? "" : "hidden"}><span class="dialog-label">Goal</span>
           <input class="dialog-input" data-f="label" maxlength="120" value="${esc(goal?.label ?? "")}" placeholder="e.g. knit a hat a month, learn brioche" /></label>
         <label class="dialog-field"><span class="dialog-label" data-el="target-label">${targetLabel(kind)}</span>
           <input class="dialog-input" data-f="target" inputmode="decimal" value="${goal ? goal.target : ""}" placeholder="${placeholder(kind)}" /></label>

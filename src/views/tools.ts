@@ -126,7 +126,7 @@ export class ToolsView {
     const said = cost.total || !cost.unpriced ? ` · cost ${money(cost.total, this.currency)}` : "";
     const missing = cost.unpriced && cost.total ? ` (${cost.unpriced} without a price)` : "";
     el.innerHTML = this.tools.length ? `${count}${said}${missing}` : "";
-    el.title = "Each bought alone at its price, and each set once at its, whatever is in it";
+    el.title = "Single needles at their own price, plus each set once at the set price";
   }
 
   private async onClick(e: MouseEvent): Promise<void> {
@@ -178,7 +178,7 @@ export class ToolsView {
       this.results.innerHTML = `
         <div class="empty">
           <h2>${filtering ? "Nothing matches those filters" : "No needles or hooks yet"}</h2>
-          <p>${filtering ? "Try removing a filter." : "Add what is in your box, and you will always know what is free."}</p>
+          <p>${filtering ? "Try removing a filter." : "Add the needles and hooks on hand to see at a glance which are free."}</p>
         </div>`;
       return;
     }
@@ -248,15 +248,15 @@ function cardHtml(t: Tool, currency: string): string {
       <p class="tool-make">${make ? escapeHtml(make) : "No brand"}</p>
       ${
         t.setId
-          ? `<p class="tool-set" title="Bought as a set: its price is the set's">In the set ${escapeHtml(t.setName ?? "")}</p>`
+          ? `<p class="tool-set" title="Bought as part of a set; the set holds the price">In the set ${escapeHtml(t.setName ?? "")}</p>`
           : t.price != null
             ? `<p class="tool-set">${money(t.price, currency)}</p>`
             : ""
       }
       <div class="tool-use">${use}</div>
       <div class="card-tools-row">
-        ${uses.length ? `<button class="card-remove tool-free-btn" data-act="free" data-id="${t.id}" title="Take it off ${uses.length > 1 ? "both projects" : "this project"}">Free it</button>` : ""}
-        <button class="card-remove" data-act="remove" data-id="${t.id}" title="Remove this from your box">Remove</button>
+        ${uses.length ? `<button class="card-remove tool-free-btn" data-act="free" data-id="${t.id}" title="Remove from ${uses.length > 1 ? "both projects" : "the project"}">Free</button>` : ""}
+        <button class="card-remove" data-act="remove" data-id="${t.id}" title="Remove from Needles & hooks">Remove</button>
       </div>
     </article>`;
 }

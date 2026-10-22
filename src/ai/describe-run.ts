@@ -77,14 +77,14 @@ function buildPanel(): void {
   panel.innerHTML = `
     <div class="scan-head">
       <span class="describe-robot">${ROBOT}</span>
-      <strong data-el="title">Reading your patterns…</strong>
+      <strong data-el="title">Reading patterns…</strong>
       <span data-el="count">0 / ${total}</span>
       <button class="ghost" data-act="stop" title="Stop after the pattern being read">Stop</button>
       <button class="ghost describe-win" data-act="minimise" title="Minimise; it keeps going" aria-label="Minimise">–</button>
-      <button class="ghost describe-win" data-act="close" title="Close; it keeps going, and the robot by the gear brings it back" aria-label="Close">×</button>
+      <button class="ghost describe-win" data-act="close" title="Close; it keeps running, and the robot button by the gear reopens it" aria-label="Close">×</button>
     </div>
     <div class="scan-bar"><div class="scan-fill" data-el="fill"></div></div>
-    <p class="scan-note" data-el="note">A local model can take a moment per pattern. This keeps going while you use the rest of the app.</p>
+    <p class="scan-note" data-el="note">A local model can take a moment per pattern. This runs in the background while the app is in use.</p>
     <ul class="scan-log" data-el="log"></ul>
   `;
   panel.addEventListener("click", (e) => {

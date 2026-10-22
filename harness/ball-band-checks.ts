@@ -110,7 +110,7 @@ export async function verifyBallBand() {
     check(results, "…what was typed is kept", field("brand").value === "My own brand" && !/brand/.test(status().split(":")[1] ?? ""), status());
     const fibres = [...modal()!.querySelectorAll<HTMLInputElement>("[data-fibre-name]")].map((i) => i.value);
     check(results, "…the fibres, the dye lot, the gauge, the needles and the care symbols too", fibres.join(",") === "alpaca,polyamide,wool" && modal()!.querySelector<HTMLInputElement>('.lot-row [data-lf="dyeLot"]')!.value === "4521" && field("gaugeSts").value === "17" && field("needleFrom").value === "5" && field("needleTo").value === "5.5" && modal()!.querySelectorAll(".care-choice.on").length === 3, `${fibres} / ${field("gaugeSts").value}`);
-    check(results, "…marked to be checked, and said so", field("name").classList.contains("from-band") && !field("brand").classList.contains("from-band") && /Check them before saving/.test(status()), status());
+    check(results, "…marked to be checked, and said so", field("name").classList.contains("from-band") && !field("brand").classList.contains("from-band") && /Check before saving/.test(status()), status());
     field("name").dispatchEvent(new Event("input", { bubbles: true }));
     check(results, "…typed over, the mark goes", !field("name").classList.contains("from-band"));
     await close();

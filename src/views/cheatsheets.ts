@@ -150,10 +150,10 @@ export class CheatsheetsView {
   private paintList(): void {
     const list = this.root.querySelector<HTMLElement>('[data-el="list"]')!;
     // The glossary first, always there: it is the app's, not one kept.
-    const abbreviations = this.matches("Abbreviations ssk, k2tog, w&t… and your own glossary")
+    const abbreviations = this.matches("Abbreviations ssk, k2tog, w&t… custom glossary")
       ? `<button class="sheet-item${this.openId === ABBREVIATIONS ? " on" : ""}" data-sheet="${ABBREVIATIONS}" title="What ssk, k2tog or w&amp;t means">
         <span class="sheet-kind" aria-hidden="true">🔤</span>
-        <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and your own</span><em>A glossary, yours added to it</em></span>
+        <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and custom ones</span><em>A glossary, with custom additions</em></span>
       </button>`
       : "";
     const symbols = this.matches("Chart symbols yo, k2tog, ssk… as charts draw them glossary")
@@ -178,8 +178,8 @@ export class CheatsheetsView {
         ? `<p class="hint sheet-none">Nothing matches the search.</p>`
         : `<div class="empty sheet-none">
             <h2>No cheatsheets yet</h2>
-            <p>Keep what you look things up in while knitting: a web page (a tutorial, a table of yarn weights, a video), or pages from a book in the library.</p>
-            <p class="hint">In a book you are reading, <b>Cheatsheet…</b> keeps the page you are on.</p>
+            <p>Reference material for knitting: web pages (a tutorial, a yarn weight table, a video) or pages from a book in the library.</p>
+            <p class="hint">In the reader, <b>Cheatsheet…</b> saves the current page.</p>
           </div>`);
     // The cards, or the one open on its page.
     this.root.classList.toggle("sheet-open", !!this.openId);
@@ -213,16 +213,16 @@ export class CheatsheetsView {
         <span class="sheet-tools">
           ${
             web
-              ? `<button class="ghost" data-act="window" title="In a window of its own, beside the app">Window ↗</button>
-                 <button class="ghost" data-act="browser" title="In your web browser">Browser ↗</button>`
+              ? `<button class="ghost" data-act="window" title="Open in a separate window">Window ↗</button>
+                 <button class="ghost" data-act="browser" title="Open in the browser">Browser ↗</button>`
               : `${s.kind === "pages" ? `<button class="ghost icon-btn" data-act="zoom-out" title="Smaller" aria-label="Smaller">−</button><button class="ghost icon-btn" data-act="zoom-in" title="Bigger" aria-label="Bigger">+</button>` : ""}
                  ${book ? `<button class="ghost" data-act="open-book" title="Open the book at ${s.kind === "chapter" ? "this chapter" : "these pages"}">In the book ↗</button>` : ""}
                  ${s.kind === "pages" ? `<button class="ghost" data-act="pages" title="Which pages it shows">Pages…</button>` : ""}
-                 ${s.kind === "pages" && s.pageTo === s.pageFrom && !this.cropping ? `<button class="ghost" data-act="crop" title="Keep only part of the page: a box drawn round the table or chart">${s.region ? "Crop again…" : "Crop…"}</button>` : ""}
-                 ${s.region && !this.cropping ? `<button class="ghost" data-act="whole" title="Show all of the page again">Whole page</button>` : ""}
+                 ${s.kind === "pages" && s.pageTo === s.pageFrom && !this.cropping ? `<button class="ghost" data-act="crop" title="Keep only part of the page: draw a box around the table or chart">${s.region ? "Crop again…" : "Crop…"}</button>` : ""}
+                 ${s.region && !this.cropping ? `<button class="ghost" data-act="whole" title="Show the whole page again">Whole page</button>` : ""}
                  ${this.cropping ? `<span class="hint sheet-crop-hint">Drag a box around the part to keep</span><button class="ghost" data-act="crop-cancel">Cancel</button>` : ""}`
           }
-          <button class="ghost" data-act="to-board" title="Show it on a project's board, beside your pattern and yarn">To a project…</button>
+          <button class="ghost" data-act="to-board" title="Add to a project's board">To a project…</button>
           <button class="ghost icon-btn" data-act="up" title="Up the list" aria-label="Up the list" ${at === 0 ? "disabled" : ""}>↑</button>
           <button class="ghost icon-btn" data-act="down" title="Down the list" aria-label="Down the list" ${at === this.sheets.length - 1 ? "disabled" : ""}>↓</button>
           <button class="ghost danger-text" data-act="remove">Remove</button>
@@ -233,7 +233,7 @@ export class CheatsheetsView {
     const body = view.querySelector<HTMLElement>('[data-el="body"]')!;
     if (web) return this.paintWeb(s, body);
     if (!book) {
-      body.innerHTML = `<div class="empty"><h2>The book is gone</h2><p>The book these were kept from is no longer in the library: put it back from the Bin, or add it again, to read them.</p></div>`;
+      body.innerHTML = `<div class="empty"><h2>The book is gone</h2><p>The book these pages came from is no longer in the library. Restore it from the Bin, or add it again.</p></div>`;
       return;
     }
     if (s.kind === "chapter") return this.paintChapter(s, body);
@@ -243,17 +243,17 @@ export class CheatsheetsView {
   private paintWeb(s: Cheatsheet, body: HTMLElement): void {
     if (s.framable) {
       body.innerHTML = `${sheetFrameHtml(s)}
-        <p class="hint sheet-frame-note">Blank, or refusing? Some sites will not be shown inside another app: <button class="link" data-act="not-framable">open it in a window of its own instead</button>.</p>`;
+        <p class="hint sheet-frame-note">Blank or refused? Some sites block being shown inside other apps: <button class="link" data-act="not-framable">open it in a separate window instead</button>.</p>`;
       return;
     }
     body.innerHTML = `
       <div class="empty sheet-refused">
-        <h2>${esc(this.source(s))} will not be shown inside another app</h2>
-        <p>The site says so to every app, to keep its pages its own. It opens in a window of its own instead, beside this one, or in your browser.</p>
+        <h2>${esc(this.source(s))} cannot be shown inside the app</h2>
+        <p>The site blocks being shown inside other apps. It can be opened in a separate window or in the browser instead.</p>
         <div class="sheet-refused-actions">
-          <button class="primary" data-act="window">Open in a window of its own</button>
-          <button class="ghost" data-act="browser">Open in your browser</button>
-          <button class="link" data-act="framable" title="Show it in a frame here after all">Try here anyway</button>
+          <button class="primary" data-act="window">Open in a separate window</button>
+          <button class="ghost" data-act="browser">Open in the browser</button>
+          <button class="link" data-act="framable" title="Try showing it in the app anyway">Try here anyway</button>
         </div>
       </div>`;
   }
@@ -399,7 +399,7 @@ export class CheatsheetsView {
         { label: "Address, or embed code", placeholder: "https://… or <iframe …>" },
         { label: "Name", placeholder: "Optional: the page's own title is used" },
       ],
-      { title: "A web page", okLabel: "Keep it" },
+      { title: "Web page", okLabel: "Save" },
     );
     if (!answer) return;
     try {
@@ -412,11 +412,11 @@ export class CheatsheetsView {
   /** Pages of a PDF: the book picked, books first, then the pages. */
   private async addPages(): Promise<void> {
     const pdfs = this.patterns.filter((p) => p.format === "pdf" && !p.fileMissing);
-    if (!pdfs.length) return say("There is no PDF in the library to keep pages of. An EPUB's chapter is kept from the book itself: open it, and Cheatsheet….", "Pages from a book");
+    if (!pdfs.length) return say("No PDF in the library to take pages from. For an EPUB, open the book and use Cheatsheet… there.", "Pages from a book");
     const isBook = (p: Pattern) => p.tags.some((t) => t.toLowerCase() === "book");
     const sorted = [...pdfs].sort((a, b) => Number(isBook(b)) - Number(isBook(a)) || a.title.localeCompare(b.title));
     const id = await askChoice(
-      "Which book, or pattern, are they in?",
+      "Which book or pattern?",
       sorted.map((p) => ({ value: p.id, label: p.title, group: isBook(p) ? "Books" : "Patterns" })),
       { title: "Pages from a book" },
     );
@@ -490,7 +490,7 @@ export class CheatsheetsView {
   /** On a project's board, under what is there, as the board shows it: the card says where. */
   private async toBoard(s: Cheatsheet): Promise<void> {
     const projects = (await api.listProjects().catch(() => [])).filter((p) => isLive(p.status));
-    if (!projects.length) return say("There is no project on the needles or planned to put it on.", "To a project");
+    if (!projects.length) return say("No active or planned project to add it to.", "To a project");
     const id = await askChoice(`Which project's board is “${s.title}” to go on?`, projects.map((p) => ({ value: p.id, label: p.name })), { title: "To a project" });
     if (!id) return;
     const items = await api.listBoardItems(id).catch(() => []);
@@ -576,13 +576,13 @@ export async function askPages(name: string, from: number, to: number, naming = 
         { label: "To page", value: String(to), type: "number" },
         ...(naming ? [{ label: "Name", placeholder: `Optional: “${name}, p. ${from}”` }] : []),
       ],
-      { title: naming ? "Keep as a cheatsheet" : "Which pages", okLabel: naming ? "Keep it" : "Show them" },
+      { title: naming ? "Save as cheatsheet" : "Pages", okLabel: naming ? "Save" : "Show" },
     );
     if (!answer) return null;
     const a = Number(answer["From page"]);
     const b = Number(answer["To page"] || a);
     if (Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b >= a) return { from: a, to: b, title: (answer.Name ?? "").trim() };
-    await say("Give the pages as numbers, the first no later than the last: 12 to 13.", "Which pages");
+    await say("Pages must be numbers, the first no later than the last, e.g. 12 to 13.", "Which pages");
   }
 }
 

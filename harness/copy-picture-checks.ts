@@ -93,7 +93,7 @@ export async function verifyCopyPicture() {
     check(results, "a project with a cover has Copy beside it", !coverCopy.hidden);
     coverCopy.click();
     check(results, "…which copies the cover, as a PNG", (await lastCopied(1)) === "image/png 300x200", await lastCopied(1));
-    await waitFor(() => /The cover is copied: paste it anywhere/.test(toast()), "the notice");
+    await waitFor(() => /The cover copied/.test(toast()), "the notice");
     check(results, "…and says so", true);
 
     // A picture on the board: Copy, and Ctrl+C with it selected.

@@ -119,7 +119,7 @@ export class ToolForm {
     this.root.className = "modal-backdrop";
     this.root.innerHTML = `
       <div class="modal tool-form" role="dialog" aria-modal="true">
-        <h2>${e ? "Edit needle or hook" : this.start ? "Add a needle or hook, from the wishlist" : "Add a needle or hook"}</h2>
+        <h2>${e ? "Edit needle or hook" : this.start ? "Add a needle or hook from the wishlist" : "Add a needle or hook"}</h2>
 
         <div class="field-row">
           <label class="field">
@@ -159,7 +159,7 @@ export class ToolForm {
               ${CABLE_SIZES.map((c) => `<option value="${c.key}" ${v?.adapterTo === c.key ? "selected" : ""}>${c.label}</option>`).join("")}
             </select>
           </label>
-          <label class="field" data-show="connector" title="The maker whose tips and cables these fit: ChiaoGoo's fit Lotus Yarns', not KnitPro's">
+          <label class="field" data-show="connector" title="The interchangeable system these tips and cables belong to (e.g. ChiaoGoo fits Lotus Yarns, not KnitPro)">
             <span>System</span>
             <select data-f="connector">
               <option value="">Not sure</option>
@@ -174,7 +174,7 @@ export class ToolForm {
         <div class="field-row">
           <div class="field">
             <span>Brand</span>
-            <input data-f="brand" aria-label="Brand" value="${escapeAttr(v?.brand ?? "")}" placeholder="Type, or pick one you have" />
+            <input data-f="brand" aria-label="Brand" value="${escapeAttr(v?.brand ?? "")}" placeholder="Type or pick from the list" />
           </div>
           <div class="field">
             <span>Material</span>
@@ -185,7 +185,7 @@ export class ToolForm {
 
         ${
           e?.setId
-            ? `<p class="hint tool-in-set" data-el="in-set">Part of the set <b>${escapeHtml(e.setName ?? "")}</b>: the set has the price, under <em>Sets</em>.</p>`
+            ? `<p class="hint tool-in-set" data-el="in-set">Part of the set <b>${escapeHtml(e.setName ?? "")}</b>. The set holds the price, under <em>Sets</em>.</p>`
             : `<div class="field-row">
           <label class="field tool-price">
             <span data-el="price-label">Price</span>
@@ -199,18 +199,18 @@ export class ToolForm {
           <label class="field">
             <span>In use for</span>
             <select data-f="project">
-              <option value="${FREE}" ${projectChoice === FREE ? "selected" : ""}>Nothing — it's free</option>
+              <option value="${FREE}" ${projectChoice === FREE ? "selected" : ""}>Nothing (free)</option>
               ${this.projects
                 .map((p) => `<option value="${escapeAttr(p.id)}" ${p.id === projectChoice ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
                 .join("")}
             </select>
-            ${this.projects.length ? "" : `<span class="hint">Start a project in the Projects tab to put needles on it.</span>`}
+            ${this.projects.length ? "" : `<span class="hint">Needles can be put on a project once one is started in the Projects tab.</span>`}
           </label>
         </div>
 
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="Anything worth remembering: a bent tip, part of a set…">${escapeHtml(v?.notes ?? "")}</textarea>
+          <textarea data-f="notes" placeholder="Notes, e.g. a bent tip, part of a set…">${escapeHtml(v?.notes ?? "")}</textarea>
         </label>
 
         <datalist id="tool-lengths">${COMMON_LENGTHS.map((n) => `<option value="${n}"></option>`).join("")}</datalist>
@@ -218,7 +218,7 @@ export class ToolForm {
 
         <div class="modal-actions">
           <button class="ghost" data-act="cancel">Cancel</button>
-          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save this one and keep the form filled in for the next">Save and add another</button>`}
+          ${e ? "" : `<button class="ghost" data-act="save-another" title="Save and keep the form filled in for the next one">Save and add another</button>`}
           <button class="primary" data-act="save">${e ? "Save changes" : "Add"}</button>
         </div>
         <p class="form-error" data-el="error" hidden></p>
@@ -346,13 +346,13 @@ export class ToolForm {
     const hint = this.root.querySelector('[data-el="kind-hint"]') as HTMLElement;
     hint.textContent =
       kind === "circular"
-        ? "Cable length as sold: an 80 cm circular is 80 cm from tip to tip."
+        ? "Total length as sold: an 80 cm circular is 80 cm from tip to tip."
         : kind === "tips" || kind === "cable"
-          ? "The system and the cable size are the connector: tips and a cable fit when both are the same."
+          ? "Tips and cables fit when both the system and the cable size match."
           : kind === "adapter"
-            ? "Tips of the tip end's size go on a cable of the cable end's: large tips on a small cable, for a bigger needle on one end."
+            ? "Joins tips of one cable size to a cable of another, e.g. large tips on a small cable."
           : kind === "dpn"
-            ? "One entry for the needles of one size together."
+            ? "One entry for all the needles of one size."
             : "";
     hint.hidden = !hint.textContent;
     this.previewSet();
@@ -383,7 +383,7 @@ export class ToolForm {
     this.renderSteps();
     if (set) {
       const connectors = this.splitting() ? ` Cable size: ${connectorSummary(sizes, this.steps)}.` : "";
-      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, sharing the kind, length, brand, material and notes, kept together as a set with one price.${connectors} Each is added free; put one on a project from its card, or from the pattern.`;
+      preview.textContent = `A set: ${sizes.length} entries, ${sizes.join(", ")} mm, with the same kind, length, brand, material and notes, kept as one set with one price.${connectors} Each is added as free; it can be put on a project from its card or from the pattern.`;
     }
     const projectRow = this.root.querySelector<HTMLElement>('[data-el="project-row"]');
     if (projectRow) projectRow.hidden = set;
@@ -416,7 +416,7 @@ export class ToolForm {
     input.value = kin ? String(kin.price) : "";
     if (kin) input.dataset.kin = "1";
     else delete input.dataset.kin;
-    hint.textContent = kin ? `As your other ${kin.brand} ${(SET_WORDS[kind] ?? kind)} cost.` : "";
+    hint.textContent = kin ? `Same as the other ${kin.brand} ${(SET_WORDS[kind] ?? kind)}.` : "";
     hint.hidden = !kin;
   }
 
@@ -464,7 +464,7 @@ export class ToolForm {
     const choice = this.value("project");
     const typed = this.value("price").trim();
     const price = typed ? parsePrice(typed) : null;
-    if (typed && price === null) throw new Error("The price is a number: 12,50 or 12.50.");
+    if (typed && price === null) throw new Error("Price must be a number, like 12,50 or 12.50.");
     return {
       kind,
       // A piece of a set keeps what it had: the set has the price.
@@ -495,9 +495,9 @@ export class ToolForm {
       const typed = this.input();
       const input = set ? { ...typed, projectId: null, price: null } : typed;
       const { sizes, bad } = HAS.size(input.kind) ? parseSizes(this.value("sizeMm")) : { sizes: [0], bad: [] };
-      if (bad.length) throw new Error(`“${bad[0]}” is not a size. Give sizes in millimetres, e.g. 4, or 2.5, 3, 3.5 for a set.`);
-      if (!sizes.length) throw new Error("Give the size in millimetres, e.g. 4 or 3.75.");
-      if (this.editing && sizes.length > 1) throw new Error("This changes one needle or hook, so give it one size. Add a set with + Add.");
+      if (bad.length) throw new Error(`“${bad[0]}” is not a size. Sizes are in millimetres, e.g. 4, or 2.5, 3, 3.5 for a set.`);
+      if (!sizes.length) throw new Error("Size in millimetres is required, e.g. 4 or 3.75.");
+      if (this.editing && sizes.length > 1) throw new Error("Editing changes one needle or hook, so only one size. Sets are added with + Add.");
       let saved: Tool;
       if (this.editing) {
         saved = await api.updateTool(this.editing.id, input);
@@ -515,7 +515,7 @@ export class ToolForm {
             added.push(saved.id);
           } catch (err) {
             this.onDone(saved);
-            throw new Error(`Added up to ${saved.sizeMm} mm, then stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
+            throw new Error(`Added up to ${saved.sizeMm} mm; stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
         // Kept together, as bought: one set, its price the one typed.

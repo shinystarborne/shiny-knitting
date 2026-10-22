@@ -77,17 +77,17 @@ fn get(conn: &Connection, id: &str) -> AppResult<Goal> {
 /// Sets a goal, or changes the one named: what it counts, for which year, and how much.
 pub fn save(conn: &Connection, input: &GoalInput) -> AppResult<Goal> {
     if !GOAL_KINDS.contains(&input.kind.as_str()) {
-        return Err(AppError::Message(format!("“{}” is not a goal the app knows.", input.kind)));
+        return Err(AppError::Message(format!("Unknown goal type: “{}”.", input.kind)));
     }
     if !(2000..=2100).contains(&input.year) {
-        return Err(AppError::Message("A goal is for a year between 2000 and 2100.".into()));
+        return Err(AppError::Message("A goal's year must be between 2000 and 2100.".into()));
     }
     if !input.target.is_finite() || input.target <= 0.0 || input.target > 10_000_000.0 {
-        return Err(AppError::Message("A goal is a number more than 0.".into()));
+        return Err(AppError::Message("A goal must be a number above 0.".into()));
     }
     let label = input.label.split_whitespace().collect::<Vec<_>>().join(" ");
     if input.kind == "own" && label.is_empty() {
-        return Err(AppError::Message("Say what your own goal is.".into()));
+        return Err(AppError::Message("A custom goal needs a description.".into()));
     }
     let label: String = if input.kind == "own" { label.chars().take(120).collect() } else { String::new() };
     let target = (input.target * 100.0).round() / 100.0;

@@ -68,12 +68,12 @@ export class ProjectChart {
             <option value="">No chart</option>
             ${this.charts.map((c) => `<option value="${esc(c.id)}" ${c.id === p.chartId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
           </select></label>`
-          : `<p class="hint">Draw a chart under Constructors, to knit from it here: the row to knit marked, as the rows are counted.</p>`
+          : `<p class="hint">Charts drawn in Constructors can be followed here, with the current row marked as rows are counted.</p>`
       }
       ${
         chosen
           ? `<div class="project-chart-start">
-          <label class="field calc-field" title="The project's row its first row is knitted on: after a rib, say"><span>First row on row</span>
+          <label class="field calc-field" title="The project row where the chart starts, e.g. after a rib"><span>Starts on row</span>
             <input data-f="chart-start" inputmode="numeric" value="${this.start()}" /></label>
           <button class="link" data-act="open-chart" title="Open the chart to change it">Open it ↗</button>
         </div>
@@ -147,7 +147,7 @@ export class ProjectChart {
     const start = f === "chart-start" ? Math.round(Number(el.value)) : this.start();
     if (f === "chart-start" && !(start >= 1)) {
       el.value = String(this.start());
-      return void say("The first row is a row of the project: 1, or later.", "Chart");
+      return void say("The start row must be 1 or later.", "Chart");
     }
     try {
       this.saved(await api.setProjectChart(p.id, chartId, start));

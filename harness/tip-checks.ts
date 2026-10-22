@@ -101,7 +101,7 @@ export async function verifyTips() {
     await waitFor(() => !!document.querySelector(".projects"), "the projects again");
     await edit(cowl.id);
     const option = modal()!.querySelector<HTMLOptionElement>(`[data-el="tool-add"] option[value="${five.id}"]`)!;
-    check(results, "another project is offered the pair as free, one tip of it", option.closest("optgroup")?.label === "Free" && /one tip free, the other on Brioche cowl/.test(option.textContent ?? ""), option.textContent ?? "");
+    check(results, "another project is offered the pair as free, one tip of it", option.closest("optgroup")?.label === "Free" && /one tip free, the other in use on Brioche cowl/.test(option.textContent ?? ""), option.textContent ?? "");
     const pick = modal()!.querySelector<HTMLSelectElement>('[data-el="tool-add"]')!;
     pick.value = five.id;
     pick.dispatchEvent(new Event("change", { bubbles: true }));

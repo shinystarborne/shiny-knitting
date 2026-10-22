@@ -36,11 +36,11 @@ export type Theme = (typeof THEMES)[number]["key"];
 /** What a card shows, besides its name. */
 export const SHOWS = [
   { key: "pattern", label: "Pattern and designer" },
-  { key: "dates", label: "When it was knitted" },
-  { key: "yarn", label: "Yarn, and how much" },
+  { key: "dates", label: "Dates" },
+  { key: "yarn", label: "Yarn and amount" },
   { key: "needles", label: "Needles & hooks" },
   { key: "size", label: "Size knitted" },
-  { key: "person", label: "Who it is for" },
+  { key: "person", label: "Made for" },
 ] as const;
 export type Show = (typeof SHOWS)[number]["key"];
 
@@ -323,22 +323,22 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
   const pictures = new Map<string, ImageBitmap | null>();
   const urls = new Map<string, string | null>();
 
-  const dialog = customDialog(`A card for ${p.name}`, () => close(), "project-card-dialog");
+  const dialog = customDialog(`Share card: ${p.name}`, () => close(), "project-card-dialog");
   const card = dialog.card;
   const written = log.filter((e) => e.text.trim() && !e.milestone);
   card.insertAdjacentHTML(
     "beforeend",
     `
     <div class="pc-body">
-      <div class="pc-preview"><canvas data-el="card" aria-label="The card, as it will look"></canvas><p class="hint" data-el="left-out"></p></div>
+      <div class="pc-preview"><canvas data-el="card" aria-label="Card preview"></canvas><p class="hint" data-el="left-out"></p></div>
       <aside class="pc-controls">
         <div class="field"><span>Shape</span><div class="seg pc-shapes">${SHAPES.map((s) => `<button type="button" class="ghost" data-shape="${s.key}">${s.label}</button>`).join("")}</div></div>
         <div class="field"><span>Colours</span><div class="pc-themes">${THEMES.map((t) => `<button type="button" class="pc-theme" data-theme="${t.key}" title="${t.label}" style="background:${t.bg};color:${t.ink};border-color:${t.accent}">${t.label}</button>`).join("")}</div></div>
-        <div class="field"><span>Photos <em class="hint">up to ${MAX_PHOTOS}, in the order picked</em></span>
+        <div class="field"><span>Photos <em class="hint">up to ${MAX_PHOTOS}, in the order chosen</em></span>
           <div class="pc-photos">${
             photos.length
-              ? photos.map((x) => `<button type="button" class="pc-photo" data-photo="${esc(x.key)}" title="${esc(x.caption || (x.key === "cover" ? "Its cover" : longDate(x.at)))}"><img alt="" /><b></b></button>`).join("")
-              : `<span class="hint">No photos yet: a cover, or a photo in its log.</span>`
+              ? photos.map((x) => `<button type="button" class="pc-photo" data-photo="${esc(x.key)}" title="${esc(x.caption || (x.key === "cover" ? "Cover" : longDate(x.at)))}"><img alt="" /><b></b></button>`).join("")
+              : `<span class="hint">No photos yet: add a cover, or photos in the log.</span>`
           }</div></div>
         <div class="field"><span>Show</span><div class="pc-shows">${SHOWS.map((s) => `<label class="dialog-checkfield"><input type="checkbox" data-show="${s.key}" /><span>${s.label}</span></label>`).join("")}</div></div>
         <label class="field"><span>Size knitted</span><input data-f="size" value="${esc(p.size)}" placeholder="e.g. M, or the 2nd size" maxlength="100" /></label>
@@ -394,12 +394,12 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     const left = drawCard(canvas, data(), o, pictures);
     canvas.dataset.shape = o.shape;
     card.querySelector<HTMLElement>('[data-el="left-out"]')!.textContent = left
-      ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit: fewer lines from the log, fewer photos, or a taller shape makes room.`
+      ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit. Fewer log lines, fewer photos or a taller shape make room.`
       : "";
   };
 
   const pngOfCard = (): Promise<Blob> =>
-    new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The card could not be made a picture."))), "image/png"));
+    new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The card could not be saved as a picture."))), "image/png"));
 
   card.addEventListener("click", (e) => {
     const btn = closestEl(e.target, "button");
@@ -410,7 +410,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
       const key = btn.dataset.photo;
       if (o.photos.includes(key)) o.photos = o.photos.filter((k) => k !== key);
       else if (o.photos.length < MAX_PHOTOS) o.photos = [...o.photos, key];
-      else return void say(`A card has room for ${MAX_PHOTOS} photos: take one out first.`, "Photos");
+      else return void say(`A card holds up to ${MAX_PHOTOS} photos. Remove one first.`, "Photos");
     }
     const act = btn.dataset.act;
     if (act === "close") return close();
@@ -440,7 +440,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     try {
       const bytes = new Uint8Array(await (await pngOfCard()).arrayBuffer());
       const path = await api.saveFile("png", `${p.name} card.png`, bytes);
-      if (path) showNotice("The card is saved.", undefined, 3000);
+      if (path) showNotice("Card saved.", undefined, 3000);
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Save the card");
     }

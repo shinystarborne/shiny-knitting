@@ -157,7 +157,7 @@ function pure(results: CheckResult[]): void {
   const tight = raglan({ ...ADULT, neck: 30, neckEase: 4, chest: 120 }) as RaglanResult;
   check(results, "a small neck on a big body gives the body extra increases", tight.bodyIncreases > tight.sleeveIncreases && tight.warnings.some((w) => /on the body only/.test(w)), JSON.stringify(tight));
   check(results, "…and still adds up", tight.front0 + 2 * tight.bodyIncreases === tight.front && tight.sleeve0 + 2 * tight.sleeveIncreases === tight.sleeve);
-  check(results, "a missing measurement is asked for", (raglan({ ...ADULT, chest: 0 }) as { error: string }).error === "Give the chest.");
+  check(results, "a missing measurement is asked for", (raglan({ ...ADULT, chest: 0 }) as { error: string }).error === "Chest needed.");
 
   // A lopapeysa in Lopi, at 18 stitches.
   const LOPI: RaglanInput = { ...ADULT, gauge: { sts: 18, rows: 24 }, chest: 96, upperArm: 31, wrist: 17, neck: 38, yokeDepth: 23, armLength: 46, bodyLength: 38, bodyEase: 10, wristEase: 3, neckRib: 3, hemRib: 6, cuffRib: 6 };
@@ -203,7 +203,7 @@ export async function verifyCalculators() {
     tab("calculators");
     await waitFor(() => !!view()?.querySelector(".calc-inputs"), "the calculators");
     check(results, "the tab lists the calculators, the raglan first", [...view()!.querySelectorAll<HTMLElement>(".calc-pick")].map((b) => b.dataset.calc).join(",") === "raglan,yoke,socks,size,evenly,regauge,held,charts,crochet" && !!view()!.querySelector('.calc-pick.on[data-calc="raglan"]'));
-    check(results, "with nothing given, it says what it needs first", /Give your gauge/.test(results_()), results_());
+    check(results, "with nothing given, it says what it needs first", /Gauge needed/.test(results_()), results_());
 
     // A swatch gives the gauge; typing one over it un-picks the swatch.
     const swatchOption = [...field("swatch")!.options].find((o) => o.value);
@@ -246,7 +246,7 @@ export async function verifyCalculators() {
     check(results, "…and back to 1x1, the counts as they were", cell("Cast on") === "104" && cell("Body") === "220");
     check(results, "…and 0 takes them out", [...view()!.querySelectorAll(".calc-steps li")].every((li) => !/short rows/.test(li.textContent ?? "")));
     type("chest", "lots");
-    check(results, "something that is not a length says so", /chest is not a length/.test(results_()), results_());
+    check(results, "something that is not a length says so", /Chest must be a length/.test(results_()), results_());
     type("chest", "92");
 
     // Saved to a project's board.

@@ -105,7 +105,7 @@ export async function verifyHiddenTabs() {
     for (const box of boxes()) box.checked = false;
     (settings()!.querySelector('[data-act="save"]') as HTMLElement).click();
     await waitFor(() => !(settings()?.querySelector<HTMLElement>('[data-el="error"]')?.hidden ?? true), "the refusal");
-    check(results, "every tab unticked is refused, and nothing changes", /at least one tab/.test(settings()!.querySelector('[data-el="error"]')!.textContent ?? "") && JSON.stringify(await invoke<string[]>("get_hidden_tabs")) === JSON.stringify(["patterns", "shops"]));
+    check(results, "every tab unticked is refused, and nothing changes", /At least one tab/.test(settings()!.querySelector('[data-el="error"]')!.textContent ?? "") && JSON.stringify(await invoke<string[]>("get_hidden_tabs")) === JSON.stringify(["patterns", "shops"]));
     (settings()!.querySelector('[data-act="close"]') as HTMLElement).click();
     await waitFor(() => !settings(), "Settings to close");
   } catch (err) {

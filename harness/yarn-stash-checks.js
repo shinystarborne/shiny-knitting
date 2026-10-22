@@ -434,13 +434,13 @@ export async function verifyYarnStash() {
       results,
       "editing a colour with no fibres fills them in from another colour of the yarn",
       fibreNames().join() === "wool" && modal().querySelector('[data-f="superwash"]').checked &&
-        /Filled in the fibres from your Merino Extra Fine \(37 Nebelwald\)/.test(modal().querySelector('[data-el="known-hint"]').textContent),
+        /Fibres filled in from Merino Extra Fine \(37 Nebelwald\)/.test(modal().querySelector('[data-el="known-hint"]').textContent),
       `${fibreNames()} / ${modal().querySelector('[data-el="known-hint"]').textContent}`,
     );
     check(
       results,
       "…and offers to give the colours still without them the same",
-      !shareLabel().hidden && shareLabel().textContent.includes("Give the other colour of Drops Merino Extra Fine the same fibre content"),
+      !shareLabel().hidden && shareLabel().textContent.includes("Apply the same fibre content and superwash to the other colour of Drops Merino Extra Fine"),
       shareLabel().hidden ? "hidden" : shareLabel().textContent,
     );
     modal().querySelector('[data-act="save"]').click();
@@ -502,7 +502,7 @@ export async function verifyYarnStash() {
     check(
       results,
       "…a pattern picked goes in linked, a title typed goes in as it is",
-      planRows().join() === "Featherweight Lace Sock / in your library,Strange Brew / not in your library" && planInput.value === "",
+      planRows().join() === "Featherweight Lace Sock / in the library,Strange Brew / not in the library" && planInput.value === "",
       planRows().join(),
     );
     modal().querySelector('[data-act="save"]').click();

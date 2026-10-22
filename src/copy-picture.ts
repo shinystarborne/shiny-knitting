@@ -21,7 +21,7 @@ export async function pngOf(url: string): Promise<Blob> {
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
   bitmap.close();
   const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!png) throw new Error("The picture could not be made a PNG.");
+  if (!png) throw new Error("The picture could not be converted to PNG.");
   return png;
 }
 
@@ -31,7 +31,7 @@ export async function pngOf(url: string): Promise<Blob> {
  */
 export async function copyPicture(url: string | null | Promise<string | null>, what = "The picture"): Promise<boolean> {
   const png = Promise.resolve(url).then((u) => {
-    if (!u) throw new Error(`${what} is not there to copy.`);
+    if (!u) throw new Error(`${what} is not available to copy.`);
     return pngOf(u);
   });
   return copyPng(png, what);
@@ -40,13 +40,13 @@ export async function copyPicture(url: string | null | Promise<string | null>, w
 /** Copies a PNG, or one still being made; says it is copied, or why not. */
 export async function copyPng(png: Promise<Blob>, what = "The picture"): Promise<boolean> {
   try {
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("This window cannot put pictures on the clipboard.");
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Pictures cannot be copied to the clipboard here.");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
   } catch (err) {
     png.catch(() => {});
     await say(`${what} could not be copied: ${err instanceof Error ? err.message : String(err)}`, "Copy");
     return false;
   }
-  showNotice(`${what} is copied: paste it anywhere.`, undefined, 3000);
+  showNotice(`${what} copied to the clipboard.`, undefined, 3000);
   return true;
 }

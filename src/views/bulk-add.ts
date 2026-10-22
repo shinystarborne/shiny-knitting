@@ -25,7 +25,7 @@ export async function runBulkAdd(
       <button class="ghost" data-el="stop">Stop</button>
     </div>
     <div class="scan-bar"><div class="scan-fill" data-el="fill"></div></div>
-    <p class="scan-note" data-el="note">Each file is copied into your library in turn.</p>
+    <p class="scan-note" data-el="note">Each file is copied into the library in turn.</p>
     <ul class="scan-log" data-el="log"></ul>
   `;
   host.appendChild(panel);

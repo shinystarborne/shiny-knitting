@@ -84,7 +84,7 @@ something I have?".
 
 **A file gone missing.** A pattern whose file was moved or deleted outside the
 app says **File missing** on its card, and opening it explains rather than
-showing an empty reader. **Find it…** asks where the file is now and copies
+showing an empty reader. **Locate…** asks where the file is now and copies
 it back into the library; everything else of the pattern — marks, counters,
 notes, projects — was kept all along.
 
@@ -93,8 +93,8 @@ pattern out of the library at once, asking nothing, because nothing is lost
 yet: a notice at the foot of the screen has **Undo** for a few seconds, and the
 pattern waits in the **Bin** — the library's **Bin (n)** button — with its
 file, cover, marks and counters, for 30 days. There it can be restored as it
-was, or deleted for good; **Empty the bin** deletes them all. After 30 days it
-is deleted for good by itself. Adding the same file again brings it back from
+was, or deleted permanently; **Empty the bin** deletes them all. After 30 days it
+is deleted permanently by itself. Adding the same file again brings it back from
 the Bin.
 
 **Duplicates…** in the toolbar finds patterns that are in the library more
@@ -462,7 +462,7 @@ couldn't make sense of. The rest is still drawn.
 
 **US or UK terms**: `dc` is a different stitch in each, so choose the terms
 your pattern uses. The legend under the drawing names each stitch in them.
-Everything is kept as you write.
+Everything is saved automatically.
 
 **Put it there** puts the diagram on a project's board, and **Save as
 picture…** saves it as a PNG to print. On a board, **Chart** offers the
@@ -755,7 +755,7 @@ keys just count, and the page stays where it is.
 - `Shift`+`↑`/`↓` moves the line itself, `PageUp`/`PageDown` scroll the
   pattern.
 - Double-click the **●**, or press "Line", for its settings: show it,
-  **Full width of the page**, **Bring it into view**, colour, opacity,
+  **Full width of the page**, **Show the line**, colour, opacity,
   smooth movement, and **Rows go up the page (a chart)**: a chart is read
   from the bottom row up, so counting a row steps the line up rather than down.
 - The pattern opens, and comes back from being hidden or minimised, with the

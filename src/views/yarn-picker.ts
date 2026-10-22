@@ -110,7 +110,7 @@ export class YarnPicker {
                 (c, i) => `
                 <li class="yarn-chosen">
                   <span>${escapeHtml(name(c))}</span>
-                  <button type="button" class="ghost" data-act="yarn-remove" data-index="${i}" title="Take it off this project">✕</button>
+                  <button type="button" class="ghost" data-act="yarn-remove" data-index="${i}" title="Remove from this project">✕</button>
                   ${this.planHtml(c, i)}
                 </li>`,
               )
@@ -133,7 +133,7 @@ export class YarnPicker {
               <select data-el="yarn-lot" aria-label="Which lot" hidden></select>
               <button type="button" class="ghost" data-act="yarn-use" disabled title="Use it on this project">Use</button>
             </div>`
-          : `<p class="hint">Add your yarn in the Stash tab.</p>`
+          : `<p class="hint">Yarn is added in the Stash tab.</p>`
       }
     `;
   }

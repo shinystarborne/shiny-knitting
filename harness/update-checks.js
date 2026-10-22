@@ -72,8 +72,8 @@ export async function verifyUpdates() {
     await openSettings();
     check(
       results,
-      "the dialog says which version you have",
-      dialogEl().textContent.includes("You have 0.2.1"),
+      "the dialog says which version is installed",
+      dialogEl().textContent.includes("Installed version: 0.2.1"),
       dialogEl().textContent.slice(0, 120),
     );
 
@@ -81,10 +81,10 @@ export async function verifyUpdates() {
     window.__nextUpdate = null;
     dialogEl().querySelector('[data-act="check-updates"]').click();
     await waitFor(
-      () => updateResult()?.textContent.includes("newest version"),
+      () => updateResult()?.textContent.includes("Up to date"),
       "the up-to-date result",
     );
-    check(results, "up to date says you're on the newest version", true);
+    check(results, "up to date says so", true);
 
     // --- an update is available, and installing it works end to end ---
     window.__nextUpdate = RELEASE;

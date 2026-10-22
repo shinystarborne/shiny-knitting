@@ -65,7 +65,7 @@ export async function verifyCalcPeople() {
     (view()!.querySelector('[data-calc="raglan"]') as HTMLElement).click();
     await waitFor(() => !!field("person"), "the raglan");
     type("person", "");
-    check(results, "with no one picked, it says People can fill the measurements", /Pick someone from People/.test(note()), note());
+    check(results, "with no one picked, it says People can fill the measurements", /Pick a person from People/.test(note()), note());
 
     // Someone measured for the chest only: the rest is theirs to type.
     type("wrist", "99");
@@ -81,7 +81,7 @@ export async function verifyCalcPeople() {
     type("chest", String(mo.values.chest));
     const moSets = setsOf(cleo.id).length;
     save();
-    await waitFor(() => /Keep in Cleo's measurements, dated today/.test(dialog()?.textContent ?? ""), "the question");
+    await waitFor(() => /Save to Cleo's measurements, dated today/.test(dialog()?.textContent ?? ""), "the question");
     check(results, "Save to People asks first, saying only what is new or changed", /wrist 13\.5 cm, neck 29 cm\?/.test(dialog()!.textContent ?? "") && !/chest/.test(dialog()!.textContent ?? ""), dialog()!.textContent ?? "");
     dialog()!.querySelector<HTMLElement>("button.primary")!.click();
     await waitFor(() => /Saved to Cleo's measurements/.test(saved()), "saved");

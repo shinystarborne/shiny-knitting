@@ -57,7 +57,7 @@ export class PhotoBox {
 
   async take(file: Blob): Promise<void> {
     const blob = await prepareChosenImage(file);
-    if (!blob) return this.onError("That could not be read as a picture.");
+    if (!blob) return this.onError("This file is not a readable picture.");
     this.pending = blob;
     this.removed = false;
     await this.paint();

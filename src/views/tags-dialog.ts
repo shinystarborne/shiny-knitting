@@ -20,7 +20,7 @@ export function editTags(title: string, current: string[], known: string[]): Pro
       <div class="tag-chips" data-el="chips"></div>
       <input class="dialog-input" data-el="input" list="${listId}" placeholder="Add a tag and press Enter" />
       <datalist id="${listId}">${known.map((t) => `<option value="${esc(t)}"></option>`).join("")}</datalist>
-      <p class="hint">Press Enter or a comma after each one. Tags you already use are offered as you type.</p>
+      <p class="hint">Press Enter or a comma after each tag. Existing tags are suggested while typing.</p>
       <div class="dialog-actions">
         <button class="ghost" data-act="cancel">Cancel</button>
         <button class="primary" data-act="save">Save</button>

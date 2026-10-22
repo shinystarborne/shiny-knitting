@@ -101,7 +101,7 @@ export async function verifyBoardSheets() {
     w.__sheetWindows = [];
     card(refused.id)!.querySelector<HTMLElement>('.board-sheet-refused [data-act="sheet-window"]')!.click();
     await waitFor(() => (w.__sheetWindows ?? []).length > 0, "its window", 3000).catch(() => {});
-    check(results, "…one that will not be shown in a frame says so, and opens in a window", !card(refused.id)!.querySelector("iframe") && /will not be shown/.test(card(refused.id)!.textContent ?? "") && (w.__sheetWindows ?? []).some((x) => x.url.includes("refuses.example.com")), JSON.stringify(w.__sheetWindows));
+    check(results, "…one that will not be shown in a frame says so, and opens in a window", !card(refused.id)!.querySelector("iframe") && /cannot be shown inside the app/.test(card(refused.id)!.textContent ?? "") && (w.__sheetWindows ?? []).some((x) => x.url.includes("refuses.example.com")), JSON.stringify(w.__sheetWindows));
 
     // Open: in Cheatsheets.
     card(pages.id)!.querySelector<HTMLElement>('[data-act="open"]')!.click();

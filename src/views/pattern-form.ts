@@ -61,8 +61,8 @@ export class PatternForm {
           <div class="dropzone" data-el="drop">
             <input type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" hidden data-el="file" />
             <p><strong>Choose a PDF or EPUB</strong></p>
-            <p class="hint">The file is copied into your library, so you can move or delete the original.</p>
-            <p class="hint">Drag a file in, or use the button below. Browsing is much faster for large patterns.</p>
+            <p class="hint">The file is copied into the library, so the original can be moved or deleted.</p>
+            <p class="hint">Drag a file in, or use the button below (faster for large patterns).</p>
             <button class="ghost" data-act="browse" type="button">Browse for a file…</button>
             <p class="chosen" data-el="chosen"></p>
           </div>
@@ -136,12 +136,12 @@ export class PatternForm {
           </div>
         </div>
         <label class="field pattern-price">
-          <span>Price <em class="hint">what it cost, if anything</em></span>
+          <span>Price <em class="hint">optional</em></span>
           <input data-f="price" inputmode="decimal" value="${e?.price != null ? escapeAttr(String(e.price)) : ""}" placeholder="e.g. 6,50" />
         </label>
         <label class="field">
           <span>Notes</span>
-          <textarea data-f="notes" placeholder="Anything worth remembering about this pattern.">${escapeHtml(
+          <textarea data-f="notes" placeholder="Notes about this pattern">${escapeHtml(
             e?.notes ?? "",
           )}</textarea>
         </label>
@@ -401,7 +401,7 @@ export class PatternForm {
   private async withPrice(p: Pattern): Promise<Pattern> {
     const typed = this.value("price").trim();
     const price = typed ? parsePrice(typed) : null;
-    if (typed && price === null) throw new Error("The price is a number: 6,50 or 6.50.");
+    if (typed && price === null) throw new Error("Price must be a number, like 6,50 or 6.50.");
     return price === (p.price ?? null) ? p : api.setPatternPrice(p.id, price);
   }
 
