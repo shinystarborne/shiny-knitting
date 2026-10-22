@@ -45,7 +45,9 @@ increasing evenly, a pattern at another gauge, and yarns held together.
 **Charts.** Draw colourwork and lace charts, round yokes too, then see them
 knitted up, read them row by row in words, print them, and knit from them on a
 project's page. Lace is drawn in its stitch symbols, and every row is checked
-against the stitches the row before left.
+against the stitches the row before left. The **Charts** tab keeps the charts
+you knit or crochet from as pictures, to look at big or put on a project's
+board.
 
 **Also:** cheatsheets (pages kept to look things up in), masterclasses (videos
 you learn from), inspiration boards, a wishlist and your favourite shops, and

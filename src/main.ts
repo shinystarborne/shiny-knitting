@@ -36,6 +36,7 @@ import { ReaderView, type Layout } from "./reader/reader";
 import { CheatsheetsView } from "./views/cheatsheets";
 import { MasterclassesView } from "./views/masterclasses";
 import { RavelryView } from "./views/ravelry";
+import { ChartPicturesView } from "./views/chart-pictures";
 import { HIDDEN_TABS_EVENT, TABS, hiddenTabs, type Tab } from "./tabs";
 
 /**
@@ -72,6 +73,7 @@ class App {
   private activeCheatsheets: CheatsheetsView | null = null;
   private activeMasterclasses: MasterclassesView | null = null;
   private activeRavelry: RavelryView | null = null;
+  private activeChartPictures: ChartPicturesView | null = null;
   private layout: Layout = "split";
 
   /**
@@ -476,6 +478,8 @@ class App {
     this.activeMasterclasses = null;
     this.activeRavelry?.destroy();
     this.activeRavelry = null;
+    this.activeChartPictures?.destroy();
+    this.activeChartPictures = null;
     clearBoardImageCache();
     this.activeLibrary = null;
     this.activeWishlist = null;
@@ -518,7 +522,8 @@ class App {
     else if (tab === "calculators") {
       leaveProject();
       await this.showCalculators();
-    } else if (tab === "cheatsheets") await this.showCheatsheets();
+    } else if (tab === "charts") await this.showChartPictures();
+    else if (tab === "cheatsheets") await this.showCheatsheets();
     else if (tab === "masterclasses") await this.showMasterclasses();
     else if (tab === "ravelry") await this.showRavelry();
     else if (tab === "projects") await this.showProjects();
@@ -606,6 +611,15 @@ class App {
     this.clearScreen();
     this.setActiveTab("calculators");
     await new CalculatorsView(this.screen).mount();
+  }
+
+  private async showChartPictures(): Promise<void> {
+    this.navToken++;
+    this.clearScreen();
+    this.setActiveTab("charts");
+    const view = new ChartPicturesView(this.screen);
+    this.activeChartPictures = view;
+    await view.mount();
   }
 
   private async showCheatsheets(): Promise<void> {

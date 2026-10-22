@@ -364,6 +364,10 @@ const projectCoverCache = makeImageCache((id) => api.getProjectCover(id));
 export const projectCoverUrl = projectCoverCache.url;
 export const forgetProjectCover = projectCoverCache.forget;
 
+const chartPictureCache = makeImageCache((id) => api.getChartPicture(id));
+export const chartPictureUrl = chartPictureCache.url;
+export const forgetChartPicture = chartPictureCache.forget;
+
 const boardImageCache = makeImageCache((id) => api.getBoardImage(id));
 export const boardImageUrl = boardImageCache.url;
 export const forgetBoardImage = boardImageCache.forget;

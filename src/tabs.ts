@@ -5,13 +5,14 @@ import { api } from "./api";
  * hidden in Settings. Settings itself is the gear and is never one of them.
  */
 
-export type Tab = "patterns" | "projects" | "people" | "calculators" | "cheatsheets" | "masterclasses" | "ravelry" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
+export type Tab = "patterns" | "projects" | "people" | "calculators" | "charts" | "cheatsheets" | "masterclasses" | "ravelry" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 export const TABS: { tab: Tab; label: string }[] = [
   { tab: "patterns", label: "Patterns" },
   { tab: "projects", label: "Projects" },
   { tab: "people", label: "People" },
   { tab: "calculators", label: "Constructors" },
+  { tab: "charts", label: "Charts" },
   { tab: "cheatsheets", label: "Cheatsheets" },
   { tab: "masterclasses", label: "Masterclasses" },
   { tab: "ravelry", label: "Ravelry" },

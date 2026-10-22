@@ -1,9 +1,9 @@
-import { api, isLive, type BoardItem, type BoardKind, type Chart, type Cheatsheet, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, isLive, type BoardItem, type BoardKind, type Chart, type ChartPicture, type Cheatsheet, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { decode, describe as describeChart, normalize } from "./chart";
 import { SHEET_CARD, drawSheetPages, keepOpen as keepSheetOpen, sheetFrameHtml } from "./cheatsheets";
 import { CanvasPainter, drawChart, sizeCanvas } from "./chart-draw";
 import { askChoice, askForm, askYesNo, dialogOpen, say, type Choice } from "../dialogs";
-import { blobBytes, boardImageUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
+import { blobBytes, boardImageUrl, chartPictureUrl, coverUrl, forgetBoardImage, forgetLogPhoto, logPhotoUrl, prepareBoardImage, prepareChosenImage, yarnPhotoUrl } from "../covers";
 import { describe, headline, kindLabel } from "./tool-filter";
 import { cropImage } from "./crop-dialog";
 import { copyPicture } from "../copy-picture";
@@ -102,6 +102,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   timer: [300, 280],
   counter: [320, 440],
   calc: [280, 420],
+  chartpic: [380, 380],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -130,20 +131,24 @@ export interface BoardOptions {
   emptyHint?: string;
 }
 
-/** What the toolbar offers, and the tab each comes from: hidden in Settings, nothing is added from it. */
-const TOOLBAR: { kind: BoardKind; html: string; tab?: Tab }[] = [
+/**
+ * What the toolbar offers, and the tabs each comes from: with them all hidden
+ * in Settings, nothing is added from it. A chart is one drawn in Constructors
+ * or a picture in Charts.
+ */
+const TOOLBAR: { kind: BoardKind; html: string; tabs?: Tab[] }[] = [
   { kind: "note", html: `<button data-add="note" title="A sticky note">🗒<span>Note</span></button>` },
   { kind: "text", html: `<button data-add="text" title="Words on the board">T<span>Text</span></button>` },
   { kind: "link", html: `<button data-add="link" title="A web address">🔗<span>Link</span></button>` },
   { kind: "image", html: `<button data-add="image" title="A picture: choose one, paste it with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>` },
-  { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>`, tab: "patterns" },
-  { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>`, tab: "stash" },
-  { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>`, tab: "tools" },
+  { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>`, tabs: ["patterns"] },
+  { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>`, tabs: ["stash"] },
+  { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>`, tabs: ["tools"] },
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
-  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>`, tab: "masterclasses" },
-  { kind: "chart", html: `<button data-add="chart" title="A chart from Constructors, drawn on the board as it is now">▦<span>Chart</span></button>`, tab: "calculators" },
-  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>`, tab: "cheatsheets" },
+  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>`, tabs: ["masterclasses"] },
+  { kind: "chart", html: `<button data-add="chart" title="A chart: one drawn in Constructors, as it is now, or a picture from Charts">▦<span>Chart</span></button>`, tabs: ["calculators", "charts"] },
+  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>`, tabs: ["cheatsheets"] },
   { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern, on the board">🔢<span>Counter</span></button>` },
   { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
   { kind: "calc", html: `<button data-add="calc" title="A calculator: + − × ÷, for the sums as you knit">🧮<span>Calculator</span></button>` },
@@ -189,6 +194,10 @@ export class Board {
   /** The charts, for chart cards: drawn from them as they are now. */
   private charts: Chart[] = [];
   private sheets: Cheatsheet[] = [];
+  /** The Charts tab's pictures, for their cards. */
+  private chartPictures: ChartPicture[] = [];
+  /** The tabs hidden in Settings: what the toolbar brings from them is not offered. */
+  private hidden = new Set<Tab>();
   /** The project's spells of knitting, for its timer card. */
   private sessions: KnitSession[] = [];
   /** Each calculator card's sum in progress, by card; its tape is kept on the card. */
@@ -233,7 +242,7 @@ export class Board {
     this.root.innerHTML = `
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
-        ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => (t.tab ? t.html.replace("<button ", `<button data-tab="${t.tab}" `) : t.html)).join("")}
+        ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => (t.tabs ? t.html.replace("<button ", `<button data-tab="${t.tabs.join(" ")}" `) : t.html)).join("")}
         ${this.hooks.openCalculator ? `<button data-act="calculator" data-tab="calculators" title="A constructor -- a raglan, a yoke, socks… -- its result saved to this board">📐<span>Constructors</span></button>` : ""}
       </div>
       <div class="board-zoom">
@@ -262,6 +271,7 @@ export class Board {
       api.listCharts().catch(() => [] as Chart[]),
     ]);
     this.sheets = await api.listCheatsheets().catch(() => [] as Cheatsheet[]);
+    this.chartPictures = await api.listChartPictures().catch(() => [] as ChartPicture[]);
     if (this.hooks.project()) {
       this.sessions = await api.listKnitSessions(this.boardId).catch(() => [] as KnitSession[]);
       // Started or stopped anywhere -- the page's side, the tab bar, the counter -- the card follows.
@@ -337,6 +347,7 @@ export class Board {
       api.listCharts().catch(() => this.charts),
     ]);
     this.sheets = await api.listCheatsheets().catch(() => this.sheets);
+    this.chartPictures = await api.listChartPictures().catch(() => this.chartPictures);
     await this.refreshLog();
   }
 
@@ -624,14 +635,14 @@ export class Board {
    * saying why on the button; shown again, it is as it was.
    */
   private async markHiddenTabs(): Promise<void> {
-    const hidden = await hiddenTabs();
+    this.hidden = await hiddenTabs();
     for (const btn of this.root.querySelectorAll<HTMLButtonElement>(".board-tools button[data-tab]")) {
-      const tab = btn.dataset.tab as Tab;
-      const off = hidden.has(tab);
+      const tabs = btn.dataset.tab!.split(" ") as Tab[];
+      const off = tabs.every((t) => this.hidden.has(t));
       btn.dataset.title ??= btn.title;
       btn.classList.toggle("tab-hidden", off);
       btn.setAttribute("aria-disabled", String(off));
-      btn.title = off ? `${tabLabel(tab)} is hidden in Settings: show the tab there to add from it` : btn.dataset.title;
+      btn.title = off ? `${hiddenNames(tabs)} hidden in Settings: show it there to add from it` : btn.dataset.title;
     }
   }
 
@@ -639,8 +650,8 @@ export class Board {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button");
     if (!btn) return;
     if (btn.classList.contains("tab-hidden")) {
-      const tab = tabLabel(btn.dataset.tab as Tab);
-      return void (await say(`${tab} is hidden, so nothing can be added from it. Show it again in Settings (the gear), under Tabs.`, tab));
+      const tabs = btn.dataset.tab!.split(" ") as Tab[];
+      return void (await say(`${hiddenNames(tabs)} hidden, so nothing can be added from it. Show it again in Settings (the gear), under Tabs.`, tabLabel(tabs[0])));
     }
     const add = btn.dataset.add as BoardKind | undefined;
     if (add) return void (await this.addFromToolbar(add));
@@ -959,15 +970,31 @@ export class Board {
       const id = await askChoice("Which needle, hook or cable?", choices, { title: "Add a needle" });
       if (id) await this.add("tool", at, { toolId: id });
     } else if (kind === "chart") {
-      this.charts = await api.listCharts().catch(() => this.charts);
-      const choices: Choice[] = this.charts.map((c) => ({
-        value: c.id,
-        label: c.name,
-        group: c.data.kind === "yoke" ? "Round yokes" : c.data.kind === "lace" ? "Lace" : "Colourwork",
-      }));
-      if (!choices.length) return void (await say("There are no charts yet: draw one under Constructors → Charts.", "Add a chart"));
+      // Drawn in Constructors, or a picture in Charts: each while its tab is shown.
+      const drawn = !this.hidden.has("calculators");
+      const pictures = !this.hidden.has("charts");
+      if (drawn) this.charts = await api.listCharts().catch(() => this.charts);
+      if (pictures) this.chartPictures = await api.listChartPictures().catch(() => this.chartPictures);
+      const choices: Choice[] = [
+        ...(pictures ? this.chartPictures.map((c) => ({ value: `pic:${c.id}`, label: c.name, group: c.craft === "crochet" ? "Charts: crochet" : "Charts: knitting" })) : []),
+        ...(drawn
+          ? this.charts.map((c) => ({
+              value: c.id,
+              label: c.name,
+              group: `Drawn in Constructors: ${c.data.kind === "yoke" ? "round yokes" : c.data.kind === "lace" ? "lace" : "colourwork"}`,
+            }))
+          : []),
+      ];
+      const where = [pictures ? "keep a picture of one in the Charts tab" : "", drawn ? "draw one under Constructors → Charts" : ""].filter(Boolean).join(", or ");
+      if (!choices.length) return void (await say(`There are no charts yet: ${where}.`, "Add a chart"));
       const id = await askChoice("Which chart?", choices, { title: "Add a chart" });
-      if (id) await this.add("chart", at, { chartId: id });
+      const picture = id?.startsWith("pic:") ? this.chartPictures.find((c) => c.id === id.slice(4)) : null;
+      if (picture) {
+        // The card the picture's shape, under its bar.
+        const w = 380;
+        const h = picture.width && picture.height ? Math.min(900, Math.max(120, Math.round((w * picture.height) / picture.width) + 30)) : SIZES.chartpic[1];
+        await this.add("chartpic", at, { chartPictureId: picture.id }, [w, h]);
+      } else if (id) await this.add("chart", at, { chartId: id });
     } else if (kind === "sheet") {
       this.sheets = await api.listCheatsheets().catch(() => this.sheets);
       const choices: Choice[] = this.sheets.map((s) => ({ value: s.id, label: s.title, group: s.kind === "web" ? "Web pages" : "From books" }));
@@ -1179,6 +1206,12 @@ export class Board {
     if (!item) return;
     if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
     if (item.kind === "chart" && typeof item.data.chartId === "string" && this.charts.some((c) => c.id === item.data.chartId)) this.hooks.openChart?.(item.data.chartId);
+    // A chart picture, big: and the board's others after it.
+    if (item.kind === "chartpic") {
+      const shown = this.items.flatMap((i) => (i.kind === "chartpic" ? this.chartPictures.filter((c) => c.id === i.data.chartPictureId) : []));
+      const at = shown.findIndex((c) => c.id === item.data.chartPictureId);
+      if (at >= 0) openLightbox(shown.map((c) => ({ url: () => chartPictureUrl(c.id), caption: c.name })), at, "The chart");
+    }
     // A cheatsheet, open in its tab.
     if (item.kind === "sheet" && typeof item.data.sheetId === "string" && this.sheets.some((s) => s.id === item.data.sheetId)) {
       keepSheetOpen(item.data.sheetId);
@@ -1458,6 +1491,15 @@ export class Board {
           : `<div class="board-caption missing">A chart no longer in Constructors</div>`;
         break;
       }
+      case "chartpic": {
+        // A chart kept as a picture: moved by its bar, the picture as big as the card lets it.
+        const c = this.chartPictures.find((x) => x.id === d.chartPictureId);
+        body = c
+          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>▦ ${esc(c.name)}</span><button data-act="open" title="See it big (or double-click it)">⤢ View</button></div>
+             <div class="board-chartpic" data-chartpic="${esc(c.id)}"></div>`
+          : `<div class="board-caption missing">A chart no longer kept in Charts</div>`;
+        break;
+      }
       case "swatch": {
         const colour = /^#[0-9a-f]{6}$/i.test(String(d.colour)) ? String(d.colour) : "#c94c6d";
         body = `
@@ -1688,6 +1730,7 @@ export class Board {
     };
     await Promise.all([
       ...[...this.world.querySelectorAll<HTMLElement>("[data-picture]")].map((el) => paint(el, boardImageUrl(el.dataset.picture!))),
+      ...[...this.world.querySelectorAll<HTMLElement>("[data-chartpic]")].map((el) => paint(el, chartPictureUrl(el.dataset.chartpic!))),
       ...[...this.world.querySelectorAll<HTMLElement>("[data-cover-of]")].map((el) => paint(el, coverUrl(el.dataset.coverOf!))),
       ...[...this.world.querySelectorAll<HTMLElement>("[data-log-photo]")].map((el) => paint(el, logPhotoUrl(el.dataset.logPhoto!))),
       ...[...this.world.querySelectorAll<HTMLElement>("[data-yarn-of]")]
@@ -1718,6 +1761,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   timer: "timer",
   counter: "row counter",
   calc: "calculator",
+  chartpic: "chart",
 };
 
 /**
@@ -1748,6 +1792,11 @@ export function hostOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** "Stash is" or "Constructors and Charts are": the tabs a toolbar button brings from. */
+function hiddenNames(tabs: Tab[]): string {
+  return `${tabs.map(tabLabel).join(" and ")} ${tabs.length > 1 ? "are" : "is"}`;
 }
 
 function esc(v: string): string {

@@ -272,6 +272,31 @@ pub fn delete_board_image_file(state: &AppState, file_name: &str) {
     }
 }
 
+// ---------- chart pictures ----------
+
+pub fn chart_pictures_dir(state: &AppState) -> PathBuf {
+    state.library_dir.join("chart-pictures")
+}
+
+/// Writes a chart's picture, after checking it is one, returning its file name.
+pub fn write_chart_picture(state: &AppState, chart_id: &str, bytes: &[u8]) -> AppResult<String> {
+    let (ext, _mime) = validate(bytes)?;
+    write_file(&chart_pictures_dir(state), chart_id, ext, bytes)
+}
+
+pub fn read_chart_picture(state: &AppState, file_name: &str) -> AppResult<(String, Vec<u8>)> {
+    let path = existing_file(&chart_pictures_dir(state), file_name)
+        .ok_or_else(|| AppError::Message("That chart's picture is no longer there.".into()))?;
+    read_file(path)
+}
+
+/// Deletes a stored chart picture by its file name, best effort.
+pub fn delete_chart_picture_file(state: &AppState, file_name: &str) {
+    if let Some(path) = existing_file(&chart_pictures_dir(state), file_name) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 // ---------- project log photos ----------
 
 pub fn log_photos_dir(state: &AppState) -> PathBuf {

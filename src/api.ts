@@ -904,6 +904,24 @@ export interface BallBand {
   care: string[];
 }
 
+/** A chart kept as a picture, in the Charts tab. Mirrors `chart_pictures.rs::ChartPicture`. */
+export interface ChartPicture {
+  id: string;
+  name: string;
+  craft: "knitting" | "crochet";
+  notes: string;
+  /** The picture's size in pixels. */
+  width: number;
+  height: number;
+  addedAt: number;
+}
+
+export interface ChartPictureInput {
+  name: string;
+  craft: ChartPicture["craft"];
+  notes: string;
+}
+
 /** A goal for a year, in Statistics. Mirrors `goals.rs::Goal`. */
 export interface Goal {
   id: string;
@@ -971,7 +989,7 @@ export interface ProjectInput {
 /** What can go on a board, a project's or an inspiration board. */
 /** "pin" is a picture of a pattern's pin, with `{ patternId, page, title }`. */
 /** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`; "steps" a calculator's steps as a checklist (views/steps.ts); "chart" one of the charts, `{ chartId }`, drawn as it is now; "sheet" one of the Cheatsheets, `{ sheetId }`, shown as it is kept; "timer" the project's knitting timer, `{ auto }`: kept by the row counter unless false (auto-timer.ts); "counter" the project's row counter, its only place on the page, put there if wanted; "calc" a plain calculator, `{ tape }` its last sums (views/sums.ts). */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter" | "calc";
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter" | "calc" | "chartpic";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {
@@ -1622,6 +1640,17 @@ export const api = {
   saveCurrency: (code: string) => invoke<string>("save_currency", { code }),
   setProjectMasterclass: (id: string, masterclassId: string) => invoke<Project>("set_project_masterclass", { id, masterclassId }),
   listMasterclasses: () => invoke<Masterclass[]>("list_masterclasses"),
+  /** Charts kept as pictures, the newest first. */
+  listChartPictures: () => invoke<ChartPicture[]>("list_chart_pictures"),
+  /** A new chart: its picture raw, as the body; the rest in headers, as a pattern's upload. */
+  addChartPicture: (input: ChartPictureInput, bytes: Uint8Array, size: { width: number; height: number }) =>
+    invoke<ChartPicture>("add_chart_picture", bytes, { headers: { "x-input": encodeURIComponent(JSON.stringify(input)), "x-size": `${size.width}x${size.height}` } }),
+  updateChartPicture: (id: string, input: ChartPictureInput) => invoke<ChartPicture>("update_chart_picture", { id, input }),
+  /** A chart's picture changed: cropped. */
+  replaceChartPicture: (id: string, bytes: Uint8Array, size: { width: number; height: number }) =>
+    invoke<ChartPicture>("replace_chart_picture", bytes, { headers: { "x-id": encodeURIComponent(id), "x-size": `${size.width}x${size.height}` } }),
+  getChartPicture: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_chart_picture", { id }),
+  deleteChartPicture: (id: string) => invoke<void>("delete_chart_picture", { id }),
   /** Goals for a year, every year's. */
   listGoals: () => invoke<Goal[]>("list_goals"),
   saveGoal: (input: { id: string | null; year: number; kind: Goal["kind"]; label: string; target: number }) => invoke<Goal>("save_goal", { input }),

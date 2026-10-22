@@ -551,8 +551,8 @@ pub fn save_needle_size_display(
 
 /// The tabs that can be hidden, as the tab bar names them. Settings is the
 /// gear, never a tab, so it can never be hidden.
-const TABS: [&str; 12] = [
-    "patterns", "projects", "people", "calculators", "cheatsheets", "masterclasses",
+const TABS: [&str; 13] = [
+    "patterns", "projects", "people", "calculators", "charts", "cheatsheets", "masterclasses",
     "ravelry", "inspiration", "stash", "tools", "wishlist", "shops",
 ];
 

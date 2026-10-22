@@ -413,6 +413,29 @@ typed in.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 
+## Charts
+
+The **Charts** tab keeps the charts you knit or crochet from as pictures:
+only the chart, not the whole pattern, from a book, a pattern or a
+screenshot. Unlike the charts drawn under Constructors, they are kept as
+they are.
+
+**+ Add a chart** chooses one or more pictures. You can also paste one with
+Ctrl+V, or drop one on the tab. Each one is asked about: its name (taken
+from the file's name to start with), whether it is for **Knitting** or
+**Crochet**, notes if you like, and **Crop…** to keep only the part that is
+the chart. They are kept large enough to read the smallest symbol.
+
+**All | Knitting | Crochet** at the top shows one or the other, and the
+search looks through the names and notes. Click a chart to see it big (zoom
+with the wheel, the arrows for the next one), or **Edit** to rename it,
+change knitting or crochet, or crop it again.
+
+On a project's board, **Chart** offers these as well as the charts drawn in
+Constructors, under **Charts: knitting** and **Charts: crochet**. The card is
+the picture's shape, and **⤢ View** (or a double-click) opens it big.
+Removing a chart from the tab leaves its cards saying it is no longer kept.
+
 ## Cheatsheets
 
 The **Cheatsheets** tab keeps what you look things up in while knitting, listed
@@ -489,7 +512,7 @@ The gear at the right end of the tab bar opens **Settings**, from any tab.
 leaves the tab bar. Nothing is deleted, and ticking it again brings it back
 as it was. While a tab is hidden, nothing from it can be put on a board: its
 button on the board's toolbar (Yarn for the Stash, Video for Masterclasses,
-and so on) is greyed out, and says why when you point at it or click it.
+and so on; Chart once both Constructors and Charts are hidden) is greyed out, and says why when you point at it or click it.
 Cards already on a board stay. One tab at least has to stay, and the app
 opens on the first one shown.
 

@@ -61,7 +61,7 @@ export async function verifyHiddenTabs() {
   try {
     await openSettings();
     const names = boxes().map((b) => b.dataset.tab);
-    check(results, "Settings has a box for every tab, all ticked, and none for Settings", names.length === 12 && boxes().every((b) => b.checked) && !names.includes("settings"), names.join(","));
+    check(results, "Settings has a box for every tab, all ticked, and none for Settings", names.length === 13 && boxes().every((b) => b.checked) && !names.includes("settings"), names.join(","));
     (settings()!.querySelector('[data-act="close"]') as HTMLElement).click();
     await waitFor(() => !settings(), "Settings to close");
 

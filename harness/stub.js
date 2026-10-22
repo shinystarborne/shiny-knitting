@@ -10,6 +10,7 @@ import { sizesOf, mmLabel, usLabel } from "../src/views/needle-size";
  */
 
 const store = {
+  chartPictures: [],
   patterns: [],
   sections: [],
   progress: new Map(),
@@ -996,6 +997,13 @@ function needleSizesOf(pattern) {
  * `covers.rs::sniff`: [extension, mime], or null for anything that is not a
  * recognised image.
  */
+/** As chart_pictures.rs::clean: a known craft, a name of one line. */
+function chartPictureInput(input) {
+  if (!["knitting", "crochet"].includes(input.craft)) throw new Error("Say whether the chart is for knitting or crochet.");
+  const name = String(input.name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
+  return { name: name || "A chart", craft: input.craft, notes: String(input.notes ?? "").trim().slice(0, 4000) };
+}
+
 function sniffImage(bytes) {
   const starts = (sig) => sig.every((v, i) => bytes[i] === v);
   if (starts([0xff, 0xd8, 0xff])) return ["jpg", "image/jpeg"];
@@ -1521,7 +1529,7 @@ const handlers = {
   },
   get_hidden_tabs: () => [...(store.hiddenTabs ?? [])],
   save_hidden_tabs: ({ tabs }) => {
-    const order = ["patterns", "projects", "people", "calculators", "cheatsheets", "masterclasses", "ravelry", "inspiration", "stash", "tools", "wishlist", "shops"];
+    const order = ["patterns", "projects", "people", "calculators", "charts", "cheatsheets", "masterclasses", "ravelry", "inspiration", "stash", "tools", "wishlist", "shops"];
     const kept = order.filter((t) => tabs.includes(t));
     if (kept.length === order.length) throw new Error("Keep at least one tab: with every tab hidden there is nothing to show.");
     store.hiddenTabs = kept;
@@ -1607,6 +1615,46 @@ const handlers = {
   // As masterclasses.rs, without asking YouTube: a YouTube link is named
   // "A video, <id>" and channel "A channel" unless a name is given, and
   // gets a picture drawn here. A masterclass is its videos, in order.
+  // ---------- chart pictures ----------
+  //
+  // As chart_pictures.rs: the newest first; a craft has to be said; the
+  // picture raw as the body, the rest in headers.
+  list_chart_pictures: () => clone([...store.chartPictures].sort((a, b) => b.addedAt - a.addedAt || b.seq - a.seq)),
+  add_chart_picture: (bytes, options) => {
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (!data.length || !sniffImage(data)) throw new Error("That file does not look like an image.");
+    const input = chartPictureInput(JSON.parse(decodeURIComponent(options?.headers?.["x-input"] ?? "")));
+    const [width, height] = (options?.headers?.["x-size"] ?? "0x0").split("x").map((n) => Number(n) || 0);
+    const c = { id: `chartpic-${store.nextId++}`, seq: store.nextId, ...input, width, height, addedAt: Date.now() };
+    store.chartPictures.push(c);
+    store.covers.set(`chartpic:${c.id}`, Array.from(data));
+    return clone(c);
+  },
+  update_chart_picture: ({ id, input }) => {
+    const c = store.chartPictures.find((x) => x.id === id);
+    if (!c) throw new Error("That chart is no longer there.");
+    Object.assign(c, chartPictureInput(input));
+    return clone(c);
+  },
+  replace_chart_picture: (bytes, options) => {
+    const c = store.chartPictures.find((x) => x.id === decodeURIComponent(options?.headers?.["x-id"] ?? ""));
+    if (!c) throw new Error("That chart is no longer there.");
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    if (!data.length || !sniffImage(data)) throw new Error("That file does not look like an image.");
+    [c.width, c.height] = (options?.headers?.["x-size"] ?? "0x0").split("x").map((n) => Number(n) || 0);
+    store.covers.set(`chartpic:${c.id}`, Array.from(data));
+    return clone(c);
+  },
+  get_chart_picture: ({ id }) => {
+    const bytes = store.covers.get(`chartpic:${id}`);
+    if (!bytes) throw new Error("That chart's picture is no longer there.");
+    return Uint8Array.from(bytes).buffer;
+  },
+  delete_chart_picture: ({ id }) => {
+    store.chartPictures = store.chartPictures.filter((x) => x.id !== id);
+    store.covers.delete(`chartpic:${id}`);
+  },
+
   // As goals.rs: the latest year first; your own counted by hand.
   list_goals: () => clone([...store.goals].sort((a, b) => b.year - a.year || a.addedAt - b.addedAt)),
   save_goal: ({ input }) => {
@@ -2339,7 +2387,7 @@ const handlers = {
     if (!store.projects.some((x) => x.id === boardId) && !store.inspirationBoards.some((b) => b.id === boardId)) {
       throw new Error("That board is no longer there.");
     }
-    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc"];
+    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc", "chartpic"];
     if (input.kind === "log" && !store.projects.some((x) => x.id === boardId)) throw new Error("Only a project's board can show its log.");
     if (!kinds.includes(input.kind)) throw new Error(`A board cannot hold a “${input.kind}”.`);
     const data = input.data ?? {};

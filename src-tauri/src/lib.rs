@@ -3,6 +3,7 @@ mod ai;
 mod annotations;
 mod backup;
 mod ball_band;
+mod chart_pictures;
 mod charts;
 mod cheatsheets;
 mod commands;
@@ -167,6 +168,12 @@ pub fn run() {
             goals::save_goal,
             goals::set_goal_done,
             goals::remove_goal,
+            chart_pictures::list_chart_pictures,
+            chart_pictures::add_chart_picture,
+            chart_pictures::update_chart_picture,
+            chart_pictures::replace_chart_picture,
+            chart_pictures::get_chart_picture,
+            chart_pictures::delete_chart_picture,
             guard::app_started,
             update::previous_version,
             projects::list_gallery_photos,
