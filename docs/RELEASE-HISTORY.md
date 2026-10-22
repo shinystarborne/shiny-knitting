@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.12](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.12)** —
+  a Charts tab: knitting and crochet charts kept as pictures, cropped, opened big, and put on a project's board.
 - **[v1.1.0-beta.11](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.11)** —
   hide the tabs you don't use, in Settings; nothing from a hidden tab is put on a board.
 - **[v1.1.0-beta.10](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.10)** —
