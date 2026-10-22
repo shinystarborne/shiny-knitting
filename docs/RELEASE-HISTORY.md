@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.17](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.17)** —
+  plainer, impersonal wording throughout; Hour cost and Project cost with time on a project's page.
 - **[v1.1.0-beta.16](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.16)** —
   crochet ovals around a chain, and rows then rounds: a round all around the piece, a border.
 - **[v1.1.0-beta.15](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.15)** —
