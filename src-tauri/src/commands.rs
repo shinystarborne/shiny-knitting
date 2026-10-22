@@ -549,6 +549,36 @@ pub fn save_needle_size_display(
     Ok(display)
 }
 
+/// The tabs that can be hidden, as the tab bar names them. Settings is the
+/// gear, never a tab, so it can never be hidden.
+const TABS: [&str; 12] = [
+    "patterns", "projects", "people", "calculators", "cheatsheets", "masterclasses",
+    "ravelry", "inspiration", "stash", "tools", "wishlist", "shops",
+];
+
+/// The tabs hidden from the tab bar, in the tab bar's order.
+#[tauri::command]
+pub fn get_hidden_tabs(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
+    let kept: Vec<String> = db::get_setting(&state.db(), "hidden_tabs")?;
+    Ok(hidden_tabs(&kept))
+}
+
+#[tauri::command]
+pub fn save_hidden_tabs(state: State<'_, AppState>, tabs: Vec<String>) -> CmdResult<Vec<String>> {
+    let tabs = hidden_tabs(&tabs);
+    if tabs.len() == TABS.len() {
+        return Err(AppError::Message("Keep at least one tab: with every tab hidden there is nothing to show.".into()));
+    }
+    db::set_setting(&state.db(), "hidden_tabs", &tabs)?;
+    Ok(tabs)
+}
+
+/// Only tabs there are, each once, in the tab bar's order: a name from an
+/// older or newer version is dropped rather than kept.
+fn hidden_tabs(names: &[String]) -> Vec<String> {
+    TABS.iter().filter(|t| names.iter().any(|n| n == *t)).map(|t| t.to_string()).collect()
+}
+
 /// Both keys are needed and must differ: a key that counted up and down at
 /// once would do nothing, and an empty one could never be pressed.
 fn valid_count_keys(keys: &CountKeys) -> bool {
@@ -1226,6 +1256,17 @@ mod tests {
         assert!(valid_count_keys(&CountKeys { up: "Space".into(), down: "Backspace".into() }));
         assert!(!valid_count_keys(&CountKeys { up: "KeyJ".into(), down: "KeyJ".into() }));
         assert!(!valid_count_keys(&CountKeys { up: " ".into(), down: "KeyK".into() }));
+    }
+
+    #[test]
+    fn hidden_tabs_are_known_ones_once_in_the_tab_bars_order() {
+        let conn = db::open_test_db();
+        let none: Vec<String> = db::get_setting(&conn, "hidden_tabs").unwrap();
+        assert!(none.is_empty(), "nothing hidden until something is");
+        let asked: Vec<String> = ["shops", "settings", "stash", "shops", "Patterns"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(hidden_tabs(&asked), vec!["stash", "shops"], "Settings is no tab; names are as the tab bar's");
+        let all: Vec<String> = TABS.iter().map(|t| t.to_string()).collect();
+        assert_eq!(hidden_tabs(&all).len(), TABS.len(), "every tab is still every tab, for save to refuse");
     }
 
     /// A pattern on a throwaway in-memory database.

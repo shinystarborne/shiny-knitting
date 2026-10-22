@@ -485,6 +485,14 @@ got there on the wishlist, with no shop.
 
 The gear at the right end of the tab bar opens **Settings**, from any tab.
 
+**Settings → Tabs** has a box for every tab: untick one you do not use and it
+leaves the tab bar. Nothing is deleted, and ticking it again brings it back
+as it was. While a tab is hidden, nothing from it can be put on a board: its
+button on the board's toolbar (Yarn for the Stash, Video for Masterclasses,
+and so on) is greyed out, and says why when you point at it or click it.
+Cards already on a board stay. One tab at least has to stay, and the app
+opens on the first one shown.
+
 **Make a backup** is in Settings: one click asks where to save, and copies the
 whole library there as one zip — every pattern file, cover and photo, and a
 clean copy of the database with everything written down in it — named with

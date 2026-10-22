@@ -1472,6 +1472,10 @@ export const api = {
   saveNeedleSizeDisplay: (display: NeedleSizeFormat) =>
     invoke<void>("save_needle_size_display", { display }),
 
+  // The tabs hidden from the tab bar in Settings.
+  getHiddenTabs: () => invoke<string[]>("get_hidden_tabs"),
+  saveHiddenTabs: (tabs: string[]) => invoke<string[]>("save_hidden_tabs", { tabs }),
+
   getProgress: (patternId: string, projectId: string | null = null) => invoke<Progress>("get_progress", { patternId, projectId }),
   setTotalRows: (patternId: string, projectId: string | null, total: number) =>
     invoke<Progress>("set_total_rows", { patternId, projectId, total }),

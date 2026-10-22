@@ -1519,6 +1519,14 @@ const handlers = {
   save_needle_size_display: ({ display }) => {
     store.needleSizeDisplay = display;
   },
+  get_hidden_tabs: () => [...(store.hiddenTabs ?? [])],
+  save_hidden_tabs: ({ tabs }) => {
+    const order = ["patterns", "projects", "people", "calculators", "cheatsheets", "masterclasses", "ravelry", "inspiration", "stash", "tools", "wishlist", "shops"];
+    const kept = order.filter((t) => tabs.includes(t));
+    if (kept.length === order.length) throw new Error("Keep at least one tab: with every tab hidden there is nothing to show.");
+    store.hiddenTabs = kept;
+    return [...kept];
+  },
   update_counter: ({ id, name, target, excludedFromTotal }) => {
     const c = requireCounter(id);
     Object.assign(c, { name, target, excludedFromTotal });

@@ -2,6 +2,7 @@ import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type Needle
 import { askYesNo, say } from "../dialogs";
 import { clickedOn, closestEl } from "../dom";
 import { parsePrice } from "./money";
+import { TABS, hiddenTabs, type Tab } from "../tabs";
 import { longDate, toDateInput } from "./project-form";
 
 /** Currencies offered for prices, the commonest for a knitter in Europe first. */
@@ -46,7 +47,7 @@ export class SettingsDialog {
   private measureUnit: MeasureUnit;
   /** The update a check found, kept so a failed download can offer it again. */
   private availableUpdate: UpdateInfo | null = null;
-  private onSaved: (settings: AiSettingsView) => void;
+  private onSaved: (settings: AiSettingsView) => void | Promise<void>;
 
   private modelList: ModelInfo[] = [];
   private modelPicker!: HTMLSelectElement;
@@ -57,7 +58,7 @@ export class SettingsDialog {
     updateSettings: UpdateSettings,
     needleSizeDisplay: NeedleSizeFormat,
     measureUnit: MeasureUnit,
-    onSaved: (settings: AiSettingsView) => void,
+    onSaved: (settings: AiSettingsView) => void | Promise<void>,
   ) {
     this.root = root;
     this.settings = settings;
@@ -111,6 +112,15 @@ export class SettingsDialog {
         </div>
         <em class="hint block" data-el="backup-result"></em>
         <em class="hint block" data-el="restore-result" hidden></em>
+
+        <h3>Tabs</h3>
+        <p class="hint block">
+          Untick a tab you do not use: it leaves the tab bar, and nothing from it
+          can be put on a board. What is in it is kept, and comes back with it.
+        </p>
+        <div class="settings-tabs" data-el="tabs">
+          ${TABS.map((t) => `<label class="check"><input type="checkbox" data-tab="${t.tab}" checked /><span>${escapeHtml(t.label)}</span></label>`).join("")}
+        </div>
 
         <h3>Needle sizes</h3>
         <label class="field">
@@ -272,6 +282,12 @@ export class SettingsDialog {
         if (input && rate != null) input.value = String(rate);
       })
       .catch(() => {});
+    // The tabs hidden, as kept; every one shown until it answers.
+    void hiddenTabs().then((hidden) => {
+      for (const box of this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')) {
+        box.checked = !hidden.has(box.dataset.tab as Tab);
+      }
+    });
     // The currency, as kept; EUR until it answers.
     void api
       .getCurrency()
@@ -499,6 +515,9 @@ export class SettingsDialog {
 
   /** Saves both groups. Save is the only path that should reach this. */
   private async persist(): Promise<AiSettingsView> {
+    // First, so every tab unticked is refused before anything else is saved.
+    const unticked = [...this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')].filter((b) => !b.checked);
+    await api.saveHiddenTabs(unticked.map((b) => b.dataset.tab!));
     const saved = await this.persistAi();
     await api.saveUpdateSettings(this.collectUpdates());
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());

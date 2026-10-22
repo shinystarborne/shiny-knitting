@@ -100,6 +100,8 @@ pub fn run() {
             commands::save_count_keys,
             commands::get_needle_size_display,
             commands::save_needle_size_display,
+            commands::get_hidden_tabs,
+            commands::save_hidden_tabs,
             commands::get_progress,
             commands::set_total_rows,
             commands::get_highlight,

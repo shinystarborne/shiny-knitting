@@ -36,6 +36,7 @@ import { ReaderView, type Layout } from "./reader/reader";
 import { CheatsheetsView } from "./views/cheatsheets";
 import { MasterclassesView } from "./views/masterclasses";
 import { RavelryView } from "./views/ravelry";
+import { HIDDEN_TABS_EVENT, TABS, hiddenTabs, type Tab } from "./tabs";
 
 /**
  * App shell. A tab bar picks the top-level screen — Patterns, Projects,
@@ -44,8 +45,6 @@ import { RavelryView } from "./views/ravelry";
  * pattern is open.
  * The current layout choice is remembered for the session.
  */
-
-type Tab = "patterns" | "projects" | "people" | "calculators" | "cheatsheets" | "masterclasses" | "ravelry" | "inspiration" | "stash" | "tools" | "wishlist" | "shops";
 
 const GEAR = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.03 7.03 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0-.05.94c0 .32.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54a7.03 7.03 0 0 0 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>`;
 class App {
@@ -94,18 +93,7 @@ class App {
     this.tabBar = document.createElement("nav");
     this.tabBar.className = "tab-bar";
     this.tabBar.innerHTML = `
-      <button class="tab active" data-tab="patterns">Patterns</button>
-      <button class="tab" data-tab="projects">Projects</button>
-      <button class="tab" data-tab="people">People</button>
-      <button class="tab" data-tab="calculators">Constructors</button>
-      <button class="tab" data-tab="cheatsheets">Cheatsheets</button>
-      <button class="tab" data-tab="masterclasses">Masterclasses</button>
-      <button class="tab" data-tab="ravelry">Ravelry</button>
-      <button class="tab" data-tab="inspiration">Inspiration</button>
-      <button class="tab" data-tab="stash">Stash</button>
-      <button class="tab" data-tab="tools">Needles &amp; hooks</button>
-      <button class="tab" data-tab="wishlist">Wishlist</button>
-      <button class="tab" data-tab="shops">Shops</button>
+      ${TABS.map((t) => `<button class="tab${t.tab === "patterns" ? " active" : ""}" data-tab="${t.tab}">${escapeText(t.label)}</button>`).join("")}
       <span class="tab-spacer"></span>
       <button class="timer-pill" data-act="timer" hidden title="Knitting being timed: open its project"></button>
       <button class="timer-stop" data-act="timer-pause" hidden title="Pause: a break, the same sitting after it" aria-label="Pause the timer">⏸</button>
@@ -159,36 +147,12 @@ class App {
       }
       const tab = closestEl(e.target, "button[data-tab]");
       if (!tab) return;
-      if (tab.dataset.tab === "inspiration") {
-        void this.showInspiration();
-      } else if (tab.dataset.tab === "stash") {
-        void this.showStash();
-      } else if (tab.dataset.tab === "tools") {
-        void this.showTools();
-      } else if (tab.dataset.tab === "wishlist") {
-        void this.showWishlist();
-      } else if (tab.dataset.tab === "shops") {
-        void this.showShops();
-      } else if (tab.dataset.tab === "people") {
-        void this.showPeople();
-      } else if (tab.dataset.tab === "calculators") {
-        leaveProject();
-        void this.showCalculators();
-      } else if (tab.dataset.tab === "cheatsheets") {
-        void this.showCheatsheets();
-      } else if (tab.dataset.tab === "masterclasses") {
-        void this.showMasterclasses();
-      } else if (tab.dataset.tab === "ravelry") {
-        void this.showRavelry();
-      } else if (tab.dataset.tab === "projects") {
-        void this.showProjects();
-      } else {
-        void this.showLibrary();
-      }
+      void this.showTab(tab.dataset.tab as Tab);
     });
 
     // Reading events bubble up from whichever view is on screen.
-    this.screen.addEventListener("navigate-back", () => void this.showLibrary());
+    // Back from a pattern: to the library, or the first tab while Patterns is hidden.
+    this.screen.addEventListener("navigate-back", () => void this.showTab(this.hidden.has("patterns") ? this.firstTab() : "patterns"));
     this.screen.addEventListener("change-layout", (e) => {
       this.layout = (e as CustomEvent<Layout>).detail;
       // Re-render the reader in the new layout rather than dropping back to
@@ -312,7 +276,8 @@ class App {
       }
     });
 
-    await this.showLibrary();
+    await this.applyHiddenTabs();
+    await this.showTab(this.firstTab());
     // The update check runs once the library is up, and again every hour
     // while the app is open, so a release made meanwhile still shows. It
     // never blocks anything, and a failure says nothing.
@@ -526,6 +491,39 @@ class App {
   /** Marks the tab that owns the current screen; the reader counts as Patterns. */
   /** The tab on screen, so a dialog saved over it can bring it up to date. */
   private currentTab: Tab = "patterns";
+
+  /** The tabs hidden in Settings: not in the tab bar, and nothing from them added to a board. */
+  private hidden = new Set<Tab>();
+
+  /** Reads which tabs are hidden and takes them out of the tab bar. */
+  private async applyHiddenTabs(): Promise<void> {
+    this.hidden = await hiddenTabs();
+    for (const tab of this.tabBar.querySelectorAll<HTMLElement>(".tab")) {
+      tab.hidden = this.hidden.has(tab.dataset.tab as Tab);
+    }
+  }
+
+  /** The tab the app opens on: Patterns, or the first one not hidden. */
+  private firstTab(): Tab {
+    return TABS.find((t) => !this.hidden.has(t.tab))?.tab ?? "patterns";
+  }
+
+  private async showTab(tab: Tab): Promise<void> {
+    if (tab === "inspiration") await this.showInspiration();
+    else if (tab === "stash") await this.showStash();
+    else if (tab === "tools") await this.showTools();
+    else if (tab === "wishlist") await this.showWishlist();
+    else if (tab === "shops") await this.showShops();
+    else if (tab === "people") await this.showPeople();
+    else if (tab === "calculators") {
+      leaveProject();
+      await this.showCalculators();
+    } else if (tab === "cheatsheets") await this.showCheatsheets();
+    else if (tab === "masterclasses") await this.showMasterclasses();
+    else if (tab === "ravelry") await this.showRavelry();
+    else if (tab === "projects") await this.showProjects();
+    else await this.showLibrary();
+  }
 
   private setActiveTab(name: Tab): void {
     this.currentTab = name;
@@ -975,7 +973,12 @@ class App {
     // A missing setting (an older backend, or the harness) shows both.
     const needleSizeDisplay = await api.getNeedleSizeDisplay().catch(() => "both" as const);
     const measureUnit = await api.getMeasureUnit().catch(() => "cm" as const);
-    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, needleSizeDisplay, measureUnit, () => {
+    const dialog = new SettingsDialog(this.freshModal(), settings, updateSettings, needleSizeDisplay, measureUnit, async () => {
+      // The tab bar first, and a board's toolbar with it. The tab on screen,
+      // hidden now, gives way to the first one shown; a pattern open stays.
+      await this.applyHiddenTabs();
+      document.dispatchEvent(new CustomEvent(HIDDEN_TABS_EVENT));
+      if (this.hidden.has(this.currentTab) && !this.activeReader) return void this.showTab(this.firstTab());
       // The screens that show a setting read it on mount; a reload picks up
       // the new values. Elsewhere nothing shows them, so the screen is left.
       if (this.activeLibrary) void this.showLibrary();

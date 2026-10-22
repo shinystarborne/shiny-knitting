@@ -272,6 +272,9 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 .weight-scale .check.unused:hover { opacity: 0.8; }
 .check input { flex: none; }
 
+/* Settings' tabs, a box each, in rows of three. */
+.settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; margin-bottom: 8px; }
+
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-btn {
   padding: 3px 9px;
@@ -2541,6 +2544,9 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 }
 .board-tools button span { font-size: 10px; color: var(--text-dim); }
 .board-tools button:hover { background: var(--bg-input); border-color: var(--border); }
+/* From a tab hidden in Settings: greyed, and says why when clicked. */
+.board-tools button.tab-hidden { opacity: 0.35; cursor: help; }
+.board-tools button.tab-hidden:hover { background: transparent; border-color: transparent; opacity: 0.55; }
 .board-zoom {
   position: absolute;
   right: 14px;

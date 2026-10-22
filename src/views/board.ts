@@ -13,6 +13,7 @@ import { playerHtml } from "./masterclasses";
 import { countStep, nowAt, progress, readStepList, tick, type StepList } from "./steps";
 import { clock, hoursText, isPaused, sessionMs, totalMs } from "./knit-time";
 import { noteActivity } from "../auto-timer";
+import { HIDDEN_TABS_EVENT, hiddenTabs, tabLabel, type Tab } from "../tabs";
 import { decimalSign, display as sumDisplay, emptySum, expression as sumExpression, keyOf as sumKeyOf, press as sumPress, type SumState } from "./sums";
 
 /**
@@ -129,19 +130,20 @@ export interface BoardOptions {
   emptyHint?: string;
 }
 
-const TOOLBAR: { kind: BoardKind; html: string }[] = [
+/** What the toolbar offers, and the tab each comes from: hidden in Settings, nothing is added from it. */
+const TOOLBAR: { kind: BoardKind; html: string; tab?: Tab }[] = [
   { kind: "note", html: `<button data-add="note" title="A sticky note">🗒<span>Note</span></button>` },
   { kind: "text", html: `<button data-add="text" title="Words on the board">T<span>Text</span></button>` },
   { kind: "link", html: `<button data-add="link" title="A web address">🔗<span>Link</span></button>` },
   { kind: "image", html: `<button data-add="image" title="A picture: choose one, paste it with Ctrl+V, or drop it on the board">🖼<span>Picture</span></button>` },
-  { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>` },
-  { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>` },
-  { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>` },
+  { kind: "pattern", html: `<button data-add="pattern" title="A pattern from the library">📄<span>Pattern</span></button>`, tab: "patterns" },
+  { kind: "yarn", html: `<button data-add="yarn" title="A yarn from the stash">🧶<span>Yarn</span></button>`, tab: "stash" },
+  { kind: "tool", html: `<button data-add="tool" title="A needle, hook or cable">🪡<span>Needle</span></button>`, tab: "tools" },
   { kind: "swatch", html: `<button data-add="swatch" title="A colour">🎨<span>Colour</span></button>` },
   { kind: "log", html: `<button data-add="log" title="The project's log, kept up to date, to read and write in on the board">📓<span>Log</span></button>` },
-  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>` },
-  { kind: "chart", html: `<button data-add="chart" title="A chart from Constructors, drawn on the board as it is now">▦<span>Chart</span></button>` },
-  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>` },
+  { kind: "video", html: `<button data-add="video" title="A video from the Masterclasses, playing on the board">🎬<span>Video</span></button>`, tab: "masterclasses" },
+  { kind: "chart", html: `<button data-add="chart" title="A chart from Constructors, drawn on the board as it is now">▦<span>Chart</span></button>`, tab: "calculators" },
+  { kind: "sheet", html: `<button data-add="sheet" title="A page kept in Cheatsheets, shown on the board">📋<span>Cheatsheet</span></button>`, tab: "cheatsheets" },
   { kind: "counter", html: `<button data-add="counter" title="The row counter for the project's pattern, on the board">🔢<span>Counter</span></button>` },
   { kind: "timer", html: `<button data-add="timer" title="The knitting timer, big: started by counting a row, if you like">⏱<span>Timer</span></button>` },
   { kind: "calc", html: `<button data-add="calc" title="A calculator: + − × ÷, for the sums as you knit">🧮<span>Calculator</span></button>` },
@@ -231,8 +233,8 @@ export class Board {
     this.root.innerHTML = `
       <div class="board-world"></div>
       <div class="board-tools" role="toolbar" aria-label="Add to the board">
-        ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => t.html).join("")}
-        ${this.hooks.openCalculator ? `<button data-act="calculator" title="A constructor -- a raglan, a yoke, socks… -- its result saved to this board">📐<span>Constructors</span></button>` : ""}
+        ${TOOLBAR.filter((t) => !this.options.kinds || this.options.kinds.includes(t.kind)).map((t) => (t.tab ? t.html.replace("<button ", `<button data-tab="${t.tab}" `) : t.html)).join("")}
+        ${this.hooks.openCalculator ? `<button data-act="calculator" data-tab="calculators" title="A constructor -- a raglan, a yoke, socks… -- its result saved to this board">📐<span>Constructors</span></button>` : ""}
       </div>
       <div class="board-zoom">
         <button data-act="zoom-out" title="Zoom out">−</button>
@@ -245,6 +247,10 @@ export class Board {
     this.host.appendChild(this.root);
     this.world = this.root.querySelector(".board-world")!;
     this.bind();
+    await this.markHiddenTabs();
+    const onTabs = () => void this.markHiddenTabs();
+    document.addEventListener(HIDDEN_TABS_EVENT, onTabs);
+    this.teardown.push(() => document.removeEventListener(HIDDEN_TABS_EVENT, onTabs));
     this.teardown.push(() => this.fitter.disconnect());
 
     [this.items, this.patterns, this.yarns, this.tools, this.logEntries, this.charts] = await Promise.all([
@@ -613,9 +619,29 @@ export class Board {
     }
   }
 
+  /**
+   * Greys out what the toolbar would bring from a tab hidden in Settings,
+   * saying why on the button; shown again, it is as it was.
+   */
+  private async markHiddenTabs(): Promise<void> {
+    const hidden = await hiddenTabs();
+    for (const btn of this.root.querySelectorAll<HTMLButtonElement>(".board-tools button[data-tab]")) {
+      const tab = btn.dataset.tab as Tab;
+      const off = hidden.has(tab);
+      btn.dataset.title ??= btn.title;
+      btn.classList.toggle("tab-hidden", off);
+      btn.setAttribute("aria-disabled", String(off));
+      btn.title = off ? `${tabLabel(tab)} is hidden in Settings: show the tab there to add from it` : btn.dataset.title;
+    }
+  }
+
   private async onClick(e: MouseEvent): Promise<void> {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button");
     if (!btn) return;
+    if (btn.classList.contains("tab-hidden")) {
+      const tab = tabLabel(btn.dataset.tab as Tab);
+      return void (await say(`${tab} is hidden, so nothing can be added from it. Show it again in Settings (the gear), under Tabs.`, tab));
+    }
     const add = btn.dataset.add as BoardKind | undefined;
     if (add) return void (await this.addFromToolbar(add));
     const act = btn.dataset.act;
