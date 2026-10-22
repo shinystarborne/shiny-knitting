@@ -4376,3 +4376,50 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .board-item.kind-chartpic { display: flex; flex-direction: column; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
 .board-item.kind-chartpic .board-chart-bar { padding-right: 36px; cursor: grab; }
 .board-chartpic { flex: 1; min-height: 0; margin: 4px; background: center / contain no-repeat; }
+
+/*
+  Crochet diagrams, in Constructors: the rounds or rows written on the left,
+  drawn on the right as they are typed, black on white as a chart is printed.
+*/
+.crochet-host { min-height: 100%; }
+.crochet-list h2 .hint { font-size: 13px; font-weight: 400; margin-left: 6px; }
+.crochet-new { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+.crochet-grid { display: grid; grid-template-columns: repeat(auto-fill, 220px); gap: 14px; }
+.crochet-card { display: flex; flex-direction: column; height: 290px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color 0.12s ease, transform 0.12s ease; }
+.crochet-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.crochet-thumb { flex: none; height: 180px; background: #fff; display: grid; place-items: center; padding: 6px; }
+.crochet-thumb svg, .board-crochet svg, .crochet-drawing svg { width: 100%; height: 100%; display: block; }
+.crochet-card-body { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; cursor: default; }
+.crochet-card-body strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crochet-card .card-tools-row { margin-top: auto; }
+.crochet-card .spacer, .crochet-actions .spacer { flex: 1; }
+.crochet-editor { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.crochet-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.crochet-name { flex: 1 1 200px; min-width: 0; width: auto; font-size: 16px; font-weight: 600; }
+.crochet-bar select { width: auto; flex: none; }
+.crochet-bar [data-el="saved"] { flex-basis: 100%; }
+.crochet-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; }
+.crochet-rows { overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 10px; }
+.crochet-rows ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.crochet-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.crochet-row-head .hint { flex: 1; font-size: 12px; }
+.crochet-row-head button { padding: 0 6px; font-size: 12px; }
+.crochet-row textarea { width: 100%; resize: vertical; font: 13px/1.4 ui-monospace, Consolas, monospace; }
+.crochet-row .form-error { margin: 4px 0 0; font-size: 12px; }
+.crochet-help ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.crochet-help code { font-size: 11px; }
+.crochet-view { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.crochet-drawing { height: min(62vh, 640px); min-height: 260px; background: #fff; border-radius: 10px; padding: 8px; display: grid; place-items: center; }
+.crochet-drawing .hint { color: #555; }
+.crochet-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-dim); }
+.crochet-key { display: inline-flex; align-items: center; gap: 6px; }
+.crochet-key svg { width: 14px; height: 22px; color: var(--text); }
+.crochet-key svg line, .crochet-key svg ellipse, .crochet-key svg circle { stroke: currentColor; stroke-width: 1.3; fill: none; }
+.crochet-key svg .fill { fill: currentColor; stroke: none; }
+.crochet-key b { color: var(--text); }
+.crochet-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.crochet-actions .field { margin: 0; }
+/* One on a board: moved by its bar, drawn as big as the card lets it. */
+.board-item.kind-crochet { display: flex; flex-direction: column; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.board-item.kind-crochet .board-chart-bar { padding-right: 36px; cursor: grab; }
+.board-crochet { flex: 1; min-height: 0; padding: 4px; }

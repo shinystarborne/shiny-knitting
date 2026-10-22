@@ -7,13 +7,14 @@ import { drawRing } from "./chart-draw";
 import { gaugeOf, gaugeSpan, latestValue, readGauge, readLength, showGauge, showLength, unitLabel } from "./measure";
 import { longDate } from "./project-form";
 import { ChartList } from "./charts";
+import { CrochetDiagrams } from "./crochet-diagrams";
 import { familyByMetres, grouped, weightLabel } from "./yarn-weight";
 import { familyByGauge, inYarn, metresForArea, socksArea, stashFor, sweaterArea } from "./yarn-need";
 import { figureCaption, measureFigure } from "./measure-figures";
 import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
 import { stepList } from "./steps";
 
-type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts";
+type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts" | "crochet";
 
 const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "raglan", label: "Raglan sweater", hint: "Top-down, bottom-up, or a cardigan" },
@@ -24,6 +25,7 @@ const CALCS: { key: Calc; label: string; hint: string }[] = [
   { key: "regauge", label: "Re-gauge a pattern", hint: "Its gauge, and yours" },
   { key: "held", label: "Yarns held together", hint: "Two strands or more, as one yarn" },
   { key: "charts", label: "Charts", hint: "Colourwork or lace, or a round yoke's" },
+  { key: "crochet", label: "Crochet diagrams", hint: "Rounds or rows, drawn in crochet symbols" },
 ];
 
 /** A round yoke's depth over the armhole's, in cm: it covers the shoulders too. */
@@ -296,6 +298,11 @@ export class CalculatorsView {
     if (calc === "charts") {
       this.main.innerHTML = "";
       void new ChartList(this.main).mount();
+    }
+    if (calc === "crochet") {
+      // A host of its own: its listeners go with it when another constructor is chosen.
+      this.main.innerHTML = `<div class="crochet-host"></div>`;
+      void new CrochetDiagrams(this.main.firstElementChild as HTMLElement, kept.forProject).mount();
     }
     this.calculate();
   }

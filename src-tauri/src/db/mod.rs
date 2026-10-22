@@ -849,6 +849,8 @@ fn migrate(conn: &Connection) -> AppResult<()> {
     crate::goals::migrate(conn)?;
     // Charts kept as pictures, for knitting or crochet.
     crate::chart_pictures::migrate(conn)?;
+    // Crochet diagrams, as written.
+    crate::crochet::migrate(conn)?;
     // A project's own hour's worth, when not the standard.
     if !column_exists(conn, "projects", "hour_rate")? {
         conn.execute("ALTER TABLE projects ADD COLUMN hour_rate REAL", [])?;

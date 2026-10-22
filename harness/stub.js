@@ -11,6 +11,7 @@ import { sizesOf, mmLabel, usLabel } from "../src/views/needle-size";
 
 const store = {
   chartPictures: [],
+  crochet: [],
   patterns: [],
   sections: [],
   progress: new Map(),
@@ -1615,6 +1616,24 @@ const handlers = {
   // As masterclasses.rs, without asking YouTube: a YouTube link is named
   // "A video, <id>" and channel "A channel" unless a name is given, and
   // gets a picture drawn here. A masterclass is its videos, in order.
+  // ---------- crochet diagrams ----------
+  //
+  // As crochet.rs: a known shape and terms; the one changed last first.
+  list_crochet_diagrams: () => clone([...store.crochet].sort((a, b) => b.updatedAt - a.updatedAt || b.seq - a.seq)),
+  save_crochet_diagram: ({ input }) => {
+    if (!["rounds", "rows", "spiral"].includes(input.data?.shape)) throw new Error("A diagram is in rounds, in rows, or along a spiral.");
+    if (!["us", "uk"].includes(input.data?.terms)) throw new Error("A diagram is written in US or UK terms.");
+    if (input.data.rows.length > 200) throw new Error("A diagram has at most 200 rounds or rows.");
+    let d = input.id && store.crochet.find((x) => x.id === input.id);
+    if (!d) store.crochet.push((d = { id: input.id || `crochet-${store.nextId++}`, addedAt: Date.now() }));
+    const name = String(input.name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
+    Object.assign(d, { seq: store.nextId++, name: name || "Untitled diagram", notes: String(input.notes ?? "").trim(), data: { shape: input.data.shape, terms: input.data.terms, rows: input.data.rows.map((r) => String(r).split(/\s+/).filter(Boolean).join(" ")) }, updatedAt: Date.now() });
+    return clone(d);
+  },
+  delete_crochet_diagram: ({ id }) => {
+    store.crochet = store.crochet.filter((x) => x.id !== id);
+  },
+
   // ---------- chart pictures ----------
   //
   // As chart_pictures.rs: the newest first; a craft has to be said; the
@@ -2387,7 +2406,7 @@ const handlers = {
     if (!store.projects.some((x) => x.id === boardId) && !store.inspirationBoards.some((b) => b.id === boardId)) {
       throw new Error("That board is no longer there.");
     }
-    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc", "chartpic"];
+    const kinds = ["note", "text", "link", "image", "pattern", "yarn", "tool", "swatch", "log", "pin", "video", "steps", "chart", "sheet", "timer", "counter", "calc", "chartpic", "crochet"];
     if (input.kind === "log" && !store.projects.some((x) => x.id === boardId)) throw new Error("Only a project's board can show its log.");
     if (!kinds.includes(input.kind)) throw new Error(`A board cannot hold a “${input.kind}”.`);
     const data = input.data ?? {};

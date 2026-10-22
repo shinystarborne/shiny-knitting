@@ -8,6 +8,7 @@ mod charts;
 mod cheatsheets;
 mod commands;
 mod covers;
+mod crochet;
 mod db;
 mod export;
 mod external;
@@ -174,6 +175,9 @@ pub fn run() {
             chart_pictures::replace_chart_picture,
             chart_pictures::get_chart_picture,
             chart_pictures::delete_chart_picture,
+            crochet::list_crochet_diagrams,
+            crochet::save_crochet_diagram,
+            crochet::delete_crochet_diagram,
             guard::app_started,
             update::previous_version,
             projects::list_gallery_photos,

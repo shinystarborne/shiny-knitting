@@ -1,4 +1,4 @@
-import { api, isLive, type BoardItem, type BoardKind, type Chart, type ChartPicture, type Cheatsheet, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
+import { api, isLive, type BoardItem, type BoardKind, type Chart, type ChartPicture, type Cheatsheet, type CrochetDiagram, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn } from "../api";
 import { decode, describe as describeChart, normalize } from "./chart";
 import { SHEET_CARD, drawSheetPages, keepOpen as keepSheetOpen, sheetFrameHtml } from "./cheatsheets";
 import { CanvasPainter, drawChart, sizeCanvas } from "./chart-draw";
@@ -14,6 +14,8 @@ import { countStep, nowAt, progress, readStepList, tick, type StepList } from ".
 import { clock, hoursText, isPaused, sessionMs, totalMs } from "./knit-time";
 import { noteActivity } from "../auto-timer";
 import { HIDDEN_TABS_EVENT, hiddenTabs, tabLabel, type Tab } from "../tabs";
+import { diagramSvg } from "./crochet";
+import { openCrochetDiagram } from "./crochet-diagrams";
 import { decimalSign, display as sumDisplay, emptySum, expression as sumExpression, keyOf as sumKeyOf, press as sumPress, type SumState } from "./sums";
 
 /**
@@ -103,6 +105,7 @@ const SIZES: Record<BoardKind, [number, number]> = {
   counter: [320, 440],
   calc: [280, 420],
   chartpic: [380, 380],
+  crochet: [420, 420],
 };
 
 const NOTE_COLOURS = ["yellow", "pink", "blue", "green", "purple"] as const;
@@ -166,6 +169,7 @@ export const BOARD_CALCULATORS: { key: string; label: string }[] = [
   { key: "evenly", label: "Increase or decrease evenly" },
   { key: "regauge", label: "Re-gauge a pattern" },
   { key: "held", label: "Yarns held together" },
+  { key: "crochet", label: "Crochet diagram" },
 ];
 
 const PROJECT_HINT = `Collect what this project is made of: notes, pictures, links, the pattern, yarn,
@@ -196,6 +200,8 @@ export class Board {
   private sheets: Cheatsheet[] = [];
   /** The Charts tab's pictures, for their cards. */
   private chartPictures: ChartPicture[] = [];
+  /** Constructors' crochet diagrams, for their cards. */
+  private crochet: CrochetDiagram[] = [];
   /** The tabs hidden in Settings: what the toolbar brings from them is not offered. */
   private hidden = new Set<Tab>();
   /** The project's spells of knitting, for its timer card. */
@@ -272,6 +278,7 @@ export class Board {
     ]);
     this.sheets = await api.listCheatsheets().catch(() => [] as Cheatsheet[]);
     this.chartPictures = await api.listChartPictures().catch(() => [] as ChartPicture[]);
+    this.crochet = await api.listCrochetDiagrams().catch(() => [] as CrochetDiagram[]);
     if (this.hooks.project()) {
       this.sessions = await api.listKnitSessions(this.boardId).catch(() => [] as KnitSession[]);
       // Started or stopped anywhere -- the page's side, the tab bar, the counter -- the card follows.
@@ -348,6 +355,7 @@ export class Board {
     ]);
     this.sheets = await api.listCheatsheets().catch(() => this.sheets);
     this.chartPictures = await api.listChartPictures().catch(() => this.chartPictures);
+    this.crochet = await api.listCrochetDiagrams().catch(() => this.crochet);
     await this.refreshLog();
   }
 
@@ -974,6 +982,7 @@ export class Board {
       const drawn = !this.hidden.has("calculators");
       const pictures = !this.hidden.has("charts");
       if (drawn) this.charts = await api.listCharts().catch(() => this.charts);
+      if (drawn) this.crochet = await api.listCrochetDiagrams().catch(() => this.crochet);
       if (pictures) this.chartPictures = await api.listChartPictures().catch(() => this.chartPictures);
       const choices: Choice[] = [
         ...(pictures ? this.chartPictures.map((c) => ({ value: `pic:${c.id}`, label: c.name, group: c.craft === "crochet" ? "Charts: crochet" : "Charts: knitting" })) : []),
@@ -984,12 +993,15 @@ export class Board {
               group: `Drawn in Constructors: ${c.data.kind === "yoke" ? "round yokes" : c.data.kind === "lace" ? "lace" : "colourwork"}`,
             }))
           : []),
+        ...(drawn ? this.crochet.map((c) => ({ value: `crochet:${c.id}`, label: c.name, group: "Drawn in Constructors: crochet" })) : []),
       ];
       const where = [pictures ? "keep a picture of one in the Charts tab" : "", drawn ? "draw one under Constructors → Charts" : ""].filter(Boolean).join(", or ");
       if (!choices.length) return void (await say(`There are no charts yet: ${where}.`, "Add a chart"));
       const id = await askChoice("Which chart?", choices, { title: "Add a chart" });
       const picture = id?.startsWith("pic:") ? this.chartPictures.find((c) => c.id === id.slice(4)) : null;
-      if (picture) {
+      const diagram = id?.startsWith("crochet:") ? this.crochet.find((c) => c.id === id.slice(8)) : null;
+      if (diagram) await this.add("crochet", at, { diagramId: diagram.id });
+      else if (picture) {
         // The card the picture's shape, under its bar.
         const w = 380;
         const h = picture.width && picture.height ? Math.min(900, Math.max(120, Math.round((w * picture.height) / picture.width) + 30)) : SIZES.chartpic[1];
@@ -1206,6 +1218,11 @@ export class Board {
     if (!item) return;
     if ((item.kind === "pattern" || item.kind === "pin") && typeof item.data.patternId === "string") this.hooks.openPattern(item.data.patternId);
     if (item.kind === "chart" && typeof item.data.chartId === "string" && this.charts.some((c) => c.id === item.data.chartId)) this.hooks.openChart?.(item.data.chartId);
+    // A crochet diagram, open in Constructors to change.
+    if (item.kind === "crochet" && typeof item.data.diagramId === "string" && this.crochet.some((c) => c.id === item.data.diagramId)) {
+      openCrochetDiagram(item.data.diagramId);
+      this.hooks.openCalculator?.("crochet");
+    }
     // A chart picture, big: and the board's others after it.
     if (item.kind === "chartpic") {
       const shown = this.items.flatMap((i) => (i.kind === "chartpic" ? this.chartPictures.filter((c) => c.id === i.data.chartPictureId) : []));
@@ -1491,6 +1508,15 @@ export class Board {
           : `<div class="board-caption missing">A chart no longer in Constructors</div>`;
         break;
       }
+      case "crochet": {
+        // A crochet diagram, drawn from it as it is now: moved by its bar.
+        const c = this.crochet.find((x) => x.id === d.diagramId);
+        body = c
+          ? `<div class="board-chart-bar" title="${esc(c.notes || c.name)}"><span>⊛ ${esc(c.name)}</span><button data-act="open" title="Open it in Constructors, to change it">Open ↗</button></div>
+             <div class="board-crochet">${diagramSvg(c.data, c.name)}</div>`
+          : `<div class="board-caption missing">A crochet diagram no longer in Constructors</div>`;
+        break;
+      }
       case "chartpic": {
         // A chart kept as a picture: moved by its bar, the picture as big as the card lets it.
         const c = this.chartPictures.find((x) => x.id === d.chartPictureId);
@@ -1762,6 +1788,7 @@ const KIND_NAMES: Record<BoardKind, string> = {
   counter: "row counter",
   calc: "calculator",
   chartpic: "chart",
+  crochet: "crochet diagram",
 };
 
 /**

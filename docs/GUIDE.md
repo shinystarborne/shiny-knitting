@@ -413,6 +413,44 @@ typed in.
 
 **Copy** takes the result as text; **Save** puts it on a project's board.
 
+### Crochet diagrams
+
+**Crochet diagrams**, last in Constructors, draws crochet charts in the
+standard symbols: chain, slip stitch, single crochet, half double, double,
+treble, double treble and picot. You don't draw them stitch by stitch. You
+write each round or row the way a pattern does, and it is drawn as you type.
+
+Start one **In rounds** (from a ring: a circle, a granny square, a flower),
+**In rows** (back and forth, turned at each end) or **Along a spiral** (a
+strip whose first row is a spiral chain and whose rows after are worked back
+along it, as a crochet rose is). Each starts with an example to change.
+
+Write one round or row to a box, its stitches with commas between:
+
+- `ch 3, 11 dc in ring, sl st to join`. A number before a stitch makes that
+  many, one in each stitch: `3 sc`.
+- Into one stitch, a fan or shell: `5 dc in next`, or brackets:
+  `(3 dc, ch 2, 3 dc) in next sp`.
+- Repeats between stars: `*sc, ch 3, sk 1* x 6`, or `around` / `across` to the
+  end. `2 sc in each st around` works too.
+- `in same st` goes into the stitch just worked, `in next sp` under the next
+  chains, and `sk 2` leaves two.
+
+Each stitch is worked into the stitches of the round or row before. Increases
+spread out round a bigger circle, fans lean along the row, and chain loops
+arch out. Each round or row is numbered, and the first is marked with an arrow
+the way it goes. Beside each box is how many stitches and chains it makes. A
+word it doesn't know is pointed out under its box, and the rest is still drawn.
+
+**US or UK terms**: `dc` is a different stitch in each, so choose the terms
+your pattern uses. The legend under the drawing names each stitch in them.
+Everything is kept as you write.
+
+**Put it there** puts the diagram on a project's board, and **Save as
+picture…** saves it as a PNG to print. On a board, **Chart** offers the
+diagrams too, under **Drawn in Constructors: crochet**. They are drawn as they
+are now, and **Open ↗** opens one in Constructors to change it.
+
 ## Charts
 
 The **Charts** tab keeps the charts you knit or crochet from as pictures:

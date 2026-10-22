@@ -922,6 +922,16 @@ export interface ChartPictureInput {
   notes: string;
 }
 
+/** A crochet diagram, as written. Mirrors `crochet.rs::CrochetDiagram`; drawn by views/crochet.ts. */
+export interface CrochetDiagram {
+  id: string;
+  name: string;
+  notes: string;
+  data: { shape: "rounds" | "rows" | "spiral"; terms: "us" | "uk"; rows: string[] };
+  addedAt: number;
+  updatedAt: number;
+}
+
 /** A goal for a year, in Statistics. Mirrors `goals.rs::Goal`. */
 export interface Goal {
   id: string;
@@ -989,7 +999,7 @@ export interface ProjectInput {
 /** What can go on a board, a project's or an inspiration board. */
 /** "pin" is a picture of a pattern's pin, with `{ patternId, page, title }`. */
 /** "video" is a masterclass's video playing, with `{ masterclassId, partId, videoId, title, url }`; "steps" a calculator's steps as a checklist (views/steps.ts); "chart" one of the charts, `{ chartId }`, drawn as it is now; "sheet" one of the Cheatsheets, `{ sheetId }`, shown as it is kept; "timer" the project's knitting timer, `{ auto }`: kept by the row counter unless false (auto-timer.ts); "counter" the project's row counter, its only place on the page, put there if wanted; "calc" a plain calculator, `{ tape }` its last sums (views/sums.ts). */
-export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter" | "calc" | "chartpic";
+export type BoardKind = "note" | "text" | "link" | "image" | "pattern" | "yarn" | "tool" | "swatch" | "log" | "pin" | "video" | "steps" | "chart" | "sheet" | "timer" | "counter" | "calc" | "chartpic" | "crochet";
 
 /** One thing on a board. Mirrors `models.rs::BoardItem`. */
 export interface BoardItem {
@@ -1651,6 +1661,11 @@ export const api = {
     invoke<ChartPicture>("replace_chart_picture", bytes, { headers: { "x-id": encodeURIComponent(id), "x-size": `${size.width}x${size.height}` } }),
   getChartPicture: (id: string) => invoke<ArrayBuffer | ArrayBufferView>("get_chart_picture", { id }),
   deleteChartPicture: (id: string) => invoke<void>("delete_chart_picture", { id }),
+  /** Crochet diagrams, the one changed last first. */
+  listCrochetDiagrams: () => invoke<CrochetDiagram[]>("list_crochet_diagrams"),
+  /** A new diagram (no id), or the one with that id changed. */
+  saveCrochetDiagram: (input: { id: string | null; name: string; notes: string; data: CrochetDiagram["data"] }) => invoke<CrochetDiagram>("save_crochet_diagram", { input }),
+  deleteCrochetDiagram: (id: string) => invoke<void>("delete_crochet_diagram", { id }),
   /** Goals for a year, every year's. */
   listGoals: () => invoke<Goal[]>("list_goals"),
   saveGoal: (input: { id: string | null; year: number; kind: Goal["kind"]; label: string; target: number }) => invoke<Goal>("save_goal", { input }),
