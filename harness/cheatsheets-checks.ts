@@ -158,11 +158,17 @@ export async function verifyCheatsheets() {
     await waitFor(() => /Gauge, all sizes/.test(items()[1]?.textContent ?? ""), "moved down");
     check(results, "↓ moves it down the list, and it stays open", items()[1].classList.contains("on"));
 
-    // Remembered, leaving the tab.
+    // Its page has the way back to the cards; the tab comes back to them.
+    check(results, "open, it is on a page of its own: the cards hidden, the way back to them", view()!.classList.contains("sheet-open") && !!act("back"));
+    act("back")!.click();
+    await waitFor(() => !view()!.classList.contains("sheet-open"), "the cards");
+    check(results, "← Cheatsheets goes back to the cards, the glossaries first", !items().some((i) => i.classList.contains("on")) && view()!.querySelector(".sheet-item")?.getAttribute("data-sheet") === "abbreviations");
+    items()[1].click();
+    await waitFor(() => view()!.classList.contains("sheet-open"), "it open again");
     tab("projects");
     tab("cheatsheets");
     await waitFor(() => !!view() && items().length === 4, "the tab again");
-    check(results, "the one open is remembered, leaving the tab and coming back", items()[1].classList.contains("on") && /Gauge, all sizes/.test(items()[1].textContent ?? ""));
+    check(results, "the tab opens on its cards, whatever was open", !view()!.classList.contains("sheet-open") && /Gauge, all sizes/.test(items()[1].textContent ?? ""));
 
     // Kept from the reader.
     tab("patterns");
@@ -209,11 +215,13 @@ export async function verifyCheatsheets() {
 
     tab("cheatsheets");
     await waitFor(() => !!view() && items().length === 6, "the tab again");
+    items()[0].click();
+    await waitFor(() => !!act("remove"), "one open");
     act("remove")!.click();
     await waitFor(() => !!dialog(), "the question");
     dialog()!.querySelector<HTMLElement>("button.primary, button.danger")!.click();
     await waitFor(() => items().length === 5, "one fewer");
-    check(results, "Remove takes it out, the next one open", !!view()!.querySelector(".sheet-item.on"));
+    check(results, "Remove takes it out, back to the cards", !view()!.classList.contains("sheet-open"));
 
     // Searched: by name, by the book it is from, the glossaries by theirs.
     const search = view()!.querySelector<HTMLInputElement>('[data-f="search"]')!;

@@ -9,15 +9,21 @@ import { symbolSvg } from "./stitches";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-/** The one open, remembered after. */
+/**
+ * The one to open, once: asked for from elsewhere -- a board's card, the
+ * book being read -- the tab opens on it; otherwise on its cards.
+ */
 function readOpen(): string {
   try {
-    return localStorage.getItem("cheatsheets:open") ?? "";
+    const id = localStorage.getItem("cheatsheets:open") ?? "";
+    localStorage.removeItem("cheatsheets:open");
+    return id;
   } catch {
     return "";
   }
 }
 
+/** Opens the tab on this one, the next time it is shown. */
 export function keepOpen(id: string): void {
   try {
     localStorage.setItem("cheatsheets:open", id);
@@ -40,8 +46,9 @@ export const SHEET_CARD: [number, number] = [420, 540];
 const MIN_BOX_PX = 12;
 
 /**
- * The Cheatsheets tab: what is kept to look things up in, listed down the
- * side and open beside the list. A page online is shown in a frame where the
+ * The Cheatsheets tab: what is kept to look things up in, a card for each,
+ * the glossaries first; a card clicked opens it on a page of its own, with
+ * the way back to the cards. A page online is shown in a frame where the
  * site allows it, and otherwise opens in a window of its own; pages of a PDF
  * are drawn from the book's own file, sharp at any size; an EPUB's chapter is
  * the copy kept of it.
@@ -89,9 +96,18 @@ export class CheatsheetsView {
       this.paintList();
     });
     [this.sheets, this.patterns] = await Promise.all([api.listCheatsheets().catch(() => [] as Cheatsheet[]), api.listPatterns({}).catch(() => [] as Pattern[])]);
-    if (this.openId !== ABBREVIATIONS && this.openId !== SYMBOLS && !this.sheets.some((s) => s.id === this.openId)) this.openId = this.sheets[0]?.id ?? "";
+    if (this.openId !== ABBREVIATIONS && this.openId !== SYMBOLS && !this.sheets.some((s) => s.id === this.openId)) this.openId = "";
     this.paintList();
     await this.paintView();
+  }
+
+  /** Opens one on its page, or none: the cards. */
+  private async show(id: string): Promise<void> {
+    this.cropping = false;
+    this.openId = id;
+    this.paintList();
+    await this.paintView();
+    this.root.querySelector(".lib-body")?.scrollTo?.({ top: 0 });
   }
 
   destroy(): void {
@@ -137,13 +153,13 @@ export class CheatsheetsView {
     const abbreviations = this.matches("Abbreviations ssk, k2tog, w&t… and your own glossary")
       ? `<button class="sheet-item${this.openId === ABBREVIATIONS ? " on" : ""}" data-sheet="${ABBREVIATIONS}" title="What ssk, k2tog or w&amp;t means">
         <span class="sheet-kind" aria-hidden="true">🔤</span>
-        <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and your own</span></span>
+        <span class="sheet-text"><b>Abbreviations</b><span>ssk, k2tog, w&amp;t… and your own</span><em>A glossary, yours added to it</em></span>
       </button>`
       : "";
     const symbols = this.matches("Chart symbols yo, k2tog, ssk… as charts draw them glossary")
       ? `<button class="sheet-item${this.openId === SYMBOLS ? " on" : ""}" data-sheet="${SYMBOLS}" title="What each square of a chart means">
-        <span class="sheet-kind" aria-hidden="true">${symbolSvg("k2tog", 18)}</span>
-        <span class="sheet-text"><b>Chart symbols</b><span>yo, k2tog, ssk… as charts draw them</span></span>
+        <span class="sheet-kind" aria-hidden="true">${symbolSvg("k2tog", 30)}</span>
+        <span class="sheet-text"><b>Chart symbols</b><span>yo, k2tog, ssk… as charts draw them</span><em>What each square of a chart means</em></span>
       </button>`
       : "";
     // Found by its name, its note, and where it is from: the book or the site.
@@ -154,11 +170,19 @@ export class CheatsheetsView {
             (s) => `
           <button class="sheet-item${s.id === this.openId ? " on" : ""}" data-sheet="${esc(s.id)}" title="${esc(s.title)}">
             <span class="sheet-kind" aria-hidden="true">${s.kind === "web" ? "🌐" : "📖"}</span>
-            <span class="sheet-text"><b>${esc(s.title)}</b><span>${esc(this.source(s))}</span></span>
+            <span class="sheet-text"><b>${esc(s.title)}</b><span>${esc(this.source(s))}</span>${s.notes ? `<em>${esc(s.notes)}</em>` : ""}</span>
           </button>`,
           )
           .join("")
-      : `<p class="hint sheet-none">${this.sheets.length ? "Nothing matches the search." : "Nothing kept yet."}</p>`);
+      : this.sheets.length
+        ? `<p class="hint sheet-none">Nothing matches the search.</p>`
+        : `<div class="empty sheet-none">
+            <h2>No cheatsheets yet</h2>
+            <p>Keep what you look things up in while knitting: a web page (a tutorial, a table of yarn weights, a video), or pages from a book in the library.</p>
+            <p class="hint">In a book you are reading, <b>Cheatsheet…</b> keeps the page you are on.</p>
+          </div>`);
+    // The cards, or the one open on its page.
+    this.root.classList.toggle("sheet-open", !!this.openId);
   }
 
   // ---------- the one open ----------
@@ -166,24 +190,16 @@ export class CheatsheetsView {
   private async paintView(): Promise<void> {
     this.drawToken++;
     const view = this.root.querySelector<HTMLElement>('[data-el="view"]')!;
-    if (this.openId === ABBREVIATIONS) {
-      view.innerHTML = "";
-      await new AbbreviationsPanel(view).mount();
-      return;
-    }
-    if (this.openId === SYMBOLS) {
-      view.innerHTML = "";
-      await new SymbolsPanel(view).mount();
+    const back = `<button class="ghost sheet-back" data-act="back" title="All the cheatsheets">← Cheatsheets</button>`;
+    if (this.openId === ABBREVIATIONS || this.openId === SYMBOLS) {
+      view.innerHTML = `${back}<div class="sheet-panel"></div>`;
+      const panel = view.querySelector<HTMLElement>(".sheet-panel")!;
+      await (this.openId === ABBREVIATIONS ? new AbbreviationsPanel(panel) : new SymbolsPanel(panel)).mount();
       return;
     }
     const s = this.sheet();
     if (!s) {
-      view.innerHTML = `
-        <div class="empty">
-          <h2>No cheatsheets yet</h2>
-          <p>Keep what you look things up in while knitting: a web page (a tutorial, a table of yarn weights, a video), or pages from a book in the library.</p>
-          <p class="hint">In a book you are reading, <b>Cheatsheet…</b> keeps the page you are on.</p>
-        </div>`;
+      view.innerHTML = "";
       return;
     }
     const at = this.sheets.indexOf(s);
@@ -191,6 +207,7 @@ export class CheatsheetsView {
     const book = this.book(s);
     view.innerHTML = `
       <header class="sheet-head">
+        ${back}
         <input class="sheet-title" data-f="title" value="${esc(s.title)}" aria-label="Its name" maxlength="200" />
         <span class="hint sheet-source">${esc(this.source(s))}</span>
         <span class="sheet-tools">
@@ -295,15 +312,10 @@ export class CheatsheetsView {
 
   private async onClick(e: MouseEvent): Promise<void> {
     const item = closestEl(e.target, "[data-sheet]");
-    if (item) {
-      this.cropping = false;
-      this.openId = item.dataset.sheet!;
-      keepOpen(this.openId);
-      this.paintList();
-      return void (await this.paintView());
-    }
+    if (item) return void (await this.show(item.dataset.sheet!));
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
     if (!act) return;
+    if (act === "back") return void (await this.show(""));
     if (act === "add-web") return this.addWeb();
     if (act === "add-pages") return this.addPages();
     const s = this.sheet();
@@ -343,12 +355,9 @@ export class CheatsheetsView {
       if (act === "remove") {
         if (!(await askYesNo(`Remove the cheatsheet “${s.title}”?${s.kind === "pages" ? " The book stays in the library." : ""}`, { title: "Remove cheatsheet", okLabel: "Remove", danger: true }))) return;
         await api.deleteCheatsheet(s.id);
-        const at = this.sheets.indexOf(s);
         this.sheets = this.sheets.filter((x) => x.id !== s.id);
-        this.openId = this.sheets[Math.min(at, this.sheets.length - 1)]?.id ?? "";
-        keepOpen(this.openId);
-        this.paintList();
-        await this.paintView();
+        // Back to the cards.
+        await this.show("");
       }
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Cheatsheet");
@@ -381,10 +390,7 @@ export class CheatsheetsView {
     this.search = "";
     const search = this.root.querySelector<HTMLInputElement>('[data-f="search"]');
     if (search) search.value = "";
-    this.openId = s.id;
-    keepOpen(s.id);
-    this.paintList();
-    await this.paintView();
+    await this.show(s.id);
   }
 
   private async addWeb(): Promise<void> {

@@ -4,20 +4,14 @@ import { askForm, askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { mountPatternPicker } from "./pattern-picker";
 
-/** The one open, remembered after. */
+/** The one to open, once: the tab otherwise opens on its cards. */
 function readOpen(): string {
   try {
-    return localStorage.getItem("masterclasses:open") ?? "";
+    const id = localStorage.getItem("masterclasses:open") ?? "";
+    localStorage.removeItem("masterclasses:open");
+    return id;
   } catch {
     return "";
-  }
-}
-
-function keepOpen(id: string): void {
-  try {
-    localStorage.setItem("masterclasses:open", id);
-  } catch {
-    // Remembered for this run only.
   }
 }
 
@@ -61,8 +55,8 @@ export function partsSummary(m: Masterclass): string {
 
 /**
  * The Masterclasses tab: what is kept to learn from, each its videos -- one,
- * or several in order, a course or a knit-along -- listed down the side with
- * their pictures, the one open beside them: its video played here, or in
+ * or several in order, a course or a knit-along -- a card for each with its
+ * picture; a card clicked opens it on a page of its own: its video played here, or in
  * the browser or a window of its own; its videos, watched or not; notes, and
  * the projects knitted along with it, a new one started from it.
  */
@@ -109,9 +103,17 @@ export class MasterclassesView {
       api.listProjects().catch(() => [] as Project[]),
       api.listPatterns({}).catch(() => [] as Pattern[]),
     ]);
-    if (!this.classes.some((m) => m.id === this.openId)) this.openId = this.classes[0]?.id ?? "";
+    if (!this.classes.some((m) => m.id === this.openId)) this.openId = "";
     this.paintList();
     this.paintView();
+  }
+
+  /** Opens one on its page, or none: the cards. */
+  private show(id: string): void {
+    this.openId = id;
+    this.paintList();
+    this.paintView();
+    this.root.querySelector(".lib-body")?.scrollTo?.({ top: 0 });
   }
 
   destroy(): void {
@@ -148,12 +150,20 @@ export class MasterclassesView {
             return `
           <button class="sheet-item mc-item${m.id === this.openId ? " on" : ""}" data-class="${esc(m.id)}" title="${esc(m.title)}">
             <span class="mc-thumb" data-thumb="${pic ? esc(pic.id) : ""}" aria-hidden="true">${pic ? "" : "▶"}${m.parts.length > 1 ? `<i class="mc-count">${m.parts.length}</i>` : ""}</span>
-            <span class="sheet-text"><b>${esc(m.title)}</b><span>${esc(said)}</span></span>
+            <span class="sheet-text"><b>${esc(m.title)}</b><span>${esc(said)}</span>${m.notes ? `<em>${esc(m.notes)}</em>` : ""}</span>
           </button>`;
           })
           .join("")
-      : `<p class="hint sheet-none">${this.classes.length ? "Nothing matches the search." : "No videos yet."}</p>`;
+      : this.classes.length
+        ? `<p class="hint sheet-none">Nothing matches the search.</p>`
+        : `<div class="empty sheet-none">
+            <h2>No masterclasses yet</h2>
+            <p>Keep the videos you learn from: a cast-on, a technique, a whole course. Paste a YouTube link with <b>+ Add a video</b>: its title, channel and picture come with it. A course in several videos is one masterclass: add its other videos to it, or bundle the ones you have.</p>
+            <p class="hint">Start a project from one, or choose it on a project's page, and watch it there.</p>
+          </div>`;
     paintThumbs(list);
+    // The cards, or the one open on its page.
+    this.root.classList.toggle("sheet-open", !!this.open());
   }
 
   // ---------- the one open ----------
@@ -162,12 +172,7 @@ export class MasterclassesView {
     const view = this.root.querySelector<HTMLElement>('[data-el="view"]')!;
     const m = this.open();
     if (!m) {
-      view.innerHTML = `
-        <div class="empty">
-          <h2>No masterclasses yet</h2>
-          <p>Keep the videos you learn from: a cast-on, a technique, a whole course. Paste a YouTube link with <b>+ Add a video</b>: its title, channel and picture come with it. A course in several videos is one masterclass: add its other videos to it, or bundle the ones you have.</p>
-          <p class="hint">Start a project from one, or choose it on a project's page, and watch it there.</p>
-        </div>`;
+      view.innerHTML = "";
       return;
     }
     const part = partShown(m, m.id);
@@ -175,6 +180,7 @@ export class MasterclassesView {
     const many = m.parts.length > 1;
     view.innerHTML = `
       <header class="sheet-head">
+        <button class="ghost sheet-back" data-act="back" title="All the masterclasses">← Masterclasses</button>
         <input class="sheet-title" data-f="title" value="${esc(m.title)}" aria-label="Its name" maxlength="200" />
         <span class="hint sheet-source">${esc([m.channel || host(part.url), partsSummary(m)].filter(Boolean).join(" · "))}</span>
         <span class="sheet-tools">
@@ -237,16 +243,12 @@ export class MasterclassesView {
 
   private async onClick(e: MouseEvent): Promise<void> {
     const item = closestEl(e.target, "[data-class]");
-    if (item) {
-      this.openId = item.dataset.class!;
-      keepOpen(this.openId);
-      this.paintList();
-      return this.paintView();
-    }
+    if (item) return this.show(item.dataset.class!);
     const project = closestEl(e.target, "[data-project]")?.dataset.project;
     if (project) return void this.root.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: project }));
     const act = closestEl(e.target, "button[data-act]")?.dataset.act;
     if (act === "add") return this.add();
+    if (act === "back") return this.show("");
     const m = this.open();
     if (!m) return;
     const partId = closestEl(e.target, "[data-part]")?.dataset.part;
@@ -286,13 +288,10 @@ export class MasterclassesView {
         const videos = m.parts.length > 1 ? ` All its ${m.parts.length} videos go with it.` : "";
         if (!(await askYesNo(`Remove the masterclass “${m.title}”?${videos}${along}`, { title: "Remove masterclass", okLabel: "Remove", danger: true }))) return;
         await api.deleteMasterclass(m.id);
-        const at = this.classes.indexOf(m);
         this.classes = this.classes.filter((x) => x.id !== m.id);
         this.projects = this.projects.map((p) => (p.masterclassId === m.id ? { ...p, masterclassId: "", masterclassTitle: "" } : p));
-        this.openId = this.classes[Math.min(at, this.classes.length - 1)]?.id ?? "";
-        keepOpen(this.openId);
-        this.paintList();
-        this.paintView();
+        // Back to the cards.
+        this.show("");
       }
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Masterclass");
@@ -359,7 +358,6 @@ export class MasterclassesView {
       const m = await api.addMasterclass({ url: answer.url, title: answer.title, patternId: answer.patternId });
       this.replace(m);
       this.openId = m.id;
-      keepOpen(m.id);
       this.search = "";
       const search = this.root.querySelector<HTMLInputElement>('[data-f="search"]');
       if (search) search.value = "";
@@ -443,7 +441,6 @@ export class MasterclassesView {
           this.replace(made);
           this.projects = this.projects.map((p) => (ticked.includes(p.masterclassId) ? { ...p, masterclassId: made.id } : p));
           this.openId = made.id;
-          keepOpen(made.id);
           this.paintList();
           this.paintView();
           finish();

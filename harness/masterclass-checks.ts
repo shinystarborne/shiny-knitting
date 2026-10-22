@@ -98,6 +98,12 @@ export async function verifyMasterclasses() {
     await waitFor(() => items().length === 2, "the second");
     check(results, "another site's video is kept as it is, named as given, at the top, opened in the browser", /Steeking, step by step/.test(items()[0].textContent ?? "") && !view()!.querySelector("iframe") && /Played where it is kept/.test(view()!.textContent ?? ""));
 
+    // A main page of cards; one opened on a page of its own, and back.
+    check(results, "one added opens on its page, the cards hidden, the way back to them", view()!.classList.contains("sheet-open") && !!act("back"));
+    act("back")!.click();
+    await waitFor(() => !view()!.classList.contains("sheet-open"), "the cards");
+    check(results, "← Masterclasses: a card for each, with its picture", items().length === 2 && !view()!.querySelector("iframe") && !!items()[1].querySelector<HTMLElement>(".mc-thumb")!.style.backgroundImage);
+
     // Searched, renamed, noted.
     const search = view()!.querySelector<HTMLInputElement>('[data-f="search"]')!;
     search.value = "steek";

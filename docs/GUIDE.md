@@ -476,8 +476,11 @@ Removing a chart from the tab leaves its cards saying it is no longer kept.
 
 ## Cheatsheets
 
-The **Cheatsheets** tab keeps what you look things up in while knitting, listed
-down the side and open beside the list.
+The **Cheatsheets** tab keeps what you look things up in while knitting. It opens
+on a page of cards, one for each, with **Abbreviations** and **Chart symbols**
+first. Click a card and it opens on a page of its own; **← Cheatsheets** goes
+back to the cards. **Masterclasses** works the same way, each card showing its
+video's picture.
 
 - **+ Web page**: a tutorial, a table of yarn weights, a video. Give its address,
   or paste a site's whole embed code (`<iframe …>`); a YouTube link is kept as
@@ -493,8 +496,9 @@ down the side and open beside the list.
 - An **EPUB's chapter** is kept from the book with **Cheatsheet…**, as a copy: a
   reflowing book has no pages to point at.
 
-Each has a name and a note, changed where they show; **↑ ↓** move it in the
-list, and the one open is remembered.
+Each has a name and a note, changed where they show, and the note is on its
+card. **↑ ↓** move it among the cards. Open ↗ on a board's cheatsheet card opens
+that one straight away.
 
 ## Wishlist and shops
 
