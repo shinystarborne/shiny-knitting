@@ -423,7 +423,18 @@ write each round or row the way a pattern does, and it is drawn as you type.
 Start one **In rounds** (from a ring: a circle, a granny square, a flower),
 **In rows** (back and forth, turned at each end) or **Along a spiral** (a
 strip whose first row is a spiral chain and whose rows after are worked back
-along it, as a crochet rose is). Each starts with an example to change.
+along it, as a crochet rose is) or **Around a chain** (an oval: the first
+round goes along one side of a foundation chain, round the end and back along
+the other side, as for a bag's base or an amigurumi's body). Each starts with
+an example to change.
+
+Beside each round or row after the first, choose how it is worked: **Row:
+turn** (worked back along the one before), **Round: same way** (on round
+without turning), or **Round: all around the piece**. That one goes along
+the top, down the side with a stitch in each row's end, along the bottom of
+the first chain and up the other side, with a corner at each turn, so you can
+start in rows and finish with a border, or a piece in the round. The rounds
+after it go on round.
 
 Write one round or row to a box, its stitches with commas between:
 

@@ -4404,6 +4404,8 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .crochet-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .crochet-row-head .hint { flex: 1; font-size: 12px; }
 .crochet-row-head button { padding: 0 6px; font-size: 12px; }
+.crochet-row-head { flex-wrap: wrap; }
+.crochet-row-head select { order: 3; flex: 1 1 100%; width: 100%; padding: 4px 8px; font-size: 12px; }
 .crochet-row textarea { width: 100%; resize: vertical; font: 13px/1.4 ui-monospace, Consolas, monospace; }
 .crochet-row .form-error { margin: 4px 0 0; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
 .crochet-row .form-error[hidden] { display: none; }

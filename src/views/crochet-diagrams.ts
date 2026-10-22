@@ -1,7 +1,7 @@
 import { api, isRecord, type CrochetDiagram, type Project } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { EXAMPLES, STITCHES, STITCH_ORDER, diagramSvg, layout, legendHtml, rowWord, symbolOf, type Shape, type Stitch, type Terms } from "./crochet";
+import { EXAMPLES, STITCHES, STITCH_ORDER, diagramSvg, layout, legendHtml, rowLabel, rowWord, symbolOf, wayOf, type CrochetData, type Shape, type Stitch, type Terms, type Way } from "./crochet";
 
 /**
  * Constructors → Crochet diagrams: the diagrams kept, and one open to write
@@ -15,6 +15,7 @@ const SHAPES: { shape: Shape; label: string; hint: string }[] = [
   { shape: "rounds", label: "In rounds", hint: "From a ring, round and round: a circle, a granny square, a flower" },
   { shape: "rows", label: "In rows", hint: "Back and forth, turned at each end" },
   { shape: "spiral", label: "Along a spiral", hint: "A strip whose rows are worked along a spiral chain, as a rose is" },
+  { shape: "oval", label: "Around a chain", hint: "Rounds worked along both sides of a chain: an oval, for a bag's base or an amigurumi's body" },
 ];
 
 /** How long after the last keystroke a diagram is kept. */
@@ -111,8 +112,8 @@ export class CrochetDiagrams {
         </div>
         <div class="crochet-body">
           <section class="crochet-rows">
-            <ol data-el="rows">${d.data.rows.map((r, i) => this.rowHtml(word, r, i)).join("")}</ol>
-            <button class="ghost" data-act="add-row">+ ${word}</button>
+            <ol data-el="rows">${d.data.rows.map((r, i) => this.rowHtml(d.data, r, i)).join("")}</ol>
+            <button class="ghost" data-act="add-row">+ ${rowLabel({ ...d.data, rows: [...d.data.rows, ""] }, d.data.rows.length).replace(/ \d+$/, "")}</button>
             <label class="field"><span>Notes <em class="optional">optional</em></span><textarea data-f="notes" rows="3" placeholder="Hook, yarn, where it is from">${esc(d.notes)}</textarea></label>
           </section>
           <section class="crochet-view">
@@ -140,10 +141,20 @@ export class CrochetDiagrams {
     this.redraw();
   }
 
-  private rowHtml(word: string, text: string, i: number): string {
+  private rowHtml(data: CrochetData, text: string, i: number): string {
+    const label = rowLabel(data, i);
+    // After the first, how it is worked: turned, on round, or all around the piece. Along a spiral, only as a strip is.
+    const way = i > 0 && data.shape !== "spiral" ? wayOf(data, i) : null;
+    const ways: { way: Exclude<Way, "">; label: string; title: string }[] = [
+      { way: "turn", label: "Row: turn", title: "Turned, and worked back along the one before" },
+      { way: "on", label: "Round: same way", title: "On round the same way, not turned" },
+      { way: "around", label: "Round: all around the piece", title: "Along the top, down the side, along the bottom of the first chain and up the other side: a border, or an oval round a chain" },
+    ];
     return `
       <li class="crochet-row" data-row="${i}">
-        <div class="crochet-row-head"><b>${word} ${i + 1}</b><span class="hint" data-el="count"></span><button class="ghost" data-act="remove-row" title="Take this ${word.toLowerCase()} out" aria-label="Take out ${word} ${i + 1}">✕</button></div>
+        <div class="crochet-row-head"><b>${label}</b><span class="hint" data-el="count"></span>${
+          way ? `<select data-f="way" aria-label="How ${esc(label)} is worked" title="How it is worked">${ways.map((w) => `<option value="${w.way}" ${w.way === way ? "selected" : ""} title="${esc(w.title)}">${esc(w.label)}</option>`).join("")}</select>` : ""
+        }<button class="ghost" data-act="remove-row" title="Take it out" aria-label="Take out ${esc(label)}">✕</button></div>
         <textarea data-f="row" rows="2" spellcheck="false">${esc(text)}</textarea>
         <p class="form-error" data-el="row-error" hidden></p>
       </li>`;
@@ -178,10 +189,16 @@ export class CrochetDiagrams {
       const i = Number(el.closest<HTMLElement>(".crochet-row")?.dataset.row);
       d.data.rows[i] = el.value;
     }
-    if (el.dataset.f === "shape" || el.dataset.f === "terms") {
+    if (el.dataset.f === "shape" || el.dataset.f === "terms" || el.dataset.f === "way") {
       if (e.type !== "change") return;
       if (el.dataset.f === "shape") d.data.shape = el.value as Shape;
-      else d.data.terms = el.value as Terms;
+      else if (el.dataset.f === "terms") d.data.terms = el.value as Terms;
+      else {
+        const i = Number(el.closest<HTMLElement>(".crochet-row")?.dataset.row);
+        const ways = d.data.rows.map((_, k) => d.data.ways?.[k] ?? "");
+        ways[i] = el.value as Way;
+        d.data.ways = ways;
+      }
       this.paintEditor();
     } else this.redraw();
     this.keepSoon();
@@ -236,16 +253,19 @@ export class CrochetDiagrams {
     if (!d) return;
     if (act === "add-row") {
       d.data.rows.push("");
+      d.data.ways = d.data.rows.map((_, k) => d.data.ways?.[k] ?? "");
       const list = this.host.querySelector<HTMLElement>('[data-el="rows"]')!;
-      list.insertAdjacentHTML("beforeend", this.rowHtml(rowWord(d.data.shape), "", d.data.rows.length - 1));
+      list.insertAdjacentHTML("beforeend", this.rowHtml(d.data, "", d.data.rows.length - 1));
       list.querySelector<HTMLTextAreaElement>(".crochet-row:last-child textarea")?.focus();
       this.redraw();
       this.keepSoon();
     }
     if (act === "remove-row") {
       const i = Number(btn.closest<HTMLElement>(".crochet-row")?.dataset.row);
-      if (d.data.rows[i]?.trim() && !(await askYesNo(`Take ${rowWord(d.data.shape).toLowerCase()} ${i + 1} out?`, { okLabel: "Take it out", danger: true }))) return;
+      if (d.data.rows[i]?.trim() && !(await askYesNo(`Take ${rowLabel(d.data, i).toLowerCase()} out?`, { okLabel: "Take it out", danger: true }))) return;
+      d.data.ways = d.data.rows.map((_, k) => d.data.ways?.[k] ?? "");
       d.data.rows.splice(i, 1);
+      d.data.ways.splice(i, 1);
       this.paintEditor();
       this.keepSoon();
     }
@@ -400,6 +420,9 @@ function howHtml(terms: Terms, word: string): string {
     ["5 tall stitches all into one stitch: a fan", "5 dc in next", "5 tr in next"],
     ["A group into one place, with chains in it: a shell", "(3 dc, ch 2, 3 dc) in next sp", "(3 tr, ch 2, 3 tr) in next sp"],
     ["Into the same stitch as the one before", "dc in same st", "tr in same st"],
+    ["One stitch in each of the next 18", "18 sc", "18 dc"],
+    ["3 stitches into the first chain, or the last: round the end of an oval", "3 sc in first", "3 dc in first"],
+    ["2 stitches into each of the next 3", "2 sc in each of next 3", "2 dc in each of next 3"],
     ["Leave 2 stitches out", "sk 2", "miss 2"],
     ["Part of it again and again: the part between stars, then how many times", "*sc, ch 3, sk 1* x 6", "*dc, ch 3, miss 1* x 6"],
     ["The same, to the end of the round or row", "*sc, ch 3, sk 1* around", "*dc, ch 3, miss 1* around"],
@@ -417,6 +440,8 @@ function howHtml(terms: Terms, word: string): string {
       <ul class="crochet-how-notes">
         <li>Chains written first stand up at the start of the ${one}, as its turning chain: <code>ch 3, …</code></li>
         <li>In rows, each row is worked back along the one before. Along a spiral, the first row is a long chain that lies in a spiral, and the rows after are worked back along it, like a crochet rose.</li>
+        <li>Around a chain, the first row is the chain. The first round goes along one side of it, round the end, and back along the other side: <code>3 sc in first, 18 sc, 3 sc in last, 18 sc, sl st to join</code> around a chain of 20. The rounds after go round the oval.</li>
+        <li>Rows, then rounds: beside each ${one} after the first, choose how it is worked. <b>Row: turn</b> works back along the one before. <b>Round: same way</b> goes on without turning. <b>Round: all around the piece</b> goes along the top, down the side (a stitch in each row's end), along the bottom of the first chain and up the other side, with a corner at each turn: <code>3 sc in first, 8 sc, 3 sc in next, 3 sc, 3 sc in next, 8 sc, 3 sc in next, 3 sc, sl st to join</code> round a chain of 10 with 4 rows of 10 sc on it.</li>
         <li><b>US and UK patterns call the same stitches by different names.</b> A US single crochet (sc) is a UK double crochet (dc), and a US double crochet (dc) is a UK treble (tr). Choose the terms your pattern is written in at the top: the list of stitches above shows both names.</li>
       </ul>
     </section>`;

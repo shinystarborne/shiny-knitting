@@ -1,7 +1,7 @@
 //! Crochet diagrams: rounds or rows written as a pattern writes them, drawn
 //! by the page in the standard crochet symbols (views/crochet.ts). Kept here
-//! as written: their name, their shape (rounds, rows, or a strip along a
-//! spiral), US or UK terms, and the rounds or rows themselves.
+//! as written: their name, their shape (rounds, rows, a strip along a
+//! spiral, or rounds around a chain), US or UK terms, and the rounds or rows themselves.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use crate::state::AppState;
 
 type CmdResult<T> = Result<T, AppError>;
 
-pub const SHAPES: &[&str] = &["rounds", "rows", "spiral"];
+pub const SHAPES: &[&str] = &["rounds", "rows", "spiral", "oval"];
 pub const TERMS: &[&str] = &["us", "uk"];
 /// More rounds than any doily has.
 const MAX_ROWS: usize = 200;
@@ -25,7 +25,14 @@ pub struct CrochetData {
     pub shape: String,
     pub terms: String,
     pub rows: Vec<String>,
+    /// How each row after the first is worked, beside `rows`: "" for the
+    /// shape's own way, "turn" (a row), "on" (a round) or "around" (a round
+    /// all around the piece). Older diagrams have none.
+    #[serde(default)]
+    pub ways: Vec<String>,
 }
+
+pub const WAYS: &[&str] = &["", "turn", "on", "around"];
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -68,7 +75,7 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
 pub fn clean(input: &CrochetInput) -> AppResult<CrochetInput> {
     let d = &input.data;
     if !SHAPES.contains(&d.shape.as_str()) {
-        return Err(AppError::Message("A diagram is in rounds, in rows, or along a spiral.".into()));
+        return Err(AppError::Message("A diagram is in rounds, in rows, along a spiral, or around a chain.".into()));
     }
     if !TERMS.contains(&d.terms.as_str()) {
         return Err(AppError::Message("A diagram is written in US or UK terms.".into()));
@@ -82,7 +89,13 @@ pub fn clean(input: &CrochetInput) -> AppResult<CrochetInput> {
         id: input.id.clone().filter(|i| !i.trim().is_empty()),
         name: if name.is_empty() { "Untitled diagram".into() } else { name },
         notes: input.notes.trim().chars().take(4000).collect(),
-        data: CrochetData { shape: d.shape.clone(), terms: d.terms.clone(), rows },
+        // One for each row at most, each one there is; one not known is the shape's own.
+        data: CrochetData {
+            shape: d.shape.clone(),
+            terms: d.terms.clone(),
+            ways: d.ways.iter().take(d.rows.len()).map(|w| if WAYS.contains(&w.as_str()) { w.clone() } else { String::new() }).collect(),
+            rows,
+        },
     })
 }
 
@@ -93,7 +106,7 @@ fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CrochetDiagram> {
         name: r.get(1)?,
         notes: r.get(2)?,
         // Unreadable is empty rounds, which still opens and can be written again.
-        data: serde_json::from_str(&data).unwrap_or(CrochetData { shape: "rounds".into(), terms: "us".into(), rows: vec![] }),
+        data: serde_json::from_str(&data).unwrap_or(CrochetData { shape: "rounds".into(), terms: "us".into(), rows: vec![], ways: vec![] }),
         added_at: r.get(4)?,
         updated_at: r.get(5)?,
     })
@@ -153,7 +166,7 @@ mod tests {
     use super::*;
 
     fn input(shape: &str, terms: &str, rows: &[&str]) -> CrochetInput {
-        CrochetInput { id: None, name: " Granny  square ".into(), notes: String::new(), data: CrochetData { shape: shape.into(), terms: terms.into(), rows: rows.iter().map(|r| r.to_string()).collect() } }
+        CrochetInput { id: None, name: " Granny  square ".into(), notes: String::new(), data: CrochetData { shape: shape.into(), terms: terms.into(), rows: rows.iter().map(|r| r.to_string()).collect(), ways: vec![] } }
     }
 
     #[test]
@@ -166,6 +179,12 @@ mod tests {
         let changed = save(&conn, &CrochetInput { id: Some(d.id.clone()), ..input("spiral", "us", &["ch 40"]) }).unwrap();
         assert_eq!((changed.id.as_str(), changed.data.shape.as_str(), changed.added_at), (d.id.as_str(), "spiral", d.added_at));
         assert_eq!(list(&conn).unwrap().len(), 1);
+        // Each row's way kept, one for each row, one it does not know made the shape's own.
+        let mut mixed = CrochetInput { id: Some(d.id.clone()), ..input("rows", "us", &["ch 10", "sk 1, 9 sc", "sc in each st around"]) };
+        mixed.data.ways = vec!["".into(), "turn".into(), "around".into(), "on".into()];
+        assert_eq!(save(&conn, &mixed).unwrap().data.ways, vec!["", "turn", "around"]);
+        mixed.data.ways = vec!["".into(), "sideways".into()];
+        assert_eq!(save(&conn, &mixed).unwrap().data.ways, vec!["", ""]);
         remove(&conn, &d.id).unwrap();
         assert!(list(&conn).unwrap().is_empty());
     }

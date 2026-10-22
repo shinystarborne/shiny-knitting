@@ -11,7 +11,7 @@
  *   window.__crochetChecks()
  */
 import type { CrochetDiagram, Project } from "../src/api";
-import { diagramSvg, layout, readRow, stepsOf, type CrochetData } from "../src/views/crochet";
+import { diagramSvg, layout, readRow, rowLabel, stepsOf, wayOf, type CrochetData } from "../src/views/crochet";
 
 interface CheckResult {
   name: string;
@@ -53,6 +53,15 @@ function pure(results: CheckResult[]): void {
   const unread = readRow("dc wibble in next", "us");
   check(results, "words after a stitch that can't be read are said, not dropped", unread.errors.length === 1 && /“wibble” couldn't be read/.test(unread.errors[0]), JSON.stringify(unread.errors));
   check(results, "where stitches go is read without complaint", ["sc in 2nd ch from hook", "sl st in top of beg ch-3 to join", "5 dc in next ch-sp", "ch 3 (counts as first dc)"].every((t) => !readRow(t, "us").errors.length));
+  check(results, "sc in next 18 is one in each of 18; 2 sc in each of next 3 is a pair in each of 3", places("sc in next 18", 40).join(",") === Array(18).fill("sc").join(",") && places("2 sc in each of next 3", 40).join(",") === "sc+sc,sc+sc,sc+sc", places("2 sc in each of next 3", 40).join(","));
+  const oval = layout({ shape: "oval", terms: "us", rows: ["ch 20", "3 sc in first, 18 sc, 3 sc in last, 18 sc, sl st to join", "*2 sc in next x 3, 18 sc* x 2, sl st to join"] });
+  check(results, "an oval round a chain of 20: 42 round both sides and the ends, then 48", oval.rows.map((r) => r.stitches).join(" ") === "0 42 48" && oval.rows[1].into === 38 && oval.rows[1].of === 38, JSON.stringify(oval.rows.map((r) => [r.stitches, r.into, r.of])));
+  const stood = (row: number) => oval.marks.filter((m) => m.kind === "stitch" && m.row === row && m.stitch === "sc").map((m) => (m.kind === "stitch" ? Math.sign(Math.round(m.top.y - m.base.y)) : 0));
+  check(results, "…its first round up from the chain on one side, down from it on the other", stood(2).filter((v) => v < 0).length >= 18 && stood(2).filter((v) => v > 0).length >= 18);
+  const cloth: CrochetData = { shape: "rows", terms: "us", rows: ["ch 10", "10 sc", "10 sc", "10 sc", "10 sc", "3 sc in first, 8 sc, 3 sc in next, 3 sc, 3 sc in next, 8 sc, 3 sc in next, 3 sc, sl st to join", "sc in each st around, sl st to join"], ways: ["", "", "", "", "", "around", ""] };
+  const border = layout(cloth);
+  check(results, "rows, then a round all around the piece: along the top, down a side, under the chain, up the other", border.rows.map((r) => r.stitches).join(" ") === "0 10 10 10 10 34 34" && border.rows[5].into === 26 && border.rows[5].of === 26, JSON.stringify(border.rows.map((r) => [r.stitches, r.into, r.of])));
+  check(results, "…rows turn, the round after goes on round, and they are named so", wayOf(cloth, 2) === "turn" && wayOf(cloth, 6) === "on" && rowLabel(cloth, 4) === "Row 5" && rowLabel(cloth, 5) === "Round 6" && rowLabel(cloth, 6) === "Round 7");
   const odd = readRow("3 dc, 2 bobbles, sk 1", "us");
   check(results, "what it does not know is said, the rest kept", odd.errors.length === 1 && /bobbles/.test(odd.errors[0]) && stepsOf(odd, 0).length === 4, JSON.stringify(odd.errors));
 
@@ -88,7 +97,7 @@ export async function verifyCrochet() {
     await waitFor(() => !!document.querySelector('.calc-pick[data-calc="crochet"]'), "Constructors");
     (document.querySelector('.calc-pick[data-calc="crochet"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector(".crochet-list"), "the diagrams");
-    check(results, "Constructors has Crochet diagrams, a new one in rounds, rows or along a spiral", document.querySelectorAll(".crochet-new [data-act=new]").length === 3);
+    check(results, "Constructors has Crochet diagrams, a new one in rounds, rows, along a spiral or around a chain", document.querySelectorAll(".crochet-new [data-act=new]").length === 4);
     (document.querySelector('.crochet-new [data-shape="rounds"]') as HTMLElement).click();
     await waitFor(() => !!editor()?.querySelector(".crochet-drawing svg"), "the new diagram");
     const made = (await invoke<CrochetDiagram[]>("list_crochet_diagrams")).find((d) => !kept.some((k) => k.id === d.id))!;
@@ -123,6 +132,18 @@ export async function verifyCrochet() {
     await wait(900);
     const saved = (await invoke<CrochetDiagram[]>("list_crochet_diagrams")).find((d) => d.id === made.id)!;
     check(results, "kept as written a moment after: its name and a fourth round", saved.name === "Coaster" && saved.data.rows[3] === "*(sc, hdc, dc, hdc, sc) in next sp* around", JSON.stringify(saved.data.rows));
+    // How a round is worked, chosen beside it.
+    const way = editor()!.querySelectorAll<HTMLSelectElement>('.crochet-row select[data-f="way"]')[2];
+    check(results, "beside each round after the first, how it is worked: the shape's way chosen", !!way && way.value === "on" && !editor()!.querySelector('.crochet-row:first-child select[data-f="way"]'));
+    way.value = "turn";
+    way.dispatchEvent(new Event("change", { bubbles: true }));
+    await waitFor(() => /^Row 4/.test(editor()!.querySelectorAll(".crochet-row-head b")[3]?.textContent ?? ""), "it named a row");
+    await wait(900);
+    check(results, "…a round turned is a row, named so and kept", (await invoke<CrochetDiagram[]>("list_crochet_diagrams")).find((d) => d.id === made.id)?.data.ways?.[3] === "turn");
+    const back = editor()!.querySelectorAll<HTMLSelectElement>('.crochet-row select[data-f="way"]')[2];
+    back.value = "on";
+    back.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(100);
     check(results, "…the fourth round drawn: 12 shells of 5", /60 stitches/.test(editor()!.querySelectorAll(".crochet-row [data-el=count]")[3].textContent ?? ""), editor()!.querySelectorAll(".crochet-row [data-el=count]")[3].textContent ?? "");
     const terms = editor()!.querySelector<HTMLSelectElement>('[data-f="terms"]')!;
     terms.value = "uk";

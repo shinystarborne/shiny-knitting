@@ -927,7 +927,7 @@ export interface CrochetDiagram {
   id: string;
   name: string;
   notes: string;
-  data: { shape: "rounds" | "rows" | "spiral"; terms: "us" | "uk"; rows: string[] };
+  data: { shape: "rounds" | "rows" | "spiral" | "oval"; terms: "us" | "uk"; rows: string[]; ways?: ("" | "turn" | "on" | "around")[] };
   addedAt: number;
   updatedAt: number;
 }

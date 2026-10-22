@@ -13,17 +13,48 @@
  *    before, round and round;
  *  - rows: back and forth, each row into the one before, turned;
  *  - spiral: a strip whose first row lies along a spiral, the rows after
- *    worked back along it, as a crochet rose is.
+ *    worked back along it, as a crochet rose is;
+ *  - oval: rounds worked around a foundation chain, along one side, round
+ *    the end, back along the other, as an amigurumi's base or a bag's.
  */
 
-export type Shape = "rounds" | "rows" | "spiral";
+export type Shape = "rounds" | "rows" | "spiral" | "oval";
 export type Terms = "us" | "uk";
+
+/**
+ * How a round or row is worked after the first: turned and worked back
+ * along the one before (a row), on round the same way (a round), or all
+ * around the piece made so far (a round around its edges: a border).
+ * "" is the shape's own way.
+ */
+export type Way = "" | "turn" | "on" | "around";
 
 export interface CrochetData {
   shape: Shape;
   terms: Terms;
   /** Each round or row as written. */
   rows: string[];
+  /** How each is worked, beside `rows`; missing is "". */
+  ways?: Way[];
+}
+
+/**
+ * How round or row `i` is worked: as said, else as the shape works -- rows
+ * and the spiral turn, rounds go on, an oval's second goes around its
+ * chain -- and once one has gone around the piece, on round after it.
+ */
+export function wayOf(data: CrochetData, i: number): Exclude<Way, ""> {
+  const said = data.ways?.[i];
+  if (said) return said;
+  if (i === 0) return data.shape === "rounds" ? "on" : "turn";
+  if (data.shape === "oval" && i === 1) return "around";
+  for (let k = 1; k < i; k++) if (wayOf(data, k) === "around") return "on";
+  return data.shape === "rounds" || data.shape === "oval" ? "on" : "turn";
+}
+
+/** "Row 3" or "Round 3": as it is worked. */
+export function rowLabel(data: CrochetData, i: number): string {
+  return `${i > 0 ? (wayOf(data, i) === "turn" ? "Row" : "Round") : rowWord(data.shape)} ${i + 1}`;
 }
 
 /** A stitch the diagram draws, by its US name. */
@@ -105,6 +136,9 @@ function timesIn(text: string): number | "around" | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
   if (/\b(around|round|rnd|across|to end|to the end)\b/.test(t)) return "around";
+  // "in each of next 3"
+  const next = /\bnext (\d+)\b/.exec(t);
+  if (next) return Math.max(1, Math.min(500, Number(next[1])));
   const m = /(?:^|\s)(?:x|×)\s*(\d+)\b|\b(\d+)\s*times\b/.exec(t);
   if (m) return Math.max(1, Math.min(500, Number(m[1] ?? m[2])));
   return null;
@@ -190,7 +224,7 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
 /** Into the space under a run of chains. */
 const SPACE = /\b(sp|space|loop)\b/;
 /** Worked into one place: a fan or shell, not one stitch in each. */
-const ONE_PLACE = /\b(next|same|this|following|sp|space|loop|top)\b|\bin (?:the )?(?:st|stitch|ch)\b/;
+const ONE_PLACE = /\b(next|same|this|following|first|last|sp|space|loop|top)\b|\bin (?:the )?(?:st|stitch|ch)\b/;
 /** Words that say where a stitch goes, read or passed over; anything else is said not to be understood. */
 const WHERE = new Set(
   "in into the next same this following first last ring magic st sts stitch stitches ch chain chains sp sps space spaces loop loops top of to join from hook beginning beg turning each around round rnd across row previous it here base remaining 2nd 3rd 4th second third on at end all turn work worked and then as counts".split(" "),
@@ -227,6 +261,12 @@ function readSimple(raw: string, terms: Terms, together: boolean, errors: string
   const unread = rest.split(/[\s\-–,]+/).filter((w) => w && !/^\d+$/.test(w) && !WHERE.has(w) && !stitchWord(w, terms));
   if (unread.length) errors.push(`In “${raw.trim()}”, “${unread.join(" ")}” couldn't be read. Put a comma between stitches, and see How to write them below.`);
   if (word.stitch === "ch") return [{ kind: "chain", n: count }];
+  // "sc in next 18", "2 dc in each of next 3": into each of that many.
+  const nextN = /\bnext (\d+)\b/.exec(rest);
+  if (nextN && word.stitch !== "sl") {
+    const n = Math.min(200, Math.max(1, Number(nextN[1])));
+    return Array.from({ length: n }, () => ({ kind: "place" as const, stitches: Array.from({ length: count }, () => word.stitch), same: false, space: false }));
+  }
   if (word.stitch === "sl" && /\b(join|to the|in top|in first|into top|into first)\b/.test(rest)) return [{ kind: "join" }];
   const same = /\bsame\b/.test(rest);
   const space = SPACE.test(rest);
@@ -324,6 +364,8 @@ interface Top {
   chain: boolean;
   /** Chains of one run share a number, for "in ch-sp". */
   run: number;
+  /** At the end of an oval's chain: the way round the turn, a fan there spread wide. */
+  turn?: Pt;
 }
 
 const add = (a: Pt, b: Pt): Pt => ({ x: a.x + b.x, y: a.y + b.y });
@@ -346,7 +388,7 @@ function basePath(shape: Shape, n: number, pitch: number): Top[] {
       const up = { x: Math.cos(a), y: Math.sin(a) };
       tops.push({ at: scale(up, r), up, chain: false, run: -1 });
     }
-  } else if (shape === "rows") {
+  } else if (shape === "rows" || shape === "oval") {
     for (let i = 0; i < n; i++) tops.push({ at: { x: i * CHAIN_STEP, y: 0 }, up: { x: 0, y: -1 }, chain: false, run: -1 });
   } else {
     // An Archimedean spiral from the middle, a chain's length apart along it.
@@ -362,6 +404,67 @@ function basePath(shape: Shape, n: number, pitch: number): Top[] {
     }
   }
   return tops;
+}
+
+/**
+ * The places of a round worked around a foundation chain: from the end
+ * last made, along the top to the first chain, round that end, and back
+ * along the underside -- the end chains once each, as the turns -- going
+ * round anticlockwise, as a round is.
+ */
+function aroundChain(chain: Top[]): Top[] {
+  const n = chain.length;
+  if (n < 2) return chain.map((t) => ({ ...t, chain: false }));
+  const lift = 0.15 * U;
+  const places: Top[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const end = i === n - 1 ? { up: { x: 1, y: 0 }, turn: { x: 0, y: -1 } } : i === 0 ? { up: { x: -1, y: 0 }, turn: { x: 0, y: 1 } } : null;
+    places.push({ at: add(chain[i].at, { x: 0, y: end ? 0 : -lift }), up: end?.up ?? { x: 0, y: -1 }, turn: end?.turn, chain: false, run: -1 });
+  }
+  for (let i = 1; i < n - 1; i++) places.push({ at: add(chain[i].at, { x: 0, y: lift }), up: { x: 0, y: 1 }, chain: false, run: -1 });
+  return places;
+}
+
+/**
+ * The places of a round all around a piece worked in rows: from its top
+ * right corner along the last row's tops, down the left edge (a place at
+ * each row's end), along the underside of the foundation chain, and up the
+ * right edge, anticlockwise as a round goes, a corner at each turn. A piece
+ * that is only its chain is an oval's.
+ */
+function aroundPiece(piece: Top[][]): Top[] {
+  if (piece.length === 1) return aroundChain(piece[0]);
+  const byX = (r: Top[]) => [...r].sort((a, b) => a.at.x - b.at.x);
+  const d = Math.SQRT1_2;
+  const corner = (at: Pt, ux: number, uy: number, tx: number, ty: number): Top => ({ at, up: { x: ux * d, y: uy * d }, turn: { x: tx * d, y: ty * d }, chain: false, run: -1 });
+  const last = byX(piece[piece.length - 1]);
+  const bottom = byX(piece[0]);
+  const places: Top[] = [];
+  // Along the top, right to left.
+  [...last].reverse().forEach((t, i, all) => {
+    if (i === 0) places.push(corner(t.at, 1, -1, -1, -1));
+    else if (i === all.length - 1) places.push(corner(t.at, -1, -1, -1, 1));
+    else places.push({ at: t.at, up: { x: 0, y: -1 }, chain: false, run: -1 });
+  });
+  // Each row's end on a side, halfway up the row.
+  const end = (k: number, side: "left" | "right"): Top => {
+    const row = byX(piece[k]);
+    const below = byX(piece[k - 1]);
+    const a = side === "left" ? row[0] : row[row.length - 1];
+    const b = side === "left" ? below[0] : below[below.length - 1];
+    const x = (side === "left" ? Math.min(a.at.x, b.at.x) - 0.3 * U : Math.max(a.at.x, b.at.x) + 0.3 * U);
+    return { at: { x, y: (a.at.y + b.at.y) / 2 }, up: { x: side === "left" ? -1 : 1, y: 0 }, chain: false, run: -1 };
+  };
+  for (let k = piece.length - 2; k >= 1; k--) places.push(end(k, "left"));
+  // Along the underside of the chain, left to right.
+  bottom.forEach((t, i, all) => {
+    const at = add(t.at, { x: 0, y: 0.15 * U });
+    if (i === 0) places.push(corner(at, -1, 1, 1, 1));
+    else if (i === all.length - 1) places.push(corner(at, 1, 1, 1, -1));
+    else places.push({ at, up: { x: 0, y: 1 }, chain: false, run: -1 });
+  });
+  for (let k = 1; k <= piece.length - 2; k++) places.push(end(k, "right"));
+  return places;
 }
 
 /** The first round's ring, for rounds worked into one. */
@@ -383,11 +486,25 @@ export function layout(data: CrochetData): Layout {
   const pitch = data.shape === "spiral" ? U * (2.4 + read.slice(1).reduce((h, r) => h + rowHeight(stepsOf(r, 1000)), 0)) : 0;
 
   let prev: Top[] | null = null;
+  /** Each row's tops so far, for a round to go all around the piece. */
+  const piece: Top[][] = [];
+  /** Gone round already: its edge is a closed round, and around it is on round. */
+  let closed = false;
   let run = 0;
   read.forEach((row, ri) => {
     const first = ri === 0;
-    // Rows and the spiral's strip turn: worked back along the row before.
-    const before: Top[] | null = prev && data.shape !== "rounds" ? [...prev].reverse() : prev;
+    // A row turns and is worked back along the one before; a round goes on
+    // the same way; one around the piece goes round all its edges. Rounds
+    // from a ring, or along a spiral, have no edges: around is on round.
+    const way = wayOf(data, ri);
+    const before: Top[] | null = !prev
+      ? null
+      : way === "around" && !closed && data.shape !== "rounds" && data.shape !== "spiral" && piece.length
+        ? aroundPiece(piece)
+        : way === "turn"
+          ? [...prev].reverse()
+          : prev;
+    const polar = data.shape === "rounds" && way !== "turn";
     const steps = stepsOf(row, before?.length ?? 0, before ? new Set(before.filter((t) => t.chain).map((t) => t.run)).size : 0);
     const summary: RowSummary = { stitches: 0, chains: 0, into: null, of: null, errors: row.errors };
     const tops: Top[] = [];
@@ -420,6 +537,7 @@ export function layout(data: CrochetData): Layout {
         marks.push(labelFor(places[0], places[1] ? unit({ x: places[1].at.x - places[0].at.x, y: places[1].at.y - places[0].at.y }) : rotate(places[0].up, Math.PI / 2), ri + 1, first));
         rows.push(summary);
         prev = tops;
+        piece.push(tops);
         return;
       }
       // Into the ring, or along the line: a place for each stitch, and the starting chain's.
@@ -441,11 +559,12 @@ export function layout(data: CrochetData): Layout {
       const a = places[Math.floor(t)];
       const b = places[Math.ceil(t)];
       const k = t - Math.floor(t);
-      return { at: add(scale(a.at, 1 - k), scale(b.at, k)), up: unit(add(scale(a.up, 1 - k), scale(b.up, k))), chain: a.chain, run: a.run };
+      return { at: add(scale(a.at, 1 - k), scale(b.at, k)), up: unit(add(scale(a.up, 1 - k), scale(b.up, k))), chain: a.chain, run: a.run, turn: (k < 0.5 ? a : b).turn };
     };
-    /** The way the work goes at a place: towards the next. */
+    /** The way the work goes at a place: towards the next; round the turn at an oval's end. */
     const alongAt = (i: number): Pt => {
       const a = placeAt(i);
+      if (a.turn) return a.turn;
       const d = { x: placeAt(i + 1).at.x - placeAt(i - 1).at.x, y: placeAt(i + 1).at.y - placeAt(i - 1).at.y };
       return len(d) > 1e-6 ? unit(d) : rotate(a.up, data.shape === "rounds" ? -Math.PI / 2 : Math.PI / 2);
     };
@@ -477,7 +596,8 @@ export function layout(data: CrochetData): Layout {
     const workPlace = (stitches: Stitch[], i: number, at: Top) => {
       const tall = stitches.filter((st) => st !== "ch");
       const along = alongAt(i);
-      const spread = tall.length > 1 ? Math.min(1.0, 0.24 * (tall.length - 1)) : 0;
+      // Round an oval's end, a fan opens wide: the turn is half the way round.
+      const spread = tall.length < 2 ? 0 : at.turn ? Math.min(1.5, 0.6 * (tall.length - 1)) : Math.min(1.0, 0.24 * (tall.length - 1));
       tall.forEach((st, k) => {
         const angle = tall.length > 1 ? -spread + (2 * spread * k) / (tall.length - 1) : 0;
         const up = unit(add(scale(at.up, Math.cos(angle)), scale(along, Math.sin(angle))));
@@ -569,7 +689,7 @@ export function layout(data: CrochetData): Layout {
     // A round goes round its own circle: what was made spaced evenly round
     // it from where the round starts, each stitch from where it is worked.
     let along = alongAt(0);
-    if (data.shape === "rounds" && made.length) {
+    if (polar && made.length) {
       const inner = Math.max(...places.map((p) => len(p.at)));
       const weight = (m: Made) => (m.kind === "chain" ? 0.75 : 1);
       const total = made.reduce((k, m) => k + weight(m), 0);
@@ -647,6 +767,13 @@ export function layout(data: CrochetData): Layout {
     if (startTop) marks.push(labelFor(startTop, along, ri + 1, first));
     rows.push(summary);
     prev = tops.length ? tops : prev;
+    // A round around the piece is its edge now: what comes after works into it.
+    if (tops.length) {
+      if (way === "around" || (way === "on" && closed)) {
+        piece.splice(0, piece.length, tops);
+        closed = true;
+      } else piece.push(tops);
+    }
   });
 
   return { marks, rows, box: boxOf(marks), used };
@@ -797,6 +924,11 @@ export const EXAMPLES: Record<Shape, { name: string; rows: string[]; terms: Term
     name: "Rows of shells",
     terms: "us",
     rows: ["ch 19", "sk 1, sc in each ch across", "ch 3, *sk 2, 5 dc in next, sk 2, sc* x 3"],
+  },
+  oval: {
+    name: "An oval",
+    terms: "us",
+    rows: ["ch 20", "3 sc in first, 18 sc, 3 sc in last, 18 sc, sl st to join", "*2 sc in next x 3, 18 sc* x 2, sl st to join"],
   },
   spiral: {
     name: "Spiral rose",

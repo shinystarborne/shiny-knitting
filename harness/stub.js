@@ -1621,13 +1621,13 @@ const handlers = {
   // As crochet.rs: a known shape and terms; the one changed last first.
   list_crochet_diagrams: () => clone([...store.crochet].sort((a, b) => b.updatedAt - a.updatedAt || b.seq - a.seq)),
   save_crochet_diagram: ({ input }) => {
-    if (!["rounds", "rows", "spiral"].includes(input.data?.shape)) throw new Error("A diagram is in rounds, in rows, or along a spiral.");
+    if (!["rounds", "rows", "spiral", "oval"].includes(input.data?.shape)) throw new Error("A diagram is in rounds, in rows, along a spiral, or around a chain.");
     if (!["us", "uk"].includes(input.data?.terms)) throw new Error("A diagram is written in US or UK terms.");
     if (input.data.rows.length > 200) throw new Error("A diagram has at most 200 rounds or rows.");
     let d = input.id && store.crochet.find((x) => x.id === input.id);
     if (!d) store.crochet.push((d = { id: input.id || `crochet-${store.nextId++}`, addedAt: Date.now() }));
     const name = String(input.name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120);
-    Object.assign(d, { seq: store.nextId++, name: name || "Untitled diagram", notes: String(input.notes ?? "").trim(), data: { shape: input.data.shape, terms: input.data.terms, rows: input.data.rows.map((r) => String(r).split(/\s+/).filter(Boolean).join(" ")) }, updatedAt: Date.now() });
+    Object.assign(d, { seq: store.nextId++, name: name || "Untitled diagram", notes: String(input.notes ?? "").trim(), data: { shape: input.data.shape, terms: input.data.terms, rows: input.data.rows.map((r) => String(r).split(/\s+/).filter(Boolean).join(" ")), ways: (input.data.ways ?? []).slice(0, input.data.rows.length).map((w) => (["", "turn", "on", "around"].includes(w) ? w : "")) }, updatedAt: Date.now() });
     return clone(d);
   },
   delete_crochet_diagram: ({ id }) => {
