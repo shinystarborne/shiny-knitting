@@ -29,16 +29,19 @@ export interface CrochetData {
 /** A stitch the diagram draws, by its US name. */
 export type Stitch = "ch" | "sl" | "sc" | "hdc" | "dc" | "tr" | "dtr" | "picot";
 
-/** What a stitch is called, in each terms, and how tall it stands, in stitch heights. */
-export const STITCHES: Record<Stitch, { us: string; uk: string; usName: string; ukName: string; height: number }> = {
-  ch: { us: "ch", uk: "ch", usName: "chain", ukName: "chain", height: 0 },
-  sl: { us: "sl st", uk: "ss", usName: "slip stitch", ukName: "slip stitch", height: 0.4 },
-  sc: { us: "sc", uk: "dc", usName: "single crochet", ukName: "double crochet", height: 1 },
-  hdc: { us: "hdc", uk: "htr", usName: "half double crochet", ukName: "half treble", height: 1.5 },
-  dc: { us: "dc", uk: "tr", usName: "double crochet", ukName: "treble", height: 2.1 },
-  tr: { us: "tr", uk: "dtr", usName: "treble", ukName: "double treble", height: 2.8 },
-  dtr: { us: "dtr", uk: "ttr", usName: "double treble", ukName: "triple treble", height: 3.5 },
-  picot: { us: "picot", uk: "picot", usName: "picot (ch 3, sl st into the first)", ukName: "picot (ch 3, ss into the first)", height: 0.6 },
+/**
+ * What a stitch is called in each terms, what it is, for someone learning,
+ * and how tall it stands, in stitch heights.
+ */
+export const STITCHES: Record<Stitch, { us: string; uk: string; usName: string; ukName: string; what: string; height: number }> = {
+  ch: { us: "ch", uk: "ch", usName: "chain", ukName: "chain", height: 0, what: "Yarn over and pull it through the loop on the hook. The first row is usually chains, and chains make the gaps in lace." },
+  sl: { us: "sl st", uk: "ss", usName: "slip stitch", ukName: "slip stitch", height: 0.4, what: "Hook into the stitch, yarn over, and pull it through the stitch and the loop on the hook in one go. Adds no height: it joins a round, or moves along." },
+  sc: { us: "sc", uk: "dc", usName: "single crochet", ukName: "double crochet", height: 1, what: "Hook into the stitch, yarn over and pull up a loop (2 loops on the hook), yarn over and pull through both. The shortest stitch, firm and dense." },
+  hdc: { us: "hdc", uk: "htr", usName: "half double crochet", ukName: "half treble", height: 1.5, what: "Yarn over, hook into the stitch, yarn over and pull up a loop (3 on the hook), yarn over and pull through all 3. A little taller than the one before." },
+  dc: { us: "dc", uk: "tr", usName: "double crochet", ukName: "treble", height: 2.1, what: "Yarn over, hook into the stitch, pull up a loop (3 on the hook), then twice: yarn over, pull through 2. About twice as tall as the shortest; drawn with one line across." },
+  tr: { us: "tr", uk: "dtr", usName: "treble", ukName: "double treble", height: 2.8, what: "Yarn over twice, hook into the stitch, pull up a loop (4 on the hook), then three times: yarn over, pull through 2. Drawn with two lines across." },
+  dtr: { us: "dtr", uk: "ttr", usName: "double treble", ukName: "triple treble", height: 3.5, what: "Yarn over three times, hook into the stitch, pull up a loop (5 on the hook), then four times: yarn over, pull through 2. Drawn with three lines across." },
+  picot: { us: "picot", uk: "picot", usName: "picot", ukName: "picot", height: 0.6, what: "Chain 3, then slip stitch into the first of those chains: a little bump, for a pretty edge." },
 };
 
 /** Each terms' words for the stitches, longest first so "sl st" is read before "st". */
@@ -97,11 +100,11 @@ function splitTop(text: string): string[] {
   return out.map((s) => s.trim()).filter(Boolean);
 }
 
-/** "x 6", "× 6", "6 times", "around", "across", anywhere in what follows: how often what is before it is worked. */
+/** "x 6", "× 6", "6 times", "around", "round", "across", anywhere in what follows: how often what is before it is worked. */
 function timesIn(text: string): number | "around" | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
-  if (/\b(around|across|to end|to the end)\b/.test(t)) return "around";
+  if (/\b(around|round|rnd|across|to end|to the end)\b/.test(t)) return "around";
   const m = /(?:^|\s)(?:x|×)\s*(\d+)\b|\b(\d+)\s*times\b/.exec(t);
   if (m) return Math.max(1, Math.min(500, Number(m[1] ?? m[2])));
   return null;
@@ -110,12 +113,33 @@ function timesIn(text: string): number | "around" | null {
 /** Reads a round or row. */
 export function readRow(text: string, terms: Terms): ReadRow {
   const errors: string[] = [];
-  const parts = readParts(text.replace(/\.\s*$/, ""), terms, errors);
+  // A repeat or a bracket straight after a stitch, the comma left out: "ch 2 *hdc in next* around".
+  const tidy = text
+    .replace(/\.\s*$/, "")
+    .replace(/([^,;*\s])\s+\*(?=[^*]*\*)/g, "$1, *")
+    .replace(/([^,;(\[\s])\s+([([])(?!\s*counts)/gi, "$1, $2");
+  const parts = readParts(tidy, terms, errors);
   return { parts, errors };
 }
 
 const repeated = (steps: Step[], times: number | "around" | null): Part[] =>
   times ? [{ kind: "repeat", parts: steps.map((step) => ({ kind: "step", step })), times }] : steps.map((step) => ({ kind: "step", step }));
+
+/**
+ * What to say about a word that is not a stitch: one from the other terms
+ * named as that, else plainly that it is not in the list.
+ */
+function notAStitch(text: string, terms: Terms): string {
+  const t = text.trim().toLowerCase().replace(/^\d+\s*/, "");
+  const word = t.split(/[\s(]/)[0];
+  const other: Terms = terms === "us" ? "uk" : "us";
+  const there = WORDS[other].find(([w]) => w === word);
+  if (there && !WORDS[terms].some(([w]) => w === word)) {
+    const s = STITCHES[there[1]];
+    return `“${word}” is ${other.toUpperCase()} for ${other === "us" ? s.usName : s.ukName}. In ${terms.toUpperCase()} terms, which this diagram uses, write ${s[terms]}. Or switch the terms at the top.`;
+  }
+  return `“${text.trim()}” isn't one of the stitches listed under Stitches, so it's left out of the drawing.`;
+}
 
 function readParts(text: string, terms: Terms, errors: string[]): Part[] {
   const parts: Part[] = [];
@@ -123,7 +147,9 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
     // *…* x 6, *…* around
     const star = /^\*(.*)\*\s*(.*)$/.exec(piece);
     if (star) {
-      parts.push({ kind: "repeat", parts: readParts(star[1], terms, errors), times: timesIn(star[2]) ?? 1 });
+      const times = timesIn(star[2]);
+      if (star[2].trim() && !times) errors.push(`After the repeat, “${star[2].trim()}” is not a number of times. Write x 6 for six times, or around to go to the end.`);
+      parts.push({ kind: "repeat", parts: readParts(star[1], terms, errors), times: times ?? 1 });
       continue;
     }
     // (…) or […]: all worked into one place, maybe repeated.
@@ -131,8 +157,8 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
     if (group) {
       const stitches: Stitch[] = [];
       for (const bit of splitTop(group[1])) {
-        const steps = readSimple(bit, terms, true);
-        if (!steps) errors.push(`“${bit.trim()}” is not a stitch this knows`);
+        const steps = readSimple(bit, terms, true, errors);
+        if (!steps) errors.push(notAStitch(bit, terms));
         else for (const s of steps) {
           if (s.kind === "place") stitches.push(...s.stitches);
           if (s.kind === "chain") for (let i = 0; i < s.n; i++) stitches.push("ch");
@@ -145,18 +171,18 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
     // "2 sc in each st around", "dc in each ch across", "sc in each st x 6"
     const each = /^(.*?)\s+in each\b(.*)$/i.exec(piece);
     if (each) {
-      const steps = readSimple(each[1], terms, true);
-      if (!steps) errors.push(`“${piece}” is not a stitch this knows`);
+      const steps = readSimple(each[1], terms, true, errors);
+      if (!steps) errors.push(notAStitch(each[1], terms));
       else parts.push(...repeated(steps, timesIn(each[2]) ?? "around"));
       continue;
     }
-    const steps = readSimple(piece, terms, false);
+    const steps = readSimple(piece, terms, false, errors);
     if (steps) {
       // "3 dc x 4": what it says, again.
       const trailing = /(?:\s(?:x|×)\s*\d+|\s\d+\s*times)$/i.exec(piece);
       parts.push(...repeated(steps, trailing ? timesIn(trailing[0]) : null));
     } else if (/^join\b/i.test(piece)) parts.push({ kind: "step", step: { kind: "join" } });
-    else if (!/^(turn|fasten off|fo)\b/i.test(piece)) errors.push(`“${piece}” is not a stitch this knows`);
+    else if (!/^(turn|fasten off|fo)\b/i.test(piece)) errors.push(notAStitch(piece, terms));
   }
   return parts;
 }
@@ -165,15 +191,20 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
 const SPACE = /\b(sp|space|loop)\b/;
 /** Worked into one place: a fan or shell, not one stitch in each. */
 const ONE_PLACE = /\b(next|same|this|following|sp|space|loop|top)\b|\bin (?:the )?(?:st|stitch|ch)\b/;
+/** Words that say where a stitch goes, read or passed over; anything else is said not to be understood. */
+const WHERE = new Set(
+  "in into the next same this following first last ring magic st sts stitch stitches ch chain chains sp sps space spaces loop loops top of to join from hook beginning beg turning each around round rnd across row previous it here base remaining 2nd 3rd 4th second third on at end all turn work worked and then as counts".split(" "),
+);
 
 /**
  * One stitch or run: "ch 3", "3 ch", "5 dc", "dc in same st", "sk 2",
  * "sl st to join", "5 dc in next ch-sp", "11 dc in ring", "picot". Several
  * of a stitch go one in each place -- "3 dc", "11 dc in ring" -- unless
  * they say into one ("5 dc in next") or `together` says so (a group's, or
- * "2 sc in each"). Null for words it is not.
+ * "2 sc in each"). Null for words it is not; words after the stitch it
+ * cannot read are said in `errors`.
  */
-function readSimple(raw: string, terms: Terms, together: boolean): Step[] | null {
+function readSimple(raw: string, terms: Terms, together: boolean, errors: string[]): Step[] | null {
   let t = raw.trim().toLowerCase().replace(/\s+/g, " ").replace(/\((?:counts as [^)]*)\)/g, "").trim();
   t = t.replace(/\s+(?:x|×)\s*\d+$|\s+\d+\s*times$/, "");
   const skip = /^(?:sk|skip|miss)\b\s*(\d+)?/.exec(t);
@@ -192,6 +223,9 @@ function readSimple(raw: string, terms: Terms, together: boolean): Step[] | null
     count = Math.min(200, Math.max(1, Number(tail[1])));
     rest = tail[2];
   }
+  // Words after it that say nothing it knows: said, not passed over.
+  const unread = rest.split(/[\s\-–,]+/).filter((w) => w && !/^\d+$/.test(w) && !WHERE.has(w) && !stitchWord(w, terms));
+  if (unread.length) errors.push(`In “${raw.trim()}”, “${unread.join(" ")}” couldn't be read. Put a comma between stitches, and see How to write them below.`);
   if (word.stitch === "ch") return [{ kind: "chain", n: count }];
   if (word.stitch === "sl" && /\b(join|to the|in top|in first|into top|into first)\b/.test(rest)) return [{ kind: "join" }];
   const same = /\bsame\b/.test(rest);
@@ -732,19 +766,23 @@ ${body.join("\n")}
 </svg>`;
 }
 
+/** The stitches in the order they grow, shortest first. */
+export const STITCH_ORDER: Stitch[] = ["ch", "sl", "sc", "hdc", "dc", "tr", "dtr", "picot"];
+
+/** A stitch's symbol on its own, small, as an SVG coloured by `currentColor`. */
+export function symbolOf(s: Stitch): string {
+  const info = STITCHES[s];
+  const base = { x: 0, y: 0.9 * U };
+  const top = { x: 0, y: (0.9 - Math.max(info.height, 0.6)) * U };
+  const symbol = s === "ch" ? chainSvg({ x: 0, y: 0 }, { x: 1, y: 0 }) : stitchSvg(s, base, top);
+  const box = s === "ch" ? "-10 -10 20 20" : `-10 ${f(top.y - 6)} 20 ${f(base.y - top.y + 12)}`;
+  return `<svg viewBox="${box}" aria-hidden="true">${symbol}</svg>`;
+}
+
 /** Each stitch used, its symbol drawn small, with its name in these terms. */
 export function legendHtml(used: Set<Stitch>, terms: Terms): string {
-  const order: Stitch[] = ["ch", "sl", "sc", "hdc", "dc", "tr", "dtr", "picot"];
-  return order
-    .filter((s) => used.has(s))
-    .map((s) => {
-      const info = STITCHES[s];
-      const base = { x: 0, y: 0.9 * U };
-      const top = { x: 0, y: (0.9 - Math.max(info.height, 0.6)) * U };
-      const symbol = s === "ch" ? chainSvg({ x: 0, y: 0 }, { x: 1, y: 0 }) : stitchSvg(s, base, top);
-      const box = s === "ch" ? "-10 -10 20 20" : `-10 ${f(top.y - 6)} 20 ${f(base.y - top.y + 12)}`;
-      return `<span class="crochet-key"><svg viewBox="${box}" aria-hidden="true">${symbol}</svg><b>${info[terms]}</b> ${terms === "us" ? info.usName : info.ukName}</span>`;
-    })
+  return STITCH_ORDER.filter((s) => used.has(s))
+    .map((s) => `<span class="crochet-key">${symbolOf(s)}<b>${STITCHES[s][terms]}</b> ${terms === "us" ? STITCHES[s].usName : STITCHES[s].ukName}</span>`)
     .join("");
 }
 

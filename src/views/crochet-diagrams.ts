@@ -1,7 +1,7 @@
 import { api, isRecord, type CrochetDiagram, type Project } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
-import { EXAMPLES, STITCHES, diagramSvg, layout, legendHtml, rowWord, type Shape, type Terms } from "./crochet";
+import { EXAMPLES, STITCHES, STITCH_ORDER, diagramSvg, layout, legendHtml, rowWord, symbolOf, type Shape, type Stitch, type Terms } from "./crochet";
 
 /**
  * Constructors → Crochet diagrams: the diagrams kept, and one open to write
@@ -36,6 +36,8 @@ export class CrochetDiagrams {
   /** The one open, as being written. */
   private current: CrochetDiagram | null = null;
   private saving: number | null = null;
+  /** The round or row last written in, for a stitch clicked to go into. */
+  private writing = -1;
 
   constructor(host: HTMLElement, forProject: { id: string; name: string } | null) {
     this.host = host;
@@ -50,6 +52,10 @@ export class CrochetDiagrams {
     this.host.addEventListener("click", (e) => void this.onClick(e));
     this.host.addEventListener("input", (e) => this.onInput(e));
     this.host.addEventListener("change", (e) => this.onInput(e));
+    this.host.addEventListener("focusin", (e) => {
+      const li = (e.target as HTMLElement).closest?.<HTMLElement>(".crochet-row");
+      if (li) this.writing = Number(li.dataset.row);
+    });
     this.current = this.diagrams.find((d) => d.id === openId) ?? null;
     if (this.current) this.paintEditor();
     else this.paintList();
@@ -107,10 +113,6 @@ export class CrochetDiagrams {
           <section class="crochet-rows">
             <ol data-el="rows">${d.data.rows.map((r, i) => this.rowHtml(word, r, i)).join("")}</ol>
             <button class="ghost" data-act="add-row">+ ${word}</button>
-            <details class="crochet-help">
-              <summary>How to write them</summary>
-              ${helpHtml(d.data.terms)}
-            </details>
             <label class="field"><span>Notes <em class="optional">optional</em></span><textarea data-f="notes" rows="3" placeholder="Hook, yarn, where it is from">${esc(d.notes)}</textarea></label>
           </section>
           <section class="crochet-view">
@@ -132,6 +134,8 @@ export class CrochetDiagrams {
             </div>
           </section>
         </div>
+        ${stitchesHtml(d.data.terms, word)}
+        ${howHtml(d.data.terms, word)}
       </div>`;
     this.redraw();
   }
@@ -160,7 +164,7 @@ export class CrochetDiagrams {
       const error = li.querySelector<HTMLElement>('[data-el="row-error"]')!;
       count.textContent = r ? [r.stitches ? `${r.stitches} stitch${r.stitches === 1 ? "" : "es"}` : "", r.chains ? `${r.chains} chain${r.chains === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") : "";
       error.hidden = !r?.errors.length;
-      error.textContent = r?.errors.length ? `${r.errors.join("; ")}. ${knownHint(d.data.terms)}` : "";
+      error.innerHTML = r?.errors.length ? r.errors.map((m) => `<span>${esc(m)}</span>`).join("") : "";
     });
   }
 
@@ -245,6 +249,7 @@ export class CrochetDiagrams {
       this.paintEditor();
       this.keepSoon();
     }
+    if (act === "insert") this.insert(btn.dataset.stitch as Stitch);
     if (act === "to-board") await this.toBoard();
     if (act === "picture") await this.savePicture();
   }
@@ -272,6 +277,29 @@ export class CrochetDiagrams {
     }
     this.diagrams = this.diagrams.filter((x) => x.id !== id);
     this.paintList();
+  }
+
+  /**
+   * A stitch clicked: its name, in the terms chosen, where the cursor is in
+   * the round or row last written in (the last one, else), a comma before it
+   * when it follows another.
+   */
+  private insert(stitch: Stitch): void {
+    const d = this.current!;
+    const boxes = [...this.host.querySelectorAll<HTMLTextAreaElement>('.crochet-row textarea[data-f="row"]')];
+    if (!boxes.length) return;
+    const box = boxes[this.writing] ?? boxes[boxes.length - 1];
+    const word = STITCHES[stitch][d.data.terms];
+    const at = box === document.activeElement || this.writing >= 0 ? box.selectionStart : box.value.length;
+    const before = box.value.slice(0, at);
+    const after = box.value.slice(box.selectionEnd > at ? box.selectionEnd : at);
+    // Nothing before, or an opening bracket or star: nothing between. After a comma, a space; else a comma first.
+    const lead = !before.trim() || /[(*[]$/.test(before) ? "" : /,\s*$/.test(before) ? (/\s$/.test(before) ? "" : " ") : ", ";
+    box.value = `${before}${lead}${word}${after}`;
+    const caret = (before + lead + word).length;
+    box.focus();
+    box.setSelectionRange(caret, caret);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   /** On a project's board, below what is there. */
@@ -337,24 +365,61 @@ export async function svgToPng(svg: string, scale: number): Promise<Blob> {
   }
 }
 
-/** The stitches it knows, in these terms. */
-function knownHint(terms: Terms): string {
-  return `It knows ${Object.values(STITCHES)
-    .map((s) => s[terms])
-    .join(", ")}, and sk.`;
+/**
+ * Every stitch the diagram draws: its symbol, its name in US and in UK
+ * terms (the ones chosen first), and what it is, for someone learning. Each
+ * is a button that writes it into the round or row being written.
+ */
+function stitchesHtml(terms: Terms, word: string): string {
+  const other: Terms = terms === "us" ? "uk" : "us";
+  const name = (s: Stitch, t: Terms) => `<span class="${t === terms ? "on" : ""}"><b>${esc(STITCHES[s][t])}</b> ${esc(t === "us" ? STITCHES[s].usName : STITCHES[s].ukName)} <em>${t.toUpperCase()}</em></span>`;
+  return `
+    <section class="crochet-ref">
+      <h3>Stitches <span class="hint">Click one to add it to the ${word.toLowerCase()} you are writing, by its ${terms.toUpperCase()} name.</span></h3>
+      <div class="crochet-stitches">
+        ${STITCH_ORDER.map(
+          (s) => `
+          <button class="crochet-stitch" data-act="insert" data-stitch="${s}" title="Add ${esc(STITCHES[s][terms])}">
+            <span class="crochet-stitch-symbol">${symbolOf(s)}</span>
+            <span class="crochet-stitch-names">${name(s, terms)}${name(s, other)}</span>
+            <span class="crochet-stitch-what">${esc(STITCHES[s].what)}</span>
+          </button>`,
+        ).join("")}
+      </div>
+    </section>`;
 }
 
-function helpHtml(terms: Terms): string {
-  const t = (us: string, uk: string) => (terms === "us" ? us : uk);
+/** How a round or row is written, each thing in US and in UK terms. */
+function howHtml(terms: Terms, word: string): string {
+  const one = word.toLowerCase();
+  const rows: [string, string, string][] = [
+    ["A chain of 20, to start rows", "ch 20", "ch 20"],
+    ["6 stitches into a magic ring, to start rounds", "6 sc in ring", "6 dc in ring"],
+    ["One stitch in each of the next 3 stitches", "3 sc", "3 dc"],
+    ["Two stitches into every stitch, all the way: more stitches each round", "2 sc in each st around", "2 dc in each st around"],
+    ["5 tall stitches all into one stitch: a fan", "5 dc in next", "5 tr in next"],
+    ["A group into one place, with chains in it: a shell", "(3 dc, ch 2, 3 dc) in next sp", "(3 tr, ch 2, 3 tr) in next sp"],
+    ["Into the same stitch as the one before", "dc in same st", "tr in same st"],
+    ["Leave 2 stitches out", "sk 2", "miss 2"],
+    ["Part of it again and again: the part between stars, then how many times", "*sc, ch 3, sk 1* x 6", "*dc, ch 3, miss 1* x 6"],
+    ["The same, to the end of the round or row", "*sc, ch 3, sk 1* around", "*dc, ch 3, miss 1* around"],
+    ["Close a round, back into its first stitch", "sl st to join", "ss to join"],
+  ];
+  const col = (t: Terms) => (t === terms ? ' class="on"' : "");
   return `
-    <ul class="hint">
-      <li>One round or row to a box, its stitches with commas between: <code>${t("ch 3, 11 dc in ring, sl st to join", "ch 3, 11 tr in ring, ss to join")}</code>.</li>
-      <li>A number before a stitch makes that many, one in each stitch: <code>${t("3 sc", "3 dc")}</code>. Into one stitch, a fan or shell: <code>${t("5 dc in next", "5 tr in next")}</code>, or brackets: <code>${t("(3 dc, ch 2, 3 dc) in next sp", "(3 tr, ch 2, 3 tr) in next sp")}</code>.</li>
-      <li>Repeats between stars: <code>${t("*sc, ch 3, sk 1* x 6", "*dc, ch 3, sk 1* x 6")}</code>, or <code>around</code> / <code>across</code> to the end. <code>${t("2 sc in each st around", "2 dc in each st around")}</code> works too.</li>
-      <li><code>in same st</code> goes into the stitch just worked; <code>in next sp</code> under the next chains; <code>sk 2</code> leaves two.</li>
-      <li>Chains at the start of a round or row stand up as its turning chain. <code>sl st to join</code> closes a round.</li>
-      <li>In rows, each row is worked back along the one before. Along a spiral, the first row is the spiral chain and the rows after are worked back along it.</li>
-    </ul>`;
+    <section class="crochet-ref">
+      <h3>How to write them</h3>
+      <p class="crochet-how-intro">One ${one} to a box. Write its stitches in the order you work them, with a comma between each. A number in front means that many.</p>
+      <table class="crochet-how">
+        <thead><tr><th>To make</th><th${col("us")}>In US terms</th><th${col("uk")}>In UK terms</th></tr></thead>
+        <tbody>${rows.map(([want, us, uk]) => `<tr><td>${esc(want)}</td><td${col("us")}><code>${esc(us)}</code></td><td${col("uk")}><code>${esc(uk)}</code></td></tr>`).join("")}</tbody>
+      </table>
+      <ul class="crochet-how-notes">
+        <li>Chains written first stand up at the start of the ${one}, as its turning chain: <code>ch 3, …</code></li>
+        <li>In rows, each row is worked back along the one before. Along a spiral, the first row is a long chain that lies in a spiral, and the rows after are worked back along it, like a crochet rose.</li>
+        <li><b>US and UK patterns call the same stitches by different names.</b> A US single crochet (sc) is a UK double crochet (dc), and a US double crochet (dc) is a UK treble (tr). Choose the terms your pattern is written in at the top: the list of stitches above shows both names.</li>
+      </ul>
+    </section>`;
 }
 
 function esc(v: string): string {

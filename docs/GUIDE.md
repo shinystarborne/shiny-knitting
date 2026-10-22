@@ -436,11 +436,18 @@ Write one round or row to a box, its stitches with commas between:
 - `in same st` goes into the stitch just worked, `in next sp` under the next
   chains, and `sk 2` leaves two.
 
+Under the drawing, **Stitches** lists every stitch it can draw: its symbol,
+its US and UK names, and what it is, for when you are learning. Click one and
+it is written into the round or row you are on. **How to write them** shows
+each way of writing a round, in US and in UK terms side by side.
+
 Each stitch is worked into the stitches of the round or row before. Increases
 spread out round a bigger circle, fans lean along the row, and chain loops
 arch out. Each round or row is numbered, and the first is marked with an arrow
-the way it goes. Beside each box is how many stitches and chains it makes. A
-word it doesn't know is pointed out under its box, and the rest is still drawn.
+the way it goes. Beside each box is how many stitches and chains it makes. Anything it
+can't read is said under its box, in plain words: a stitch not in the list, a
+US name in a UK diagram (and the UK name to use), or words after a stitch it
+couldn't make sense of. The rest is still drawn.
 
 **US or UK terms**: `dc` is a different stitch in each, so choose the terms
 your pattern uses. The legend under the drawing names each stitch in them.

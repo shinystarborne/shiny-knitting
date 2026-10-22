@@ -49,6 +49,10 @@ function pure(results: CheckResult[]): void {
   check(results, "2 sc in each st around: a pair into each of the 6", places("2 sc in each st around", 6).join(",") === "sc+sc,sc+sc,sc+sc,sc+sc,sc+sc,sc+sc");
   check(results, "ch 3, dc in same st; sl st to join", places("ch 3, dc in same st, sl st to join").join(",") === "ch3,dc@same,join");
   check(results, "UK terms: dc is US sc, tr is US dc, ss a slip stitch", places("3 dc, 2 tr in next, ss to join", 0, "uk").join(",") === "sc,sc,sc,dc+dc,join", places("3 dc, 2 tr in next, ss to join", 0, "uk").join(","));
+  check(results, "a repeat straight after a stitch, the comma left out, and round for around", places("2 ch *(1 hdc) in next* round", 20).join(",") === ["ch2", ...Array(20).fill("hdc")].join(","), places("2 ch *(1 hdc) in next* round", 20).join(","));
+  const unread = readRow("dc wibble in next", "us");
+  check(results, "words after a stitch that can't be read are said, not dropped", unread.errors.length === 1 && /“wibble” couldn't be read/.test(unread.errors[0]), JSON.stringify(unread.errors));
+  check(results, "where stitches go is read without complaint", ["sc in 2nd ch from hook", "sl st in top of beg ch-3 to join", "5 dc in next ch-sp", "ch 3 (counts as first dc)"].every((t) => !readRow(t, "us").errors.length));
   const odd = readRow("3 dc, 2 bobbles, sk 1", "us");
   check(results, "what it does not know is said, the rest kept", odd.errors.length === 1 && /bobbles/.test(odd.errors[0]) && stepsOf(odd, 0).length === 4, JSON.stringify(odd.errors));
 
@@ -100,7 +104,16 @@ export async function verifyCrochet() {
     third.dispatchEvent(new Event("input", { bubbles: true }));
     await wait(50);
     const error = editor()!.querySelectorAll<HTMLElement>('[data-el="row-error"]')[2];
-    check(results, "a stitch it does not know is said, under its round, with what it knows", !error.hidden && /popcorns/.test(error.textContent ?? "") && /hdc/.test(error.textContent ?? ""), error.textContent ?? "");
+    check(results, "a stitch it does not know is said plainly, under its round, pointing to the list", !error.hidden && /“2 popcorns” isn't one of the stitches listed under Stitches/.test(error.textContent ?? ""), error.textContent ?? "");
+    const dcCard = () => editor()!.querySelector('[data-stitch="dc"]')!.textContent?.replace(/\s+/g, " ") ?? "";
+    check(results, "every stitch is listed, with its US and UK names and what it is", editor()!.querySelectorAll(".crochet-stitch").length === 8 && /dc double crochet US ?tr treble UK/.test(dcCard()) && /Yarn over/.test(dcCard()), dcCard());
+    check(results, "how to write them, each in US and in UK terms", /6 sc in ring/.test(editor()!.querySelector(".crochet-how")!.textContent ?? "") && /6 dc in ring/.test(editor()!.querySelector(".crochet-how")!.textContent ?? ""));
+    // A stitch clicked goes into the round being written, after a comma.
+    third.value = "ch 1";
+    third.focus();
+    third.setSelectionRange(4, 4);
+    (editor()!.querySelector('[data-stitch="sc"]') as HTMLElement).click();
+    check(results, "a stitch clicked is written into the round being written, after a comma", third.value === "ch 1, sc", third.value);
     third.value = "ch 1, *sc, ch 3, sk 1* around, sl st to join";
     third.dispatchEvent(new Event("input", { bubbles: true }));
     (editor()!.querySelector('[data-act="add-row"]') as HTMLElement).click();
@@ -116,7 +129,7 @@ export async function verifyCrochet() {
     terms.dispatchEvent(new Event("change", { bubbles: true }));
     await waitFor(() => !/single crochet/.test(editor()?.querySelector("[data-el=legend]")?.textContent ?? ""), "UK terms");
     const ukError = editor()!.querySelectorAll<HTMLElement>('[data-el="row-error"]')[3];
-    check(results, "UK terms: the same rounds read in them, dc a UK double crochet, hdc not a UK word", /dc\s*double crochet/.test(editor()!.querySelector("[data-el=legend]")!.textContent ?? "") && !ukError.hidden && /hdc/.test(ukError.textContent ?? "") && /htr/.test(ukError.textContent ?? ""), ukError.textContent ?? "");
+    check(results, "UK terms: the same rounds read in them, dc a UK double crochet, hdc not a UK word, the UK name said", /dc\s*double crochet/.test(editor()!.querySelector("[data-el=legend]")!.textContent ?? "") && !ukError.hidden && /“hdc” is US for half double crochet.*write htr/.test(ukError.textContent ?? ""), ukError.textContent ?? "");
     terms.value = "us";
     terms.dispatchEvent(new Event("change", { bubbles: true }));
     await wait(900);

@@ -4393,21 +4393,44 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .crochet-card-body strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crochet-card .card-tools-row { margin-top: auto; }
 .crochet-card .spacer, .crochet-actions .spacer { flex: 1; }
-.crochet-editor { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+.crochet-editor { display: flex; flex-direction: column; gap: 12px; }
 .crochet-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .crochet-name { flex: 1 1 200px; min-width: 0; width: auto; font-size: 16px; font-weight: 600; }
 .crochet-bar select { width: auto; flex: none; }
 .crochet-bar [data-el="saved"] { flex-basis: 100%; }
-.crochet-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; }
-.crochet-rows { overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 10px; }
+.crochet-body { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; align-items: start; }
+.crochet-rows { display: flex; flex-direction: column; gap: 10px; }
 .crochet-rows ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .crochet-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .crochet-row-head .hint { flex: 1; font-size: 12px; }
 .crochet-row-head button { padding: 0 6px; font-size: 12px; }
 .crochet-row textarea { width: 100%; resize: vertical; font: 13px/1.4 ui-monospace, Consolas, monospace; }
-.crochet-row .form-error { margin: 4px 0 0; font-size: 12px; }
-.crochet-help ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.crochet-help code { font-size: 11px; }
+.crochet-row .form-error { margin: 4px 0 0; font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
+.crochet-row .form-error[hidden] { display: none; }
+/* What there is to write: each stitch, and how a round or row is written, in US and UK terms. */
+.crochet-ref { border-top: 1px solid var(--border); padding-top: 14px; }
+.crochet-ref h3 { margin: 0 0 10px; }
+.crochet-ref h3 .hint { font-size: 12px; font-weight: 400; margin-left: 6px; }
+.crochet-stitches { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.crochet-stitch { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto 1fr; gap: 4px 10px; text-align: left; padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-weight: 400; }
+.crochet-stitch:hover { border-color: var(--accent); }
+.crochet-stitch-symbol { grid-row: 1 / 3; align-self: start; height: 46px; display: grid; place-items: center; background: #fff; border-radius: 6px; color: #222; }
+.crochet-stitch-symbol svg { width: 18px; height: 30px; }
+.crochet-stitch-symbol svg line, .crochet-stitch-symbol svg ellipse, .crochet-stitch-symbol svg circle { stroke: currentColor; stroke-width: 1.3; fill: none; }
+.crochet-stitch-symbol svg .fill { fill: currentColor; stroke: none; }
+.crochet-stitch-names { display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.crochet-stitch-names span { color: var(--text-dim); }
+.crochet-stitch-names span.on { color: var(--text); }
+.crochet-stitch-names em { font-style: normal; font-size: 10px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-dim); margin-left: 2px; }
+.crochet-stitch-what { font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+.crochet-how-intro { margin: 0 0 8px; font-size: 13px; }
+.crochet-how { width: 100%; border-collapse: collapse; font-size: 13px; }
+.crochet-how th, .crochet-how td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.crochet-how th { font-weight: 600; color: var(--text-dim); }
+.crochet-how th.on { color: var(--text); }
+.crochet-how td:not(.on):not(:first-child) code { opacity: 0.7; }
+.crochet-how code { white-space: nowrap; }
+.crochet-how-notes { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; }
 .crochet-view { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .crochet-drawing { height: min(62vh, 640px); min-height: 260px; background: #fff; border-radius: 10px; padding: 8px; display: grid; place-items: center; }
 .crochet-drawing .hint { color: #555; }
