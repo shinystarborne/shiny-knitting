@@ -2,6 +2,8 @@
 
 ## Toward 1.1.0
 
+- **[v1.1.0-beta.14](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.14)** —
+  Cheatsheets and Masterclasses as a page of cards, each opened on a page of its own.
 - **[v1.1.0-beta.13](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.13)** —
   crochet diagrams in Constructors: rounds or rows written as a pattern writes them, drawn in crochet symbols.
 - **[v1.1.0-beta.12](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.12)** —
