@@ -3232,7 +3232,7 @@ dependencies = [
 
 [[package]]
 name = "shiny-knitting-app"
-version = "1.0.17"
+version = "1.0.18"
 dependencies = [
  "base64 0.22.1",
  "encoding_rs",
