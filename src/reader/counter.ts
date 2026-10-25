@@ -4,6 +4,7 @@ import { askForm, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { CLICK_SOUNDS, clickSound, isClickMuted, playClick, setClickMuted, setClickSound, type ClickSound } from "./click";
 import { captureKey, isPlainPress, keyLabel } from "./keys";
+import { lastCounted, noteCounted, sinceLabel } from "./last-count";
 
 /**
  * The row counter.
@@ -37,6 +38,9 @@ export class RowCounter {
   private totalValue!: HTMLElement;
   private counterList!: HTMLElement;
   private soundButton!: HTMLButtonElement;
+  private sinceLine!: HTMLElement;
+  /** Ticks the "Last counted" line each second, while the counter is on the page. */
+  private sinceTimer: number | null = null;
   /**
    * Told of every row counted on the total -- by its buttons, the arrow and
    * +/- keys, or the row keys -- so the reader beside it steps its line by as
@@ -69,6 +73,7 @@ export class RowCounter {
             <span class="value" data-el="total">0</span>
             <button data-act="total-inc" title="Add 1">+</button>
           </div>
+          <p class="counter-since" data-el="since" hidden></p>
           <div class="quick counter-setting">
             <button data-act="total-dec10" title="Subtract 10">−10</button>
             <button data-act="total-inc10" title="Add 10">+10</button>
@@ -118,6 +123,7 @@ export class RowCounter {
     this.totalValue = this.q('[data-el="total"]');
     this.counterList = this.q('[data-el="counterlist"]');
     this.soundButton = this.q('[data-act="sound"]');
+    this.sinceLine = this.q('[data-el="since"]');
     this.paintSoundButton();
 
     this.root.addEventListener("click", (e) => this.onClick(e));
@@ -249,6 +255,7 @@ export class RowCounter {
   private async count(delta: number, moveLine = true): Promise<void> {
     const outcome = await api.countRows(this.patternId, this.projectId, delta);
     playClick(delta < 0);
+    noteCounted(this.patternId, this.projectId);
     this.apply(outcome);
     // The timer hears it: a project's card may keep the timer by the counter.
     if (this.projectId) rowsCounted(this.projectId, delta);
@@ -258,6 +265,7 @@ export class RowCounter {
   private async countOne(id: string, delta: number): Promise<void> {
     const outcome = await api.countCounter(id, delta);
     playClick(delta < 0);
+    noteCounted(this.patternId, this.projectId);
     this.apply(outcome);
     if (this.projectId) rowsCounted(this.projectId, delta);
   }
@@ -423,9 +431,34 @@ export class RowCounter {
     return this.progress?.totalRows ?? 0;
   }
 
+  /**
+   * The "Last counted 30 seconds ago" line, going up from the last count, so a
+   * press that may not have landed can be checked at a glance. Hidden until
+   * something has been counted.
+   */
+  private paintSince(): void {
+    const at = lastCounted(this.patternId, this.projectId);
+    this.sinceLine.hidden = at === null;
+    if (at === null) return;
+    this.sinceLine.textContent = `Last counted ${sinceLabel(Date.now() - at)}`;
+    this.sinceLine.title = `Last counted at ${new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" })}`;
+    if (this.sinceTimer === null) {
+      this.sinceTimer = window.setInterval(() => {
+        // The counter has no teardown: it stops when its page is gone.
+        if (!this.root.isConnected) {
+          window.clearInterval(this.sinceTimer!);
+          this.sinceTimer = null;
+          return;
+        }
+        this.paintSince();
+      }, 1000);
+    }
+  }
+
   private render(): void {
     if (!this.progress) return;
     this.totalValue.textContent = String(this.progress.totalRows);
+    this.paintSince();
     // For what follows the count on the page around it: a chart's marked row.
     this.root.dispatchEvent(new CustomEvent("counter-total", { bubbles: true, detail: this.progress.totalRows }));
     this.q('[data-act="key-up"]').textContent = keyLabel(this.keys.up);

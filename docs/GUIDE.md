@@ -689,6 +689,13 @@ tap**, **Wood block** or **Tick**, each heard as it is picked, and a little
 lower when counting down. The choices are remembered. They are synthesised, so
 there is no sound file in the installer.
 
+Under the total, **Last counted 30 seconds ago** says how long ago the last
+count landed, going up every second from the press: "just now", seconds, then
+minutes, hours and days. A glance at it answers "did that press count?" — if it
+says *just now*, it did. Resting the pointer on it shows the exact time. Every
+count moves it, a counter's own `−`/`+` and keys too; it is kept for each
+project, so it is still right after the app is closed and opened again.
+
 Everything is saved as you go and survives closing the app.
 
 Keyboard, while the reader has focus:

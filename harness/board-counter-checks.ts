@@ -3,12 +3,14 @@
  * by itself, and none on the side; the Counter button putting it there,
  * unfolded; counting there, and kept when the board is drawn again or the
  * page opened again; removed like any card, and the count keys then left
- * alone; and a project with no pattern told to choose one first.
+ * alone; and a project with no pattern told to choose one first. Under the
+ * total, "Last counted 30 seconds ago", going up from the last count.
  *
  * Run with the harness open:
  *   window.__boardCounterChecks()
  */
 import type { BoardItem, Pattern, Project } from "../src/api";
+import { sinceLabel } from "../src/reader/last-count";
 
 interface CheckResult {
   name: string;
@@ -68,6 +70,8 @@ export async function verifyBoardCounter() {
       const el = card()?.querySelector<HTMLElement>(sel);
       return !!el && getComputedStyle(el).display !== "none";
     };
+    const since = () => card()?.querySelector<HTMLElement>(".counter-since")?.textContent?.trim() ?? "";
+    check(results, "nothing counted yet: no Last counted line", !shown(".counter-since"), since());
     check(results, "Counter puts it on the board: the counts and their − and +, the rest under a gear", shown('[data-act="total-inc"]') && shown('[data-act="total-dec"]') && shown('[data-act="settings"]') && !shown(".quick") && !shown('[data-act="sound"]') && !shown('[data-act="add-counter"]') && !shown(".counter-keys") && !card()!.querySelector('[data-act="collapse"]'));
     card()!.querySelector<HTMLElement>('[data-act="settings"]')!.click();
     await wait(100);
@@ -99,6 +103,16 @@ export async function verifyBoardCounter() {
     card()!.querySelector<HTMLElement>('[data-act="total-inc"]')!.click();
     await waitFor(() => total() === "2", "counted", 5000).catch(() => {});
     check(results, "it counts there", total() === "2", total());
+    check(results, "…and says when, under the total, with the settings shut", shown(".counter-since") && /^Last counted (just now|1 second ago)$/.test(since()), since());
+    await waitFor(() => /^Last counted [2-5] seconds ago$/.test(since()), "the line to go up", 6000).catch(() => {});
+    check(results, "…going up from the count", /^Last counted [2-5] seconds ago$/.test(since()), since());
+    check(
+      results,
+      "how long ago, in words",
+      sinceLabel(400) === "just now" && sinceLabel(1000) === "1 second ago" && sinceLabel(30_000) === "30 seconds ago" &&
+        sinceLabel(60_000) === "1 minute ago" && sinceLabel(150_000) === "2 minutes ago" && sinceLabel(3 * 3600_000 + 59 * 60_000) === "3 hours ago" &&
+        sinceLabel(30 * 3600_000) === "yesterday" && sinceLabel(4 * 86400_000) === "4 days ago",
+    );
 
     (page()!.querySelector('.board-tools [data-add="note"]') as HTMLElement).click();
     await waitFor(() => !!page()!.querySelector(".board-item.kind-note"), "the note");
@@ -108,6 +122,7 @@ export async function verifyBoardCounter() {
     await open(knitted.id);
     await waitFor(() => !!card()?.querySelector(".project-counter") && total() === "2", "the count again", 5000).catch(() => {});
     check(results, "opened again: there, the count kept", !!card()?.querySelector(".project-counter") && total() === "2", total());
+    check(results, "…and when it was last counted", /^Last counted \d+ seconds ago$/.test(since()), since());
 
     // Removed like any card.
     card()!.querySelector<HTMLElement>('[data-act="remove"]')!.click();
