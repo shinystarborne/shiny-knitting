@@ -11,15 +11,13 @@
  */
 import type { MeasurementSet, Person } from "../src/api";
 import { change, latestShoeSize, latestValue, readLength, showLength, showLengthWithUnit } from "../src/views/measure";
+import { near } from "./near";
 
 interface CheckResult {
   name: string;
   ok: boolean;
   detail: string;
 }
-
-/** Equal but for floating-point rounding. */
-const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
 
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
