@@ -1,5 +1,5 @@
 import { api, type Pattern, type Project, type Tool, type Yarn } from "../api";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { fromDateInput, toDateInput } from "./project-form";
 import { describe } from "./tool-filter";
 import { allOf } from "./yarn-picker";
@@ -64,6 +64,7 @@ export class FinishProjectDialog {
     const guessed = rows.some((r) => r.value !== "");
 
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal finish-form" role="dialog" aria-modal="true">
         <h2>Finish “${escapeHtml(p.name)}”</h2>

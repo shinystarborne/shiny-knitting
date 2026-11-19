@@ -1,4 +1,5 @@
-import type { AiSettingsView, Pattern } from "../api";
+import { api, type AiSettingsView, type Pattern } from "../api";
+import { askYesNo } from "../dialogs";
 import { MetadataScanner, summarise, type ScanOutcome } from "./scan";
 
 /**
@@ -13,6 +14,12 @@ import { MetadataScanner, summarise, type ScanOutcome } from "./scan";
  * Each pattern the model changes is announced as a `pattern-described` event
  * on `window`, with the pattern's id, so whichever screen is up can repaint
  * that one card.
+ *
+ * A run sends to the server, with the model and the saving rule, that were
+ * shown when it was confirmed. Settings saved while it runs do not quietly
+ * redirect it: the backend refuses the next request, and the rest of the run
+ * is asked about again with the new settings shown, or left. Stop stays on
+ * the panel throughout.
  */
 
 export const ROBOT = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2a1.5 1.5 0 0 1 .75 2.8V6H17a3 3 0 0 1 3 3v1h.5a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5H20v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-1h-.5A1.5 1.5 0 0 1 2 14.5v-3A1.5 1.5 0 0 1 3.5 10H4V9a3 3 0 0 1 3-3h4.25V4.8A1.5 1.5 0 0 1 12 2zM9 10.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zm6 0a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5zM9 16.25a.75.75 0 0 0 0 1.5h6a.75.75 0 0 0 0-1.5H9z"/></svg>`;
@@ -26,6 +33,8 @@ let shown: Shown = "open";
 let done = 0;
 let total = 0;
 const outcomes: ScanOutcome[] = [];
+/** Why a run ended before its end, other than Stop; shown in place of "Stopped". */
+let endedEarly = "";
 
 /** Whether a run is going. */
 export function describing(): boolean {
@@ -39,34 +48,92 @@ export function showDescribePanel(): void {
 }
 
 /**
- * Starts describing `targets`. Returns at once; the run carries on whatever
- * is on screen. A second call while one runs only shows the panel.
+ * Asks whether to describe `count` patterns with `settings`: the model, where
+ * the text goes, and that it runs in the background. `lead` comes first, to
+ * say why it is being asked again.
+ */
+export function askToDescribe(count: number, settings: AiSettingsView, lead = ""): Promise<boolean> {
+  return askYesNo(
+    `${lead}Describe ${count} pattern${count === 1 ? "" : "s"} using ${settings.model || "the model"}?\n\n` +
+      `Only the first pages of each pattern are sent, to ${
+        settings.isLocal ? "the local network" : settings.baseUrl
+      } (designer, sizes and materials), never the whole pattern.\n\n` +
+      `It runs in the background while the app is in use.`,
+    { title: "Describe with the model", okLabel: "Describe" },
+  );
+}
+
+/**
+ * Starts describing `targets` with the `settings` they were confirmed with.
+ * Returns at once; the run carries on whatever is on screen. A second call
+ * while one runs only shows the panel.
  */
 export function startDescribing(targets: Pattern[], settings: AiSettingsView): void {
   if (running) return showDescribePanel();
   running = true;
   stopRequested = false;
+  endedEarly = "";
   done = 0;
   total = targets.length;
   outcomes.length = 0;
   buildPanel();
   setShown("open");
   void (async () => {
-    const scanner = new MetadataScanner(settings);
-    const results = await scanner.scan(
-      targets,
-      (outcome, index) => {
-        outcomes.push(outcome);
-        done = index + 1;
-        logOutcome(outcome);
-        paintProgress();
-        if (outcome.applied) window.dispatchEvent(new CustomEvent("pattern-described", { detail: outcome.patternId }));
-      },
-      () => stopRequested,
-    );
+    let confirmed = settings;
+    let queue = targets;
+    for (;;) {
+      const run = await new MetadataScanner(confirmed).scan(
+        queue,
+        (outcome) => {
+          outcomes.push(outcome);
+          done++;
+          logOutcome(outcome);
+          paintProgress();
+          if (outcome.applied) window.dispatchEvent(new CustomEvent("pattern-described", { detail: outcome.patternId }));
+        },
+        () => stopRequested,
+      );
+      if (!run.unsent.length || stopRequested) break;
+      // The settings were saved during the run: the rest only with a new yes.
+      const next = await reconfirm(run.unsent.length);
+      if (!next) break;
+      confirmed = next;
+      queue = run.unsent;
+      setNote("A local model can take a moment per pattern. This runs in the background while the app is in use.");
+    }
     running = false;
-    finish(results);
+    finish([...outcomes]);
   })();
+}
+
+/**
+ * The settings changed partway through: the new ones, if the rest is to go
+ * on with them, or null to end the run here.
+ */
+async function reconfirm(left: number): Promise<AiSettingsView | null> {
+  setNote("The model settings were changed. Waiting for an answer before going on…");
+  setShown("open");
+  const fresh = await api.getAiSettings().catch(() => null);
+  if (!fresh?.enabled || !fresh.baseUrl.trim()) {
+    endedEarly = "Ended: describing with a model was switched off in Settings.";
+    return null;
+  }
+  const go = await askToDescribe(
+    left,
+    fresh,
+    `The model settings were changed during the run. Nothing more was sent. `,
+  );
+  if (stopRequested) return null;
+  if (!go) {
+    endedEarly = "Ended: the model settings were changed.";
+    return null;
+  }
+  return fresh;
+}
+
+function setNote(text: string): void {
+  const note = panel?.querySelector<HTMLElement>('[data-el="note"]');
+  if (note) note.textContent = text;
 }
 
 function buildPanel(): void {
@@ -164,9 +231,14 @@ function finish(results: ScanOutcome[]): void {
   panel.classList.add("done");
   panel.querySelector('[data-act="stop"]')?.remove();
   panel.querySelector(".scan-bar")?.remove();
-  panel.querySelector('[data-el="title"]')!.textContent = stopRequested ? "Stopped" : "Done";
+  const early = stopRequested || !!endedEarly;
+  panel.querySelector('[data-el="title"]')!.textContent = early ? "Stopped" : "Done";
   const note = panel.querySelector<HTMLElement>('[data-el="note"]')!;
-  note.textContent = stopRequested ? `Stopped. ${summarise(results)}` : summarise(results);
+  note.textContent = stopRequested
+    ? `Stopped. ${summarise(results)}`
+    : endedEarly
+      ? `${endedEarly} ${summarise(results)}`
+      : summarise(results);
   paintIndicator();
   window.dispatchEvent(new CustomEvent("describing-finished"));
 }

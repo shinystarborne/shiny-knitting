@@ -3083,23 +3083,33 @@ const handlers = {
         maxCharacters: 4000,
         reasoningEffort: "low",
         rescanExisting: false,
+        revision: "r0",
       };
     }
     return clone(store.aiSettings);
   },
+  // Every save is a new revision, as commands.rs::ai_settings_revision.
   save_ai_settings: ({ settings, apiKey }) => {
-    store.aiSettings = { ...settings, hasApiKey: !!(apiKey || settings.hasApiKey) };
+    store.aiRevision = (store.aiRevision ?? 0) + 1;
+    store.aiSettings = { ...settings, hasApiKey: !!(apiKey || settings.hasApiKey), revision: `r${store.aiRevision}` };
     if (apiKey) store.apiKey = apiKey;
     return clone(store.aiSettings);
   },
-  test_ai_connection: () => ({
-    ok: true,
-    modelCount: 2,
-    models: [
-      { id: "Qwen3.6-27B", label: "Qwen3.6-27B" },
-      { id: "Qwen3.8-27B", label: "Qwen3.8-27B" },
-    ],
-  }),
+  // As commands.rs: the draft is tested and never saved. What was tested is
+  // kept in store.lastAiTest; an address with "fail" in it fails.
+  test_ai_connection: ({ settings, apiKey } = {}) => {
+    const tested = settings ?? store.aiSettings;
+    store.lastAiTest = { baseUrl: tested?.baseUrl ?? "", model: tested?.model ?? "", apiKey: apiKey ?? null };
+    if (/fail/.test(tested?.baseUrl ?? "")) throw new Error("Could not reach the server.");
+    return {
+      ok: true,
+      modelCount: 2,
+      models: [
+        { id: "Qwen3.6-27B", label: "Qwen3.6-27B" },
+        { id: "Qwen3.8-27B", label: "Qwen3.8-27B" },
+      ],
+    };
+  },
   // As ball_band.rs: what store.ballBand says (store.ballBandError fails
   // it), with the picture it was sent kept to look at.
   read_ball_band: async ({ image }) => {
@@ -3109,10 +3119,17 @@ const handlers = {
     if (store.ballBandError) throw new Error(store.ballBandError);
     return clone(store.ballBand);
   },
-  suggest_metadata: ({ patternId, excerpt, images, pages }) => {
+  suggest_metadata: async ({ patternId, excerpt, images, pages, revision }) => {
     if (!store.aiSettings?.enabled) throw new Error("Describing with a model is switched off in Settings.");
     const p = store.patterns.find((x) => x.id === patternId);
     if (!p) throw new Error("not found");
+    // Confirmed against other settings: nothing sent, as commands.rs.
+    if (revision != null && revision !== (store.aiSettings.revision ?? "r0")) {
+      return { patternId, patternTitle: p.title, failed: true, error: "The model settings were changed after this was confirmed.", suggestion: {}, before: clone(p), after: clone(p), changedFields: [], applied: false, settingsChanged: true };
+    }
+    (store.aiSent ??= []).push({ patternId, baseUrl: store.aiSettings.baseUrl });
+    // A model's time, when a check needs a run to be caught in the middle.
+    if (store.aiDelay) await new Promise((r) => setTimeout(r, store.aiDelay));
     // Record what the frontend actually sent, so the image fallback can be
     // checked without a model server: a scan should arrive as pictures, and a
     // readable pattern should arrive as text and nothing else.

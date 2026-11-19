@@ -48,3 +48,18 @@ if (typeof window !== "undefined") window.addEventListener("pointerdown", (e) =>
 export function clickedOn(e: MouseEvent, backdrop: HTMLElement): boolean {
   return e.target === backdrop && (pressedAt === null || pressedAt === backdrop);
 }
+
+/**
+ * Sent to a form's modal element when the app takes the element down while
+ * the form is still up: Escape, or another form opened in its place. The form
+ * answers by running its own close, so whatever it set up outside its element
+ * (a paste listener on the document, a lookup still running) goes with it.
+ * Without this, each form left that way kept listening for the rest of the
+ * session.
+ */
+export const MODAL_DISPOSE = "modal-dispose";
+
+/** Runs `close` when the app takes `root` down; see `MODAL_DISPOSE`. */
+export function closeOnDispose(root: HTMLElement, close: () => void): void {
+  root.addEventListener(MODAL_DISPOSE, close, { once: true });
+}

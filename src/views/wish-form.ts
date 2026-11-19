@@ -1,7 +1,7 @@
 import { api, isLive, toBytes, WISH_KINDS, type LinkPreview, type Project, type Shop, type Wish, type WishInput, type WishKind } from "../api";
 import { forgetWishPhoto, prepareChosenImage, wishPhotoUrl } from "../covers";
 import { askText } from "../dialogs";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { shopForUrl, siteOf } from "./shopping";
 
 /** The shop picker's "no shop" choice, and the one that adds a shop. */
@@ -62,6 +62,7 @@ export class WishForm {
     const kind: WishKind = e?.kind ?? this.template.kind ?? "yarn";
     const projectId = e?.projectId ?? this.template.projectId ?? "";
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal wish-form" role="dialog" aria-modal="true">
         <h2>${e ? "Edit wishlist item" : "Add to the wishlist"}</h2>

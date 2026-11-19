@@ -320,6 +320,11 @@ export interface AiSettingsView {
   maxCharacters: number;
   reasoningEffort: string;
   rescanExisting: boolean;
+  /**
+   * A fingerprint of the settings as stored. A Describe request carries the
+   * one it was confirmed with, and is refused if they have changed since.
+   */
+  revision: string;
 }
 
 export interface ModelInfo {
@@ -354,6 +359,8 @@ export interface SuggestionResult {
   after: Pattern;
   changedFields: string[];
   applied: boolean;
+  /** Nothing was sent: the settings changed after the request was confirmed. */
+  settingsChanged?: boolean;
 }
 
 // ---------- updates ----------
@@ -1826,7 +1833,12 @@ export const api = {
   readBallBand: (image: string) => invoke<BallBand>("read_ball_band", { image }),
   saveAiSettings: (settings: AiSettingsView, apiKey?: string) =>
     invoke<AiSettingsView>("save_ai_settings", { settings, apiKey }),
-  testAiConnection: () => invoke<AiConnectionTest>("test_ai_connection"),
+  /**
+   * Tests the settings given (the form as it stands; nothing is saved), or the
+   * saved ones when none are. An empty key uses the saved key.
+   */
+  testAiConnection: (settings?: AiSettingsView, apiKey?: string) =>
+    invoke<AiConnectionTest>("test_ai_connection", { settings, apiKey }),
   /**
    * Asks the model to describe a pattern.
    *
@@ -1834,8 +1846,14 @@ export const api = {
    * which is the only way to read a scan. Omit it when there is text: sending
    * both wastes the payload and some servers reject a mixed request.
    */
-  suggestMetadata: (patternId: string, excerpt: string, images: string[] = [], pages: number | null = null) =>
-    invoke<SuggestionResult>("suggest_metadata", { patternId, excerpt, images, pages }),
+  suggestMetadata: (
+    patternId: string,
+    excerpt: string,
+    images: string[] = [],
+    pages: number | null = null,
+    /** The settings' revision when this was confirmed; see `AiSettingsView.revision`. */
+    revision: string | null = null,
+  ) => invoke<SuggestionResult>("suggest_metadata", { patternId, excerpt, images, pages, revision }),
   applySuggestion: (patternId: string, after: Pattern) =>
     invoke<Pattern>("apply_suggestion", { patternId, after }),
   undoLastAiChange: (patternId: string) => invoke<Pattern | null>("undo_last_ai_change", {

@@ -840,12 +840,29 @@ const AI_SETTINGS_KEY: &str = "ai";
 /// The key never leaves the backend in plaintext: only a boolean is handed to
 /// the frontend, and only the provider calls get the real value.
 pub(crate) fn unlocked_ai_settings(state: &AppState) -> CmdResult<AiSettings> {
-    let mut settings = stored_ai_settings(&state.db())?;
+    unlock(stored_ai_settings(&state.db())?)
+}
+
+/// Decrypts a stored key in place, for the provider calls.
+fn unlock(mut settings: AiSettings) -> CmdResult<AiSettings> {
     if !settings.api_key.is_empty() && crate::ai::secret::is_encrypted(&settings.api_key) {
         settings.api_key = crate::ai::secret::decrypt(&settings.api_key)
             .map_err(AppError::Message)?;
     }
     Ok(settings)
+}
+
+/// A fingerprint of the AI settings as stored, key included (encrypted).
+///
+/// A run of Describe is confirmed against one set of settings: the address
+/// the text goes to, the model, and whether the answers are saved without
+/// asking. Each request carries the revision it was confirmed with, and one
+/// that no longer matches is refused rather than sent somewhere else.
+pub(crate) fn ai_settings_revision(stored: &AiSettings) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(stored).unwrap_or_default().hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 /// The AI settings as stored. Settings saved before the on/off switch existed
@@ -885,11 +902,15 @@ pub struct AiSettingsView {
     pub max_characters: i64,
     pub reasoning_effort: String,
     pub rescan_existing: bool,
+    /// See `ai_settings_revision`. Read only: ignored when sent back.
+    #[serde(default)]
+    pub revision: String,
 }
 
 impl AiSettingsView {
     fn from_settings(s: AiSettings) -> Self {
         Self {
+            revision: ai_settings_revision(&s),
             is_local: crate::ai::is_local_model_server(&s),
             enabled: s.enabled,
             base_url: s.base_url,
@@ -951,12 +972,29 @@ pub fn save_ai_settings(
     Ok(AiSettingsView::from_settings(stored))
 }
 
-/// Checks the configured server is reachable, and lists its models.
+/// Checks a server is reachable, and lists its models.
+///
+/// `settings` is the form as it stands, tested as it is and never saved:
+/// only Save saves, so a test can neither replace working settings nor change
+/// where a Describe run sends its text. An empty `api_key` uses the saved key.
+/// Without `settings`, the saved settings are tested.
 #[tauri::command]
 pub async fn test_ai_connection(
     state: State<'_, AppState>,
+    settings: Option<AiSettingsView>,
+    api_key: Option<String>,
 ) -> CmdResult<AiConnectionTest> {
-    let settings = unlocked_ai_settings(&state)?;
+    let stored = unlocked_ai_settings(&state)?;
+    let settings = match settings {
+        Some(draft) => {
+            let mut s = draft.to_settings(&stored);
+            if let Some(key) = api_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+                s.api_key = key.to_string();
+            }
+            s
+        }
+        None => stored,
+    };
     if settings.base_url.trim().is_empty() {
         return Err(AppError::Message(
             "Enter the address of your model server in Settings first.".into(),
@@ -994,13 +1032,22 @@ pub async fn suggest_metadata(
     excerpt: String,
     images: Option<Vec<String>>,
     pages: Option<u32>,
+    revision: Option<String>,
 ) -> CmdResult<SuggestionResult> {
-    let settings = unlocked_ai_settings(&state)?;
+    let stored = stored_ai_settings(&state.db())?;
     // Switched off means nothing is sent, whatever asks.
-    if !settings.enabled {
+    if !stored.enabled {
         return Err(AppError::Message("Describing with a model is switched off in Settings.".to_string()));
     }
     let before = db::get_pattern(&state.db(), &pattern_id)?;
+    // Confirmed against other settings: nothing is sent, and the caller asks again.
+    if revision.is_some_and(|r| r != ai_settings_revision(&stored)) {
+        return Ok(SuggestionResult {
+            settings_changed: true,
+            ..failed(&before, "The model settings were changed after this was confirmed.")
+        });
+    }
+    let settings = unlock(stored)?;
 
     if settings.base_url.trim().is_empty() {
         return Ok(failed(
@@ -1116,6 +1163,7 @@ pub async fn suggest_metadata(
         after,
         changed_fields,
         applied,
+        settings_changed: false,
     })
 }
 
@@ -1130,6 +1178,7 @@ fn failed(before: &Pattern, message: &str) -> SuggestionResult {
         after: before.clone(),
         changed_fields: Vec::new(),
         applied: false,
+        settings_changed: false,
     }
 }
 
@@ -1235,6 +1284,34 @@ pub fn clear_ai_history(state: State<'_, AppState>, pattern_id: String) -> CmdRe
 mod tests {
     use super::*;
     use crate::models::{CounterInput, PatternInput, Suggestion};
+
+    #[test]
+    fn the_settings_revision_changes_with_anything_a_run_was_confirmed_on() {
+        let base = AiSettings { enabled: true, base_url: "http://192.168.1.10:8080/v1".into(), model: "a".into(), ..Default::default() };
+        let same = ai_settings_revision(&base.clone());
+        assert_eq!(ai_settings_revision(&base), same, "read again, unchanged: the same revision");
+        let changed = [
+            AiSettings { base_url: "https://example.com/v1".into(), ..base.clone() },
+            AiSettings { model: "b".into(), ..base.clone() },
+            AiSettings { api_key: "other".into(), ..base.clone() },
+            AiSettings { apply_automatically: !base.apply_automatically, ..base.clone() },
+            AiSettings { enabled: false, ..base.clone() },
+        ];
+        for s in changed {
+            assert_ne!(ai_settings_revision(&s), same);
+        }
+        // The view carries the revision of the settings as stored, and what
+        // the webview sends back in it is not used.
+        let view = AiSettingsView::from_settings(base.clone());
+        assert_eq!(view.revision, same);
+        let sent: AiSettingsView = serde_json::from_value(serde_json::json!({
+            "baseUrl": "x", "model": "m", "fallbackModel": "", "hasApiKey": false, "isLocal": false,
+            "applyAutomatically": true, "skipExisting": true, "maxCharacters": 4000,
+            "reasoningEffort": "low", "rescanExisting": false,
+        }))
+        .unwrap();
+        assert_eq!(sent.revision, "", "an older webview without it still deserialises");
+    }
 
     #[test]
     fn the_model_switch_is_off_unless_the_model_was_set_up_before_it() {

@@ -1,6 +1,6 @@
 import { api, isLive, isRecord, projectStatusLabel, type Pattern, type Project, type ProjectInput, type Tool, type Yarn } from "../api";
 import { askYesNo } from "../dialogs";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { mountPatternPicker } from "./pattern-picker";
 import { describe, tipLabel } from "./tool-filter";
 import { ToolPicker } from "./tool-picker";
@@ -81,6 +81,7 @@ export class ProjectForm {
     const started = toDateInput(e?.startedAt ?? Date.now());
 
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal project-form" role="dialog" aria-modal="true">
         <h2>${plan ? (e ? "Edit plan" : "Plan a project") : e ? (finished ? `${projectStatusLabel(e.status)} project` : "Edit project") : "Start a project"}</h2>

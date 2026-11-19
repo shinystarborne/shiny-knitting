@@ -15,7 +15,7 @@ import { askYesNo, customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { coverUrl, ensureCover, forgetCover } from "../covers";
 import { booksByLength, MetadataScanner, undoPattern } from "../ai/scan";
-import { describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
+import { askToDescribe, describing, ROBOT, showDescribePanel, startDescribing } from "../ai/describe-run";
 import { changeCover } from "./cover-dialog";
 import { editTags } from "./tags-dialog";
 import { pickFromAll } from "./facet-picker";
@@ -531,6 +531,13 @@ export class LibraryView {
   private async startScan(): Promise<void> {
     // One run at a time; asking again shows the one going.
     if (describing()) return showDescribePanel();
+    // Read again, not kept from when the library was drawn: the question
+    // below must name the server and model the backend will actually use.
+    try {
+      this.settings = await api.getAiSettings();
+    } catch (err) {
+      return this.flash(err instanceof Error ? err.message : String(err), true);
+    }
     if (!this.settings.enabled) return;
     if (!this.settings.baseUrl.trim()) {
       this.root.dispatchEvent(
@@ -555,18 +562,11 @@ export class LibraryView {
     }
     if (said) this.flash(said.trim());
 
-    const confirmed = await askYesNo(
-      `Describe ${targets.length} pattern${targets.length === 1 ? "" : "s"} using ${
-        this.settings.model || "the model"
-      }?\n\n` +
-        `Only the first pages of each pattern are sent, to ${
-          this.settings.isLocal ? "the local network" : this.settings.baseUrl
-        } (designer, sizes and materials), never the whole pattern.\n\n` +
-        `It runs in the background while the app is in use.`,
-      { title: "Describe with the model", okLabel: "Describe" },
-    );
-    if (!confirmed) return;
-    startDescribing(targets, this.settings);
+    // The run is bound to the settings this question shows. Saved
+    // differently while it runs, the rest is asked about again.
+    const settings = this.settings;
+    if (!(await askToDescribe(targets.length, settings))) return;
+    startDescribing(targets, settings);
   }
 
   /** One card brought up to date after the model changed its pattern. */

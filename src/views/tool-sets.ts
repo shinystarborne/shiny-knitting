@@ -1,6 +1,6 @@
 import { api, type Tool, type ToolSet } from "../api";
 import { askYesNo } from "../dialogs";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { money, parsePrice } from "./money";
 import { describe, kindLabel } from "./tool-filter";
 
@@ -31,6 +31,7 @@ export class ToolSetsDialog {
   async open(): Promise<void> {
     await this.load();
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.addEventListener("click", this.onClick);
     this.root.addEventListener("change", this.onChange);
     this.draw();

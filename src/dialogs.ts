@@ -320,11 +320,21 @@ function frame(title: string | undefined): { overlay: HTMLElement; card: HTMLEle
  * already gone and left the visible one exactly where it was.
  *
  * One listener cannot have that problem. It cancels the topmost dialog, which
- * is the one the reader can see. Entries leave the stack in `close`, the only
- * way a dialog comes down.
+ * is the one the reader can see. Entries leave the stack in `close`, the way a
+ * dialog is meant to come down; one whose overlay left the page any other way
+ * is dropped the next time the stack is read (`prune`). Left there, it would
+ * hold the keyboard for a dialog nobody can see: the reader's row keys and
+ * Escape would stop working for the rest of the session.
  */
 const stack: { overlay: HTMLElement; cancel: () => void }[] = [];
 let listening = false;
+
+/** Drops the entries of dialogs no longer on the page. */
+function prune(): void {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    if (!stack[i].overlay.isConnected) stack.splice(i, 1);
+  }
+}
 
 function listenForKeys(): void {
   if (listening) return;
@@ -332,6 +342,7 @@ function listenForKeys(): void {
   document.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
+      prune();
       const top = stack[stack.length - 1];
       if (!top) return;
       // A key aimed inside the dialog is left alone: the field's own Enter
@@ -392,6 +403,7 @@ function show(
 
 /** Whether any dialog is up, so other code can stand aside. */
 export function dialogOpen(): boolean {
+  prune();
   return stack.length > 0;
 }
 

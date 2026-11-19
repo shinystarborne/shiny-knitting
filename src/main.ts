@@ -31,7 +31,7 @@ import { runBulkAdd } from "./views/bulk-add";
 import { SettingsDialog } from "./views/settings";
 import { clearBoardImageCache, clearCoverCache, clearSwatchPhotoCache, clearWishPhotoCache, clearYarnPhotoCache, ensureCover } from "./covers";
 import { askYesNo, say } from "./dialogs";
-import { closestEl } from "./dom";
+import { closestEl, MODAL_DISPOSE } from "./dom";
 import { ReaderView, type Layout } from "./reader/reader";
 import { CheatsheetsView } from "./views/cheatsheets";
 import { MasterclassesView } from "./views/masterclasses";
@@ -452,12 +452,18 @@ class App {
    * Escape, which empties the element from here -- left those listeners on
    * it, still answering clicks in whichever dialog came next. A new element
    * per dialog means nothing from an earlier one can be listening.
+   *
+   * A form still up on the old element is told to close itself too
+   * (MODAL_DISPOSE): what it set up outside the element, such as a paste
+   * listener on the document, is only taken down by its own close.
    */
   private freshModal(): HTMLElement {
+    const old = this.modal;
     const fresh = document.createElement("div");
     fresh.className = "modal-backdrop hidden";
-    this.modal.replaceWith(fresh);
+    old.replaceWith(fresh);
     this.modal = fresh;
+    if (!old.classList.contains("hidden")) old.dispatchEvent(new CustomEvent(MODAL_DISPOSE));
     return fresh;
   }
 

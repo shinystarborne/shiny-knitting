@@ -947,6 +947,10 @@ pub struct SuggestionResult {
     pub changed_fields: Vec<String>,
     /// True when the result was written to the database.
     pub applied: bool,
+    /// True when nothing was sent because the settings changed after the
+    /// request was confirmed; see `commands::ai_settings_revision`.
+    #[serde(default)]
+    pub settings_changed: bool,
 }
 
 // ---------- needles and hooks ----------

@@ -1,6 +1,6 @@
 import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type NeedleSizeFormat, type UpdateInfo, type UpdateSettings } from "../api";
 import { askYesNo, say } from "../dialogs";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { parsePrice } from "./money";
 import { TABS, hiddenTabs, type Tab } from "../tabs";
 import { longDate, toDateInput } from "./project-form";
@@ -38,8 +38,6 @@ const CURRENCIES = [
 export class SettingsDialog {
   private root: HTMLElement;
   private settings: AiSettingsView;
-  /** What was saved when the dialog opened; a connection test rolls back to this. */
-  private savedSnapshot: AiSettingsView;
   private updateSettings: UpdateSettings;
   /** How the library's needle size filter spells each size. */
   private needleSizeDisplay: NeedleSizeFormat;
@@ -62,7 +60,6 @@ export class SettingsDialog {
   ) {
     this.root = root;
     this.settings = settings;
-    this.savedSnapshot = settings;
     this.updateSettings = updateSettings;
     this.needleSizeDisplay = needleSizeDisplay;
     this.measureUnit = measureUnit;
@@ -73,6 +70,7 @@ export class SettingsDialog {
     const s = this.settings;
     const u = this.updateSettings;
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal modal-wide" role="dialog" aria-modal="true">
         <div class="modal-head">
@@ -414,12 +412,15 @@ export class SettingsDialog {
   }
 
   /**
-   * The backend can only test the saved settings, so the form values are
-   * saved for the duration of the test and rolled back afterwards. Testing
-   * must not persist anything: otherwise pressing Cancel could no longer
-   * cancel once a test had run. Only the model settings take part — the
-   * update settings are left alone entirely, so a test can neither save nor
-   * clobber them.
+   * Tests the form as it stands, without saving any of it.
+   *
+   * The draft goes to the backend with the request and is tested there in
+   * memory; the stored settings are not touched, so there is nothing to roll
+   * back. An earlier version saved the form for the test and restored it
+   * afterwards, which let a failed test, or one still running, change where a
+   * Describe run sent its text and what the library's confirmation said.
+   * Only Save saves. A key typed in the field is tested and stays there to
+   * be saved; an empty field tests the saved key.
    */
   private async test(button: HTMLButtonElement): Promise<void> {
     const result = this.root.querySelector('[data-el="testresult"]') as HTMLElement;
@@ -428,8 +429,8 @@ export class SettingsDialog {
     result.textContent = "";
     result.className = "hint";
     try {
-      await this.persistAi();
-      const test = await api.testAiConnection();
+      const typedKey = (this.root.querySelector('[data-f="apiKey"]') as HTMLInputElement).value.trim();
+      const test = await api.testAiConnection(this.collect(), typedKey || undefined);
       result.textContent = `Connected. ${test.modelCount} model${
         test.modelCount === 1 ? "" : "s"
       } available.`;
@@ -440,17 +441,6 @@ export class SettingsDialog {
       result.textContent = message(err);
       result.className = "hint bad";
     } finally {
-      // Roll back the save made for the test; the Save button is what saves.
-      // One caveat: a freshly typed API key cannot be rolled back, because
-      // the saved key is never readable, so an empty key field always means
-      // "keep the current one".
-      try {
-        this.settings = await api.saveAiSettings(this.savedSnapshot);
-      } catch {
-        // A failed rollback leaves the tested values saved; reopening the
-        // dialog still shows what is really stored.
-      }
-      this.updatePrivacy();
       button.disabled = false;
       button.textContent = "Test connection";
     }
@@ -502,7 +492,7 @@ export class SettingsDialog {
       .value as NeedleSizeFormat;
   }
 
-  /** Saves the model settings only; what a connection test saves and rolls back. */
+  /** Saves the model settings; part of Save. */
   private async persistAi(): Promise<AiSettingsView> {
     const keyField = this.root.querySelector('[data-f="apiKey"]') as HTMLInputElement;
     // An empty field means "keep the saved key", not "delete it".

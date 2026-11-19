@@ -561,6 +561,10 @@ export class ReaderView {
     button.title = "Reading…";
     try {
       const result: SuggestionResult = await scanOne(this.pattern, settings);
+      if (result.settingsChanged) {
+        await say("The model settings were changed while this pattern was being read, so nothing was sent. Describe it again to use the new settings.", "Describe");
+        return;
+      }
       if (result.failed) {
         await say(`The model could not read this pattern.\n\n${result.error}`, "Describe");
         return;

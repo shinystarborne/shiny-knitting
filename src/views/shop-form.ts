@@ -1,5 +1,5 @@
 import { api, type Shop, type ShopInput } from "../api";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { looksLikeAddress, siteOf } from "./shopping";
 
@@ -36,6 +36,7 @@ export class ShopForm {
   open(): void {
     const e = this.editing;
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal shop-form" role="dialog" aria-modal="true">
         <h2>${e ? "Edit shop" : "Add a shop"}</h2>

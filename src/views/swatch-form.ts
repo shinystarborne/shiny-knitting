@@ -1,7 +1,7 @@
 import { api, isLive, type MeasureUnit, type Project, type Swatch, type SwatchInput, type Tool, type Yarn } from "../api";
 import { forgetSwatchPhoto, swatchPhotoUrl } from "../covers";
 import { askYesNo } from "../dialogs";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { describeFibres } from "./fibres";
 import { per100gOf } from "./yarn-weight";
@@ -78,6 +78,7 @@ export class SwatchForm {
     const span = gaugeSpan(unit);
     const g = (v: number | undefined) => esc(showGauge(v ?? 0, unit));
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal swatch-form" role="dialog" aria-modal="true">
         <h2>${e ? "Swatch" : "Add a swatch"}</h2>

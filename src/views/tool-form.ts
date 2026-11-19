@@ -9,7 +9,7 @@ import {
   type ToolInput,
   type ToolKind,
 } from "../api";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { makeCombo } from "./combo";
 import { parsePrice } from "./money";
 import {
@@ -117,6 +117,7 @@ export class ToolForm {
     const kind: ToolKind = v?.kind ?? "circular";
     const projectChoice = e?.projectId ?? FREE;
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal tool-form" role="dialog" aria-modal="true">
         <h2>${e ? "Edit needle or hook" : this.start ? "Add a needle or hook from the wishlist" : "Add a needle or hook"}</h2>

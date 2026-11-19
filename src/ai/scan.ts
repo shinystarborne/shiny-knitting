@@ -12,6 +12,19 @@ export interface ScanOutcome {
   error: string;
   changed: string[];
   applied: boolean;
+  /** Not sent: the settings changed after the run was confirmed. */
+  settingsChanged?: boolean;
+}
+
+/** What a run did, and what it left unsent because the settings changed. */
+export interface ScanRun {
+  outcomes: ScanOutcome[];
+  /**
+   * The patterns not sent because the settings were changed during the run,
+   * the one that found it first included. Empty when the run finished or was
+   * stopped.
+   */
+  unsent: Pattern[];
 }
 
 /**
@@ -24,6 +37,11 @@ export interface ScanOutcome {
  *
  * Nothing is thrown: a failure becomes an outcome with a message, since one
  * unreadable pattern should not end the run.
+ *
+ * A run is bound to the settings it was confirmed with. Each request carries
+ * their revision, and the backend sends nothing once they have changed: the
+ * run ends there and hands back what it did not send, to be confirmed again
+ * against the new settings or left.
  */
 export class MetadataScanner {
   private settings: AiSettingsView;
@@ -57,7 +75,7 @@ export class MetadataScanner {
     patterns: Pattern[],
     onEach: (outcome: ScanOutcome, index: number, total: number) => void,
     shouldStop: () => boolean,
-  ): Promise<ScanOutcome[]> {
+  ): Promise<ScanRun> {
     const results: ScanOutcome[] = [];
     const total = patterns.length;
 
@@ -65,10 +83,12 @@ export class MetadataScanner {
       if (shouldStop()) break;
       const pattern = patterns[i];
       const outcome = await this.scanOne(pattern);
+      // Not sent, so not an outcome: it and the rest wait for a new answer.
+      if (outcome.settingsChanged) return { outcomes: results, unsent: patterns.slice(i) };
       results.push(outcome);
       onEach(outcome, i, total);
     }
-    return results;
+    return { outcomes: results, unsent: [] };
   }
 
   private async scanOne(pattern: Pattern): Promise<ScanOutcome> {
@@ -95,7 +115,11 @@ export class MetadataScanner {
         excerpt.trim() ? [] : await excerptImages(pattern.format, bytes),
         // The length says a good deal about whether it is a book.
         (await pageCount(pattern.format, bytes)) || null,
+        this.settings.revision,
       );
+      if (result.settingsChanged) {
+        return { ...base, ok: false, error: result.error, changed: [], applied: false, settingsChanged: true };
+      }
       if (result.failed) {
         return { ...base, ok: false, error: result.error, changed: [], applied: false };
       }
@@ -192,6 +216,7 @@ export async function scanOne(
     // pictures for a model that can see them.
     excerpt.trim() ? [] : await excerptImages(pattern.format, bytes),
     (await pageCount(pattern.format, bytes)) || null,
+    settings.revision,
   );
 }
 

@@ -12,7 +12,7 @@ import {
   type YarnLotInput,
   type YarnPlan,
 } from "../api";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import {
   forgetYarnPhoto,
   prepareChosenImage,
@@ -147,6 +147,7 @@ export class YarnForm {
     // this is another colour of.
     const base = e ?? this.template;
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal yarn-form" role="dialog" aria-modal="true">
         <h2>${e ? "Edit yarn" : this.template ? `Another colour of ${escapeHtml(this.template.name)}` : this.start ? "Add to stash from wishlist" : "Add a yarn"}</h2>

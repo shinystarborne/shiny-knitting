@@ -8,7 +8,7 @@ import {
   YARN_WEIGHT_OPTIONS,
   type Pattern,
 } from "../api";
-import { clickedOn, closestEl } from "../dom";
+import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import {
   coverUrl,
   extractFromDocument,
@@ -53,6 +53,7 @@ export class PatternForm {
   open(): void {
     const e = this.editing;
     this.root.className = "modal-backdrop";
+    closeOnDispose(this.root, () => this.close());
     this.root.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true">
         <h2>${e ? "Edit pattern" : "Add a pattern"}</h2>
