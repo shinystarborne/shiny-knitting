@@ -26,6 +26,7 @@ export function openLightbox(pictures: LightboxPicture[], start = 0, what = "The
   if (!pictures.length) return;
   open?.close();
   open = new Lightbox(pictures, Math.min(Math.max(start, 0), pictures.length - 1), what);
+  void open.show();
 }
 
 /** Whether a lightbox is up: keys meant for it go nowhere else. */
@@ -92,12 +93,12 @@ class Lightbox {
     window.addEventListener("keydown", this.onKey, true);
     window.addEventListener("resize", this.onResize);
     this.root.focus();
-    void this.show();
   }
 
   // ---------- which picture ----------
 
-  private async show(): Promise<void> {
+  /** Shows the picture at `at`, fetched; a slow one gives way to the next asked for. */
+  async show(): Promise<void> {
     const which = ++this.shown;
     const picture = this.pictures[this.at];
     const count = this.root.querySelector('[data-el="count"]');

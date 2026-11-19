@@ -179,6 +179,7 @@ export class SwatchForm {
       async () => (e?.photoPath ? swatchPhotoUrl(e.id) : null),
       (message) => this.showError(message),
     );
+    void this.photo.paint();
     this.applyChoices();
     this.showBlocking();
     this.root.addEventListener("input", (ev) => {

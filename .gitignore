@@ -44,3 +44,6 @@ desktop.ini
 # computers, not published.
 /TODO.md
 /docs/DEVELOPMENT.md
+
+# Coverage reports (harness/coverage.mjs, cargo llvm-cov)
+coverage/

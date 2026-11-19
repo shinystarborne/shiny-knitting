@@ -262,7 +262,10 @@ export class ReaderView {
       }
     }
     // An abbreviation in a PDF's text, explained when pointed at.
-    if (this.pattern.format === "pdf") this.abbrTips = new AbbrTips(this.scroller);
+    if (this.pattern.format === "pdf") {
+      this.abbrTips = new AbbrTips(this.scroller);
+      void this.abbrTips.load().catch(() => {});
+    }
     this.pins = new PinLayer(this.scroller, this.pattern.id, {
       pageElement: (page) => doc.pageElement(page),
       textLayerFor: (page) => doc.textLayerFor(page),

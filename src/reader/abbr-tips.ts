@@ -39,7 +39,11 @@ export class AbbrTips {
       const btn = (e.target as HTMLElement).closest<HTMLElement>("[data-url]");
       if (btn) void api.openLink(btn.dataset.url!).catch(() => {});
     });
-    void loadGlossary().then((g) => ({ entries: this.entries, masterclasses: this.masterclasses } = g));
+  }
+
+  /** Reads the glossary and masterclasses the tips are made from; until then, nothing is explained. */
+  async load(): Promise<void> {
+    ({ entries: this.entries, masterclasses: this.masterclasses } = await loadGlossary());
   }
 
   detach(): void {

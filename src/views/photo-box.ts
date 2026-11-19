@@ -36,7 +36,6 @@ export class PhotoBox {
     });
     // On the document: a paste with nothing focused goes to the body.
     document.addEventListener("paste", this.onPaste);
-    void this.paint();
   }
 
   /** Whether there is a photo, waiting or stored. */
@@ -87,7 +86,8 @@ export class PhotoBox {
     void this.paint();
   }
 
-  private async paint(): Promise<void> {
+  /** Shows the photo as it stands: waiting, stored, or none. Called once made, and after each change. */
+  async paint(): Promise<void> {
     let url: string | null = null;
     if (this.pending) {
       if (this.pendingUrl) URL.revokeObjectURL(this.pendingUrl);

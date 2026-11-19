@@ -11,6 +11,7 @@
     "harness": "vite --config harness/vite.harness.config.ts",
     "harness:build": "vite build --config harness/vite.harness.config.ts",
     "harness:serve": "vite preview --config harness/vite.harness.config.ts --port 1422 --strictPort",
+    "coverage": "node harness/coverage.mjs",
     "test": "cd src-tauri && cargo test",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
+    "monocart-coverage-reports": "3.2.0",
     "typescript": "^5.6.3",
     "vite": "^8.3.1"
   }

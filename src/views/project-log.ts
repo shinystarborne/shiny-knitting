@@ -49,6 +49,7 @@ export class ProjectLog {
       (message) => void say(message, "Photo"),
       () => !this.editingId,
     );
+    void this.composerPhoto.paint();
     this.host.addEventListener("click", (e) => void this.onClick(e));
     this.host.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
@@ -95,6 +96,7 @@ export class ProjectLog {
       const entry = this.entries.find((e) => e.id === this.editingId);
       if (box && entry) {
         this.editPhoto = new PhotoBox(box, async () => (entry.photoPath ? logPhotoUrl(entry.id) : null), (m) => void say(m, "Photo"));
+        void this.editPhoto.paint();
       }
       list.querySelector<HTMLTextAreaElement>('[data-f="edit-text"]')?.focus();
     }
