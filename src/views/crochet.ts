@@ -17,6 +17,7 @@
  *  - oval: rounds worked around a foundation chain, along one side, round
  *    the end, back along the other, as an amigurumi's base or a bag's.
  */
+import { matchInEach, matchLeadingCount, matchTailCount, matchWrapped, stripTrailingTimes } from "../text-scan";
 
 export type Shape = "rounds" | "rows" | "spiral" | "oval";
 export type Terms = "us" | "uk";
@@ -179,7 +180,7 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
   const parts: Part[] = [];
   for (const piece of splitTop(text)) {
     // *…* x 6, *…* around
-    const star = /^\*(.*)\*\s*(.*)$/.exec(piece);
+    const star = matchWrapped(piece, "*", "*");
     if (star) {
       const times = timesIn(star[2]);
       if (star[2].trim() && !times) errors.push(`After the repeat, “${star[2].trim()}” is not a number of times. Write x 6 for six times, or around to go to the end.`);
@@ -187,7 +188,7 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
       continue;
     }
     // (…) or […]: all worked into one place, maybe repeated.
-    const group = /^[([](.*)[)\]]\s*(.*)$/.exec(piece);
+    const group = matchWrapped(piece, "([", ")]");
     if (group) {
       const stitches: Stitch[] = [];
       for (const bit of splitTop(group[1])) {
@@ -203,7 +204,7 @@ function readParts(text: string, terms: Terms, errors: string[]): Part[] {
       continue;
     }
     // "2 sc in each st around", "dc in each ch across", "sc in each st x 6"
-    const each = /^(.*?)\s+in each\b(.*)$/i.exec(piece);
+    const each = matchInEach(piece);
     if (each) {
       const steps = readSimple(each[1], terms, true, errors);
       if (!steps) errors.push(notAStitch(each[1], terms));
@@ -240,11 +241,11 @@ const WHERE = new Set(
  */
 function readSimple(raw: string, terms: Terms, together: boolean, errors: string[]): Step[] | null {
   let t = raw.trim().toLowerCase().replace(/\s+/g, " ").replace(/\((?:counts as [^)]*)\)/g, "").trim();
-  t = t.replace(/\s+(?:x|×)\s*\d+$|\s+\d+\s*times$/, "");
+  t = stripTrailingTimes(t);
   const skip = /^(?:sk|skip|miss)\b\s*(\d+)?/.exec(t);
   if (skip) return [{ kind: "skip", n: Math.min(200, Number(skip[1] ?? 1)) }];
   let count = 1;
-  const lead = /^(\d+)\s*(.*)$/.exec(t);
+  const lead = matchLeadingCount(t);
   if (lead) {
     count = Math.min(200, Math.max(1, Number(lead[1])));
     t = lead[2];
@@ -252,7 +253,7 @@ function readSimple(raw: string, terms: Terms, together: boolean, errors: string
   const word = stitchWord(t, terms);
   if (!word) return null;
   let rest = word.rest;
-  const tail = /^-?(\d+)\b\s*(.*)$/.exec(rest);
+  const tail = matchTailCount(rest);
   if (tail) {
     count = Math.min(200, Math.max(1, Number(tail[1])));
     rest = tail[2];

@@ -1,5 +1,6 @@
 import { WEIGHTS, familyOf } from "../src/views/yarn-weight";
 import { sizesOf, mmLabel, usLabel } from "../src/views/needle-size";
+import { trimTrailingSlashes } from "../src/text-scan";
 
 /**
  * Test harness. Loads the real app code in a browser with a fake Tauri IPC
@@ -106,7 +107,7 @@ const bookmarkTitle = (raw) => (String(raw ?? "").trim() || "Untitled").slice(0,
 // empty.
 const seededFolders = new Map();
 window.__seedFolder = (path, entries) => {
-  seededFolders.set(String(path).replace(/\/+$/, ""), entries.slice());
+  seededFolders.set(trimTrailingSlashes(String(path)), entries.slice());
 };
 window.__nextDialogPick = null;
 
@@ -2680,7 +2681,8 @@ const handlers = {
       }
     }
     store.backupProgress = { running: false, done: 0, total: 0 };
-    return { from, savedTo: from.replace(/[^/]*$/, beforeName), files: 42 };
+    // Beside the backup: its folder, the name of what was saved first.
+    return { from, savedTo: from.slice(0, from.lastIndexOf("/") + 1) + beforeName, files: 42 };
   },
   restart_app: () => {
     store.restarted = (store.restarted ?? 0) + 1;
@@ -3312,7 +3314,7 @@ const handlers = {
   // the default is a cancelled dialog.
   "plugin:dialog|open": () => window.__nextDialogPick ?? null,
   scan_pattern_folder: ({ path }) => {
-    const base = String(path || "").replace(/\/+$/, "");
+    const base = trimTrailingSlashes(String(path || ""));
     const entries = seededFolders.get(base) || [];
     return entries
       .filter((rel) => /\.(pdf|epub)$/i.test(rel))

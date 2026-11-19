@@ -1,4 +1,5 @@
 import { CABLE_SIZES, CONNECTORS, TOOL_KINDS, TOOL_MATERIALS, type Tool } from "../api";
+import { isPlainNumber } from "../text-scan";
 
 /**
  * Filtering and naming needles and hooks.
@@ -373,7 +374,7 @@ export function parseSizes(text: string): { sizes: number[]; bad: string[] } {
     for (const part of parts) {
       if (!part) continue;
       const n = Number(part);
-      if (Number.isFinite(n) && n > 0 && /^\d*\.?\d+$/.test(part)) sizes.add(Math.round(n * 100) / 100);
+      if (Number.isFinite(n) && n > 0 && isPlainNumber(part)) sizes.add(Math.round(n * 100) / 100);
       else bad.push(part);
     }
   }

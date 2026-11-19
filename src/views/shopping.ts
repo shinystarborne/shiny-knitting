@@ -1,5 +1,6 @@
 import { parsePrice, pricePerBall } from "./money";
 import { WISH_KINDS, type Shop, type ToolInput, type ToolKind, type Wish } from "../api";
+import { ballCount, ballsTimesGrams, numberBefore, trimTrailingSlashes, withoutPer100g } from "../text-scan";
 
 /**
  * What the Shops and Wishlist tabs share: searching, the wishlist's filters,
@@ -87,7 +88,7 @@ export function namedAfterAddress(shop: Shop): boolean {
   const name = shop.name.trim().toLowerCase();
   if (/^https?:\/\//.test(name)) return true;
   const site = siteOf(shop.url);
-  return !!site && name.replace(/^www\./, "").replace(/\/+$/, "") === site;
+  return !!site && trimTrailingSlashes(name.replace(/^www\./, "")) === site;
 }
 
 /**
@@ -213,7 +214,7 @@ export function yarnStart(w: Wish): YarnStart {
   if (brand && name.toLowerCase().startsWith(`${brand.toLowerCase()} `)) name = name.slice(brand.length).trim();
   const balls = ballsIn(w.amount);
   const deadstock = /100\s*g(?![a-z])/i.test(w.price);
-  const price = deadstock ? parsePrice(w.price.replace(/\/?\s*(?:per\s+|je\s+|pro\s+)?100\s*g(?![a-z])/i, "")) : pricePerBall(w.price, balls);
+  const price = deadstock ? parsePrice(withoutPer100g(w.price)) : pricePerBall(w.price, balls);
   return { brand, name: name || w.name.trim(), colourway, balls, notes: w.notes, boughtAt: w.gotAt, price, deadstock };
 }
 
@@ -221,10 +222,10 @@ export function yarnStart(w: Wish): YarnStart {
 export function ballsIn(amount: string): number {
   const text = amount.trim().toLowerCase();
   const n = (v: string) => Number(v.replace(",", "."));
-  const counted = /(\d+(?:[.,]\d+)?)\s*(?:balls?|skeins?|hanks?|cakes?|knäuel|knaeuel|stück|stk\.?)(?![a-z])/.exec(text);
-  if (counted) return n(counted[1]);
-  const times = /(\d+)\s*[x×]\s*\d+\s*g\b/.exec(text);
-  if (times) return n(times[1]);
+  const counted = ballCount(text);
+  if (counted !== null) return n(counted);
+  const times = ballsTimesGrams(text);
+  if (times !== null) return n(times);
   return /^\d+(?:[.,]\d+)?$/.test(text) ? n(text) : 0;
 }
 
@@ -244,13 +245,13 @@ export function toolStart(w: Wish): Partial<ToolInput> {
     ["straight", /straight|jackenstrick|single[- ]?point/],
   ];
   const kind = kinds.find(([, re]) => re.test(text))?.[0] ?? "circular";
-  const mm = /(\d+(?:[.,]\d+)?)\s*mm\b/.exec(text);
-  const cm = /(\d+(?:[.,]\d+)?)\s*cm\b/.exec(text);
-  const length = cm ? Number(cm[1].replace(",", ".")) : 0;
+  const mm = numberBefore(text, "mm");
+  const cm = numberBefore(text, "cm");
+  const length = cm === null ? 0 : Number(cm.replace(",", "."));
   const longCable = kind === "circular" || kind === "cable";
   return {
     kind,
-    sizeMm: mm ? Number(mm[1].replace(",", ".")) : 0,
+    sizeMm: mm === null ? 0 : Number(mm.replace(",", ".")),
     lengthCm: longCable ? 0 : length,
     cableCm: longCable ? length : 0,
     brand: w.brand.trim(),

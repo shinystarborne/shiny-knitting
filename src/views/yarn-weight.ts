@@ -7,6 +7,7 @@
  * weight, so what the form says is what the filter will do. The harness
  * checks the two against the same cases.
  */
+import { groupThousands, metresPer100gIn } from "../text-scan";
 
 export interface Weight {
   key: string;
@@ -90,8 +91,8 @@ function familyByName(text: string): string {
 
 /** "230 m/100g", "400 m per 100 g": a metre figure with its unit. */
 export function metresPer100g(text: string): number | null {
-  const m = text.toLowerCase().match(/(\d+(?:\.\d+)?)\s*m(?:etres|eters|trs)?\s*(?:\/|per|at)\s*100\s*g/);
-  return m ? Math.round(Number.parseFloat(m[1])) : null;
+  const m = metresPer100gIn(text.toLowerCase());
+  return m === null ? null : Math.round(Number.parseFloat(m));
 }
 
 /**
@@ -156,5 +157,5 @@ export function weightLabel(key: string): string {
 
 /** "1 400" for 1400: a figure read at a glance. */
 export function grouped(n: number): string {
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return groupThousands(String(Math.round(n)));
 }

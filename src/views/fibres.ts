@@ -1,4 +1,5 @@
 import type { Fibre } from "../api";
+import { matchPercentFirst, matchPercentLast } from "../text-scan";
 
 /**
  * What yarn is made of: the fibres offered in the yarn form, what kind each
@@ -87,8 +88,8 @@ export function parseFibres(text: string): Fibre[] {
   for (const part of text.split(/[,;/+·]|\band\b/i)) {
     const p = part.trim();
     if (!p) continue;
-    const before = /^(\d+(?:[.,]\d+)?)\s*%\s*(.+)$/.exec(p);
-    const after = /^(.+?)\s*(\d+(?:[.,]\d+)?)\s*%$/.exec(p);
+    const before = matchPercentFirst(p);
+    const after = matchPercentLast(p);
     const [percent, name] = before ? [before[1], before[2]] : after ? [after[2], after[1]] : ["", p];
     const clean = name.trim().toLowerCase();
     if (!clean) continue;

@@ -13,6 +13,7 @@ import { familyByGauge, inYarn, metresForArea, socksArea, stashFor, sweaterArea 
 import { figureCaption, measureFigure } from "./measure-figures";
 import { HEELS, sock, sockSteps, TOES, type HeelKey, type SockDirection, type SockInput, type ToeKey } from "./socks";
 import { stepList } from "./steps";
+import { isSpace, trimEndWhere } from "../text-scan";
 
 type Calc = "raglan" | "yoke" | "socks" | "size" | "evenly" | "regauge" | "held" | "charts" | "crochet";
 
@@ -1138,7 +1139,7 @@ export class CalculatorsView {
       if (yarn) {
         const now = (kept.values.strands ?? "").trim();
         const m = Math.round((yarn.metresPerBall * 100) / yarn.gramsPerBall);
-        this.setField("strands", now ? `${now.replace(/[,;\s]+$/, "")}, ${m}` : `${m}`);
+        this.setField("strands", now ? `${trimEndWhere(now, (c) => c === "," || c === ";" || isSpace(c))}, ${m}` : `${m}`);
       }
     }
     // A chart sets the counts in place of a repeat typed in.

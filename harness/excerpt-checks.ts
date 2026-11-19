@@ -47,7 +47,11 @@ export async function verifyExcerpts() {
 
     const scan = await excerptImages("pdf", await fixture("scanned-pattern.pdf"));
     check(results, "a scanned PDF's pages are sent as pictures", scan.length >= 1 && scan.every((p) => p.startsWith("data:image/jpeg")), `${scan.length} pages`);
-    check(results, "an EPUB with text is read as text, as before", /\w{20,}|\w+ \w+ \w+/.test(await extractExcerpt("epub", await fixture("sample-pattern.epub"), 4000)));
+    // Text, not a picture's worth: a long word, or three words in a row.
+    const read = await extractExcerpt("epub", await fixture("sample-pattern.epub"), 4000);
+    const words = read.split(" ");
+    const threeInARow = words.some((w, i) => i > 0 && i < words.length - 1 && /^\w+$/.test(w) && /\w$/.test(words[i - 1]) && /^\w/.test(words[i + 1]));
+    check(results, "an EPUB with text is read as text, as before", /\w{20}/.test(read) || threeInARow);
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   }

@@ -7,6 +7,7 @@
  * size, so what the sidebar shows is what the filter will do. The harness
  * checks the two against the same cases.
  */
+import { millimetres, rangeStartsInMm, trimEndWhere } from "../text-scan";
 
 /** Millimetres to the US needle number, as `MM_TO_US` in needle_size.rs. */
 export const MM_TO_US: [number, string][] = [
@@ -66,7 +67,9 @@ function number(text: string): number {
 /** A number as the US table spells it: "6.0" and "10.50" are "6" and "10.5". */
 function tableForm(text: string): string {
   const t = text.replace(",", ".");
-  return t.includes(".") ? t.replace(/0+$/, "").replace(/\.$/, "") : t;
+  if (!t.includes(".")) return t;
+  const unpadded = trimEndWhere(t, (c) => c === "0");
+  return unpadded.endsWith(".") ? unpadded.slice(0, -1) : unpadded;
 }
 
 /**
@@ -82,9 +85,9 @@ function tableForm(text: string): string {
  */
 export function sizesOf(text: string): string[] {
   const mm: number[] = [];
-  for (const m of text.matchAll(/(\d+(?:[.,]\d+)?)\s*mm/gi)) mm.push(number(m[1]));
+  for (const n of millimetres(text)) mm.push(number(n));
   // A range shares one unit: "3.5–4 mm" and "3.5 to 4mm" are both sizes.
-  for (const m of text.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:-|–|—|to)\s*\d+(?:[.,]\d+)?\s*mm/gi)) mm.push(number(m[1]));
+  for (const n of rangeStartsInMm(text)) mm.push(number(n));
 
   const hooks: number[] = [];
   // A letter needs something between it and the US -- "US H", "US-H" -- or

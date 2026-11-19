@@ -142,7 +142,7 @@ export async function verifyYokeChart() {
     type("chart", snow.id);
     await waitFor(() => !!view()!.querySelector(".calc-chart"), "the chart in the results");
     check(results, "a chart chosen: its repeat sets the counts, the repeat typed in put away", getComputedStyle(view()!.querySelector('[data-el="repeat-field"]')!).display === "none" && cell("Chart repeat")[0]?.textContent === "23 times round", results_());
-    check(results, "…each increase round says the stitches in a repeat", /\d+ → \d+ a repeat/.test(cell("Increase round 1")[1]?.textContent ?? ""), cell("Increase round 1")[1]?.textContent ?? "");
+    check(results, "…each increase round says the stitches in a repeat", /\d → \d+ a repeat/.test(cell("Increase round 1")[1]?.textContent ?? ""), cell("Increase round 1")[1]?.textContent ?? "");
     check(results, "…the steps knit the yoke from it", [...view()!.querySelectorAll(".calc-steps li")].some((li) => /^Knit the yoke from the chart “Snowflake”/.test(li.textContent ?? "")));
     check(results, "…not this yoke's shape yet: it says so, offering to fit it", !!view()!.querySelector('[data-el="chart-unfitted"]') && !!act("fit-chart"));
     const ring = view()!.querySelector<HTMLCanvasElement>('[data-el="yoke-ring"]')!;

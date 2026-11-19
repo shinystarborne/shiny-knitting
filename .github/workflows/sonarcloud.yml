@@ -72,11 +72,19 @@ jobs:
           mkdir -p ../coverage
           cargo llvm-cov --lcov --output-path ../coverage/rust.lcov
 
+      # The checks read dates as written here: 19 November 2026, in Central
+      # European time.
+      - name: Time zone and language as on the desk
+        run: tzutil //s "W. Europe Standard Time"
+
+      - name: Text readers against the expressions they replace
+        run: node --test harness/text-scan.test.mjs
+
       - name: Browser checks, with coverage
         run: |
           npm run harness > "$RUNNER_TEMP/vite.log" 2>&1 &
           "/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --remote-debugging-port=9222 \
-            --window-size=1400,900 --user-data-dir="$RUNNER_TEMP/chrome" about:blank > /dev/null 2>&1 &
+            --window-size=1400,900 --lang=en-GB --user-data-dir="$RUNNER_TEMP/chrome" about:blank > /dev/null 2>&1 &
           for i in $(seq 1 90); do
             curl -sf http://localhost:1421/harness/index.html > /dev/null && curl -sf http://localhost:9222/json/version > /dev/null && break
             sleep 1

@@ -116,7 +116,7 @@ export async function verifyBulkAdd() {
     check(
       results,
       "a repeat run adds nothing",
-      !/\d+ added/.test(lastSummary) && store.patterns.length === before + 3,
+      !/\d added/.test(lastSummary) && store.patterns.length === before + 3,
       `${lastSummary}; ${store.patterns.length - before} in store`,
     );
 

@@ -325,7 +325,9 @@ export async function verifyCalculators() {
     const fromStash = field("fromStash") as unknown as HTMLSelectElement | null;
     const option = fromStash ? [...fromStash.options].find((o) => o.value) : null;
     if (fromStash && option) {
-      const m = /(\d+) m\/100 g$/.exec(option.textContent ?? "")![1];
+      // The figure the option ends with: "…, 230 m/100 g".
+      const label = (option.textContent ?? "").split(" m/100 g")[0];
+      const m = label.slice(label.lastIndexOf(" ") + 1);
       type("fromStash", option.value);
       check(results, "…a yarn from the stash adds its metres per 100 g as a strand", field("strands")!.value === `1066, 1500, ${m}` && fromStash.value === "", field("strands")!.value);
     } else {
