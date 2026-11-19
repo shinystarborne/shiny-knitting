@@ -885,7 +885,7 @@ export class YarnForm {
     if (!this.root.querySelector('[data-f="gaugeSts"]')) return;
     const size = (text: string) => {
       const t = text.trim().replace(",", ".");
-      return !t ? 0 : /^\d+(\.\d+)?$|^\.\d+$/.test(t) ? Number(t) : NaN;
+      return !t ? 0 : /^\d+(\.\d+)?$|^\.\d+$/.test(t) ? Number(t) : Number.NaN;
     };
     const read = {
       gaugeSts: readGauge(this.value("gaugeSts"), this.unit),
@@ -1341,13 +1341,13 @@ function patternLabel(p: Pattern): string {
 
 /** Whether two fibre contents are the same, whatever the case and order. */
 function sameFibres(a: Fibre[], b: Fibre[]): boolean {
-  const key = (list: Fibre[]) => list.map((f) => `${f.name.trim().toLowerCase()}:${f.percent || 0}`).sort().join("|");
+  const key = (list: Fibre[]) => list.map((f) => `${f.name.trim().toLowerCase()}:${f.percent || 0}`).sort((a, b) => a.localeCompare(b)).join("|");
   return key(a) === key(b);
 }
 
 /** Parses-or-0 for the number fields. */
 function num(v: string): number {
-  const n = parseFloat(v);
+  const n = Number.parseFloat(v);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 

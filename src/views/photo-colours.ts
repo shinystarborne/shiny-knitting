@@ -18,7 +18,7 @@ type Rgb = [number, number, number];
 type Lab = [number, number, number];
 
 export function hexToRgb(hex: string): Rgb {
-  const n = parseInt(hex.replace("#", "").slice(0, 6), 16) || 0;
+  const n = Number.parseInt(hex.replace("#", "").slice(0, 6), 16) || 0;
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 

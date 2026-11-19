@@ -173,7 +173,7 @@ export async function verifyLace() {
     press(6, 1);
     await saved();
     const keys = stored().data.colours.map((c) => c.stitch);
-    check(results, "…every stitch can be chosen, all of them kept", keys.length === STITCHES.length && keys.includes("yo") && keys.includes("knit") && stored().data.cells[1 * 12 + 5] === yo() && stored().data.colours[parseInt(stored().data.cells[1 * 12 + 6], 36)].stitch === STITCHES[STITCHES.length - 1].key, keys.join(","));
+    check(results, "…every stitch can be chosen, all of them kept", keys.length === STITCHES.length && keys.includes("yo") && keys.includes("knit") && stored().data.cells[1 * 12 + 5] === yo() && stored().data.colours[Number.parseInt(stored().data.cells[1 * 12 + 6], 36)].stitch === STITCHES[STITCHES.length - 1].key, keys.join(","));
 
     // No stitch on a colourwork chart, from its colours.
     (page()!.querySelector('[data-act="back"]') as HTMLElement).click();

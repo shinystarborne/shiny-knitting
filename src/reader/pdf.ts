@@ -342,8 +342,8 @@ export class PdfView implements RenderedDoc {
    */
   private targetWidth(): number {
     const styles = getComputedStyle(this.container);
-    const padLeft = parseFloat(styles.paddingLeft || "0");
-    const padRight = parseFloat(styles.paddingRight || "0");
+    const padLeft = Number.parseFloat(styles.paddingLeft || "0");
+    const padRight = Number.parseFloat(styles.paddingRight || "0");
     const available = Math.max(320, this.scroller.clientWidth - padLeft - padRight - 2);
     // Capped before zoom is applied: the cap is what "fit-width" fits to, not
     // a ceiling on how far zooming in can go. Without the cap here, the CSS

@@ -84,11 +84,7 @@ async fn video(state: &AppState, typed: &str, title: &str) -> Result<Masterclass
             part.channel = text("author_name").chars().take(120).collect();
         }
         if let Ok(bytes) = crate::link_preview::fetch_image(&format!("https://i.ytimg.com/vi/{v}/hqdefault.jpg")).await {
-            let path = thumb_path(state, &id);
-            if let Some(dir) = path.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            std::fs::write(&path, bytes)?;
+            crate::files::write_into(thumb_path(state, &id), bytes.to_vec()).await?;
             part.has_thumb = true;
         }
     } else if part.title.is_empty() {

@@ -15,6 +15,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -191,7 +194,7 @@ export async function verifySwatches() {
     set("sts", "22");
     act("swatch-form", "save");
     await waitFor(() => !modal("swatch-form"), "the save in inches");
-    check(results, "…and a count typed over 4 in is kept per 10 cm", store.swatches.find((s) => s.id === "sw3")?.sts === 21.7, String(store.swatches.find((s) => s.id === "sw3")?.sts));
+    check(results, "…and a count typed over 4 in is kept per 10 cm", near(store.swatches.find((s) => s.id === "sw3")?.sts, 21.7), String(store.swatches.find((s) => s.id === "sw3")?.sts));
     store.measureUnit = "cm";
 
     // ---------- removing ----------

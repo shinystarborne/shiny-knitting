@@ -181,7 +181,7 @@ export async function booksByLength(patterns: Pattern[]): Promise<Pattern[]> {
   for (const p of patterns) {
     try {
       const pages = await pageCount("pdf", toBytes(await api.readFile(p.id)));
-      if (pages >= BOOK_PAGES) moved.push(await api.updatePattern({ ...p, tags: [...p.tags, "book"].sort() }));
+      if (pages >= BOOK_PAGES) moved.push(await api.updatePattern({ ...p, tags: [...p.tags, "book"].sort((a, b) => a.localeCompare(b)) }));
       seen.add(measureKey(p));
     } catch {
       // A file gone missing is measured another time.

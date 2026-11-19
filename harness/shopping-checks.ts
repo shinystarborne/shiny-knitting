@@ -397,7 +397,7 @@ export async function verifyShopping() {
     const visible = [...box.querySelectorAll<HTMLElement>(".tag")].filter((c) => !c.hidden);
     const rows = new Set(visible.map((c) => c.offsetTop)).size;
     const boxTop = box.getBoundingClientRect().top;
-    const whole = visible.every((c) => c.getBoundingClientRect().bottom - boxTop <= parseFloat(getComputedStyle(box).maxHeight) + 0.5);
+    const whole = visible.every((c) => c.getBoundingClientRect().bottom - boxTop <= Number.parseFloat(getComputedStyle(box).maxHeight) + 0.5);
     check(results, "too many tags show as two whole rows", rows === 2 && whole, `${rows} rows`);
     const more = box.querySelector<HTMLElement>(".shop-tag-more")!;
     const shownTags = visible.filter((c) => c !== more).length;

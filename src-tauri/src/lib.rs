@@ -12,6 +12,7 @@ mod crochet;
 mod db;
 mod export;
 mod external;
+mod files;
 mod goals;
 mod guard;
 mod link_preview;

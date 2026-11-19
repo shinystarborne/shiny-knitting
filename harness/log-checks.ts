@@ -97,7 +97,8 @@ export async function verifyLog() {
     check(results, "a photo opens big when clicked", true);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await waitFor(() => !document.querySelector(".lightbox"), "the photo closed");
-    check(results, "nothing is added with nothing given", (act("add"), true) && entries().length === 3);
+    act("add");
+    check(results, "nothing is added with nothing given", entries().length === 3);
 
     // Changing an entry: its words and its day.
     const typedEl = entries().find((e) => e.dataset.id === typed.id)!;

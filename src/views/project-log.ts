@@ -196,7 +196,7 @@ export class ProjectLog {
     if (!id) return;
     const text = this.host.querySelector<HTMLTextAreaElement>('[data-f="edit-text"]')?.value ?? "";
     const when = this.host.querySelector<HTMLInputElement>('[data-f="edit-at"]')?.value ?? "";
-    const at = when ? new Date(when).getTime() : NaN;
+    const at = when ? new Date(when).getTime() : Number.NaN;
     if (Number.isNaN(at)) return void (await say("Date and time needed.", "Log"));
     try {
       await api.updateLogEntry(id, text, at);

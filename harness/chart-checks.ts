@@ -185,7 +185,7 @@ function pure(results: CheckResult[]): void {
 
   // ---------- editing ----------
   const e = grid("standard", ["0110", "0100", "0000"]);
-  check(results, "a fill takes the squares joined to one, in its colour", fillArea(e, stitchMask(e), 1, 0).sort().join() === "1,2,5");
+  check(results, "a fill takes the squares joined to one, in its colour", fillArea(e, stitchMask(e), 1, 0).sort((a, b) => a - b).join() === "1,2,5");
   const yokeFill = newGrid({ kind: "yoke", width: 4, height: 3 });
   yokeFill.sections = [{ row: 0, sts: 4, cols: [] }, { row: 1, sts: 2, cols: [] }];
   normalize(yokeFill);

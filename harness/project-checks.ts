@@ -15,6 +15,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -63,7 +66,7 @@ export async function verifyProjects() {
   const z = zoomAt(v, 1.5, 300, 250);
   const still = toBoard(z, 300, 250);
   check(results, "zooming keeps the point under the pointer", Math.abs(still.x - 100) < 1e-9 && Math.abs(still.y - 100) < 1e-9 && z.scale === 3, JSON.stringify(z));
-  check(results, "zoom stops at its limits", zoomAt(v, 100, 0, 0).scale === 3 && zoomAt(v, 0.001, 0, 0).scale === 0.2);
+  check(results, "zoom stops at its limits", near(zoomAt(v, 100, 0, 0).scale, 3) && near(zoomAt(v, 0.001, 0, 0).scale, 0.2));
   const fit = fitView([{ x: 0, y: 0, w: 1000, h: 500 }], 600, 400, 50);
   check(results, "Fit shows everything", fit.scale === 0.5 && toBoard(fit, 300, 200).x === 500, JSON.stringify(fit));
   check(results, "Fit never zooms past 100%", fitView([{ x: 0, y: 0, w: 10, h: 10 }], 600, 400).scale === 1);
@@ -160,7 +163,7 @@ export async function verifyProjects() {
     const useBox = (v: string) => document.querySelector<HTMLInputElement>(`.stash input[data-filter="use"][value="${v}"]`)!;
     useBox("in-use").checked = true;
     useBox("in-use").dispatchEvent(new Event("change", { bubbles: true }));
-    const inUse = [...document.querySelectorAll<HTMLElement>(".stash .card")].map((c) => c.dataset.open).sort().join(",");
+    const inUse = [...document.querySelectorAll<HTMLElement>(".stash .card")].map((c) => c.dataset.open ?? "").sort((a, b) => a.localeCompare(b)).join(",");
     check(results, "In use shows only the yarn on projects", inUse === "y1,y3", inUse);
     (document.querySelector('.stash [data-act="clear"]') as HTMLElement).click();
 

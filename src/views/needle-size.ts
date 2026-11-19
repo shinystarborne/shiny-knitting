@@ -60,7 +60,7 @@ const US_NUMBER_TO_MM = new Map(MM_TO_US.map(([mm, us]) => [us, mm]));
 export type NeedleSizeFormat = "metric" | "us" | "both";
 
 function number(text: string): number {
-  return parseFloat(text.replace(",", "."));
+  return Number.parseFloat(text.replace(",", "."));
 }
 
 /** A number as the US table spells it: "6.0" and "10.50" are "6" and "10.5". */
@@ -135,7 +135,7 @@ export function sizesOf(text: string): string[] {
 
 /** The US needle number for a canonical mm key, or "" when there is none. */
 export function usLabel(key: string): string {
-  const mm = parseFloat(key);
+  const mm = Number.parseFloat(key);
   return MM_TO_US.find(([m]) => m === mm)?.[1] ?? "";
 }
 

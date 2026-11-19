@@ -54,7 +54,7 @@ function pixel(canvas: HTMLCanvasElement, x: number, y: number): string {
 }
 
 const near = (a: string, b: string) => {
-  const n = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const n = (h: string) => [1, 3, 5].map((i) => Number.parseInt(h.slice(i, i + 2), 16));
   return n(a).every((v, i) => Math.abs(v - n(b)[i]) <= 6);
 };
 

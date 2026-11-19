@@ -574,7 +574,7 @@ function withChoice(choices: string[], value: string): string[] {
 }
 
 function num(v: string): number {
-  const n = parseFloat(v.replace(",", "."));
+  const n = Number.parseFloat(v.replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 

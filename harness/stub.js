@@ -73,6 +73,16 @@ const store = {
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
+/** Strings in the backend's order: Rust compares them byte by byte, not by locale. */
+const byCode = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Where download_update "puts" the installer. Nothing is written: it is only
+ * the path handed to install_update. As update.rs, it is in the user's own
+ * temp folder, not a shared one.
+ */
+export const FAKE_INSTALLER = "C:\\Users\\knitter\\AppData\\Local\\Temp\\ShinyKnitting-update-setup.exe";
+
 /** As cheatsheets.rs's tidy_region: cut to the page; a sliver or all of it is none. */
 function tidyRegion(r) {
   if (!r || ![r.x, r.y, r.w, r.h].every(Number.isFinite)) return null;
@@ -1118,17 +1128,12 @@ function withYarnTotals(yarn) {
     const pattern = plan.patternId && store.patterns.find((p) => p.id === plan.patternId);
     return pattern ? { patternId: pattern.id, title: pattern.title } : { patternId: null, title: plan.title };
   });
-  out.projects = [
-    ...new Set(
-      store.projectYarns
-        .filter((e) => e.yarnId === yarn.id)
-        .map((e) => store.projects.find((pr) => pr.id === e.projectId))
-        .filter((pr) => pr && isLive(pr.status))
-        .map((pr) => pr.name),
-    ),
-  ].sort();
+  const on = store.projectYarns.flatMap((e) => {
+    const pr = e.yarnId === yarn.id && store.projects.find((x) => x.id === e.projectId);
+    return pr ? [pr] : [];
+  });
+  out.projects = [...new Set(on.filter((pr) => isLive(pr.status)).map((pr) => pr.name))].sort(byCode);
   out.usedUpAt = out.usedUpAt ?? null;
-  const on = store.projectYarns.filter((e) => e.yarnId === yarn.id).map((e) => store.projects.find((pr) => pr.id === e.projectId)).filter(Boolean);
   out.usedIn = [...new Set(on.filter((pr) => pr.status !== "planned").map((pr) => pr.name))];
   out.plannedIn = [...new Set(on.filter((pr) => pr.status === "planned").sort((a, b) => a.planOrder - b.planOrder).map((pr) => pr.name))];
   return out;
@@ -1220,7 +1225,7 @@ function cleanChart({ name, data }) {
   d.lace = d.kind === "yoke" && !!d.lace;
   if ((d.kind === "lace" || d.lace) && new Set(d.colours.map((c) => c.stitch)).size !== d.colours.length) fail("A stitch is in a lace chart's list once.");
   if (d.cells.length !== d.width * d.height) fail("The chart's squares do not match its size.");
-  if (![...d.cells].every((ch) => /^[0-9a-z]$/.test(ch) && parseInt(ch, 36) < d.colours.length)) fail("A square is in a colour the chart does not have.");
+  if (![...d.cells].every((ch) => /^[0-9a-z]$/.test(ch) && Number.parseInt(ch, 36) < d.colours.length)) fail("A square is in a colour the chart does not have.");
   if (d.kind !== "yoke") {
     d.sections = [];
     d.repeats = 1;
@@ -1433,7 +1438,7 @@ const handlers = {
     for (const pr of store.projects) if (pr.patternId === id) pr.patternId = null;
   },
   get_facets: () => ({
-    designers: [...new Set(store.patterns.map((p) => p.designer).filter(Boolean))].sort(),
+    designers: [...new Set(store.patterns.map((p) => p.designer).filter(Boolean))].sort(byCode),
     needleSizes: (() => {
       // Each derived size counted once per pattern that uses it (sizesOf
       // already dedupes within a pattern), smallest first, with the labels
@@ -1444,7 +1449,7 @@ const handlers = {
       }
       return [...counts]
         .map(([key, count]) => ({ key, mm: mmLabel(key), us: usLabel(key), count }))
-        .sort((a, b) => parseFloat(a.key) - parseFloat(b.key));
+        .sort((a, b) => Number.parseFloat(a.key) - Number.parseFloat(b.key));
     })(),
     // Every family is listed whether or not it is used, in table order, so the
     // sidebar reads the same way it does in the real app.
@@ -1453,7 +1458,7 @@ const handlers = {
       label,
       count: store.patterns.filter((p) => yarnFamily(p.yarnWeight) === key).length,
     })),
-    tags: [...new Set(store.patterns.flatMap((p) => p.tags))].sort(),
+    tags: [...new Set(store.patterns.flatMap((p) => p.tags))].sort(byCode),
     designerCounts: countedByUse(store.patterns.map((p) => p.designer).filter(Boolean).map((d) => [d])),
     tagCounts: countedByUse(store.patterns.map((p) => p.tags)),
   }),
@@ -1473,6 +1478,7 @@ const handlers = {
   },
   read_file: async ({ id }) => {
     const p = store.patterns.find((x) => x.id === id);
+    if (!p) throw new Error("not found");
     if (p.fileName === "long-pattern.pdf") return fetchFixture("long-pattern.pdf");
     if (p.fileName === "scanned-pattern.pdf") return fetchFixture("scanned-pattern.pdf");
     if (p.fileName === "sized-pattern.pdf") return fetchFixture("sized-pattern.pdf");
@@ -2342,6 +2348,7 @@ const handlers = {
     for (const left of input.leftovers || []) {
       if (!said(left)) continue;
       const e = store.projectYarns.find((x) => x.id === left.entryId);
+      if (!e) continue;
       const yarn = store.yarns.find((y) => y.id === e.yarnId);
       if (!yarn) continue;
       let lot = yarn.lots.find((l) => l.id === e.lotId) ?? yarn.lots[0];
@@ -3024,7 +3031,7 @@ const handlers = {
     // Its swatches stay, and still say what they were knitted in.
     const gone = store.yarns.find((y) => y.id === id);
     for (const s of store.swatches) {
-      if (s.yarnId !== id) continue;
+      if (!gone || s.yarnId !== id) continue;
       s.yarnText = `${[gone.brand, gone.name].filter(Boolean).join(" ")}${gone.colourway ? `, ${gone.colourway}` : ""}`;
       s.yarnId = null;
     }
@@ -3181,12 +3188,12 @@ const handlers = {
       for (const tag of suggestion.tags) {
         if (!merged.some((t) => t.toLowerCase() === tag.toLowerCase())) merged.push(tag);
       }
-      merged.sort();
+      merged.sort(byCode);
       after.tags = [...new Set(merged)];
     }
     // A book, or any EPUB, is tagged so (ai::metadata::apply_to).
     if ((suggestion.book || p.format === "epub") && !after.tags.some((t) => t.toLowerCase() === "book")) {
-      after.tags = [...after.tags, "book"].sort();
+      after.tags = [...after.tags, "book"].sort(byCode);
     }
     // The summary becomes the notes only when there is nothing there yet.
     if (suggestion.summary && !after.notes.includes(suggestion.summary.trim()) &&
@@ -3287,7 +3294,7 @@ const handlers = {
     if (next.error) throw new Error(next.error);
     return { skipped: false, currentVersion: "0.2.1", checkedAt: Math.floor(Date.now() / 1000), update: clone(next) };
   },
-  download_update: () => "C:\\Temp\\ShinyKnitting-update-setup.exe",
+  download_update: () => FAKE_INSTALLER,
   install_update: ({ path }) => {
     window.__installedUpdate = path;
   },

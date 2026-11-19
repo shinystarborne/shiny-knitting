@@ -38,7 +38,7 @@ export function readLength(text: string, unit: MeasureUnit): number {
   const t = text.trim().toLowerCase().replace(",", ".");
   if (!t) return 0;
   const m = /^(\d+(?:\.\d+)?|\.\d+)\s*(cm|in|inch|inches|"|”|″)?$/.exec(t);
-  if (!m) return NaN;
+  if (!m) return Number.NaN;
   const value = Number(m[1]);
   const typed = m[2] === "cm" ? "cm" : m[2] ? "in" : unit;
   // Stored to two places: enough that inches read back as typed.
@@ -126,7 +126,7 @@ export function detailsParts(d: YarnDetailsLike | undefined, unit: MeasureUnit):
 export function readGauge(text: string, unit: MeasureUnit): number {
   const t = text.trim().replace(",", ".");
   if (!t) return 0;
-  if (!/^\d+(\.\d+)?$|^\.\d+$/.test(t)) return NaN;
+  if (!/^\d+(\.\d+)?$|^\.\d+$/.test(t)) return Number.NaN;
   const value = Number(t);
   // Not rounded here: the backend keeps a tenth, and rounding twice can land
   // on the wrong side (21.6535 to 21.65 to 21.6, not 21.7).

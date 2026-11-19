@@ -272,7 +272,7 @@ pub async fn save_file(app: tauri::AppHandle, request: tauri::ipc::Request<'_>) 
         .blocking_save_file();
     let Some(picked) = picked else { return Ok(None) };
     let path = picked.into_path().map_err(|e| AppError::Message(format!("Cannot save there: {e}")))?;
-    std::fs::write(&path, bytes)?;
+    crate::files::write(path.clone(), bytes.to_vec()).await?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 

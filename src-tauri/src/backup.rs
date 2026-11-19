@@ -110,7 +110,7 @@ pub async fn make_backup(app: tauri::AppHandle, state: State<'_, AppState>, name
         .map_err(|e| AppError::Message(format!("The backup stopped: {e}")))?
     }
     .await;
-    let _ = std::fs::remove_file(&snapshot);
+    crate::files::remove_file(snapshot).await;
     set_progress(BackupProgress::default());
     let done = result?;
     crate::db::set_setting(&state.db(), "last_backup", &Some(done.clone()))?;
@@ -174,8 +174,8 @@ pub async fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, b
         Ok::<_, AppError>(RestoreDone { from: from.to_string_lossy().into_owned(), saved_to: saved.path, files })
     }
     .await;
-    let _ = std::fs::remove_file(&snapshot);
-    let _ = std::fs::remove_dir_all(&staging);
+    crate::files::remove_file(snapshot).await;
+    crate::files::remove_dir_all(staging).await;
     set_progress(BackupProgress::default());
     result.map(Some)
 }

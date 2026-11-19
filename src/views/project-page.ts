@@ -968,7 +968,7 @@ ${plan ? "" : `      <div class="project-side-dates">
         grip.removeEventListener("pointerup", up);
         grip.removeEventListener("pointercancel", up);
         main.classList.remove("resizing");
-        const width = parseInt(main.style.getPropertyValue("--pattern-width"), 10);
+        const width = Number.parseInt(main.style.getPropertyValue("--pattern-width"), 10);
         try {
           if (width) localStorage.setItem(this.widthKey, String(width));
         } catch {

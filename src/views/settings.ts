@@ -627,7 +627,9 @@ export class SettingsDialog {
     button.disabled = true;
     try {
       const saved = await this.persist();
-      this.onSaved(saved);
+      // Saved by now: the screens catch up after the dialog has gone, and a
+      // screen that fails to is said, not lost.
+      Promise.resolve(this.onSaved(saved)).catch((err) => void say(message(err), "Settings"));
       this.close();
     } catch (err) {
       const box = this.root.querySelector('[data-el="error"]') as HTMLElement;

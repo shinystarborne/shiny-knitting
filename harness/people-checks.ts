@@ -18,6 +18,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -43,8 +46,8 @@ function pure(results: CheckResult[]): void {
   check(results, "centimetres show to one place, without a trailing .0", showLength(91.44, "cm") === "91.4" && showLength(60, "cm") === "60");
   check(results, "inches are worked out from centimetres", showLength(91.44, "in") === "36" && showLength(60, "in") === "23.6", showLength(60, "in"));
   check(results, "nothing shows as nothing", showLength(0, "cm") === "" && showLength(undefined, "in") === "" && showLengthWithUnit(undefined, "cm") === "");
-  check(results, "a length is read in the chosen unit", readLength("91,5", "cm") === 91.5 && readLength("36", "in") === 91.44);
-  check(results, "a unit typed with it wins", readLength("36 in", "cm") === 91.44 && readLength('36"', "cm") === 91.44 && readLength("91 cm", "in") === 91);
+  check(results, "a length is read in the chosen unit", near(readLength("91,5", "cm"), 91.5) && near(readLength("36", "in"), 91.44));
+  check(results, "a unit typed with it wins", near(readLength("36 in", "cm"), 91.44) && near(readLength('36"', "cm"), 91.44) && near(readLength("91 cm", "in"), 91));
   check(results, "empty is 0, and words are not a length", readLength("  ", "cm") === 0 && Number.isNaN(readLength("big", "cm")) && Number.isNaN(readLength("3 4", "cm")));
   const sets: MeasurementSet[] = [
     { id: "b", personId: "p", measuredAt: 2, values: { chest: 60, head: 51 }, shoeSize: "" },
@@ -178,7 +181,7 @@ export async function verifyPeople() {
     await openPerson("pe1");
     check(results, "with inches chosen, the table shows inches", cell("ms2", "foot_length")?.value === "7.3" && /inches/.test(page()!.querySelector(".person-toolbar")?.textContent ?? ""), cell("ms2", "foot_length")?.value ?? "");
     typeIn(cell("ms2", "neck")!, "11");
-    await waitFor(() => setOf("ms2")?.values.neck === 27.94, "the neck in inches");
+    await waitFor(() => near(setOf("ms2")?.values.neck, 27.94), "the neck in inches");
     check(results, "…and reads what is typed as inches", true);
     store.measureUnit = "cm";
 

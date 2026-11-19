@@ -38,7 +38,7 @@ function pure(results: CheckResult[]): void {
   check(results, "…what ends a sentence left off, brackets kept when the address has them", same(said("buy at www.shop.de. (or www.yarn.com)"), ["www.shop.de", "www.yarn.com"]) && same(said("https://en.wikipedia.org/wiki/Fair_(knitting)"), ["https://en.wikipedia.org/wiki/Fair_(knitting)"]), JSON.stringify(said("buy at www.shop.de. (or www.yarn.com)")));
   check(results, "…one broken over a line after a slash, read whole", same(said("at https://x.com/patterns/ sunday-shawl now"), ["https://x.com/patterns/ sunday-shawl"]));
   check(results, "look-alikes are no addresses: measures, e.g., fig., k2tog", same(said("knit 2.5 cm, e.g. k2tog, fig. 3. s.k.p"), []), JSON.stringify(said("knit 2.5 cm, e.g. k2tog, fig. 3.")));
-  check(results, "what each opens: https:// added, mail as mailto, broken ones joined", addressUrl("www.Shop.de/Garn") === "https://www.Shop.de/Garn" && addressUrl("me@mail.com") === "mailto:me@mail.com" && addressUrl("http://x.com") === "http://x.com" && addressUrl("https://x.com/patterns/ sunday") === "https://x.com/patterns/sunday");
+  check(results, "what each opens: https:// added, mail as mailto, broken ones joined", addressUrl("www.Shop.de/Garn") === "https://www.Shop.de/Garn" && addressUrl("me@mail.com") === "mailto:me@mail.com" && addressUrl("http://localhost:8080/garn") === "http://localhost:8080/garn" && addressUrl("https://x.com/patterns/ sunday") === "https://x.com/patterns/sunday");
 }
 
 export async function verifyLinks() {

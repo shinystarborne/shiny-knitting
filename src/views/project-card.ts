@@ -192,7 +192,7 @@ function lay(ctx: CanvasRenderingContext2D, b: Block, width: number, s: number):
   let lines: string[];
   if (b.kind === "fact") lines = b.lines.flatMap((l) => wrap(ctx, l, width - LABEL_W * s, 2));
   else if (b.kind === "quote") lines = wrap(ctx, `“${b.text}”`, width, 3);
-  else lines = wrap(ctx, b.text, width, b.kind === "title" ? 2 : 2);
+  else lines = wrap(ctx, b.text, width, 2);
   return { block: b, lines, height: lines.length * st.lead + st.after };
 }
 

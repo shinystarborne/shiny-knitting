@@ -243,7 +243,7 @@ export class CalculatorsView {
   /** Reads a field: a length into cm, a gauge into per 10 cm, else a number. NaN when it is not one. */
   private num(key: string): number {
     const el = this.main.querySelector<HTMLInputElement>(`[data-k="${key}"]`);
-    if (!el) return NaN;
+    if (!el) return Number.NaN;
     if (el.dataset.kind === "length") return readLength(el.value, this.unit);
     if (el.dataset.kind === "gauge") return readGauge(el.value, this.unit);
     const t = el.value.trim().replace(",", ".").replace("−", "-");

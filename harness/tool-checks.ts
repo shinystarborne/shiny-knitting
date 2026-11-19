@@ -46,7 +46,7 @@ function projectOf(store: Store, toolId: string): string | null {
 }
 
 function pure(results: CheckResult[], tools: Tool[]): void {
-  const ids = (list: Tool[]) => list.map((t) => t.id).sort().join(",");
+  const ids = (list: Tool[]) => list.map((t) => t.id).sort((a, b) => a.localeCompare(b)).join(",");
   check(results, "a tool on a project from a pattern is in use", !isFree(tools.find((t) => t.id === "t1")!));
   check(results, "a tool on a project without one is in use", !isFree(tools.find((t) => t.id === "t2")!));
   check(results, "Free shows only the free ones", ids(filterTools(tools, { use: ["free"] })) === "t3,t4,t5,t6", ids(filterTools(tools, { use: ["free"] })));

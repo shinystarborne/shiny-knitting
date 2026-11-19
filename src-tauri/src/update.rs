@@ -5,7 +5,6 @@
 //! listing is the only endpoint that surfaces prereleases, which is where
 //! beta builds are published.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -417,10 +416,13 @@ async fn download_to_temp(asset_api_url: &str, file_name: &str) -> CmdResult<Pat
         .collect();
     let path = std::env::temp_dir().join(format!("ShinyKnitting-update-{safe}"));
 
-    let mut file = std::fs::File::create(&path).map_err(|e| err(&e))?;
+    // Gathered, then written in one go off the async threads: an installer
+    // is a few megabytes.
+    let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| err(&e))? {
-        file.write_all(&chunk).map_err(|e| err(&e))?;
+        bytes.extend_from_slice(&chunk);
     }
+    crate::files::write(path.clone(), bytes).await.map_err(|e| err(&e))?;
     Ok(path)
 }
 

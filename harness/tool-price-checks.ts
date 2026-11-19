@@ -19,6 +19,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -50,7 +53,7 @@ function pure(results: CheckResult[]): void {
   check(results, "…in its month, with the totals", months[11].tools === 120 && months[11].total === 120 && months[10].tools === 7.5);
   check(results, "a set from the form is named by its brand, kind and sizes", setName("ChiaoGoo", "tips", [3, 2.75, 5]) === "ChiaoGoo interchangeable tips, 2.75–5 mm" && setName("", "hook", [3, 4]) === "Crochet hooks, 3–4 mm", setName("ChiaoGoo", "tips", [3, 2.75, 5]));
   const wish = { id: "w", kind: "needles", name: "Clover Amour hook 4 mm", brand: "Clover", url: "", shopId: null, price: "€14,90", amount: "", notes: "", gotAt: null } as unknown as Wish;
-  check(results, "a needle from the wishlist starts with its price", toolStart(wish).price === 14.9);
+  check(results, "a needle from the wishlist starts with its price", near(toolStart(wish).price, 14.9));
 }
 
 export async function verifyToolPrices() {
@@ -122,7 +125,7 @@ export async function verifyToolPrices() {
     const twist = () => store.toolSets.find((s) => s.name === "ChiaoGoo interchangeable tips, 3–4 mm");
     await waitFor(() => !modal() && !!twist(), "the set added");
     const pieces = store.tools.filter((t) => t.setId === twist()!.id);
-    check(results, "…kept as a set: named, priced, its three pieces with none of their own", twist()!.price === 89.9 && pieces.length === 3 && pieces.every((t) => t.price == null), JSON.stringify({ set: twist(), pieces: pieces.map((t) => [t.sizeMm, t.price]) }));
+    check(results, "…kept as a set: named, priced, its three pieces with none of their own", near(twist()!.price, 89.9) && near(pieces.length, 3) && pieces.every((t) => t.price == null), JSON.stringify({ set: twist(), pieces: pieces.map((t) => [t.sizeMm, t.price]) }));
     await waitFor(() => !!card(pieces[0].id), "the pieces' cards");
     check(results, "a piece's card says its set", /In the set ChiaoGoo interchangeable tips, 3–4 mm/.test(card(pieces[0].id)!.textContent ?? ""));
     const total = async () => {
@@ -131,7 +134,7 @@ export async function verifyToolPrices() {
     };
     const header = () => document.querySelector('.tools [data-el="total"]')?.textContent ?? "";
     const expected = await total();
-    check(results, "the header says what they all cost, the set once", header().includes(`cost ${money(expected.total, "EUR")}`) && expected.total === 102.4 && /without a price/.test(header()), header());
+    check(results, "the header says what they all cost, the set once", header().includes(`cost ${money(expected.total, "EUR")}`) && near(expected.total, 102.4) && /without a price/.test(header()), header());
 
     // A piece's form says the set has its price.
     card(pieces[1].id)!.click();
@@ -178,7 +181,7 @@ export async function verifyToolPrices() {
     await waitFor(() => !modal(), "Sets closed");
     const after = await total();
     await waitFor(() => header().includes(`cost ${money(after.total, "EUR")}`), "the header again");
-    check(results, "the header is current after Sets: the hook alone again", after.total === 102.4, JSON.stringify(after));
+    check(results, "the header is current after Sets: the hook alone again", near(after.total, 102.4), JSON.stringify(after));
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {

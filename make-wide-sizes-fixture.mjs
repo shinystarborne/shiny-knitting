@@ -21,8 +21,13 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>
 
 // A tab of its own, closed after: a tab left in front would stop another's
 // painting (a hidden page gets no animation frames).
-const target = await (await fetch("http://localhost:9222/json/new?about:blank", { method: "PUT" })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
+// Only the tab's id is taken from the answer, and only if it looks like one;
+// the addresses are built here, so nothing in the answer can point elsewhere.
+const DEVTOOLS = "localhost:9222";
+const target = await (await fetch(`http://${DEVTOOLS}/json/new?about:blank`, { method: "PUT" })).json();
+const tabId = String(target?.id ?? "");
+if (!/^[A-Za-z0-9-]{1,64}$/.test(tabId)) throw new Error("The browser did not answer with a tab.");
+const ws = new WebSocket(`ws://${DEVTOOLS}/devtools/page/${encodeURIComponent(tabId)}`);
 let id = 0;
 const pending = new Map();
 ws.onmessage = (e) => {
@@ -39,6 +44,6 @@ await send("Page.navigate", { url: `data:text/html;charset=utf-8,${encodeURIComp
 await new Promise((r) => setTimeout(r, 1500));
 const pdf = await send("Page.printToPDF", { paperWidth: 8.27, paperHeight: 11.69, printBackground: false, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 });
 writeFileSync("public/fixtures/wide-sizes.pdf", Buffer.from(pdf.result.data, "base64"));
-await fetch(`http://localhost:9222/json/close/${target.id}`);
+await fetch(`http://${DEVTOOLS}/json/close/${encodeURIComponent(tabId)}`);
 console.log("public/fixtures/wide-sizes.pdf");
 process.exit(0);

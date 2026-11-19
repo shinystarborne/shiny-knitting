@@ -857,7 +857,7 @@ export class ReaderView {
         const current = line.current;
         let value: unknown;
         if (input.type === "checkbox") value = input.checked;
-        else if (input.type === "range") value = parseFloat(input.value);
+        else if (input.type === "range") value = Number.parseFloat(input.value);
         else value = input.value;
         // The field comes from a fixed list of input data-f attributes.
         (current as unknown as Record<string, unknown>)[field] = value;

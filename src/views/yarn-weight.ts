@@ -91,7 +91,7 @@ function familyByName(text: string): string {
 /** "230 m/100g", "400 m per 100 g": a metre figure with its unit. */
 export function metresPer100g(text: string): number | null {
   const m = text.toLowerCase().match(/(\d+(?:\.\d+)?)\s*m(?:etres|eters|trs)?\s*(?:\/|per|at)\s*100\s*g/);
-  return m ? Math.round(parseFloat(m[1])) : null;
+  return m ? Math.round(Number.parseFloat(m[1])) : null;
 }
 
 /**

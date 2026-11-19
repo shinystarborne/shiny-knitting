@@ -236,7 +236,7 @@ function fitTags(host: HTMLElement): void {
     // Against the box's limit, not its height: once chips are hidden the box
     // shrinks to what is left, and then nothing at its bottom edge "fits".
     // Exact positions, too: a chip is 22.5 px, which offsetHeight rounds up.
-    const limit = parseFloat(getComputedStyle(box).maxHeight) || box.clientHeight;
+    const limit = Number.parseFloat(getComputedStyle(box).maxHeight) || box.clientHeight;
     const fits = (el: HTMLElement) => el.getBoundingClientRect().bottom - box.getBoundingClientRect().top <= limit + 0.5;
     const hidden = chips.filter((c) => !fits(c));
     if (!hidden.length) continue;

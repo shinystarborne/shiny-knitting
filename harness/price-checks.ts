@@ -21,6 +21,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -40,15 +43,15 @@ const invoke = <T>(cmd: string, args: Record<string, unknown> = {}) =>
 
 function pure(results: CheckResult[]): void {
   const read = (t: string) => parsePrice(t);
-  check(results, "a price typed either way: 4,95 and 4.95", read("4,95") === 4.95 && read("4.95") === 4.95);
-  check(results, "…with its currency and words around it", read("€4.95 a ball") === 4.95 && read("12 EUR") === 12 && read("CHF 7.-") === 7, `${read("€4.95 a ball")} ${read("12 EUR")} ${read("CHF 7.-")}`);
+  check(results, "a price typed either way: 4,95 and 4.95", near(read("4,95"), 4.95) && near(read("4.95"), 4.95));
+  check(results, "…with its currency and words around it", near(read("€4.95 a ball"), 4.95) && near(read("12 EUR"), 12) && near(read("CHF 7.-"), 7), `${read("€4.95 a ball")} ${read("12 EUR")} ${read("CHF 7.-")}`);
   check(results, "…thousands either way", read("1.234,50") === 1234.5 && read("1,234.50") === 1234.5 && read("1,000") === 1000, `${read("1.234,50")} ${read("1,234.50")} ${read("1,000")}`);
   check(results, "…and none when there is no number", read("free") === null && read("") === null);
 
-  check(results, "a wishlist price for a ball is a ball's", pricePerBall("€4.95 a ball", 6) === 4.95 && pricePerBall("4,95/ball", 6) === 4.95 && pricePerBall("3.50 each", 4) === 3.5);
-  check(results, "…else what was paid, shared over the balls", pricePerBall("29,70", 6) === 4.95 && pricePerBall("8", 1) === 8 && pricePerBall("8", 0) === 8, String(pricePerBall("29,70", 6)));
+  check(results, "a wishlist price for a ball is a ball's", near(pricePerBall("€4.95 a ball", 6), 4.95) && near(pricePerBall("4,95/ball", 6), 4.95) && near(pricePerBall("3.50 each", 4), 3.5));
+  check(results, "…else what was paid, shared over the balls", near(pricePerBall("29,70", 6), 4.95) && near(pricePerBall("8", 1), 8) && near(pricePerBall("8", 0), 8), String(pricePerBall("29,70", 6)));
   const wish = (price: string, amount: string) => ({ id: "w", kind: "yarn", name: "Air, Off white", brand: "Drops", url: "", shopId: null, price, amount, notes: "", gotAt: null }) as unknown as Wish;
-  check(results, "a yarn got from the wishlist starts its lot at a ball's price", yarnStart(wish("€4.95 a ball", "6 balls")).price === 4.95 && yarnStart(wish("29,70 €", "6 balls")).price === 4.95 && yarnStart(wish("", "6 balls")).price === null);
+  check(results, "a yarn got from the wishlist starts its lot at a ball's price", near(yarnStart(wish("€4.95 a ball", "6 balls")).price, 4.95) && near(yarnStart(wish("29,70 €", "6 balls")).price, 4.95) && yarnStart(wish("", "6 balls")).price === null);
 
   // The stash: a yarn of whole balls and a weighed lot, one with no price, and a used-up yarn.
   const lot = (fields: Partial<YarnLot>): YarnLot => ({ id: "l", yarnId: "y", dyeLot: "", balls: 0, gramsLeft: 0, weighed: false, location: "", boughtAt: null, leftover: false, ...fields }) as YarnLot;
@@ -60,19 +63,19 @@ function pure(results: CheckResult[]): void {
     yarn({ id: "c", name: "Gone", usedUpAt: 1, details: priced(10), lots: [lot({ id: "c1", balls: 5 })] }),
   ];
   const worth = stashWorth(yarns);
-  check(results, "the stash's worth: whole balls at the yarn's price, a weighed lot by its share of a ball, used up yarn not", worth.worth === 16.83 && worth.unpriced === 1, JSON.stringify(worth));
+  check(results, "the stash's worth: whole balls at the yarn's price, a weighed lot by its share of a ball, used up yarn not", near(worth.worth, 16.83) && near(worth.unpriced, 1), JSON.stringify(worth));
 
   const patterns = [{ id: "p", title: "Riddari", price: 6.5, addedAt: new Date(2028, 1, 10).getTime() }, { id: "q", title: "Free one", price: null, addedAt: 0 }] as unknown as Pattern[];
   const spends = spending(yarns, patterns);
-  check(results, "what was spent: each lot of a yarn with a price, dated when bought or else when the yarn was added, used up or not; patterns with one", spends.length === 3 && spends[0].amount === 14.85 && /Drops Air, 3 balls/.test(spends[0].name) && spends.some((s) => s.kind === "pattern" && s.amount === 6.5), JSON.stringify(spends));
+  check(results, "what was spent: each lot of a yarn with a price, dated when bought or else when the yarn was added, used up or not; patterns with one", near(spends.length, 3) && near(spends[0].amount, 14.85) && /Drops Air, 3 balls/.test(spends[0].name) && spends.some((s) => s.kind === "pattern" && near(s.amount, 6.5)), JSON.stringify(spends));
   const months = spentByMonth(spends, new Date(2028, 2, 15).getTime());
-  check(results, "…month by month for twelve, the oldest first", months.length === 12 && months[11].yarn === 14.85 && months[10].patterns === 6.5 && months[9].yarn === 50 && months[11].items.length === 1, JSON.stringify(months.slice(9).map((m) => [m.yarn, m.patterns])));
+  check(results, "…month by month for twelve, the oldest first", near(months.length, 12) && near(months[11].yarn, 14.85) && near(months[10].patterns, 6.5) && near(months[9].yarn, 50) && near(months[11].items.length, 1), JSON.stringify(months.slice(9).map((m) => [m.yarn, m.patterns])));
 
   const project = { id: "pr", patternId: "p", yarns: [{ id: "e1", yarnId: "a", yarnName: "Air", lotId: "a1", plannedGrams: 100 }, { id: "e2", yarnId: "b", yarnName: "Kid-Silk", lotId: null, plannedGrams: 25 }] } as unknown as Project;
   const planned = projectCost(project, yarns, patterns, []);
-  check(results, "a project's cost: the grams it plans at the yarn's price a ball, and its pattern", planned.yarn === 9.9 && planned.pattern === 6.5 && planned.total === 16.4 && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
+  check(results, "a project's cost: the grams it plans at the yarn's price a ball, and its pattern", near(planned.yarn, 9.9) && near(planned.pattern, 6.5) && near(planned.total, 16.4) && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
   const used = [{ projectId: "pr", yarnId: "a", grams: 150, source: "finished" }] as unknown as YarnUse[];
-  check(results, "…what it used, once finished, before what it planned", projectCost(project, yarns, patterns, used).yarn === 14.85);
+  check(results, "…what it used, once finished, before what it planned", near(projectCost(project, yarns, patterns, used).yarn, 14.85));
 
   // Deadstock and cone yarn: the price is for 100 g. Two cones of 500 g, one
   // started (320 g left), and a lot bought by weight with no cones counted.
@@ -82,7 +85,7 @@ function pure(results: CheckResult[]): void {
     yarn({ id: "e", name: "Merino ends", gramsPerBall: 0, metresPerBall: 0, details: soldByWeight(5.5), lots: [lot({ id: "e1", weighed: true, gramsLeft: 400 })] }),
   ];
   const coneWorth = stashWorth(cones);
-  check(results, "deadstock is worth its grams at its price per 100 g: 1000 g + 320 g + 400 g", coneWorth.worth === 80 + 25.6 + 22 && coneWorth.unpriced === 0, JSON.stringify(coneWorth));
+  check(results, "deadstock is worth its grams at its price per 100 g: 1000 g + 320 g + 400 g", near(coneWorth.worth, 80 + 25.6 + 22) && near(coneWorth.unpriced, 0), JSON.stringify(coneWorth));
   const coneSpends = spending(cones, []);
   check(results, "…it cost its cones by their weight, or the grams bought by weight", coneSpends.some((s) => s.amount === 80 && /2 balls/.test(s.name)) && coneSpends.some((s) => s.amount === 40) && coneSpends.some((s) => s.amount === 22 && /400 g/.test(s.name)), JSON.stringify(coneSpends));
   const coneProject = { id: "pc", patternId: null, yarns: [{ id: "e3", yarnId: "e", yarnName: "Merino ends", lotId: null, plannedGrams: 250 }] } as unknown as Project;
@@ -94,7 +97,7 @@ function pure(results: CheckResult[]): void {
   check(results, "…its lots cost their cones, and are worth their grams at that", JSON.stringify(spending([byCone], []).map((s) => s.amount)) === "[90,45]" && stashWorth([byCone]).worth === 112.5, JSON.stringify([spending([byCone], []).map((s) => s.amount), stashWorth([byCone])]));
   check(results, "deadstock's metres per 100 g read from a figure or a count: 700, 2/1400, 2/28", readPer100g("700") === 700 && readPer100g("2/1400") === 700 && readPer100g("2/28") === 1400 && readPer100g("") === 0 && readPer100g("lots") === null);
   check(results, "…kept per ball: a 500 g cone, or 100 g when bought by weight; and read back", JSON.stringify(byWeight(700, 500)) === '{"metresPerBall":3500,"gramsPerBall":500}' && JSON.stringify(byWeight(700, 0)) === '{"metresPerBall":700,"gramsPerBall":100}' && per100gOf({ metresPerBall: 3500, gramsPerBall: 500 }) === 700 && byWeight(0, 0).gramsPerBall === 0);
-  check(results, "a wishlist price per 100 g starts the yarn as deadstock, at that price", yarnStart(wish("€8,50 / 100 g", "500 g")).price === 8.5 && yarnStart(wish("12.90 per 100g", "")).deadstock === true && yarnStart(wish("12.90 per 100g", "")).price === 12.9 && !yarnStart(wish("€4.95 a ball", "6 balls")).deadstock);
+  check(results, "a wishlist price per 100 g starts the yarn as deadstock, at that price", near(yarnStart(wish("€8,50 / 100 g", "500 g")).price, 8.5) && yarnStart(wish("12.90 per 100g", "")).deadstock === true && near(yarnStart(wish("12.90 per 100g", "")).price, 12.9) && !yarnStart(wish("€4.95 a ball", "6 balls")).deadstock);
 }
 
 export async function verifyPrices() {
@@ -156,7 +159,7 @@ export async function verifyPrices() {
     await waitFor(() => !!added() && !modal(), "the yarn added");
     yarnId = added()!.id;
     const kept = (await listed()).find((y) => y.id === yarnId)?.details;
-    check(results, "the yarn's price a ball is kept, typed with a comma and words", kept?.price === 4.95, JSON.stringify(kept));
+    check(results, "the yarn's price a ball is kept, typed with a comma and words", near(kept?.price, 4.95), JSON.stringify(kept));
 
     // Another colour of it starts at that price; changed there, it changes for both.
     await addYarn();
@@ -176,7 +179,7 @@ export async function verifyPrices() {
     await waitFor(() => store.yarns.filter((y) => y.name === "Price Check").length === 2 && !modal(), "the second colour");
     otherColour = store.yarns.find((y) => y.name === "Price Check" && y.id !== yarnId)!.id;
     const both = (await listed()).filter((y) => y.name === "Price Check").map((y) => y.details?.price);
-    check(results, "…and a new price on one colour is every colour's", both.length === 2 && both.every((x) => x === 5.2), JSON.stringify(both));
+    check(results, "…and a new price on one colour is every colour's", near(both.length, 2) && both.every((x) => near(x, 5.2)), JSON.stringify(both));
     // The first colour stays, at 5.20, for Statistics and the project.
     await invoke("delete_yarn", { id: otherColour });
     otherColour = "";

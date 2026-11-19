@@ -219,12 +219,12 @@ export class HighlightLine {
 
   /** The line's top in the scrolling content, in pixels. */
   get contentTop(): number {
-    return parseFloat(this.el.style.top || "0") || 0;
+    return Number.parseFloat(this.el.style.top || "0") || 0;
   }
 
   /** The line's height on screen now, in pixels. */
   get heightPx(): number {
-    return parseFloat(this.el.style.height || "0") || 0;
+    return Number.parseFloat(this.el.style.height || "0") || 0;
   }
 
   /** The line's top within the pane as scrolled now. */

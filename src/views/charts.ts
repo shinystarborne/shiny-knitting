@@ -1348,7 +1348,7 @@ export class ChartPage {
     if (kept.side === "preview") {
       const canvas = el.querySelector<HTMLCanvasElement>("canvas.chart-preview");
       // The panel's width inside its padding.
-      const pad = parseFloat(getComputedStyle(el).paddingLeft) + parseFloat(getComputedStyle(el).paddingRight);
+      const pad = Number.parseFloat(getComputedStyle(el).paddingLeft) + Number.parseFloat(getComputedStyle(el).paddingRight);
       const width = Math.max(200, Math.floor(el.clientWidth - pad - 2));
       if (canvas && this.g.kind === "yoke") drawRing(canvas, this.g, Math.min(width, 340));
       else if (canvas) drawTiles(canvas, this.g, width, Math.round(width * 0.8));

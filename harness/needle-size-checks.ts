@@ -88,7 +88,7 @@ export async function verifyNeedleSizes() {
   const cardIds = () => [...document.querySelectorAll<HTMLElement>(".library .card")].map((c) => c.dataset.open!);
   const idsFor = (keys: string[]) =>
     store.patterns.filter((p) => sizesOf(p.needleSize).some((s) => keys.includes(s))).map((p) => p.id);
-  const shownIs = (keys: string[]) => cardIds().sort().join(",") === idsFor(keys).sort().join(",");
+  const shownIs = (keys: string[]) => cardIds().sort((a, b) => a.localeCompare(b)).join(",") === idsFor(keys).sort((a, b) => a.localeCompare(b)).join(",");
   try {
     check(results, "the display setting defaults to both", (await invoke("get_needle_size_display")) === "both");
 
@@ -99,7 +99,7 @@ export async function verifyNeedleSizes() {
     (document.querySelector('.tab-bar [data-tab="patterns"]') as HTMLElement).click();
     await waitFor(() => !!box("4"), "the needle size facets");
     const facetKeys = [...document.querySelectorAll<HTMLInputElement>('.library [data-slot="needle"] .facet-list input[data-filter="needleSize"]')].map((i) => i.value);
-    check(results, "the facets are in size order", facetKeys.every((v, i) => i === 0 || parseFloat(facetKeys[i - 1]) < parseFloat(v)), facetKeys.join(","));
+    check(results, "the facets are in size order", facetKeys.every((v, i) => i === 0 || Number.parseFloat(facetKeys[i - 1]) < Number.parseFloat(v)), facetKeys.join(","));
     const label4 = labelOf("4")!;
     check(results, "4 mm is counted once per pattern that uses it", Number(label4.querySelector("em")!.textContent) === idsFor(["4"]).length, label4.querySelector("em")!.textContent ?? "");
     check(results, "…and labelled in both systems", label4.querySelector("span")!.textContent === "4 mm / US 6", label4.querySelector("span")!.textContent ?? "");

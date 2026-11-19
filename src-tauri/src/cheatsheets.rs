@@ -187,9 +187,7 @@ pub async fn add_cheatsheet(state: State<'_, AppState>, input: CheatsheetInput) 
             }
             if input.kind == "chapter" {
                 let html = input.html.as_deref().filter(|h| !h.trim().is_empty()).ok_or_else(|| AppError::Message("The chapter could not be read.".into()))?;
-                let path = copy_path(&state, &id);
-                std::fs::create_dir_all(path.parent().unwrap())?;
-                std::fs::write(&path, html)?;
+                crate::files::write_into(copy_path(&state, &id), html.as_bytes().to_vec()).await?;
             }
         }
         _ => return Err(AppError::Message("A cheatsheet must be a web page, PDF pages, or a chapter.".into())),

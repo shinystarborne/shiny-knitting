@@ -70,18 +70,18 @@ export async function verifyModelSettings() {
   const results: CheckResult[] = [];
   const before = JSON.parse(JSON.stringify(await invoke<AiSettingsView>("get_ai_settings"))) as AiSettingsView;
   try {
-    const A = "http://192.168.1.10:8080/v1";
-    const B = "http://192.168.1.20:8080/v1";
-    const C = "http://192.168.1.30:8080/v1";
+    const A = "http://localhost:8081/v1";
+    const B = "http://localhost:8082/v1";
+    const C = "http://localhost:8083/v1";
     // Not applied, so the runs leave the library as it was.
     const saved = await save({ enabled: true, baseUrl: A, model: "model-a", rescanExisting: true, applyAutomatically: false });
 
     // ---- Test connection: the draft, never saved ----
     (document.querySelector('.tab-bar [data-act="settings"]') as HTMLElement).click();
     await waitFor(() => !!modal()?.querySelector('[data-act="test"]'), "Settings");
-    const failed = await testWith("http://fail.example/v1");
+    const failed = await testWith("http://localhost:9/fail/v1");
     check(results, "a failing test says so", /Could not reach/.test(failed), failed);
-    check(results, "…the address tested is the one in the form", store().lastAiTest?.baseUrl === "http://fail.example/v1", JSON.stringify(store().lastAiTest));
+    check(results, "…the address tested is the one in the form", store().lastAiTest?.baseUrl === "http://localhost:9/fail/v1", JSON.stringify(store().lastAiTest));
     check(results, "…and nothing was saved", store().aiSettings?.baseUrl === A && store().aiSettings?.revision === saved.revision, JSON.stringify(store().aiSettings));
     field("apiKey").value = "sk-typed";
     const passed = await testWith(B);

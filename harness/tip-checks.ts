@@ -46,7 +46,7 @@ export async function verifyTips() {
   const results: CheckResult[] = [];
   const store = (window as unknown as { __store: { projects: Project[]; projectTools: { projectId: string; toolId: string; tip?: string }[] } }).__store;
   /** A project's tips as kept, by tool: what its links say. */
-  const tipsOf = (id: string) => JSON.stringify(Object.fromEntries(store.projectTools.filter((l) => l.projectId === id && l.tip).map((l) => [l.toolId, l.tip]).sort()));
+  const tipsOf = (id: string) => JSON.stringify(Object.fromEntries(store.projectTools.filter((l) => l.projectId === id && l.tip).map((l) => [l.toolId, l.tip]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))));
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const modal = () => document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) .modal.project-form");
   const page = () => document.querySelector<HTMLElement>(".project-page");
@@ -86,7 +86,7 @@ export async function verifyTips() {
     tip(four.id)!.value = "one";
     tip(four.id)!.dispatchEvent(new Event("change", { bubbles: true }));
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
-    await waitFor(() => !modal() && tipsOf(brioche.id) === JSON.stringify(Object.fromEntries([[five.id, "one"], [four.id, "one"]].sort())), "the tips kept");
+    await waitFor(() => !modal() && tipsOf(brioche.id) === JSON.stringify(Object.fromEntries([[five.id, "one"], [four.id, "one"]].sort((a, b) => a[0].localeCompare(b[0])))), "the tips kept");
     check(results, "one tip of 5 mm and one of 4.5 mm are kept on the project", true);
 
     document.querySelector<HTMLElement>(".projects")!.dispatchEvent(new CustomEvent("open-project-page", { bubbles: true, detail: brioche.id }));
@@ -111,7 +111,7 @@ export async function verifyTips() {
     modal()!.querySelector<HTMLElement>('[data-act="save"]')!.click();
     await waitFor(() => !modal(), "saved");
     const shared = (await invoke<Tool[]>("list_tools")).find((t) => t.id === five.id)!;
-    check(results, "the pair is on both projects now, a tip each", shared.uses.length === 2 && shared.uses.map((u) => `${u.projectId}:${u.tip}`).sort().join(" ") === [`${brioche.id}:one`, `${cowl.id}:one`].sort().join(" "), JSON.stringify(shared.uses));
+    check(results, "the pair is on both projects now, a tip each", shared.uses.length === 2 && shared.uses.map((u) => `${u.projectId}:${u.tip}`).sort((a, b) => a.localeCompare(b)).join(" ") === [`${brioche.id}:one`, `${cowl.id}:one`].sort((a, b) => a.localeCompare(b)).join(" "), JSON.stringify(shared.uses));
 
     // Needles & hooks: where each tip is.
     tab("tools");

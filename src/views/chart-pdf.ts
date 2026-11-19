@@ -80,7 +80,7 @@ function literal(text: string): string {
 const n = (v: number) => (Math.round(v * 100) / 100).toString();
 
 function rgb(hex: string): string {
-  const v = parseInt(hex.slice(1), 16);
+  const v = Number.parseInt(hex.slice(1), 16);
   return [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((c) => n(c / 255)).join(" ");
 }
 

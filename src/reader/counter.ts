@@ -310,7 +310,7 @@ export class RowCounter {
       { title: "Add a counter", okLabel: "Add" },
     );
     if (!answer) return;
-    const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
+    const target = Math.max(0, Number.parseInt(answer["Rows"], 10) || 0);
 
     const created = await api.addCounter(this.patternId, this.projectId, {
       name: (answer["Name"] ?? "").trim() || "Counter",
@@ -347,7 +347,7 @@ export class RowCounter {
       },
     );
     if (!answer) return;
-    const target = Math.max(0, parseInt(answer["Rows"], 10) || 0);
+    const target = Math.max(0, Number.parseInt(answer["Rows"], 10) || 0);
     const excluded = answer["Don't change the project total with this counter's own buttons"] === "yes";
     await api.updateCounter(id, (answer["Name"] ?? "").trim() || "Counter", target, excluded);
     await this.refresh();

@@ -90,6 +90,10 @@ if __name__ == "__main__":
     here = os.path.dirname(__file__)
     out_dir = os.path.join(here, "public", "fixtures")
     os.makedirs(out_dir, exist_ok=True)
-    dest = os.path.join(out_dir, sys.argv[2] if len(sys.argv) > 2 else "long-pattern.pdf")
+    # Only a file name is taken, so the PDF lands in public/fixtures whatever is typed.
+    name = os.path.basename(sys.argv[2]) if len(sys.argv) > 2 else "long-pattern.pdf"
+    if not name.endswith(".pdf"):
+        sys.exit("The file name must end in .pdf")
+    dest = os.path.join(out_dir, name)
     build_pdf(dest)
     print("wrote", dest, os.path.getsize(dest), "bytes,", PAGES, "pages")

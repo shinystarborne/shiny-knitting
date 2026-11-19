@@ -38,7 +38,7 @@ export async function verifyChartLine() {
   const store = (window as unknown as { __store: { highlights: Map<string, Highlight> } }).__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const line = () => document.querySelector<HTMLElement>(".project-page .highlight-line");
-  const top = () => parseFloat(line()?.style.top || "0");
+  const top = () => Number.parseFloat(line()?.style.top || "0");
   const scroller = () => document.querySelector<HTMLElement>(".project-page .doc-scroller")!;
   const press = () => scroller().dispatchEvent(new KeyboardEvent("keydown", { code: "KeyJ", key: "j", bubbles: true, cancelable: true }));
   const pattern = "p1";
@@ -135,7 +135,7 @@ export async function verifyChartLine() {
     const shareBefore = share();
     const main = document.querySelector<HTMLElement>(".project-page .project-main")!;
     const widthBefore = main.style.getPropertyValue("--pattern-width");
-    main.style.setProperty("--pattern-width", `${parseInt(widthBefore || "500", 10) + 200}px`);
+    main.style.setProperty("--pattern-width", `${Number.parseInt(widthBefore || "500", 10) + 200}px`);
     window.dispatchEvent(new Event("resize"));
     await wait(1200);
     check(results, "the pane made wider, the line keeps its place on the page", Math.abs(share() - shareBefore) < 0.004, `${shareBefore} → ${share()}`);

@@ -46,7 +46,7 @@ export const PALETTE: ChartColour[] = [
 
 export function decode(d: ChartData): Grid {
   const cells = new Uint8Array(d.width * d.height);
-  for (let i = 0; i < cells.length; i++) cells[i] = parseInt(d.cells[i] ?? "0", 36) || 0;
+  for (let i = 0; i < cells.length; i++) cells[i] = Number.parseInt(d.cells[i] ?? "0", 36) || 0;
   return { ...d, colours: d.colours.map((c) => ({ ...c })), sections: d.sections.map((s) => ({ ...s, cols: [...s.cols] })), gauge: { ...d.gauge }, cells };
 }
 
@@ -661,7 +661,7 @@ export function blockColours(g: Grid, b: Block): number[] {
 
 function nearestColour(g: Grid, hex: string): number {
   const rgb = (h: string) => {
-    const n = parseInt(h.slice(1), 16);
+    const n = Number.parseInt(h.slice(1), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   };
   const [r, gr, b] = rgb(hex);
@@ -1005,7 +1005,7 @@ function clampInt(v: number, lo: number, hi: number): number {
 
 /** Black or white, whichever reads on a colour. */
 export function inkOn(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
+  const n = Number.parseInt(hex.slice(1), 16);
   const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1a1a1a" : "#ffffff";
 }

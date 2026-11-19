@@ -16,6 +16,7 @@
  * Run with the harness open:
  *   window.__updateChecks()
  */
+import { FAKE_INSTALLER } from "./stub.js";
 
 function check(results, name, condition, detail = "") {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
@@ -104,7 +105,7 @@ export async function verifyUpdates() {
     check(
       results,
       "downloading installs and starts the installer",
-      window.__installedUpdate === "C:\\Temp\\ShinyKnitting-update-setup.exe",
+      window.__installedUpdate === FAKE_INSTALLER,
       `installed: ${window.__installedUpdate}`,
     );
 
@@ -185,7 +186,7 @@ export async function verifyUpdates() {
     await waitFor(() => ask(), "the question again");
     ask().querySelector(".primary").click();
     await waitFor(() => window.__installedUpdate, "the installer to be started");
-    check(results, "saying yes downloads it and starts the installer", window.__installedUpdate === "C:\\Temp\\ShinyKnitting-update-setup.exe", String(window.__installedUpdate));
+    check(results, "saying yes downloads it and starts the installer", window.__installedUpdate === FAKE_INSTALLER, String(window.__installedUpdate));
     window.__installedUpdate = null;
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err && err.message) || err));

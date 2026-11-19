@@ -477,7 +477,7 @@ export class LibraryView {
       } catch (err) {
         return this.flash(err instanceof Error ? err.message : String(err), true);
       }
-      if (tags.some((t) => !this.facets.tags.includes(t))) this.facets.tags = [...new Set([...this.facets.tags, ...tags])].sort();
+      if (tags.some((t) => !this.facets.tags.includes(t))) this.facets.tags = [...new Set([...this.facets.tags, ...tags])].sort((a, b) => a.localeCompare(b));
       await this.refreshCard(patternId);
     } else if (action === "details") {
       this.root.dispatchEvent(new CustomEvent("edit-pattern-here", { bubbles: true, detail: pattern }));

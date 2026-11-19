@@ -13,6 +13,9 @@ interface CheckResult {
   detail: string;
 }
 
+/** Equal but for floating-point rounding. */
+const near = (a: number | null | undefined, b: number): boolean => a != null && Math.abs(a - b) < 1e-9;
+
 function check(results: CheckResult[], name: string, condition: unknown, detail = ""): void {
   results.push({ name, ok: !!condition, detail: condition ? "" : detail });
 }
@@ -79,7 +82,7 @@ export async function verifyEraser() {
     await rub([0.4, 0.44], [0.4, 0.56]);
     await waitFor(() => drawings().length === 2, "the line in two");
     const [a, b] = drawings().map(xs).sort((p, q) => p[0] - q[0]);
-    check(results, "dragged across a line, it rubs out its middle and leaves two", Math.max(...a) < 0.4 && Math.min(...b) > 0.4 && Math.min(...a) === 0.2 && Math.max(...b) > 0.59, `${Math.max(...a)} / ${Math.min(...b)}`);
+    check(results, "dragged across a line, it rubs out its middle and leaves two", Math.max(...a) < 0.4 && Math.min(...b) > 0.4 && near(Math.min(...a), 0.2) && Math.max(...b) > 0.59, `${Math.max(...a)} / ${Math.min(...b)}`);
 
     // Along the right-hand piece, end to end.
     await rub([0.4, 0.5], [0.62, 0.5]);
