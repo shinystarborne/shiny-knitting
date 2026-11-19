@@ -2,8 +2,12 @@
 
 ## Toward 1.1.0
 
+The betas that led to [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
+1.1.0 is everything in them as one release, with fixes from an audit of the code: Test connection in Settings
+saves nothing, a Describe run keeps to the server it was started with, and forms closed with Escape are gone for good.
+
 - **[v1.1.0-beta.18](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.18)** —
-  Last counted under the row counter's total: how long ago the last count landed, going up every second.
+  Last counted under the row counter's total: how long ago the last count landed, going up every second. Became 1.1.0.
 - **[v1.1.0-beta.17](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.17)** —
   plainer, impersonal wording throughout; Hour cost and Project cost with time on a project's page.
 - **[v1.1.0-beta.16](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0-beta.16)** —
