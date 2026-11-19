@@ -6,6 +6,9 @@
 # → Analysis Method): the two cannot both analyse the project. Until then the
 # tests and coverage still run, and their results are in the job.
 #
+# Actions are pinned to a commit (the tag beside each), so a moved tag cannot
+# change what runs here.
+#
 # Windows, as the app is built for it: the Rust tests run as they do on the
 # desk, and Chrome is already on the runner for the browser checks.
 name: Tests, coverage and SonarCloud
@@ -33,30 +36,35 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The whole history: SonarCloud uses it to tell new code from old.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # monocart-coverage-reports 3 needs Node 22.15 or newer.
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      # No package here needs an install script, so none is run.
+      - run: npm ci --ignore-scripts
 
       # The Rust build embeds the built frontend (tauri.conf.json frontendDist).
       - name: Build the frontend
         run: npm run build
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The Rust the app is built with, not the newest: Rust 1.100 lays out
+      # its build folder anew, and cargo-llvm-cov cannot read coverage from it
+      # yet (taiki-e/cargo-llvm-cov#536, #538).
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
+          toolchain: 1.98.1
           components: llvm-tools-preview
 
-      - uses: taiki-e/install-action@v2.90.6
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov@0.9.1
 
       - name: Rust tests, with coverage
         working-directory: src-tauri
@@ -66,7 +74,7 @@ jobs:
 
       - name: Browser checks, with coverage
         run: |
-          npx vite --config harness/vite.harness.config.ts > "$RUNNER_TEMP/vite.log" 2>&1 &
+          npm run harness > "$RUNNER_TEMP/vite.log" 2>&1 &
           "/c/Program Files/Google/Chrome/Application/chrome.exe" --headless=new --remote-debugging-port=9222 \
             --window-size=1400,900 --user-data-dir="$RUNNER_TEMP/chrome" about:blank > /dev/null 2>&1 &
           for i in $(seq 1 90); do
@@ -77,4 +85,4 @@ jobs:
 
       - name: SonarCloud
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v8.5.0
+        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
