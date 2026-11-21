@@ -505,22 +505,25 @@ export class ToolForm {
       } else {
         // A set is one entry per size, sharing the rest but no project. Added
         // one at a time, in order, so a refusal partway names the size it
-        // stopped at.
+        // stopped at; and all of it or none, so Add again adds each once.
         const steps = this.splitting() ? this.steps : null;
         const one = (mm: number) => ({ ...input, sizeMm: mm, cableSize: steps ? connectorFor(mm, steps) : input.cableSize });
         saved = await api.addTool(one(sizes[0]));
         const added = [saved.id];
-        for (const size of sizes.slice(1)) {
-          try {
+        let at = sizes[0];
+        try {
+          for (const size of sizes.slice(1)) {
+            at = size;
             saved = await api.addTool(one(size));
             added.push(saved.id);
-          } catch (err) {
-            this.onDone(saved);
-            throw new Error(`Added up to ${saved.sizeMm} mm; stopped at ${size} mm: ${err instanceof Error ? err.message : String(err)}`);
           }
+          // Kept together, as bought: one set, its price the one typed.
+          if (set) await api.saveToolSet({ name: setName(input.brand, input.kind, sizes), price: typed.price ?? null, toolIds: added });
+        } catch (err) {
+          for (const id of added) await api.deleteTool(id).catch(() => {});
+          const why = err instanceof Error ? err.message : String(err);
+          throw new Error(added.length < sizes.length ? `Nothing was added; ${at} mm was refused: ${why}` : `Nothing was added; the set was refused: ${why}`);
         }
-        // Kept together, as bought: one set, its price the one typed.
-        if (set) await api.saveToolSet({ name: setName(input.brand, input.kind, sizes), price: typed.price ?? null, toolIds: added });
       }
       const what = saved.kind === "cable" ? "the cable" : saved.kind === "adapter" ? "the adapter" : sizes.length > 1 ? `${sizes.length}: ${sizes.join(", ")} mm` : `the ${saved.sizeMm} mm`;
       if (another) {

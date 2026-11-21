@@ -65,6 +65,13 @@ pub fn apply_to(pattern: &Pattern, suggestion: &Suggestion, settings: &AiSetting
             crate::yarn::family_of(&suggestion.yarn_weight).to_string();
     }
 
+    // The summary becomes the first line of the notes when there is room for
+    // it, since that is what the notes field is for. Put before the yarn line,
+    // so empty notes take both.
+    if !suggestion.summary.is_empty() && next.notes.trim().is_empty() {
+        next.notes = suggestion.summary.clone();
+    }
+
     // Yarn is not a stored field of its own, so it is folded into the notes
     // where it is still findable and editable.
     if !suggestion.yarn.is_empty() && !pattern.notes.contains(&suggestion.yarn) {
@@ -95,15 +102,6 @@ pub fn apply_to(pattern: &Pattern, suggestion: &Suggestion, settings: &AiSetting
     if (suggestion.book || pattern.format == "epub") && !next.tags.iter().any(|t| t.eq_ignore_ascii_case(BOOK_TAG)) {
         next.tags.push(BOOK_TAG.to_string());
         next.tags.sort();
-    }
-
-    // The summary becomes the first line of the notes when there is room for
-    // it, since that is what the notes field is for.
-    if !suggestion.summary.is_empty()
-        && !next.notes.contains(suggestion.summary.trim())
-        && next.notes.trim().is_empty()
-    {
-        next.notes = suggestion.summary.clone();
     }
 
     next
@@ -145,8 +143,11 @@ pub fn commit(
     before: &Pattern,
     after: &Pattern,
 ) -> crate::models::AppResult<Pattern> {
-    let updated = db::update_pattern(conn, after)?;
-    db::record_ai_change(conn, &before.id, before, &updated)?;
+    // One transaction: a change is never written without its undo point.
+    let tx = conn.unchecked_transaction()?;
+    let updated = db::update_pattern(&tx, after)?;
+    db::record_ai_change(&tx, &before.id, before, &updated)?;
+    tx.commit()?;
     Ok(updated)
 }
 
@@ -208,6 +209,17 @@ mod tests {
         assert_eq!(after.needle_size, "4mm");
         assert_eq!(after.tags, vec!["lace", "socks"]);
         assert!(after.notes.contains("Yarn: Shetland wool"));
+    }
+
+    #[test]
+    fn empty_notes_take_the_summary_and_the_yarn() {
+        let after = apply_to(&pattern(), &suggestion(), &defaults());
+        assert_eq!(after.notes, "A fine gauge lace sock worked from a chart.\nYarn: Shetland wool");
+
+        // Notes already there keep their place: the yarn goes below, no summary.
+        let mut p = pattern();
+        p.notes = "Mine.".to_string();
+        assert_eq!(apply_to(&p, &suggestion(), &defaults()).notes, "Mine.\nYarn: Shetland wool");
     }
 
     #[test]

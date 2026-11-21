@@ -1250,10 +1250,8 @@ fn undo_last_ai_change_on(
     restored.notes = before.notes;
     restored.tags = before.tags;
     // Restoring the snapshot is itself a change, so it gets its own undo
-    // point rather than erasing history.
-    let restored = db::update_pattern(conn, &restored)?;
-    db::record_ai_change(conn, &current.id, &current, &restored)?;
-    Ok(Some(restored))
+    // point rather than erasing history; the two in one transaction.
+    Ok(Some(crate::ai::metadata::commit(conn, &current, &restored)?))
 }
 
 /// Whether a pattern can be undone, for enabling the button.

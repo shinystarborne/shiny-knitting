@@ -125,7 +125,7 @@ function cardHtml(p: Person, unit: MeasureUnit): string {
     ...(shoe ? [`<li><span>Shoe size</span><b>${esc(shoe)}</b></li>`] : []),
   ];
   return `
-    <article class="person-card" data-open="${esc(p.id)}">
+    <article class="person-card" tabindex="0" data-open="${esc(p.id)}">
       <div class="person-head">
         <span class="person-initial">${esc(p.name.slice(0, 1).toUpperCase())}</span>
         <div>
@@ -165,6 +165,8 @@ export class PersonPage {
   /** Saves run one after another, so a quick second edit cannot overtake the first. */
   private saving: Promise<unknown> = Promise.resolve();
   private typingTimer: number | null = null;
+  /** Removed: no save after this one goes ahead. */
+  private removed = false;
 
   constructor(screen: HTMLElement, personId: string, hooks: PersonPageHooks) {
     this.screen = screen;
@@ -282,13 +284,15 @@ export class PersonPage {
     // time a save before this one is done.
     const name = this.value("name").trim() || this.person.name;
     const notes = this.value("notes");
-    await this.save(() => api.updatePerson(this.personId, { name, notes, extra }));
-    this.mark("Saved");
+    const saved = await this.save(() => api.updatePerson(this.personId, { name, notes, extra }));
+    this.mark(saved ? "Saved" : "Not saved");
   }
 
   /** Runs a change after any before it, and takes the person it returns. */
   private save(run: () => Promise<Person>): Promise<boolean> {
     const done = this.saving.then(async () => {
+      // Removed meanwhile: a change queued before is to no one.
+      if (this.removed) return false;
       try {
         this.person = await run();
         return true;
@@ -373,7 +377,10 @@ export class PersonPage {
     const key = input.dataset.key!;
     const next = { measuredAt: set.measuredAt, values: { ...set.values }, shoeSize: set.shoeSize };
     if (key === "date") {
-      if (!input.value) return this.renderTable();
+      if (!input.value) {
+        this.renderTable();
+        return say("Measurements need the date they were taken.", "Date");
+      }
       next.measuredAt = fromDateInput(input.value);
     } else if (key === "shoe") {
       next.shoeSize = input.value;
@@ -421,9 +428,13 @@ export class PersonPage {
       this.renderTable();
     }
     if (act === "remove-person" && (await confirmRemove(this.person))) {
+      // Typing not yet saved is dropped, and any save still waiting skips.
+      if (this.typingTimer !== null) clearTimeout(this.typingTimer);
+      this.removed = true;
       try {
         await api.deletePerson(this.personId);
       } catch (err) {
+        this.removed = false;
         return void (await say(err instanceof Error ? err.message : String(err), "Remove"));
       }
       this.typingTimer = null;

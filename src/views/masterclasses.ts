@@ -437,9 +437,12 @@ export class MasterclassesView {
         if (act !== "make") return;
         try {
           const made = await api.bundleMasterclasses([m.id, ...ticked], card.querySelector<HTMLInputElement>('[data-f="bundle-name"]')!.value);
-          this.classes = this.classes.filter((x) => !ticked.includes(x.id));
+          // The bundle is the first one (db::bundle_masterclasses), but taken
+          // as returned: every one bundled is gone, and made is the one there.
+          const bundled = [m.id, ...ticked];
+          this.classes = this.classes.filter((x) => x.id === made.id || !bundled.includes(x.id));
           this.replace(made);
-          this.projects = this.projects.map((p) => (ticked.includes(p.masterclassId) ? { ...p, masterclassId: made.id } : p));
+          this.projects = this.projects.map((p) => (bundled.includes(p.masterclassId) ? { ...p, masterclassId: made.id } : p));
           this.openId = made.id;
           this.paintList();
           this.paintView();

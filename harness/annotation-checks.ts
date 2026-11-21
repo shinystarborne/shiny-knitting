@@ -322,15 +322,10 @@ export async function verifyAnnotations() {
 declare global {
   interface Window {
     __annotationChecks: typeof verifyAnnotations;
-    __annotationCheckResult: Awaited<ReturnType<typeof verifyAnnotations>> | null;
   }
 }
 
+// Run by the driver like every suite, not on load as well (row-checks.js).
 if (typeof window !== "undefined") {
   window.__annotationChecks = verifyAnnotations;
-  window.addEventListener("load", () => {
-    setTimeout(async () => {
-      window.__annotationCheckResult = await verifyAnnotations();
-    }, 2000);
-  });
 }

@@ -109,3 +109,7 @@ open at all after an update, it offers to go back the next time you start it.
 
 Found something that doesn't work, or have an idea?
 [Open an issue](https://github.com/shinystarborne/shiny-knitting/issues).
+
+## Licence
+
+Free to use, change and share under the [MIT licence](LICENSE).

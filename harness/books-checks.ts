@@ -90,7 +90,8 @@ export async function verifyBooks() {
 
     // The model is told the length, and a long file comes back a book.
     const before = store.aiSettings;
-    store.aiSettings = { ...(before ?? {}), enabled: true } as never;
+    // No server is set by default: this one is the suite's own.
+    store.aiSettings = { ...(before ?? {}), enabled: true, baseUrl: "https://models.example/v1", model: "test-model" } as never;
     const long = await api.addPattern({ title: "Sock anthology", designer: "", fileName: "anthology.pdf", sourcePath: "C:/books/anthology.pdf", status: "", difficulty: "", needleSize: "", tags: [], notes: "" } as never);
     added.push(long.id);
     const described = await api.suggestMetadata(long.id, "Contents: Sock one, Sock two, Sock three", [], 120);

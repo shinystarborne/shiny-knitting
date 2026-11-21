@@ -1165,7 +1165,7 @@ fn settings_round_trip_and_default_when_absent() {
     let conn = test_db();
     // Absent gives the default rather than an error.
     let s: crate::models::AiSettings = get_setting(&conn, "ai").unwrap();
-    assert!(!s.base_url.is_empty());
+    assert_eq!((s.enabled, s.max_characters), (false, 4000), "the defaults");
     assert!(s.api_key.is_empty());
 
     let custom = crate::models::AiSettings {
@@ -1193,7 +1193,7 @@ fn corrupt_settings_fall_back_to_default() {
     )
     .unwrap();
     let s: crate::models::AiSettings = get_setting(&conn, "ai").unwrap();
-    assert!(!s.base_url.is_empty());
+    assert_eq!((s.enabled, s.max_characters, s.reasoning_effort.as_str()), (false, 4000, "low"), "the defaults");
 }
 
 // ---------- AI history ----------
@@ -1552,12 +1552,14 @@ fn a_pin_comes_to_the_front_of_its_patterns_pins() {
 fn the_pin_limit_is_counted_not_guessed() {
     let conn = test_db();
     let p = sample(&conn, "Pinned", "A", "in-progress", &[]);
-    for i in 0..5 {
+    for i in 0..crate::models::MAX_PINS {
+        // Room for each up to the limit...
+        assert!(crate::annotations::room_for_pin(&conn, &p.id).is_ok(), "pin {}", i + 1);
         insert_pin(&conn, &p.id, &pin_input(), &format!("{i}.jpg")).unwrap();
     }
-    assert_eq!(count_pins(&conn, &p.id).unwrap(), 5);
-    // The command refuses the sixth; this confirms the count it relies on.
-    assert!(count_pins(&conn, &p.id).unwrap() >= crate::models::MAX_PINS);
+    assert_eq!(count_pins(&conn, &p.id).unwrap(), crate::models::MAX_PINS);
+    // ...and none for one more, as add_pin asks before it adds.
+    assert!(crate::annotations::room_for_pin(&conn, &p.id).is_err());
 }
 
 #[test]
@@ -2647,6 +2649,12 @@ fn finishing_releases_the_tools_and_records_the_leftovers() {
     };
     let p = insert_project(&conn, "j", &input).unwrap();
     let entry = |name: &str| p.yarns.iter().find(|e| e.yarn_name == name).unwrap().id.clone();
+    // More left than the lot held (100 g) is a slip: refused, nothing changed.
+    let over = crate::models::FinishInput { leftovers: vec![crate::models::YarnLeftover { entry_id: entry("Felted Tweed"), grams: Some(150), ..Default::default() }], ..Default::default() };
+    let err = finish_project(&conn, "j", &over).unwrap_err().to_string();
+    assert!(err.contains("150 g left is more than its lot held (100 g)"), "{err}");
+    assert_eq!(get_project(&conn, "j").unwrap().status, "active");
+    assert_eq!(get_yarn(&conn, &y.id).unwrap().lots[0].grams_left, 100);
     let finish = crate::models::FinishInput {
         finished_at: Some(1234),
         leftovers: vec![
@@ -3945,4 +3953,74 @@ fn the_line_keeps_its_place_on_the_page() {
     save_highlight(&conn, &h).unwrap();
     let kept = get_highlight(&conn, &p.id).unwrap();
     assert_eq!((kept.box_x, kept.box_y), (0.0, 1.0));
+}
+
+#[test]
+fn the_lists_show_each_thing_as_it_shows_alone() {
+    // The lists fetch what their rows carry in a few queries for all; each
+    // must come out exactly as reading it alone does.
+    let conn = test_db();
+    let pattern = sample(&conn, "Rjupa", "Hulda", "", &[]);
+    set_cover(&conn, &pattern.id, "rjupa.jpg").unwrap();
+    let a = yarn_with_lots(&conn, "Lettlopi", vec![lot("A", 6.0, 300), lot("B", 2.0, 0)]);
+    set_yarn_details(&conn, " lopi ", "LETTLOPI", &YarnDetails { price: Some(4.5), ..Default::default() }).unwrap();
+    conn.execute("UPDATE yarns SET brand = 'Lopi' WHERE id = ?1", params![a.id]).unwrap();
+    set_yarn_photo(&conn, &a.id, "lettlopi.jpg").unwrap();
+    let b = yarn_with_lots(&conn, "Felted Tweed", vec![lot("", 3.0, 0)]);
+    let plans = serde_json::json!([{ "patternId": pattern.id, "title": "old" }, { "patternId": "gone", "title": "Kept" }]);
+    conn.execute("UPDATE yarns SET plans = ?2 WHERE id = ?1", params![b.id, plans.to_string()]).unwrap();
+    let with = |name: &str, yarns: &[&Yarn], planned: bool| crate::models::ProjectInput {
+        name: name.into(),
+        pattern_id: Some(pattern.id.clone()),
+        yarns: yarns.iter().map(|y| crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: None, planned_grams: Some(50) }).collect(),
+        planned,
+        ..Default::default()
+    };
+    insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
+    insert_project(&conn, "on", &crate::models::ProjectInput { tool_ids: vec!["t1".into()], ..with("Yoke", &[&a, &b], false) }).unwrap();
+    insert_project(&conn, "later", &with("Mitts", &[&b], true)).unwrap();
+    insert_project(&conn, "done", &with("Hat", &[&a], false)).unwrap();
+    finish_project(&conn, "done", &crate::models::FinishInput::default()).unwrap();
+    project(&conn, "Bare", None);
+    insert_inspiration_board(&conn, "ib", "Ideas").unwrap();
+    insert_inspiration_board(&conn, "empty", "Empty").unwrap();
+    let item = |kind: &str, data: serde_json::Value| crate::models::BoardItemInput { kind: kind.into(), data: Some(data), ..Default::default() };
+    insert_board_item(&conn, "i1", "ib", &item("pattern", serde_json::json!({ "patternId": pattern.id }))).unwrap();
+    insert_board_item(&conn, "i2", "ib", &item("yarn", serde_json::json!({ "yarnId": a.id }))).unwrap();
+    insert_board_item(&conn, "i3", "ib", &item("yarn", serde_json::json!({ "yarnId": b.id }))).unwrap();
+    insert_board_item(&conn, "i4", "ib", &item("swatch", serde_json::json!({ "colour": "#7aa874" }))).unwrap();
+
+    let yarns = list_yarns(&conn, &YarnFilter { used: Some("all".into()), ..Default::default() }).unwrap();
+    assert_eq!(yarns.len(), 2);
+    for y in &yarns {
+        assert_eq!(y, &get_yarn(&conn, &y.id).unwrap(), "{}", y.name);
+    }
+    let listed = yarns.iter().find(|y| y.id == a.id).unwrap();
+    assert_eq!((listed.details.as_ref().unwrap().price, listed.lots.len()), (Some(4.5), 2), "the ball band found whatever its case and spacing");
+    assert_eq!((listed.projects.clone(), listed.used_in.clone()), (vec!["Yoke".to_string()], vec!["Yoke".to_string(), "Hat".to_string()]));
+    let tweed = yarns.iter().find(|y| y.id == b.id).unwrap();
+    assert_eq!(tweed.planned_in, vec!["Mitts"]);
+    assert_eq!(
+        tweed.plans.iter().map(|p| (p.pattern_id.as_deref(), p.title.as_str())).collect::<Vec<_>>(),
+        vec![(Some(pattern.id.as_str()), "Rjupa"), (None, "Kept")],
+        "a plan's pattern by its title now; one removed keeps the title it had"
+    );
+
+    let projects = list_projects(&conn).unwrap();
+    assert_eq!(projects.len(), 4);
+    for p in &projects {
+        assert_eq!(serde_json::to_value(p).unwrap(), serde_json::to_value(get_project(&conn, &p.id).unwrap()).unwrap(), "{}", p.name);
+    }
+    assert_eq!(projects.iter().find(|p| p.id == "on").unwrap().yarns.len(), 2);
+
+    let boards = list_inspiration_boards(&conn).unwrap();
+    assert_eq!(boards.len(), 2);
+    for board in &boards {
+        assert_eq!(serde_json::to_value(board).unwrap(), serde_json::to_value(get_inspiration_board(&conn, &board.id).unwrap()).unwrap());
+    }
+    let ideas = boards.iter().find(|b| b.id == "ib").unwrap();
+    let mut pictures: Vec<_> = ideas.pictures.iter().map(|p| (p.kind.as_str(), p.id.as_str())).collect();
+    pictures.sort();
+    assert_eq!(pictures, vec![("pattern", pattern.id.as_str()), ("yarn", a.id.as_str())], "a yarn without a photo has no picture");
+    assert_eq!((ideas.item_count, ideas.colours.clone()), (4, vec!["#7aa874".to_string()]));
 }

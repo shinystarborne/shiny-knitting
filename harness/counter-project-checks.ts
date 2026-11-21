@@ -7,6 +7,7 @@
  * Run with the harness open:
  *   window.__counterProjectChecks()
  */
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -52,6 +53,10 @@ export async function verifyCounterProjects() {
     await waitFor(() => !!page() && !!pageCounter()?.querySelector('[data-el="total"]'), "the project's page");
   };
 
+  // The pattern's counts not yet taken by any project, so these are the first
+  // to count; what other projects counted is put back after.
+  const restore = keep(["progress", "counters"]);
+  for (const key of [...store.progress.keys()]) if (key.endsWith(`|${pattern}`)) store.progress.delete(key);
   try {
     // The pattern's own count, from before projects counted their own.
     await invoke("set_total_rows", { patternId: pattern, projectId: null, total: 5 });
@@ -122,6 +127,7 @@ export async function verifyCounterProjects() {
     await invoke("set_total_rows", { patternId: pattern, projectId: null, total: 0 }).catch(() => {});
     if (pinId) await invoke("delete_pin", { id: pinId }).catch(() => {});
     tab("patterns");
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

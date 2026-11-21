@@ -82,7 +82,7 @@ export class CrochetDiagrams {
 
   private cardHtml(d: CrochetDiagram): string {
     return `
-      <article class="crochet-card" data-open="${esc(d.id)}" title="Open it">
+      <article class="crochet-card" tabindex="0" data-open="${esc(d.id)}" title="Open it">
         <div class="crochet-thumb">${diagramSvg(d.data, d.name)}</div>
         <div class="crochet-card-body">
           <strong>${esc(d.name)}</strong>

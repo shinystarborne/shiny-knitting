@@ -97,7 +97,15 @@ export class SearchBar {
     this.host.appendChild(el);
     this.onToggle?.(true);
 
-    this.texts ??= await this.doc.searchTexts();
+    try {
+      this.texts ??= await this.doc.searchTexts();
+    } catch {
+      // Said in the bar, which closes as usual; opened again, it reads again.
+      if (this.el !== el) return;
+      input.placeholder = "The PDF's text could not be read";
+      el.classList.add("no-text");
+      return;
+    }
     if (this.el !== el) return;
     // A scanned pattern is pictures of pages with no text in them at all, so
     // say so, rather than offer a field that will only ever answer "0 / 0".

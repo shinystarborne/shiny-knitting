@@ -791,9 +791,11 @@ impl Default for AiSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            base_url: "https://gen2.zeroval.eu/v1".to_string(),
-            model: "Qwen3.6-27B".to_string(),
-            fallback_model: "Qwen3.6-27B".to_string(),
+            // No server or model until one is set in Settings: there is no
+            // address that would be right for everyone.
+            base_url: String::new(),
+            model: String::new(),
+            fallback_model: String::new(),
             api_key: String::new(),
             apply_automatically: true,
             skip_existing: true,

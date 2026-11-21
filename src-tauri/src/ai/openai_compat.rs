@@ -46,9 +46,19 @@ impl Attempt {
     pub const QUICKER_PLAIN: Attempt = Attempt { max_tokens: 12000, think_less: true, no_thinking: false };
 }
 
+/// A field some servers send as null rather than leaving out: read as empty.
+/// `#[serde(default)]` alone covers only a missing one.
+fn null_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
 #[derive(Deserialize)]
 struct ChatResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     choices: Vec<Choice>,
     /// Some servers return the error in the body with a 200 status.
     #[serde(default)]
@@ -57,7 +67,7 @@ struct ChatResponse {
 
 #[derive(Deserialize)]
 struct Choice {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     message: Message,
     /// Present when generation stopped because it hit the token limit.
     #[serde(default)]
@@ -66,7 +76,8 @@ struct Choice {
 
 #[derive(Deserialize, Default)]
 struct Message {
-    #[serde(default)]
+    // Null from a reasoning model that spent its reply thinking (OpenRouter).
+    #[serde(default, deserialize_with = "null_as_default")]
     content: String,
     // Reasoning models put their working here and may return empty content.
     #[serde(default)]
@@ -116,10 +127,13 @@ pub fn normalise_base_url(raw: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    if trimmed.ends_with("/v1") || trimmed.ends_with("/api/v1") {
-        return trimmed.to_string();
+    // `localhost:11434` is how a local server is usually typed; without the
+    // scheme it is no address at all to the HTTP client.
+    let url = if trimmed.contains("://") { trimmed.to_string() } else { format!("http://{trimmed}") };
+    if url.ends_with("/v1") || url.ends_with("/api/v1") {
+        return url;
     }
-    format!("{trimmed}/v1")
+    format!("{url}/v1")
 }
 
 /// True when the address points at this machine or a private network, which
@@ -281,17 +295,30 @@ pub async fn complete(
     let url = format!("{base}/chat/completions");
     let body = request_body(&model, settings, request, attempt);
 
-    let response = authorised(client()?.post(&url), settings)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                AiError::Timeout
-            } else {
-                AiError::unreachable("the model server", describe(&e, &base))
-            }
-        })?;
+    // A blip is asked again after a pause: a dropped connection once, a busy
+    // or restarting server (429, 502, 503, 504) twice. A timeout is not, as
+    // it has already waited the full three minutes; nor is any other error,
+    // which asking again would only repeat.
+    let client = client()?;
+    let mut tries = 0u64;
+    let response = loop {
+        tries += 1;
+        let sent = authorised(client.post(&url), settings).json(&body).send().await;
+        let again = match &sent {
+            Err(e) => e.is_connect() && tries < 2,
+            Ok(r) => matches!(r.status().as_u16(), 429 | 502 | 503 | 504) && tries < 3,
+        };
+        if !again {
+            break sent.map_err(|e| {
+                if e.is_timeout() {
+                    AiError::Timeout
+                } else {
+                    AiError::unreachable("the model server", describe(&e, &base))
+                }
+            })?;
+        }
+        tokio::time::sleep(Duration::from_secs(2 * tries)).await;
+    };
 
     let status = response.status();
     if !status.is_success() {
@@ -406,7 +433,19 @@ mod tests {
             normalise_base_url("http://192.168.1.20:1234/"),
             "http://192.168.1.20:1234/v1"
         );
-        assert_eq!(normalise_base_url("  0.0.0.0:8000  "), "0.0.0.0:8000/v1");
+        assert_eq!(normalise_base_url("  0.0.0.0:8000  "), "http://0.0.0.0:8000/v1");
+        assert_eq!(normalise_base_url("localhost:11434"), "http://localhost:11434/v1");
+        assert_eq!(normalise_base_url("localhost:8080/v1"), "http://localhost:8080/v1");
+    }
+
+    #[test]
+    fn a_null_reply_reads_as_empty_not_as_a_broken_one() {
+        let parsed: ChatResponse =
+            serde_json::from_str(r#"{"choices":[{"message":{"content":null,"reasoning_content":"..."},"finish_reason":"length"}]}"#).unwrap();
+        assert_eq!(parsed.choices[0].message.content, "");
+        assert!(parsed.choices[0].message.reasoning_content.is_some());
+        let none: ChatResponse = serde_json::from_str(r#"{"choices":null}"#).unwrap();
+        assert!(none.choices.is_empty());
     }
 
     #[test]
@@ -577,13 +616,13 @@ mod tests {
 
     /// Talks to a real model server. Ignored by default because it needs the
     /// network and a server that may not be running; run it with
-    /// `cargo test -- --ignored` when changing the client.
+    /// `AI_BASE_URL=... AI_MODEL=... cargo test -- --ignored` when changing the client.
     #[tokio::test]
     #[ignore = "needs a live model server"]
     async fn reaches_a_live_openai_compatible_server() {
         let settings = AiSettings {
-            base_url: "https://gen2.zeroval.eu/v1".to_string(),
-            model: "Qwen3.6-27B".to_string(),
+            base_url: std::env::var("AI_BASE_URL").expect("set AI_BASE_URL to the model server's address"),
+            model: std::env::var("AI_MODEL").expect("set AI_MODEL to a model the server has"),
             ..Default::default()
         };
 

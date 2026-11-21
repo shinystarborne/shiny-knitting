@@ -3,7 +3,7 @@
 //! designer's own, or a meaning you would rather read. One of yours with the
 //! same term as a common one is shown in its place.
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -42,6 +42,17 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
             added_at INTEGER NOT NULL
         );",
     )?;
+    // One per term, whatever the case: the database holds to it too. A
+    // library from before this could have two; the newest of each is kept.
+    conn.execute_batch(
+        "DELETE FROM abbreviations WHERE EXISTS (
+            SELECT 1 FROM abbreviations newer
+            WHERE newer.term = abbreviations.term
+              AND (newer.added_at > abbreviations.added_at
+                   OR (newer.added_at = abbreviations.added_at AND newer.rowid > abbreviations.rowid))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS abbreviations_term ON abbreviations (term COLLATE NOCASE);",
+    )?;
     Ok(())
 }
 
@@ -68,7 +79,7 @@ pub fn save(conn: &Connection, input: &AbbreviationInput) -> AppResult<Abbreviat
     }
     let same: Option<String> = conn
         .query_row("SELECT id FROM abbreviations WHERE term = ?1", params![term], |r| r.get(0))
-        .ok();
+        .optional()?;
     let id = match (input.id.clone().filter(|i| !i.is_empty()), same) {
         (Some(id), Some(other)) if other != id => {
             return Err(AppError::Message(format!("“{term}” is already a custom abbreviation.")));
@@ -130,5 +141,22 @@ mod tests {
         assert!(save(&conn, &input(None, &"k".repeat(41), "long")).is_err());
         remove(&conn, &mb.id).unwrap();
         assert_eq!(list(&conn).unwrap().len(), 1);
+        // The database refuses a second of a term itself, in any case.
+        assert!(conn.execute("INSERT INTO abbreviations VALUES ('x', 'CDD', 'again', 1)", []).is_err());
+    }
+
+    #[test]
+    fn two_of_a_term_from_before_become_the_newest() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE abbreviations (id TEXT PRIMARY KEY, term TEXT NOT NULL COLLATE NOCASE, meaning TEXT NOT NULL, added_at INTEGER NOT NULL);
+             INSERT INTO abbreviations VALUES ('old', 'MB', 'make bobble', 1), ('new', 'mb', 'make bobble (5 sts)', 2), ('kfb', 'kfb', 'knit front and back', 1);",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let kept = list(&conn).unwrap();
+        assert_eq!(kept.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), vec!["kfb", "new"]);
+        migrate(&conn).unwrap();
+        assert_eq!(list(&conn).unwrap().len(), 2, "opened again, the same");
     }
 }

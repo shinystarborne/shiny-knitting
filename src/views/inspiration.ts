@@ -105,7 +105,7 @@ function cardHtml(b: InspirationBoard): string {
     : `<div class="inspo-tile empty"><span>${esc(b.name.slice(0, 1).toUpperCase())}</span></div>`;
   const things = b.itemCount === 1 ? "1 thing" : `${b.itemCount} things`;
   return `
-    <article class="inspo-card" data-open="${esc(b.id)}">
+    <article class="inspo-card" tabindex="0" data-open="${esc(b.id)}">
       <div class="inspo-mosaic n${Math.max(1, b.pictures.length)}">${tiles}</div>
       ${b.colours.length ? `<div class="inspo-colours">${b.colours.map((c) => `<span style="background:${/^#[0-9a-f]{6}$/i.test(c) ? c : "transparent"}"></span>`).join("")}</div>` : ""}
       <div class="inspo-body">

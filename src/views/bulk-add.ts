@@ -68,7 +68,13 @@ export async function runBulkAdd(
       added++;
       li.className = "ok";
       li.textContent = `${title} — added`;
-      opts.onAdded(pattern);
+      // What the caller does with it is its own: an error there is not this
+      // file failing to be added.
+      try {
+        opts.onAdded(pattern);
+      } catch (err) {
+        console.error("After adding a pattern:", err);
+      }
     } catch (err) {
       if (isAlreadyHave(err)) {
         skipped++;

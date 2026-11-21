@@ -105,11 +105,8 @@ export async function verifyRows() {
   };
 }
 
+// Run by the driver like every suite, not on load as well: a second run of
+// its own would change the page under whichever suite was running then.
 if (typeof window !== "undefined") {
   window.__rowChecks = verifyRows;
-  window.addEventListener("load", () => {
-    setTimeout(async () => {
-      window.__rowCheckResult = await verifyRows();
-    }, 1500);
-  });
 }

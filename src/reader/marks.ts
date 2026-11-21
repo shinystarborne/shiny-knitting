@@ -1,5 +1,5 @@
 import { api, type Annotation } from "../api";
-import { askText, askYesNo } from "../dialogs";
+import { askText, askYesNo, say } from "../dialogs";
 import {
   findQuoteRanges,
   isDistinctStrokePoint,
@@ -161,6 +161,25 @@ export class MarkLayer {
     this.wiredFrames = new WeakSet();
     for (const host of this.hosts.values()) host.remove();
     this.hosts.clear();
+    // A press under way is let go, unsaved: a mark being moved goes back to
+    // where it is stored, and the eraser's preview is read again as stored.
+    if (this.grabbed?.moved) {
+      const g = this.grabbed;
+      const mark = this.marks.find((m) => m.id === g.id);
+      if (mark) mark.geometry = g.stored;
+    }
+    const erased = this.erasing !== null;
+    this.grabbed = null;
+    this.pendingClick = null;
+    this.erasing = null;
+    this.drawingPointer = null;
+    this.liveStroke = [];
+    this.liveNode?.remove();
+    this.liveNode = null;
+    this.captureEl = null;
+    if (erased) {
+      void api.listAnnotations(this.patternId).then((marks) => (this.marks = marks)).catch(() => {});
+    }
   }
 
   setTool(tool: MarkTool): void {
@@ -204,12 +223,18 @@ export class MarkLayer {
     });
   }
 
+  /** A change that did not go through: the marks shown as stored, and why said. */
+  private async failed(err: unknown): Promise<void> {
+    await this.refresh();
+    await say(err instanceof Error ? err.message : String(err), "Marks");
+  }
+
   async refresh(): Promise<void> {
     try {
       this.marks = await api.listAnnotations(this.patternId);
     } catch {
-      // A pattern with unreadable marks should still open.
-      this.marks = [];
+      // A pattern with unreadable marks should still open: with none at
+      // first, with those already shown after.
     }
     this.onChange?.();
     this.repaint();
@@ -359,15 +384,19 @@ export class MarkLayer {
     if (!at) return;
     const box = page.getBoundingClientRect();
     const rect = { x: at.x, y: at.y, ...textSize(text, TEXT_LINE, box) };
-    await this.saveNew({
-      kind: "text",
-      page: pageNumber,
-      geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
-      quote: "",
-      occurrence: 0,
-      color: this.colour,
-      text,
-    });
+    try {
+      await this.saveNew({
+        kind: "text",
+        page: pageNumber,
+        geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
+        quote: "",
+        occurrence: 0,
+        color: this.colour,
+        text,
+      });
+    } catch (err) {
+      return this.failed(err);
+    }
     this.onChange?.();
     this.repaint();
   }
@@ -377,7 +406,11 @@ export class MarkLayer {
     const text = (await askText("Edit the text, or clear it to remove it.", { title: "Text on the page", okLabel: "Save", value: mark.text, multiline: true }))?.replace(/\r/g, "");
     if (text === null || text === undefined) return;
     if (!text.trim()) {
-      await this.removeById(mark.id);
+      try {
+        await this.removeById(mark.id);
+      } catch (err) {
+        return this.failed(err);
+      }
       this.repaint();
       return;
     }
@@ -386,9 +419,14 @@ export class MarkLayer {
     if (!page || !shown) return;
     const line = shown.h / Math.max(1, mark.text.split("\n").length);
     const rect = { x: shown.x, y: shown.y, ...textSize(text, line, page.getBoundingClientRect()) };
-    await api.editAnnotation(mark.id, text, mark.color);
-    const stored = await api.moveAnnotation(mark.id, rectsToJson([boxFromView(rect, this.turnOf(mark.page))]));
-    Object.assign(mark, stored, { text });
+    try {
+      // Sized first: a box that cannot be stored leaves the words as they were.
+      const stored = await api.moveAnnotation(mark.id, rectsToJson([boxFromView(rect, this.turnOf(mark.page))]));
+      await api.editAnnotation(mark.id, text, mark.color);
+      Object.assign(mark, stored, { text });
+    } catch (err) {
+      return this.failed(err);
+    }
     this.repaint();
   }
 
@@ -434,16 +472,21 @@ export class MarkLayer {
       w: 0.03,
       h: 0.022,
     };
-    await this.saveNew({
-      kind: "note",
-      page: pageNumber,
-      // Measured on the page as shown, stored upright.
-      geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
-      quote: "",
-      occurrence: 0,
-      color: this.colour,
-      text,
-    });
+    try {
+      await this.saveNew({
+        kind: "note",
+        page: pageNumber,
+        // Measured on the page as shown, stored upright.
+        geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
+        quote: "",
+        occurrence: 0,
+        color: this.colour,
+        text,
+      });
+    } catch (err) {
+      await this.failed(err);
+      return false;
+    }
     this.onChange?.();
     this.repaint();
     return true;
@@ -459,7 +502,12 @@ export class MarkLayer {
     if (!(await askYesNo(`Remove ${describeMark(mark)}?`, { okLabel: "Remove", danger: true }))) {
       return false;
     }
-    await this.removeById(mark.id);
+    try {
+      await this.removeById(mark.id);
+    } catch (err) {
+      await this.failed(err);
+      return false;
+    }
     this.repaint();
     return true;
   }
@@ -504,12 +552,17 @@ export class MarkLayer {
       const text = textarea.value.trim();
       // An emptied note is a note the user changed their mind about, so it is
       // removed rather than left as an empty dot.
-      if (!text) {
-        await this.removeById(mark.id);
-      } else {
-        await api.editAnnotation(mark.id, text, mark.color);
-        const stored = this.marks.find((m) => m.id === mark.id);
-        if (stored) stored.text = text;
+      try {
+        if (!text) {
+          await this.removeById(mark.id);
+        } else {
+          await api.editAnnotation(mark.id, text, mark.color);
+          const stored = this.marks.find((m) => m.id === mark.id);
+          if (stored) stored.text = text;
+        }
+      } catch (err) {
+        // The popover stays open, the words in it, to try again.
+        return say(err instanceof Error ? err.message : String(err), "Marks");
       }
       this.closeNotePopover();
       this.repaint();
@@ -577,11 +630,16 @@ export class MarkLayer {
     if (!(await askYesNo(`Remove all ${what} on this pattern? This cannot be undone.`, { okLabel: "Remove all", danger: true }))) {
       return false;
     }
+    // Removed from the page as each is deleted: one that could not be stays,
+    // and is said.
     const ids = this.marks.map((m) => m.id);
-    this.marks = [];
+    const results = await Promise.allSettled(ids.map((id) => api.deleteAnnotation(id)));
+    const gone = new Set(ids.filter((_, i) => results[i].status === "fulfilled"));
+    this.marks = this.marks.filter((m) => !gone.has(m.id));
     this.onChange?.();
     this.repaint();
-    await Promise.all(ids.map((id) => api.deleteAnnotation(id).catch(() => {})));
+    const kept = ids.length - gone.size;
+    if (kept) await say(`${kept === 1 ? "1 mark" : `${kept} marks`} could not be removed.`, "Marks");
     return true;
   }
 
@@ -749,10 +807,9 @@ export class MarkLayer {
           });
           Object.assign(piece, created);
         }
-      } catch {
-        // What could not be kept is shown as it is stored.
-        await this.refresh();
-        return;
+      } catch (err) {
+        // What could not be kept is shown as it is stored, and said.
+        return this.failed(err);
       }
     }
     this.onChange?.();

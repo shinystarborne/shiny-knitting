@@ -1244,15 +1244,20 @@ export class YarnForm {
       const share = this.root.querySelector<HTMLElement>('[data-el="share-fibres"]');
       const shareBox = this.root.querySelector<HTMLInputElement>('[data-f="shareFibres"]');
       if (share && !share.hidden && shareBox?.checked && shared.fibres.length) {
-        try {
-          for (const other of this.otherColours()) {
-            if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
+        // Each colour tried, one refused or not, and those refused named.
+        const refused: string[] = [];
+        let why = "";
+        for (const other of this.otherColours()) {
+          if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
+          try {
             // Without its details: they are this yarn's, just saved, and the copy read earlier is stale.
             await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash, details: undefined });
+          } catch (err) {
+            refused.push(other.colourway || other.name);
+            why = reason(err);
           }
-        } catch (err) {
-          unsaved.push(`The fibres could not be given to the other colours: ${reason(err)}`);
         }
+        if (refused.length) unsaved.push(`The fibres could not be given to ${refused.join(", ")}: ${why}`);
       }
 
       // The photo goes up after the save, because it is attached by yarn id

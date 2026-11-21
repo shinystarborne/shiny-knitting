@@ -9,6 +9,7 @@
 
 import { fitView, freeSpot, linkFrom, toBoard, zoomAt } from "../src/views/board";
 import { near } from "./near";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -76,6 +77,8 @@ export async function verifyProjects() {
   check(results, "a full address is kept", linkFrom("http://example.com/a?b=1") === "http://example.com/a?b=1");
   check(results, "words are not a link", linkFrom("cast on 64") === null && linkFrom("javascript:alert(1)") === null && linkFrom("hello") === null);
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["projects", "projectTools", "projectYarns", "boardItems", "projectLog", "knitSessions", "counters", "progress", "wishes", "swatches", "covers", "patterns", "tools", "yarns", "yarnUsage"]);
   try {
     tab("projects");
     await waitFor(() => cards().length === store.projects.length, "the project cards");
@@ -311,6 +314,7 @@ export async function verifyProjects() {
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="cancel"]')?.click();
     tab("patterns");
     await waitFor(() => !!document.querySelector(".library:not(.stash):not(.tools):not(.projects)"), "the library", 5000).catch(() => {});
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

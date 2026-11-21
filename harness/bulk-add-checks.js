@@ -56,6 +56,9 @@ export async function verifyBulkAdd() {
   const titles = (wanted) =>
     wanted.filter((t) => store.patterns.some((p) => p.title === t));
 
+  // Put back at the end: the patterns added, and describing switched on,
+  // are this suite's, not the next one's.
+  const seed = structuredClone({ patterns: store.patterns, contentHashes: store.contentHashes, aiSettings: store.aiSettings });
   try {
     // Describing is switched on, so the summary can point at it.
     await window.__TAURI_INTERNALS__.invoke("get_ai_settings");
@@ -152,6 +155,9 @@ export async function verifyBulkAdd() {
   } finally {
     observer.disconnect();
     window.__nextDialogPick = null;
+    store.patterns = seed.patterns;
+    store.contentHashes = seed.contentHashes;
+    store.aiSettings = seed.aiSettings;
   }
 
   const failed = results.filter((r) => !r.ok);

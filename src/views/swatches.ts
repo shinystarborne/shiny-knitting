@@ -125,7 +125,7 @@ function cardHtml(s: Swatch, unit: MeasureUnit): string {
   const counted = g.sts || g.rows;
   const yarn = [s.yarnName || "Yarn not given", s.yarnColourway].filter(Boolean).join(", ");
   return `
-    <article class="swatch-card" data-open="${esc(s.id)}">
+    <article class="swatch-card" tabindex="0" data-open="${esc(s.id)}">
       <div class="swatch-photo${s.photoPath ? "" : " none"}" ${s.photoPath ? `data-pic data-id="${esc(s.id)}"` : ""}>
         ${s.photoPath ? "" : `<span>${esc(s.stitch || "Swatch")}</span>`}
       </div>

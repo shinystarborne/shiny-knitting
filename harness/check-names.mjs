@@ -77,4 +77,5 @@ export const CHECKS = [
   "__crochetChecks",
   "__modelSettingsChecks",
   "__dialogCloseChecks",
+  "__cardKeyChecks",
 ];

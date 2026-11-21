@@ -13,6 +13,7 @@ import { money, spending, spentByMonth, toolsCost } from "../src/views/money";
 import { toolStart } from "../src/views/shopping";
 import { setName } from "../src/views/tool-form";
 import { near } from "./near";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -72,6 +73,8 @@ export async function verifyToolPrices() {
   const card = (id: string) => document.querySelector<HTMLElement>(`.tool-card[data-open="${id}"]`);
   store.currency = "EUR";
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["tools", "toolSets", "wishes"]);
   try {
     pure(results);
     tab("tools");
@@ -188,6 +191,7 @@ export async function verifyToolPrices() {
     for (const s of [...store.toolSets]) await invoke("delete_tool_set", { id: s.id }).catch(() => {});
     store.currency = before.currency;
     tab("patterns");
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

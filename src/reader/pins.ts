@@ -323,8 +323,15 @@ export class PinLayer {
       chip.type = "button";
       chip.className = pin.hidden ? "pin-chip" : "pin-chip on";
       chip.textContent = String(index + 1);
-      chip.title = `Pin ${index + 1} · p.${pin.page} (click to show or hide)${pin.title ? `\n${pin.title}` : ""}`;
+      chip.title = `Pin ${index + 1} · p.${pin.page} (click to show or hide, Delete to remove)${pin.title ? `\n${pin.title}` : ""}`;
       chip.addEventListener("click", () => void this.setHidden(pin, !pin.hidden));
+      // From the keyboard, Delete on the chip is its ✕, shown while it has the focus.
+      chip.addEventListener("keydown", (e) => {
+        if (e.key !== "Delete") return;
+        e.preventDefault();
+        e.stopPropagation();
+        void this.remove(pin);
+      });
 
       const remove = document.createElement("span");
       remove.className = "pin-chip-delete";

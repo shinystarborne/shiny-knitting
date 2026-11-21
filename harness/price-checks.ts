@@ -45,9 +45,11 @@ function pure(results: CheckResult[]): void {
   check(results, "…with its currency and words around it", near(read("€4.95 a ball"), 4.95) && near(read("12 EUR"), 12) && near(read("CHF 7.-"), 7), `${read("€4.95 a ball")} ${read("12 EUR")} ${read("CHF 7.-")}`);
   check(results, "…thousands either way", read("1.234,50") === 1234.5 && read("1,234.50") === 1234.5 && read("1,000") === 1000, `${read("1.234,50")} ${read("1,234.50")} ${read("1,000")}`);
   check(results, "…and none when there is no number", read("free") === null && read("") === null);
+  check(results, "…and under one unit, with no 0 before the separator", near(read(".50"), 0.5) && near(read(",50"), 0.5) && near(read("€.95"), 0.95), `${read(".50")} ${read(",50")} ${read("€.95")}`);
 
   check(results, "a wishlist price for a ball is a ball's", near(pricePerBall("€4.95 a ball", 6), 4.95) && near(pricePerBall("4,95/ball", 6), 4.95) && near(pricePerBall("3.50 each", 4), 3.5));
   check(results, "…else what was paid, shared over the balls", near(pricePerBall("29,70", 6), 4.95) && near(pricePerBall("8", 1), 8) && near(pricePerBall("8", 0), 8), String(pricePerBall("29,70", 6)));
+  check(results, "…the balls named is not a ball's price", near(pricePerBall("10 for 2 balls", 2), 5), String(pricePerBall("10 for 2 balls", 2)));
   const wish = (price: string, amount: string) => ({ id: "w", kind: "yarn", name: "Air, Off white", brand: "Drops", url: "", shopId: null, price, amount, notes: "", gotAt: null }) as unknown as Wish;
   check(results, "a yarn got from the wishlist starts its lot at a ball's price", near(yarnStart(wish("€4.95 a ball", "6 balls")).price, 4.95) && near(yarnStart(wish("29,70 €", "6 balls")).price, 4.95) && yarnStart(wish("", "6 balls")).price === null);
 

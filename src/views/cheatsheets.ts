@@ -561,10 +561,16 @@ export async function drawSheetPages(
   }
 }
 
-/** A web page kept, in a frame: sandboxed, as a video's player is. */
+/**
+ * A web page kept, in a frame: sandboxed, as a video's player is. Any site
+ * can be one, so a window it opens is sandboxed as it is, not let out of it.
+ */
 export function sheetFrameHtml(s: Pick<Cheatsheet, "url" | "title">, className = "sheet-frame"): string {
-  return `<iframe class="${className}" src="${esc(s.url)}" title="${esc(s.title)}" referrerpolicy="strict-origin-when-cross-origin"
-    sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation" allow="fullscreen; encrypted-media; picture-in-picture"></iframe>`;
+  // Only a web page: an address that came another way (a backup put back by
+  // hand, say) is not framed, whatever it says.
+  const src = /^https?:\/\//i.test(s.url) ? s.url : "about:blank";
+  return `<iframe class="${className}" src="${esc(src)}" title="${esc(s.title)}" referrerpolicy="strict-origin-when-cross-origin"
+    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-presentation" allow="fullscreen; encrypted-media; picture-in-picture"></iframe>`;
 }
 
 /** Asks which pages, and a name when it is new; null when cancelled. */

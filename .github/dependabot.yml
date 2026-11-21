@@ -1,0 +1,32 @@
+# Dependabot: pull requests that keep the libraries up to date.
+# Once a month, each kind's minor and patch updates come grouped as one pull
+# request; a major update comes alone, as it may need changes. Security
+# fixes come as soon as there is one (turned on in the repository's
+# Settings > Code security), whatever this schedule says.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

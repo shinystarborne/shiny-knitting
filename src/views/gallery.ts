@@ -153,14 +153,27 @@ export async function openGalleryProject(project: Project, photos: Photo[], hook
     }
   };
 
-  const save = async (hidden: boolean, skip: string[]): Promise<void> => {
-    try {
-      p = await api.setProjectGallery(p.id, hidden, skip);
-      hooks.changed(p);
-    } catch (err) {
-      await say(err instanceof Error ? err.message : String(err), "Gallery");
-    }
+  // Shown at once and saved one after another, each save sending what is
+  // wanted by then: two quick clicks both count, not the slower one alone.
+  let stored = p;
+  let saving: Promise<void> = Promise.resolve();
+  const save = (hidden: boolean, skip: string[]): Promise<void> => {
+    p = { ...p, galleryHidden: hidden, gallerySkip: skip };
     paint();
+    saving = saving.then(async () => {
+      const wanted = p;
+      try {
+        stored = await api.setProjectGallery(wanted.id, wanted.galleryHidden, wanted.gallerySkip);
+        hooks.changed(stored);
+        // Asked for again meanwhile: that is still shown, and saved next.
+        p = p === wanted ? stored : { ...stored, galleryHidden: p.galleryHidden, gallerySkip: p.gallerySkip };
+      } catch (err) {
+        p = stored;
+        await say(err instanceof Error ? err.message : String(err), "Gallery");
+      }
+      paint();
+    });
+    return saving;
   };
 
   card.addEventListener("click", (e) => {

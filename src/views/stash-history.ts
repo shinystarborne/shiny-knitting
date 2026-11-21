@@ -110,7 +110,7 @@ export class StashHistoryView {
 function cardHtml(y: Yarn): string {
   const where = [y.brand, y.colourway].filter(Boolean).join(" · ");
   return `
-    <article class="card used-up" data-open="${esc(y.id)}">
+    <article class="card used-up" tabindex="0" data-open="${esc(y.id)}">
       <div class="cover" data-id="${esc(y.id)}">
         <div class="cover-photo" data-el="photo"></div>
         <div class="cover-fallback format-yarn"><span>${esc(y.yarnWeight || "Yarn")}</span></div>

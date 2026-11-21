@@ -8,6 +8,7 @@
  * first screen.
  */
 import { api, type Bookmark } from "../api";
+import { say } from "../dialogs";
 import type { OutlineItem } from "./pdf";
 
 /** The part of the reader the panel needs. */
@@ -64,7 +65,12 @@ export class ContentsPanel {
   /** One click, a sensible default name; rename afterwards. */
   async bookmarkCurrentPage(): Promise<void> {
     const page = this.doc.currentPage();
-    const made = await api.addBookmark(this.patternId, page, `Page ${page}`);
+    let made: Bookmark;
+    try {
+      made = await api.addBookmark(this.patternId, page, `Page ${page}`);
+    } catch (err) {
+      return say(err instanceof Error ? err.message : String(err), "Bookmark not added");
+    }
     this.bookmarks.push(made);
     if (this.el) {
       this.tab = "bookmarks";
@@ -203,7 +209,11 @@ export class ContentsPanel {
       input.select();
     });
     const remove = iconButton("✕", "Delete bookmark", async () => {
-      await api.deleteBookmark(b.id);
+      try {
+        await api.deleteBookmark(b.id);
+      } catch (err) {
+        return say(err instanceof Error ? err.message : String(err), "Bookmark not deleted");
+      }
       this.bookmarks = this.bookmarks.filter((x) => x.id !== b.id);
       this.render();
     });

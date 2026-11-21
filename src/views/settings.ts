@@ -504,6 +504,12 @@ export class SettingsDialog {
 
   /** Saves both groups. Save is the only path that should reach this. */
   private async persist(): Promise<AiSettingsView> {
+    // What the form itself can refuse is refused before anything is saved.
+    // A save refused after that leaves the dialog open, and Save again
+    // writes every group again, the ones saved already as they are.
+    const typed = (this.root.querySelector('[data-f="hourRate"]') as HTMLInputElement).value.trim();
+    const rate = typed ? parsePrice(typed) : null;
+    if (typed && rate === null) throw new Error("Hour cost must be a number, like 15 or 12,50.");
     // First, so every tab unticked is refused before anything else is saved.
     const unticked = [...this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')].filter((b) => !b.checked);
     await api.saveHiddenTabs(unticked.map((b) => b.dataset.tab!));
@@ -512,9 +518,6 @@ export class SettingsDialog {
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
     await api.saveMeasureUnit((this.root.querySelector('[data-f="measureUnit"]') as HTMLSelectElement).value as MeasureUnit);
     await api.saveCurrency((this.root.querySelector('[data-f="currency"]') as HTMLSelectElement).value);
-    const typed = (this.root.querySelector('[data-f="hourRate"]') as HTMLInputElement).value.trim();
-    const rate = typed ? parsePrice(typed) : null;
-    if (typed && rate === null) throw new Error("Hour cost must be a number, like 15 or 12,50.");
     await api.saveHourRate(rate);
     return saved;
   }

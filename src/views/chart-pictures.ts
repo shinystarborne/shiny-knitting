@@ -178,7 +178,7 @@ export class ChartPicturesView {
       }
       const name = file.name && !/^image\.\w+$/i.test(file.name) ? file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ") : "";
       const answer = await chartDialog("Add a chart", { name, craft: shown === "all" ? "knitting" : shown, notes: "" }, prepared);
-      if (!answer) continue;
+      if (!answer?.picture) continue;
       try {
         const bytes = new Uint8Array(await answer.picture.blob.arrayBuffer());
         await api.addChartPicture(answer.input, bytes, answer.picture);
@@ -196,11 +196,13 @@ export class ChartPicturesView {
     const answer = await chartDialog("The chart", { name: chart.name, craft: chart.craft, notes: chart.notes }, picture);
     if (!answer) return;
     try {
-      await api.updateChartPicture(chart.id, answer.input);
-      if (answer.cropped) {
+      // The picture first: a crop that cannot be stored leaves the chart as
+      // it was, its name and notes too, rather than half changed.
+      if (answer.cropped && answer.picture) {
         await api.replaceChartPicture(chart.id, new Uint8Array(await answer.picture.blob.arrayBuffer()), answer.picture);
         forgetChartPicture(chart.id);
       }
+      await api.updateChartPicture(chart.id, answer.input);
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "The chart");
     }
@@ -235,13 +237,14 @@ interface Picture {
  * Resolves what was said, the picture as it is now and whether it was
  * cropped, or null when cancelled.
  */
-function chartDialog(title: string, start: ChartPictureInput, picture: Picture | null): Promise<{ input: ChartPictureInput; picture: Picture; cropped: boolean } | null> {
+/** The answer's picture is null only for a chart whose picture could not be read: its name and notes are still saved. */
+function chartDialog(title: string, start: ChartPictureInput, picture: Picture | null): Promise<{ input: ChartPictureInput; picture: Picture | null; cropped: boolean } | null> {
   return new Promise((resolve) => {
     let current = picture;
     let cropped = false;
     let url = current ? URL.createObjectURL(current.blob) : "";
     let craft: Craft = start.craft;
-    const finish = (answer: { input: ChartPictureInput; picture: Picture; cropped: boolean } | null) => {
+    const finish = (answer: { input: ChartPictureInput; picture: Picture | null; cropped: boolean } | null) => {
       dialog.close();
       if (url) URL.revokeObjectURL(url);
       resolve(answer);
@@ -269,7 +272,6 @@ function chartDialog(title: string, start: ChartPictureInput, picture: Picture |
     nameInput.value = start.name;
     notesInput.value = start.notes;
     const save = () => {
-      if (!current) return void finish(null);
       finish({ input: { name: nameInput.value, craft, notes: notesInput.value }, picture: current, cropped });
     };
     card.addEventListener("keydown", (e) => {
@@ -308,7 +310,7 @@ function chartDialog(title: string, start: ChartPictureInput, picture: Picture |
 
 function cardHtml(c: ChartPicture): string {
   return `
-    <article class="chartpic-card" data-open="${esc(c.id)}" title="Open it big">
+    <article class="chartpic-card" tabindex="0" data-open="${esc(c.id)}" title="Open it big">
       <div class="chartpic-picture" data-chartpic="${esc(c.id)}"></div>
       <div class="chartpic-body">
         <strong title="${esc(c.name)}">${esc(c.name)}</strong>

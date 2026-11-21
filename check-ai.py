@@ -4,17 +4,21 @@ Development aid: proves the prompt, the request shape, and the JSON parsing
 work against a real model rather than a hand-written reply. Not part of the
 app, and it never prints the API key.
 
-Usage: python check-ai.py
+Usage: AI_BASE_URL=http://localhost:11434/v1 AI_MODEL=... python check-ai.py
 """
 import json
+import os
 import re
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-BASE = "https://gen2.zeroval.eu/v1"
-MODEL = "Qwen3.6-27B"
+# The server and model to try, from the environment: no address is built in.
+BASE = os.environ.get("AI_BASE_URL", "").rstrip("/")
+MODEL = os.environ.get("AI_MODEL", "")
+if not BASE or not MODEL:
+    sys.exit("Set AI_BASE_URL (e.g. http://localhost:11434/v1) and AI_MODEL first.")
 
 # Read the real prompt and default settings out of the Rust source, so this
 # check cannot drift away from what the app actually sends.

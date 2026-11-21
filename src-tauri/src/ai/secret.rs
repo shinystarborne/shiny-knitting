@@ -115,7 +115,8 @@ mod tests {
     /// The round trip is the whole point; without it the key is just noise.
     #[test]
     fn round_trips_a_secret() {
-        let secret = "sk-or-v1-abc123-XYZ";
+        // Not a key, nor shaped like one, so no secret scanner takes it for one.
+        let secret = "round-trip test value 123";
         let stored = encrypt(secret).expect("encrypt");
         assert!(is_encrypted(&stored));
         // The plaintext must not be sitting in the stored value.

@@ -709,6 +709,8 @@ export class PdfView implements RenderedDoc {
    */
   /** Each page's link annotations, read once. */
   private linkCache = new Map<number, unknown[]>();
+  /** As textTokens, for the link layer: only the newest build of a page's links goes on. */
+  private linkTokens = new Map<number, number>();
 
   /** Called with an outside link's address when it is clicked. */
   onExternalLink: ((url: string) => void) | null = null;
@@ -772,6 +774,8 @@ export class PdfView implements RenderedDoc {
    * Link kind only -- no forms or popups.
    */
   private async buildLinkLayer(page: pdfjs.PDFPageProxy, pageEl: HTMLElement, viewport: pdfjs.PageViewport): Promise<void> {
+    const token = (this.linkTokens.get(page.pageNumber) ?? 0) + 1;
+    this.linkTokens.set(page.pageNumber, token);
     try {
       let links = this.linkCache.get(page.pageNumber);
       if (!links) {
@@ -780,6 +784,8 @@ export class PdfView implements RenderedDoc {
         );
         this.linkCache.set(page.pageNumber, links);
       }
+      // A newer build, begun while this one read the links, lays them at its own size.
+      if (this.linkTokens.get(page.pageNumber) !== token) return;
       pageEl.querySelector(".link-layer")?.remove();
       if (!links.length) return;
       const div = document.createElement("div");
@@ -835,7 +841,15 @@ export class PdfView implements RenderedDoc {
       viewport,
     });
     this.textLayers.set(page.pageNumber, layer);
-    await layer.render();
+    try {
+      await layer.render();
+    } catch (e) {
+      // Cancelled by a newer build of the page: that one goes on, and this
+      // page is not a failure to paint again.
+      if (this.textTokens.get(page.pageNumber) !== token) return;
+      throw e;
+    }
+    if (this.textTokens.get(page.pageNumber) !== token) return;
     this.textItems.set(page.pageNumber, content.items as { str?: string; fontName?: string }[]);
     this.fitFonts(page.pageNumber);
   }

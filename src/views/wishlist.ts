@@ -257,7 +257,7 @@ function cardHtml(w: Wish): string {
     : "";
   const name = [w.brand, w.name].filter(Boolean).join(" ");
   return `
-    <article class="wish-card kind-${escapeHtml(w.kind)}${got ? " got" : ""}" data-open="${escapeHtml(w.id)}" title="${escapeHtml(w.notes)}">
+    <article class="wish-card kind-${escapeHtml(w.kind)}${got ? " got" : ""}" tabindex="0" data-open="${escapeHtml(w.id)}" title="${escapeHtml(w.notes)}">
       <div class="wish-top">
         <span class="wish-kind">${escapeHtml(kindLabel(w.kind))}</span>
         ${got ? `<span class="pill wish-got-pill">Got ${escapeHtml(shortDate(w.gotAt!))}</span>` : ""}

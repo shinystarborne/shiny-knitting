@@ -165,15 +165,20 @@ pub fn pin_count(state: State<'_, AppState>, pattern_id: String) -> CmdResult<us
     db::count_pins(&state.db(), &pattern_id)
 }
 
-#[tauri::command]
-pub fn add_pin(state: State<'_, AppState>, pattern_id: String, input: PinInput) -> CmdResult<Pin> {
-    let conn = state.db();
-    let existing = db::count_pins(&conn, &pattern_id)?;
-    if existing >= MAX_PINS {
+/// Refuses a pin past the limit: a pattern holds at most MAX_PINS.
+pub(crate) fn room_for_pin(conn: &rusqlite::Connection, pattern_id: &str) -> CmdResult<()> {
+    if db::count_pins(conn, pattern_id)? >= MAX_PINS {
         return Err(AppError::Message(format!(
             "This pattern already has {MAX_PINS} pins. Remove one before adding another."
         )));
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_pin(state: State<'_, AppState>, pattern_id: String, input: PinInput) -> CmdResult<Pin> {
+    let conn = state.db();
+    room_for_pin(&conn, &pattern_id)?;
     if input.image_bytes.is_empty() {
         return Err(AppError::Message("There was nothing to pin.".into()));
     }

@@ -47,12 +47,10 @@ const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
  * Converts a rectangle from viewport pixels into normalised page coordinates.
  *
  * `page` is the element the page is painted into, which is what both
- * coordinate systems are relative to. Clamping to 0..1 keeps a rectangle that
- * overhangs the edge drawable, which happens when a paragraph straddles a page
- * break. A rectangle that misses the page entirely is a different matter:
- * clamping would pin it to the page's edge and paint a stray strip, so the
- * caller must drop it instead -- `rectsForRanges` and `visibleRectsForRanges`
- * both do.
+ * coordinate systems are relative to. A rectangle that overhangs the edge,
+ * as when a paragraph straddles a page break, is cut to the part on the page.
+ * One that misses the page entirely comes back empty, and the caller must
+ * drop it -- `rectsForRanges` and `visibleRectsForRanges` both do.
  */
 export function toPageRect(rect: ClientRect, page: HTMLElement): Rect {
   const box = page.getBoundingClientRect();
@@ -60,11 +58,17 @@ export function toPageRect(rect: ClientRect, page: HTMLElement): Rect {
   // serialises to null and comes back as a mark that cannot be drawn.
   const w = box.width || 1;
   const h = box.height || 1;
+  // The part of the rectangle on the page: one reaching past an edge is cut
+  // there, not moved in whole.
+  const left = Math.max(rect.left, box.left);
+  const top = Math.max(rect.top, box.top);
+  const right = Math.min(rect.left + rect.width, box.left + box.width);
+  const bottom = Math.min(rect.top + rect.height, box.top + box.height);
   return {
-    x: clamp01((rect.left - box.left) / w),
-    y: clamp01((rect.top - box.top) / h),
-    w: clamp01(rect.width / w),
-    h: clamp01(rect.height / h),
+    x: clamp01((left - box.left) / w),
+    y: clamp01((top - box.top) / h),
+    w: clamp01(Math.max(0, right - left) / w),
+    h: clamp01(Math.max(0, bottom - top) / h),
   };
 }
 
@@ -300,8 +304,11 @@ function textIndex(container: HTMLElement): { haystack: string; rangesFor(start:
         origin.push(pendingSpace);
         pendingSpace = null;
       }
-      haystack += text[i].toLowerCase();
-      origin.push({ node: index, offset: i });
+      // Lower-cased, a letter can be longer ("İ" is "i" and a dot above):
+      // each unit of it points back at the one it came from.
+      const lower = text[i].toLowerCase();
+      haystack += lower;
+      for (let u = 0; u < lower.length; u++) origin.push({ node: index, offset: i });
     }
   }
 
@@ -329,6 +336,8 @@ function textIndex(container: HTMLElement): { haystack: string; rangesFor(start:
         flush();
         continue;
       }
+      // The rest of a letter that lower-cased longer: covered already.
+      if (current && current.node === node && o.offset < current.end && o.offset >= current.start) continue;
       if (current && current.node === node && o.offset === current.end) {
         current.end = o.offset + 1;
         continue;
@@ -422,9 +431,11 @@ function startsAfter(boundary: Range, node: Node, offset: number): boolean {
 export function textInRect(container: HTMLElement, page: HTMLElement, rect: Rect): string {
   const box = page.getBoundingClientRect();
   if (box.width <= 0 || box.height <= 0) return "";
-  const left = box.left + rect.x * box.width;
+  // Inside an iframe, the spans measure from its own corner (pageClientRects).
+  const inner = page instanceof HTMLIFrameElement ? box : { left: 0, top: 0 };
+  const left = box.left + rect.x * box.width - inner.left;
   const right = left + rect.w * box.width;
-  const top = box.top + rect.y * box.height;
+  const top = box.top + rect.y * box.height - inner.top;
   const bottom = top + rect.h * box.height;
 
   const parts: string[] = [];

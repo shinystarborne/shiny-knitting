@@ -28,20 +28,33 @@ const target = await (await fetch(`http://${DEVTOOLS}/json/new?about:blank`, { m
 const tabId = String(target?.id ?? "");
 if (!/^[A-Za-z0-9-]{1,64}$/.test(tabId)) throw new Error("The browser did not answer with a tab.");
 const ws = new WebSocket(`ws://${DEVTOOLS}/devtools/page/${encodeURIComponent(tabId)}`);
+// A dropped connection, or an answer that never comes, ends the script with
+// a reason rather than leaving it waiting.
+ws.onerror = () => {
+  console.error("The DevTools connection failed.");
+  process.exit(1);
+};
 let id = 0;
 const pending = new Map();
+let onLoad = () => {};
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
+  if (m.method === "Page.loadEventFired") onLoad();
   if (pending.has(m.id)) {
     pending.get(m.id)(m);
     pending.delete(m.id);
   }
 };
-const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
-await new Promise((r) => (ws.onopen = r));
+const within = (what, promise, ms = 30000) =>
+  Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`No answer to ${what} in ${ms / 1000} s.`)), ms))]);
+const send = (method, params = {}) => within(method, new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); }));
+await within("the connection", new Promise((r) => (ws.onopen = r)));
 await send("Page.enable");
+// Printed once the page has loaded and its font is ready, not after a guess.
+const loaded = new Promise((r) => (onLoad = r));
 await send("Page.navigate", { url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}` });
-await new Promise((r) => setTimeout(r, 1500));
+await within("the page loading", loaded);
+await send("Runtime.evaluate", { expression: "document.fonts.ready.then(() => true)", awaitPromise: true });
 const pdf = await send("Page.printToPDF", { paperWidth: 8.27, paperHeight: 11.69, printBackground: false, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 });
 writeFileSync("public/fixtures/wide-sizes.pdf", Buffer.from(pdf.result.data, "base64"));
 await fetch(`http://${DEVTOOLS}/json/close/${encodeURIComponent(tabId)}`);

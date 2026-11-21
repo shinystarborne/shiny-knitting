@@ -9,6 +9,7 @@
 
 import { additions, flowByMonth, niceScale } from "../src/views/usage-chart";
 import type { Yarn, YarnUse } from "../src/api";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -83,6 +84,8 @@ export async function verifyStashHistory() {
   const dialog = () => document.querySelector<HTMLElement>(".dialog-card");
   const added: string[] = [];
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["yarnUsage", "yarns", "projects", "projectYarns", "projectTools", "projectLog", "knitSessions", "patterns"]);
   try {
     pure(results);
     store.yarnUsage = [];
@@ -150,6 +153,7 @@ export async function verifyStashHistory() {
     document.querySelector<HTMLElement>('.lib-title [data-mode="yarn"]')?.click();
     tab("patterns");
     await waitFor(() => !document.querySelector(".stash"), "the library", 5000).catch(() => {});
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

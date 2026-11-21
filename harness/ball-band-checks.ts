@@ -97,7 +97,8 @@ export async function verifyBallBand() {
     check(results, "with no model switched on, the yarn form does not offer to read a ball band", row()?.hidden === true);
     await close();
 
-    store.aiSettings = { ...settings, enabled: true };
+    // No server is set by default: this one is the suite's own.
+    store.aiSettings = { ...settings, enabled: true, baseUrl: "https://models.example/v1", model: "test-model" };
     store.ballBand = BAND;
     await open();
     await waitFor(() => row()?.hidden === false, "the offer", 3000).catch(() => {});

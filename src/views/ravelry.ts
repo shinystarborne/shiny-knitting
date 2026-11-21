@@ -161,7 +161,11 @@ export class RavelryView {
     if (act === "more") await this.search(this.page + 1);
     if (act === "disconnect") {
       if (!(await askYesNo("Sign out of Ravelry? Signing in again is needed to search.", { title: "Disconnect Ravelry", okLabel: "Disconnect" }))) return;
-      await api.disconnectRavelry().catch(() => {});
+      try {
+        await api.disconnectRavelry();
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Disconnect Ravelry"));
+      }
       this.account = { ...this.account, connected: false, username: "" };
       this.found = [];
       this.paint();

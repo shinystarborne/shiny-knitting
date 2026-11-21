@@ -98,7 +98,12 @@ export class ChartList {
       }`;
     for (const canvas of this.root.querySelectorAll<HTMLCanvasElement>("canvas[data-id]")) {
       const chart = this.charts.find((c) => c.id === canvas.dataset.id);
-      if (chart) drawThumbnail(canvas, decode(chart.data), 228, 150);
+      // One chart that will not read leaves its card blank, not the list.
+      try {
+        if (chart) drawThumbnail(canvas, decode(chart.data), 228, 150);
+      } catch (err) {
+        console.error(`Chart ${chart?.id} could not be drawn:`, err);
+      }
     }
   }
 
@@ -148,7 +153,7 @@ function cardHtml(c: Chart): string {
   const kind = c.data.kind === "yoke" ? (c.data.lace ? "Round yoke, lace" : "Round yoke") : `${c.data.kind === "lace" ? "Lace, " : ""}${c.data.flat ? "flat" : "in the round"}`.replace(/^./, (x) => x.toUpperCase());
   const size = c.data.kind === "yoke" ? `${c.data.width}-st repeat × ${c.data.repeats}, ${c.data.height} rounds` : `${c.data.width} × ${c.data.height}`;
   return `
-    <article class="chart-card" data-open-chart="${esc(c.id)}">
+    <article class="chart-card" tabindex="0" data-open-chart="${esc(c.id)}">
       <div class="chart-card-pic"><canvas data-id="${esc(c.id)}"></canvas></div>
       <div class="chart-card-body">
         <h3>${esc(c.name)}</h3>
@@ -1187,7 +1192,8 @@ export class ChartPage {
   private async fromPhoto(): Promise<void> {
     const file = await pickImage();
     if (!file) return;
-    const pixels = await pixelsOf(file, 160);
+    // A file the decoder throws on is as unreadable as one it says no to.
+    const pixels = await pixelsOf(file, 160).catch(() => null);
     const found = pixels ? mainColours(pixels, 8) : [];
     if (!found.length) return say("This file is not a readable picture.", "Colours from a photo");
     const coloured = (await Promise.all(this.yarns.map(async (yarn) => ({ yarn, hex: await yarnColour(yarn) })))).filter((c): c is { yarn: Yarn; hex: string } => !!c.hex);
@@ -1744,11 +1750,14 @@ export class ChartPage {
         const words = field<HTMLInputElement>("words").checked;
         if (!chartCard && !picture && !words) return finish();
         (act as HTMLButtonElement).disabled = true;
+        // What this has put on the board, taken off again if a later part fails:
+        // all of it goes on, or none.
+        const added: string[] = [];
         try {
           const items = await api.listBoardItems(projectId).catch(() => []);
           let y = items.reduce((max, it) => Math.max(max, it.y + it.h), 0) + 40;
           if (chartCard) {
-            await api.addBoardItem(projectId, { kind: "chart", x: 40, y, w: 380, h: 380, data: { chartId: this.chartId } });
+            added.push((await api.addBoardItem(projectId, { kind: "chart", x: 40, y, w: 380, h: 380, data: { chartId: this.chartId } })).id);
             y += 410;
           }
           if (picture) {
@@ -1758,6 +1767,7 @@ export class ChartPage {
             const w = 420;
             const h = Math.max(40, Math.round((w * prepared.height) / prepared.width));
             const item = await api.addBoardItem(projectId, { kind: "image", x: 40, y, w, h, data: {} });
+            added.push(item.id);
             await api.setBoardImage(item.id, await blobBytes(prepared.blob));
             y += h + 30;
           }
@@ -1765,6 +1775,7 @@ export class ChartPage {
           finish();
           this.note(`Put on ${live.find((p) => p.id === projectId)?.name ?? "the project"}'s board`);
         } catch (err) {
+          for (const id of added.reverse()) await api.deleteBoardItem(id).catch(() => {});
           const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
           error.textContent = err instanceof Error ? err.message : String(err);
           error.hidden = false;

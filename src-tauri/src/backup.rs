@@ -17,6 +17,7 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -66,6 +67,27 @@ fn set_progress(p: BackupProgress) {
     *PROGRESS.lock().unwrap_or_else(|e| e.into_inner()) = p;
 }
 
+/// One backup or restore at a time, claimed before its dialog opens: two
+/// clicks cannot both find none running and both go ahead.
+static BUSY: AtomicBool = AtomicBool::new(false);
+
+/// The claim, given up when dropped, however the backup or restore ends.
+struct Busy;
+
+impl Busy {
+    fn claim() -> CmdResult<Busy> {
+        BUSY.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map(|_| Busy)
+            .map_err(|_| AppError::Message("A backup is being made already.".into()))
+    }
+}
+
+impl Drop for Busy {
+    fn drop(&mut self) {
+        BUSY.store(false, Ordering::SeqCst);
+    }
+}
+
 /// What the Settings dialog shows while a backup is being made.
 #[tauri::command]
 pub fn backup_progress() -> BackupProgress {
@@ -79,9 +101,7 @@ pub fn backup_progress() -> BackupProgress {
 /// blocking one: the app goes on working while gigabytes are written.
 #[tauri::command]
 pub async fn make_backup(app: tauri::AppHandle, state: State<'_, AppState>, name: String) -> CmdResult<Option<BackupDone>> {
-    if backup_progress().running {
-        return Err(AppError::Message("A backup is being made already.".into()));
-    }
+    let _busy = Busy::claim()?;
     // The name to suggest comes from the app, which knows today's date where you are.
     let name: String = name.chars().filter(|c| !r#"<>:"/\|?*"#.contains(*c) && !c.is_control()).collect();
     let name = if name.trim().is_empty() { "Shiny Knitting backup.zip".to_string() } else { name.trim().to_string() };
@@ -133,9 +153,7 @@ pub struct RestoreDone {
 /// screen reads the library restored.
 #[tauri::command]
 pub async fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, before_name: String) -> CmdResult<Option<RestoreDone>> {
-    if backup_progress().running {
-        return Err(AppError::Message("A backup is being made already.".into()));
-    }
+    let _busy = Busy::claim()?;
     let picked = app.dialog().file().set_title("Restore a backup").add_filter("Zip file", &["zip"]).blocking_pick_file();
     let Some(picked) = picked else { return Ok(None) };
     let from = picked.into_path().map_err(|e| AppError::Message(format!("That file cannot be read: {e}")))?;

@@ -188,9 +188,8 @@ pub fn replace_chart_picture(state: State<'_, AppState>, request: tauri::ipc::Re
     let (width, height) = size_from(header(&request, "x-size"));
     let old = file_name(&state.db(), &id)?;
     get(&state.db(), &id)?;
-    crate::covers::delete_chart_picture_file(&state, &old);
-    let file = crate::covers::write_chart_picture(&state, &id, bytes)?;
-    set_file(&state.db(), &id, &file, width, height)?;
+    // The old picture goes only once the new one is written and recorded.
+    crate::covers::replace_chart_picture(&state, &id, bytes, &old, |file| set_file(&state.db(), &id, file, width, height))?;
     get(&state.db(), &id)
 }
 

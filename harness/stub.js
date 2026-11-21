@@ -140,6 +140,13 @@ window.__nextDialogPick = null;
  * content duplicates with different paths are the backend's job and are not
  * reproducible here.
  */
+/** The same djb2 over the bytes themselves, for a file added without a path. */
+function bytesHash(bytes) {
+  let h = 5381;
+  for (const b of bytes) h = ((h << 5) + h + b) >>> 0;
+  return `${bytes.length}:${h.toString(16)}`;
+}
+
 function pseudoHash(text) {
   let h = 5381;
   for (let i = 0; i < text.length; i++) {
@@ -1263,6 +1270,9 @@ function cleanChart({ name, data }) {
       if (order[i].sts >= order[i - 1].sts || order[i].cols.length !== order[i - 1].sts - order[i].sts) fail("A shaping round's columns do not match its stitches.");
     }
   }
+  // As charts.rs: a number of stitches, at most 99; absent is 0 (never).
+  d.floatLimit = Math.round(Number(d.floatLimit ?? 0));
+  if (!(d.floatLimit >= 0)) fail("The float warning is a number of stitches.");
   d.floatLimit = Math.min(99, d.floatLimit);
   d.notes = d.notes.trim().slice(0, 4000);
   return { name: String(name ?? "").split(/\s+/).filter(Boolean).join(" ").slice(0, 120) || "Untitled chart", data: d };
@@ -1708,7 +1718,7 @@ const handlers = {
   save_goal: ({ input }) => {
     if (!["projects", "grams", "metres", "own"].includes(input.kind)) throw new Error(`“${input.kind}” is not a goal the app knows.`);
     if (!(input.target > 0)) throw new Error("A goal must be a number above 0.");
-    const label = input.kind === "own" ? input.label.split(/\s+/).filter(Boolean).join(" ") : "";
+    const label = input.kind === "own" ? String(input.label ?? "").split(/\s+/).filter(Boolean).join(" ") : "";
     if (input.kind === "own" && !label) throw new Error("A custom goal needs a description.");
     let g = input.id && store.goals.find((x) => x.id === input.id);
     if (!g) store.goals.push((g = { id: `goal-${store.nextId++}`, done: 0, addedAt: Date.now() }));
@@ -2218,7 +2228,13 @@ const handlers = {
       const plan = { id: `pr${store.nextId++}`, name: projectName(input), patternId: input.patternId || null, status: "planned", startedAt: now, finishedAt: null, notes: input.notes || "", createdAt: now,
         planWhen: planWhen(input.planWhen), planDate: input.planDate ?? null, planOrder: last + 1 };
       store.projects.push(plan);
-      syncLinks(plan.id, { ...input, toolIds: [] });
+      try {
+        syncLinks(plan.id, { ...input, toolIds: [] });
+      } catch (e) {
+        store.projects = store.projects.filter((x) => x.id !== plan.id);
+        store.projectYarns = store.projectYarns.filter((x) => x.projectId !== plan.id);
+        throw e;
+      }
       const pattern = store.patterns.find((x) => x.id === plan.patternId);
       if (pattern && !pattern.status) pattern.status = "want-to-knit";
       logMilestone(plan.id, "Planned", now);
@@ -2301,10 +2317,9 @@ const handlers = {
   },
   // As db::set_project_status.
   set_project_status: ({ id, status }) => {
-    if (!isLive(status)) for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
+    if (!["planned", "active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("This project no longer exists.");
-    if (!["planned", "active", "paused", "finished", "frogged"].includes(status)) throw new Error(`A project cannot be “${status}”.`);
     if (pr.status === status) return projectOut(pr);
     const now = Date.now();
     if (pr.status === "planned") {
@@ -2322,6 +2337,8 @@ const handlers = {
       pr.status = status;
       logMilestone(id, status === "paused" ? "Paused" : "Back on the needles", now);
     } else if (isLive(pr.status) && status === "frogged") {
+      // Frogged, its timer stops.
+      for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = now;
       logMilestone(id, "Frogged", now);
       pr.status = "frogged";
       pr.finishedAt = now;
@@ -2340,7 +2357,6 @@ const handlers = {
     return projectOut(pr);
   },
   finish_project: ({ id, input }) => {
-    for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = Date.now();
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("This project no longer exists.");
     if (!isLive(pr.status)) throw new Error("That project is already finished or frogged.");
@@ -2355,7 +2371,15 @@ const handlers = {
       if (!e) throw new Error("That yarn is not on this project.");
       const yarn = store.yarns.find((y) => y.id === e.yarnId);
       if (left.usedBalls != null && !(yarn?.gramsPerBall > 0)) throw new Error(`${yarn?.name ?? "That yarn"} has no grams per ball: say what it used in grams.`);
+      // As db::finish_project: no more left than the lot held, when that is known.
+      const lot = yarn && (yarn.lots.find((l) => l.id === e.lotId) ?? yarn.lots[0]);
+      const before = lot ? lotGrams(lot, yarn) : 0;
+      if (left.grams != null && before > 0 && left.grams > before) throw new Error(`${yarn?.name ?? "That yarn"}: ${left.grams} g left is more than its lot held (${before} g).`);
     }
+    // As db::finish_project: each yarn once.
+    const entries = (input.leftovers || []).filter(said).map((l) => l.entryId);
+    if (new Set(entries).size !== entries.length) throw new Error("A yarn is listed twice.");
+    for (const k of store.knitSessions ?? []) if (k.projectId === id && k.endedAt === null) k.endedAt = now;
     pr.status = "finished";
     pr.finishedAt = input.finishedAt ?? now;
     logMilestone(id, "Finished", pr.finishedAt);
@@ -2387,8 +2411,8 @@ const handlers = {
     return projectOut(pr);
   },
   delete_project: ({ id }) => {
-    store.knitSessions = (store.knitSessions ?? []).filter((k) => k.projectId !== id);
     if (!store.projects.some((x) => x.id === id)) throw new Error("This project no longer exists.");
+    store.knitSessions = (store.knitSessions ?? []).filter((k) => k.projectId !== id);
     for (const item of store.boardItems.filter((i) => i.boardId === id)) store.covers.delete(`board:${item.id}`);
     store.boardItems = store.boardItems.filter((i) => i.boardId !== id);
     store.covers.delete(`project:${id}`);
@@ -3029,9 +3053,12 @@ const handlers = {
       ...clone(yarn),
       plans: tidyPlans(yarn.plans),
       lots,
-      // addedAt and photoPath are the backend's, not the client's to rewrite.
+      // addedAt, photoPath and usedUpAt are the backend's, not the client's
+      // to rewrite (db::update_yarn writes none of them). The lots are the
+      // whole list, as there: one left out is removed.
       addedAt: existing.addedAt,
       photoPath: existing.photoPath,
+      usedUpAt: existing.usedUpAt ?? null,
     };
     // The store holds no derived fields; they are computed on read.
     delete next.yarnWeightFamily;
@@ -3047,8 +3074,10 @@ const handlers = {
   delete_yarn: ({ id }) => {
     // Its swatches stay, and still say what they were knitted in.
     const gone = store.yarns.find((y) => y.id === id);
+    // As db::delete_yarn: a yarn that is not there is an error.
+    if (!gone) throw new Error(`yarn not found: ${id}`);
     for (const s of store.swatches) {
-      if (!gone || s.yarnId !== id) continue;
+      if (s.yarnId !== id) continue;
       s.yarnText = `${[gone.brand, gone.name].filter(Boolean).join(" ")}${gone.colourway ? `, ${gone.colourway}` : ""}`;
       s.yarnId = null;
     }
@@ -3097,9 +3126,9 @@ const handlers = {
     if (!store.aiSettings) {
       store.aiSettings = {
         enabled: false,
-        baseUrl: "https://gen2.zeroval.eu/v1",
-        model: "Qwen3.6-27B",
-        fallbackModel: "Qwen3.6-27B",
+        baseUrl: "",
+        model: "",
+        fallbackModel: "",
         hasApiKey: false,
         isLocal: false,
         applyAutomatically: true,
@@ -3197,6 +3226,9 @@ const handlers = {
       // asked of the model.
       after.yarnWeightFamily = yarnFamily(suggestion.yarnWeight);
     }
+    // The summary becomes the notes only when there is nothing there yet;
+    // first, so empty notes take the yarn line below it.
+    if (suggestion.summary && after.notes.trim() === "") after.notes = suggestion.summary;
     // Yarn is folded into the notes, below anything already there.
     if (suggestion.yarn && !p.notes.includes(suggestion.yarn)) {
       after.notes = after.notes.trim() === ""
@@ -3216,11 +3248,6 @@ const handlers = {
     // A book, or any EPUB, is tagged so (ai::metadata::apply_to).
     if ((suggestion.book || p.format === "epub") && !after.tags.some((t) => t.toLowerCase() === "book")) {
       after.tags = [...after.tags, "book"].sort(byCode);
-    }
-    // The summary becomes the notes only when there is nothing there yet.
-    if (suggestion.summary && !after.notes.includes(suggestion.summary.trim()) &&
-      after.notes.trim() === "") {
-      after.notes = suggestion.summary;
     }
 
     // Mirrors ai::metadata::changed_fields, including naming a notes change by
@@ -3258,10 +3285,16 @@ const handlers = {
   },
   apply_suggestion: ({ patternId, after }) => {
     const i = store.patterns.findIndex((x) => x.id === patternId);
+    if (i < 0) throw new Error(`pattern not found: ${patternId}`);
     const before = clone(store.patterns[i]);
     const merged = clone(store.patterns[i]);
-    for (const f of ["designer", "difficulty", "needleSize", "notes"]) merged[f] = after[f];
+    // As commands::apply_suggestion_to: only the fields the model may change,
+    // the yarn weight among them, its family re-derived; nothing changed is
+    // no undo point.
+    for (const f of ["designer", "difficulty", "needleSize", "yarnWeight", "notes"]) merged[f] = after[f];
     merged.tags = after.tags;
+    merged.yarnWeightFamily = yarnFamily(merged.yarnWeight);
+    if (JSON.stringify(merged) === JSON.stringify(before)) return before;
     store.patterns[i] = merged;
     store.aiHistory.set(patternId, { before, after: clone(merged) });
     return clone(merged);
@@ -3373,7 +3406,7 @@ const handlers = {
     // reproducible here is adding the same path twice.
     const basis = input.sourcePath && input.sourcePath.trim()
       ? `path:${input.sourcePath}`
-      : `bytes:${(input.bytes || []).length}`;
+      : `bytes:${bytesHash(input.bytes || [])}`;
     const contentHash = pseudoHash(basis);
     // Kept by id: one in the Bin comes back from it, as in commands::add_pattern_to.
     const duplicate = store.contentHashes.get(contentHash);

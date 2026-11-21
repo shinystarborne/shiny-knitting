@@ -141,8 +141,11 @@ export function sortOutDuplicates(): Promise<boolean> {
       const input = e.target as HTMLInputElement;
       if (input.dataset.keep) {
         const i = Number(input.dataset.keep);
+        const was = keep.get(i);
         keep.set(i, input.value);
         remove.get(i)!.delete(input.value);
+        // Identical files: the one no longer kept is a copy like the others.
+        if (groups[i]?.exact && was && was !== input.value) remove.get(i)!.add(was);
         repaintGroup(i);
       } else if (input.dataset.remove) {
         const i = Number(input.dataset.remove);

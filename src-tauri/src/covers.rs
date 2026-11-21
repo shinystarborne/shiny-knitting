@@ -194,12 +194,15 @@ pub fn set_cover(state: &AppState, pattern_id: &str, bytes: Vec<u8>) -> AppResul
     })
 }
 
-/// Deletes a pattern's cover file and clears the reference.
+/// Clears the reference to a pattern's cover, then deletes the file: a
+/// failure to clear it leaves the cover as it was. (The same order for every
+/// picture removed below.)
 pub fn remove_cover(state: &AppState, pattern_id: &str) -> AppResult<()> {
-    if let Some(path) = cover_path(state, pattern_id)? {
+    let path = cover_path(state, pattern_id)?;
+    db::set_cover(&state.db(), pattern_id, "")?;
+    if let Some(path) = path {
         let _ = std::fs::remove_file(path);
     }
-    db::set_cover(&state.db(), pattern_id, "")?;
     Ok(())
 }
 
@@ -247,12 +250,13 @@ pub fn set_yarn_photo(state: &AppState, yarn_id: &str, bytes: Vec<u8>) -> AppRes
     })
 }
 
-/// Deletes a yarn's photo file and clears the reference.
+/// Clears the reference to a yarn's photo, then deletes the file.
 pub fn remove_yarn_photo(state: &AppState, yarn_id: &str) -> AppResult<()> {
-    if let Some(path) = yarn_photo_path(state, yarn_id)? {
+    let path = yarn_photo_path(state, yarn_id)?;
+    db::set_yarn_photo(&state.db(), yarn_id, "")?;
+    if let Some(path) = path {
         let _ = std::fs::remove_file(path);
     }
-    db::set_yarn_photo(&state.db(), yarn_id, "")?;
     Ok(())
 }
 
@@ -285,10 +289,9 @@ pub fn set_project_cover(state: &AppState, project_id: &str, bytes: Vec<u8>) -> 
 
 pub fn remove_project_cover(state: &AppState, project_id: &str) -> AppResult<()> {
     let name = db::get_project(&state.db(), project_id)?.cover_path;
-    if let Some(path) = existing_file(&project_covers_dir(state), &name) {
-        let _ = std::fs::remove_file(path);
-    }
-    db::set_project_cover(&state.db(), project_id, "")
+    db::set_project_cover(&state.db(), project_id, "")?;
+    delete_project_cover_file(state, &name);
+    Ok(())
 }
 
 pub fn read_project_cover(state: &AppState, project_id: &str) -> AppResult<(String, Vec<u8>)> {
@@ -334,6 +337,19 @@ pub fn write_chart_picture(state: &AppState, chart_id: &str, bytes: &[u8]) -> Ap
     write_file(&chart_pictures_dir(state), chart_id, ext, bytes)
 }
 
+/// Puts a chart's new picture in place of `old`, as the other pictures are
+/// replaced: the old one goes only once the new one is written and recorded.
+pub fn replace_chart_picture(
+    state: &AppState,
+    chart_id: &str,
+    bytes: &[u8],
+    old: &str,
+    record: impl FnOnce(&str) -> AppResult<()>,
+) -> AppResult<String> {
+    let (ext, _mime) = validate(bytes)?;
+    replace_file(&chart_pictures_dir(state), chart_id, ext, bytes, old, record)
+}
+
 pub fn read_chart_picture(state: &AppState, file_name: &str) -> AppResult<(String, Vec<u8>)> {
     let path = existing_file(&chart_pictures_dir(state), file_name)
         .ok_or_else(|| AppError::Message("This chart's picture no longer exists.".into()))?;
@@ -365,8 +381,9 @@ pub fn set_log_photo(state: &AppState, entry_id: &str, bytes: Vec<u8>) -> AppRes
 
 pub fn remove_log_photo(state: &AppState, entry_id: &str) -> AppResult<()> {
     let name = db::get_log_entry(&state.db(), entry_id)?.photo_path;
+    db::set_log_photo(&state.db(), entry_id, "")?;
     delete_log_photo_file(state, &name);
-    db::set_log_photo(&state.db(), entry_id, "")
+    Ok(())
 }
 
 pub fn read_log_photo(state: &AppState, entry_id: &str) -> AppResult<(String, Vec<u8>)> {
@@ -401,8 +418,9 @@ pub fn set_swatch_photo(state: &AppState, swatch_id: &str, bytes: Vec<u8>) -> Ap
 
 pub fn remove_swatch_photo(state: &AppState, swatch_id: &str) -> AppResult<()> {
     let name = db::get_swatch(&state.db(), swatch_id)?.photo_path;
+    db::set_swatch_photo(&state.db(), swatch_id, "")?;
     delete_swatch_photo_file(state, &name);
-    db::set_swatch_photo(&state.db(), swatch_id, "")
+    Ok(())
 }
 
 pub fn read_swatch_photo(state: &AppState, swatch_id: &str) -> AppResult<(String, Vec<u8>)> {
@@ -437,8 +455,9 @@ pub fn set_wish_photo(state: &AppState, wish_id: &str, bytes: Vec<u8>) -> AppRes
 
 pub fn remove_wish_photo(state: &AppState, wish_id: &str) -> AppResult<()> {
     let name = db::get_wish(&state.db(), wish_id)?.photo_path;
+    db::set_wish_photo(&state.db(), wish_id, "")?;
     delete_wish_photo_file(state, &name);
-    db::set_wish_photo(&state.db(), wish_id, "")
+    Ok(())
 }
 
 pub fn read_wish_photo(state: &AppState, wish_id: &str) -> AppResult<(String, Vec<u8>)> {

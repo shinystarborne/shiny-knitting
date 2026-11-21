@@ -211,7 +211,12 @@ export class LibraryView {
 
     this.root.addEventListener("click", (e) => this.onClick(e));
 
-    this.settings = await api.getAiSettings();
+    // Describing is optional: a library that cannot read its settings still
+    // opens, describing off (startScan reads them again before a run).
+    this.settings = await api.getAiSettings().catch((): AiSettingsView => ({
+      enabled: false, baseUrl: "", model: "", fallbackModel: "", hasApiKey: false, isLocal: false, applyAutomatically: false,
+      skipExisting: true, maxCharacters: 0, reasoningEffort: "", rescanExisting: false, revision: "",
+    }));
     // A missing setting (an older backend, or the harness) shows both.
     this.needleFormat = await api.getNeedleSizeDisplay().catch(() => "both" as const);
     // The robot is there only when describing with a model is switched on.
@@ -602,17 +607,12 @@ export class LibraryView {
   private async undoAi(patternId: string): Promise<void> {
     const restored = await undoPattern(patternId);
     if (restored) {
+      // Each card painted asks for its own undo button (fillCard).
       await this.reload();
-      await this.refreshUndoButtons();
       this.flash("Undone.");
     } else {
       this.flash("Nothing to undo for that pattern.", true);
     }
-  }
-
-  /** Shows an undo button on any card the model has changed. */
-  private async refreshUndoButtons(): Promise<void> {
-    for (const card of this.root.querySelectorAll<HTMLElement>(".card")) await this.undoButtonFor(card);
   }
 
   private async undoButtonFor(card: HTMLElement): Promise<void> {
@@ -802,7 +802,9 @@ export class LibraryView {
     }
     const batches = await Promise.all(queries.map((q) => api.listPatterns(q)));
     const seen = new Set<string>();
-    return batches.flat().filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+    const all = batches.flat().filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+    // Each batch is in order, not the lot: sorted again as db::list_patterns sorts.
+    return queries.length > 1 ? all.sort(patternOrder(base.sort)) : all;
   }
 
   /**
@@ -884,7 +886,7 @@ export class LibraryView {
 
   private cardHtml(p: Pattern): string {
     return `
-      <article class="card${p.fileMissing ? " file-missing" : ""}" data-open="${p.id}">
+      <article class="card${p.fileMissing ? " file-missing" : ""}" tabindex="0" data-open="${p.id}">
         <div class="cover" data-id="${p.id}">
           ${p.fileMissing ? `<div class="cover-missing"><b>File missing</b><span>Moved or deleted outside the app</span><button data-act="relink" data-id="${p.id}" title="Locate the file in its new place">Locate…</button></div>` : ""}
           <div class="cover-photo" data-el="photo"></div>
@@ -1105,6 +1107,23 @@ function yarnPill(p: Pattern): string {
   const saysMore = stated.toLowerCase() !== label.toLowerCase();
   const title = saysMore ? ` title="${escapeHtml(stated)}"` : "";
   return `<span class="pill weight"${title}>${escapeHtml(label)}</span>`;
+}
+
+/** The order db::list_patterns gives for a sort: title as NOCASE compares, newest first by default. */
+function patternOrder(sort: string | undefined): (a: Pattern, b: Pattern) => number {
+  const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+  // NOCASE folds only A-Z.
+  const fold = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  switch (sort) {
+    case "title":
+      return (a, b) => cmp(fold(a.title), fold(b.title));
+    case "oldest":
+      return (a, b) => a.addedAt - b.addedAt;
+    case "lastOpened":
+      return (a, b) => (b.lastOpenedAt ?? -Infinity) - (a.lastOpenedAt ?? -Infinity) || 0;
+    default:
+      return (a, b) => b.addedAt - a.addedAt;
+  }
 }
 
 function escapeHtml(v: string): string {

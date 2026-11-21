@@ -56,6 +56,9 @@ export async function verifyBoardCounter() {
     const pattern = store.patterns.find((p) => p.format === "pdf")!;
     const knitted = await invoke<Project>("add_project", { input: { name: "Counted if wanted", patternId: pattern.id, notes: "", startedAt: null, toolIds: [], yarns: [] } });
     ids.push(knitted.id);
+    // The stub gives the same ids on every load, and the last count is kept in
+    // the browser: one from an earlier run in this profile is not this one's.
+    for (const k of Object.keys(localStorage)) if (k.startsWith("counter:last-count:") && k.endsWith(`:${knitted.id}`)) localStorage.removeItem(k);
     await open(knitted.id);
     check(results, "no counter by itself: not on the board, not on the side", !card() && !page()!.querySelector(".project-side .project-counter") && !store.boardItems.some((i) => i.boardId === knitted.id && i.kind === "counter"));
 

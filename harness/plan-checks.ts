@@ -54,6 +54,9 @@ export async function verifyPlans() {
   };
   const rows = () => [...document.querySelectorAll<HTMLElement>(".plan-row")];
   const made: string[] = [];
+  // Put back after: the plans' order (sorting and dragging renumber every
+  // plan, not only these) and y2's own plans.
+  const seed = structuredClone({ order: store.projects.map((p) => [p.id, p.planOrder] as const), plans: store.yarns.find((y) => y.id === "y2")?.plans });
 
   try {
     tab("projects");
@@ -146,6 +149,12 @@ export async function verifyPlans() {
     document.querySelector<HTMLElement>(".modal-backdrop:not(.hidden) [data-act='cancel']")?.click();
     store.projects = store.projects.filter((p) => !made.includes(p.id));
     store.projectYarns = store.projectYarns.filter((e) => !made.includes(e.projectId));
+    for (const [id, planOrder] of seed.order) {
+      const p = store.projects.find((x) => x.id === id);
+      if (p) p.planOrder = planOrder;
+    }
+    const y2 = store.yarns.find((y) => y.id === "y2");
+    if (y2) y2.plans = seed.plans;
     tab("patterns");
     await waitFor(() => !document.querySelector(".projects, .stash"), "the library", 5000).catch(() => {});
   }

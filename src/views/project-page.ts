@@ -735,7 +735,11 @@ ${plan ? "" : `      <div class="project-side-dates">
     }
     if (act === "knit-remove" && btn.dataset.id) {
       if (!(await askYesNo("Remove this session from the knitting time?", { title: "Knitting time", okLabel: "Remove", danger: true }))) return;
-      await api.deleteKnitSession(btn.dataset.id).catch(() => {});
+      try {
+        await api.deleteKnitSession(btn.dataset.id);
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
+      }
       await this.reloadTime();
     }
     if (act === "start-plan") {
@@ -779,7 +783,11 @@ ${plan ? "" : `      <div class="project-side-dates">
       });
     }
     if (act === "cover-remove") {
-      await api.removeProjectCover(this.projectId).catch(() => {});
+      try {
+        await api.removeProjectCover(this.projectId);
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Cover"));
+      }
       forgetProjectCover(this.projectId);
       this.project.coverPath = "";
       btn.hidden = true;
@@ -980,7 +988,11 @@ ${plan ? "" : `      <div class="project-side-dates">
     const grip = this.root.querySelector<HTMLElement>(".project-pattern-grip")!;
     grip.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
+      try {
+        grip.setPointerCapture(e.pointerId);
+      } catch {
+        // A pointer already gone: the drag goes on without the capture.
+      }
       main.classList.add("resizing");
       const right = main.getBoundingClientRect().right;
       const move = (ev: PointerEvent) => this.applyWidth(Math.round(right - ev.clientX));

@@ -208,7 +208,7 @@ function cardHtml(s: Shop, ticked: string[]): string {
     })
     .join("");
   return `
-    <article class="shop-card" data-open="${escapeHtml(s.id)}">
+    <article class="shop-card" tabindex="0" data-open="${escapeHtml(s.id)}">
       <h3 class="shop-name">${escapeHtml(s.name)}</h3>
       ${
         s.url

@@ -53,7 +53,11 @@ export function cropImage(url: string, title = "Crop the picture", type: "image/
       const corner = (e.target as HTMLElement).dataset.corner;
       const inside = !corner && rect && (e.target as HTMLElement).closest(".crop-box");
       const from = rect ? { ...rect } : null;
-      stage.setPointerCapture(e.pointerId);
+      try {
+        stage.setPointerCapture(e.pointerId);
+      } catch {
+        // A pointer already gone: the drag goes on without the capture.
+      }
       const move = (ev: PointerEvent) => {
         const p = point(ev);
         const r = img.getBoundingClientRect();

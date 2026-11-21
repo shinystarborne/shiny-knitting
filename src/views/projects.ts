@@ -249,7 +249,7 @@ export class ProjectsView {
           const yarn = p.yarns.map((y) => `${y.yarnName}${y.plannedGrams ? ` (${y.plannedGrams} g)` : ""}`).join(", ");
           const when = planTime(p);
           return `
-          <li class="plan-row" draggable="${words.length ? "false" : "true"}" data-plan="${p.id}" data-open="${p.id}">
+          <li class="plan-row" draggable="${words.length ? "false" : "true"}" data-plan="${p.id}" tabindex="0" data-open="${p.id}">
             <span class="plan-grip" title="Drag to reorder" aria-hidden="true">⋮⋮</span>
             <div class="plan-main">
               <h3>${escapeHtml(p.name)}</h3>
@@ -352,7 +352,7 @@ export class ProjectsView {
       ? `${projectStatusLabel(p.status)} ${longDate(p.finishedAt ?? p.startedAt)}`
       : `Started ${longDate(p.startedAt)}`;
     return `
-      <article class="project-card ${p.status}" data-open="${p.id}">
+      <article class="project-card ${p.status}" tabindex="0" data-open="${p.id}">
         <div class="project-card-cover"><span>${escapeHtml(p.name.slice(0, 1).toUpperCase())}</span></div>
         <div class="project-head">
           <h3>${escapeHtml(p.name)}</h3>

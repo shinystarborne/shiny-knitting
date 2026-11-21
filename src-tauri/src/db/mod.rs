@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -9,11 +10,15 @@ use crate::models::{
     ProjectInput, ProjectYarn, BoardItem, BoardItemInput, BoardItemPatch, BOARD_KINDS,
     tidy_status, is_live, BoardPicture, InspirationBoard, PROJECT_STATUSES, Shop, ShopInput, Wish,
     WishInput, MeasurementSet, MeasurementSetInput, Person, PersonInput, Swatch, SwatchInput, LogEntry,
-    Chart, ChartInput, YarnDetails, Cheatsheet, Masterclass, MasterclassPart,
+    Chart, ChartInput, YarnDetails, YarnPlan, Cheatsheet, Masterclass, MasterclassPart,
 };
 
 #[cfg(test)]
 pub mod tests;
+mod migrate;
+use migrate::migrate;
+#[cfg(test)]
+use migrate::{column_exists, table_exists};
 
 /// Exposed for tests in other modules that need a migrated database.
 #[cfg(test)]
@@ -31,1035 +36,10 @@ pub fn open(path: &Path) -> AppResult<Connection> {
     Ok(conn)
 }
 
-fn migrate(conn: &Connection) -> AppResult<()> {
-    // Board items were first keyed to a project, with a foreign key to it;
-    // they now belong to a board, which an inspiration board can be too. A
-    // database from before has its items moved across, before the table below
-    // is made (its index would not find the new column otherwise).
-    if column_exists(conn, "board_items", "project_id")? {
-        conn.execute_batch(
-            "ALTER TABLE board_items RENAME TO board_items_by_project;
-             CREATE TABLE board_items (
-                 id          TEXT PRIMARY KEY,
-                 board_id    TEXT NOT NULL,
-                 kind        TEXT NOT NULL,
-                 x           REAL NOT NULL DEFAULT 0,
-                 y           REAL NOT NULL DEFAULT 0,
-                 w           REAL NOT NULL DEFAULT 220,
-                 h           REAL NOT NULL DEFAULT 160,
-                 z           INTEGER NOT NULL DEFAULT 0,
-                 data        TEXT NOT NULL DEFAULT '{}',
-                 image_file  TEXT NOT NULL DEFAULT '',
-                 created_at  INTEGER NOT NULL
-             );
-             INSERT INTO board_items (id, board_id, kind, x, y, w, h, z, data, image_file, created_at)
-                 SELECT id, project_id, kind, x, y, w, h, z, data, image_file, created_at FROM board_items_by_project;
-             DROP TABLE board_items_by_project;",
-        )?;
-    }
-    conn.execute_batch(
-        r#"
-        CREATE TABLE IF NOT EXISTS patterns (
-            id             TEXT PRIMARY KEY,
-            title          TEXT NOT NULL,
-            designer       TEXT NOT NULL DEFAULT '',
-            file_path      TEXT NOT NULL,
-            file_name      TEXT NOT NULL,
-            format         TEXT NOT NULL,
-            status         TEXT NOT NULL DEFAULT '',
-            difficulty     TEXT NOT NULL DEFAULT '',
-            needle_size    TEXT NOT NULL DEFAULT '',
-            needle_sizes   TEXT NOT NULL DEFAULT '[]',
-            yarn_weight     TEXT NOT NULL DEFAULT '',
-            yarn_weight_family TEXT NOT NULL DEFAULT '',
-            tags           TEXT NOT NULL DEFAULT '[]',
-            notes          TEXT NOT NULL DEFAULT '',
-            added_at       INTEGER NOT NULL,
-            last_opened_at INTEGER,
-            last_page      INTEGER NOT NULL DEFAULT 0,
-            last_scroll    REAL    NOT NULL DEFAULT 0,
-            cover_path     TEXT    NOT NULL DEFAULT '',
-            file_hash      TEXT    NOT NULL DEFAULT ''
-        );
-
-        -- Named counters: the places in a pattern that get counted separately,
-        -- such as a front, two sleeves worked in turn, or a collar. Each keeps
-        -- its own count and target and is independent of the others.
-        --
-        -- `enabled` is what makes a counter count: a counting action moves the
-        -- project total always, and every enabled counter besides. Several can
-        -- be on at once, which is the point -- working two sleeves alternately
-        -- means both need to advance from the same rows.
-        CREATE TABLE IF NOT EXISTS counters (
-            id                   TEXT PRIMARY KEY,
-            pattern_id           TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            name                 TEXT NOT NULL,
-            target               INTEGER NOT NULL DEFAULT 0,
-            current              INTEGER NOT NULL DEFAULT 0,
-            enabled              INTEGER NOT NULL DEFAULT 0,
-            excluded_from_total  INTEGER NOT NULL DEFAULT 0,
-            position             INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS idx_counters_pattern ON counters(pattern_id);
-
-        CREATE TABLE IF NOT EXISTS progress (
-            pattern_id        TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
-            total_rows        INTEGER NOT NULL DEFAULT 0,
-            current_section_id TEXT,
-            updated_at        INTEGER NOT NULL DEFAULT 0
-        );
-
-        -- A project's own row total, for the pattern it is knitted from; the
-        -- pattern's own is in progress.
-        CREATE TABLE IF NOT EXISTS project_progress (
-            project_id  TEXT NOT NULL,
-            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            total_rows  INTEGER NOT NULL DEFAULT 0,
-            updated_at  INTEGER NOT NULL DEFAULT 0,
-            -- The one project that took the pattern's counts, when its counter was made.
-            took_counts INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (project_id, pattern_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS highlights (
-            pattern_id    TEXT PRIMARY KEY REFERENCES patterns(id) ON DELETE CASCADE,
-            enabled       INTEGER NOT NULL DEFAULT 0,
-            offset_y      REAL    NOT NULL DEFAULT 0.35,
-            thickness     REAL    NOT NULL DEFAULT 3,
-            width         REAL    NOT NULL DEFAULT 0,
-            inset_x       REAL    NOT NULL DEFAULT 24,
-            color         TEXT    NOT NULL DEFAULT '#e5484d',
-            opacity       REAL    NOT NULL DEFAULT 0.3,
-            animate       INTEGER NOT NULL DEFAULT 1,
-            animation_ms  INTEGER NOT NULL DEFAULT 260
-        );
-
-        -- A previous snapshot of a pattern's metadata, written before the AI
-        -- changed it, so the change can be undone.
-        CREATE TABLE IF NOT EXISTS ai_history (
-            id           TEXT PRIMARY KEY,
-            pattern_id   TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            before_json  TEXT NOT NULL,
-            after_json   TEXT NOT NULL,
-            created_at   INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_ai_history_pattern ON ai_history(pattern_id, created_at DESC);
-
-        -- Key/value store for app settings that are not per-pattern.
-        CREATE TABLE IF NOT EXISTS app_settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        -- Mark a user made on a pattern: a coloured highlight, a written note,
-        -- or a freehand drawing. `geometry` holds the shape; how to read it
-        -- depends on `kind`.
-        CREATE TABLE IF NOT EXISTS annotations (
-            id          TEXT PRIMARY KEY,
-            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            kind        TEXT NOT NULL,
-            -- 1-based page for a PDF, chapter index for an EPUB.
-            page        INTEGER NOT NULL DEFAULT 1,
-            geometry    TEXT NOT NULL DEFAULT '[]',
-            -- For EPUB anchoring, and as a readable label everywhere: the text
-            -- this was made from. Also what gets re-found after a reflow.
-            quote       TEXT NOT NULL DEFAULT '',
-            occurrence  INTEGER NOT NULL DEFAULT 0,
-            color       TEXT NOT NULL DEFAULT '#e5484d',
-            text        TEXT NOT NULL DEFAULT '',
-            created_at  INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_annotations_pattern ON annotations(pattern_id, page);
-
-        CREATE TABLE IF NOT EXISTS bookmarks (
-            id          TEXT PRIMARY KEY,
-            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            page        INTEGER NOT NULL,
-            title       TEXT NOT NULL,
-            sort_order  INTEGER NOT NULL DEFAULT 0,
-            created_at  INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_bookmarks_pattern ON bookmarks(pattern_id, sort_order);
-
-        -- A floating copy of a piece of the pattern, kept beside it. At most
-        -- five per pattern, which is enforced in the command rather than the
-        -- schema so the limit can be explained in an error message.
-        CREATE TABLE IF NOT EXISTS pins (
-            id          TEXT PRIMARY KEY,
-            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            page        INTEGER NOT NULL DEFAULT 1,
-            -- What was pinned, in normalised 0..1 page coordinates.
-            geometry    TEXT NOT NULL DEFAULT '[]',
-            quote       TEXT NOT NULL DEFAULT '',
-            title       TEXT NOT NULL DEFAULT '',
-            -- Where the floating card sits, as a fraction of the reading pane.
-            offset_x    REAL NOT NULL DEFAULT 0.72,
-            offset_y    REAL NOT NULL DEFAULT 0.18,
-            width       REAL NOT NULL DEFAULT 0.24,
-            -- File name of the cropped image inside library/pins.
-            image_file  TEXT NOT NULL DEFAULT '',
-            hidden      INTEGER NOT NULL DEFAULT 0,
-            z           INTEGER NOT NULL DEFAULT 0,
-            created_at  INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_pins_pattern ON pins(pattern_id);
-
-        -- A needle, a set of needles, a cable, or a hook. Which measurements
-        -- apply depends on the kind; the others are kept at 0 or empty. A
-        -- tool is in use while it has a pattern or a named project, and
-        -- removing the pattern frees it rather than removing the tool.
-        CREATE TABLE IF NOT EXISTS tools (
-            id          TEXT PRIMARY KEY,
-            kind        TEXT NOT NULL,
-            size_mm     REAL NOT NULL DEFAULT 0,
-            length_cm   REAL NOT NULL DEFAULT 0,
-            cable_cm    REAL NOT NULL DEFAULT 0,
-            cable_size  TEXT NOT NULL DEFAULT '',
-            brand       TEXT NOT NULL DEFAULT '',
-            material    TEXT NOT NULL DEFAULT '',
-            pattern_id  TEXT REFERENCES patterns(id) ON DELETE SET NULL,
-            project     TEXT NOT NULL DEFAULT '',
-            notes       TEXT NOT NULL DEFAULT '',
-            added_at    INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_tools_pattern ON tools(pattern_id);
-
-        -- A piece of knitting: from a library pattern or not, active until it
-        -- is finished. What is on an active project is in use; a finished
-        -- one keeps what it used as its record.
-        CREATE TABLE IF NOT EXISTS projects (
-            id           TEXT PRIMARY KEY,
-            name         TEXT NOT NULL,
-            pattern_id   TEXT REFERENCES patterns(id) ON DELETE SET NULL,
-            status       TEXT NOT NULL DEFAULT 'active',
-            started_at   INTEGER NOT NULL,
-            finished_at  INTEGER,
-            notes        TEXT NOT NULL DEFAULT '',
-            created_at   INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_projects_pattern ON projects(pattern_id);
-
-        -- The needles, hooks and cables on a project.
-        CREATE TABLE IF NOT EXISTS project_tools (
-            project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            tool_id      TEXT NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
-            added_at     INTEGER NOT NULL,
-            released_at  INTEGER,
-            PRIMARY KEY (project_id, tool_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_tools_tool ON project_tools(tool_id);
-
-        -- The yarn on a project, from which lot, and what was left of it.
-        CREATE TABLE IF NOT EXISTS project_yarns (
-            id              TEXT PRIMARY KEY,
-            project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            yarn_id         TEXT NOT NULL REFERENCES yarns(id) ON DELETE CASCADE,
-            lot_id          TEXT REFERENCES yarn_lots(id) ON DELETE SET NULL,
-            added_at        INTEGER NOT NULL,
-            released_at     INTEGER,
-            leftover_grams  INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_yarns_yarn ON project_yarns(yarn_id);
-
-        -- A board: notes, pictures, links and the rest, laid out freely.
-        -- `board_id` is a project's id for a project's board, or an
-        -- inspiration board's. It has no foreign key because it can be either,
-        -- so whatever owns a board removes its items itself. `data` is the
-        -- item's own content as JSON; a picture's file lives in
-        -- library/project-images.
-        CREATE TABLE IF NOT EXISTS board_items (
-            id          TEXT PRIMARY KEY,
-            board_id    TEXT NOT NULL,
-            kind        TEXT NOT NULL,
-            x           REAL NOT NULL DEFAULT 0,
-            y           REAL NOT NULL DEFAULT 0,
-            w           REAL NOT NULL DEFAULT 220,
-            h           REAL NOT NULL DEFAULT 160,
-            z           INTEGER NOT NULL DEFAULT 0,
-            data        TEXT NOT NULL DEFAULT '{}',
-            image_file  TEXT NOT NULL DEFAULT '',
-            created_at  INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_board_items_board ON board_items(board_id);
-
-        -- A board of its own, for ideas not yet a project.
-        CREATE TABLE IF NOT EXISTS inspiration_boards (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            created_at  INTEGER NOT NULL,
-            updated_at  INTEGER NOT NULL
-        );
-
-        -- A shop you buy from, with your own comment on it.
-        CREATE TABLE IF NOT EXISTS shops (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            url         TEXT NOT NULL DEFAULT '',
-            comment     TEXT NOT NULL DEFAULT '',
-            tags        TEXT NOT NULL DEFAULT '[]',
-            added_at    INTEGER NOT NULL
-        );
-
-        -- Something you want to get. It stays when it is got, with the date,
-        -- until it is removed; removing its shop or project only unlinks it.
-        CREATE TABLE IF NOT EXISTS wishlist (
-            id          TEXT PRIMARY KEY,
-            kind        TEXT NOT NULL,
-            name        TEXT NOT NULL,
-            brand       TEXT NOT NULL DEFAULT '',
-            amount      TEXT NOT NULL DEFAULT '',
-            price       TEXT NOT NULL DEFAULT '',
-            url         TEXT NOT NULL DEFAULT '',
-            shop_id     TEXT REFERENCES shops(id) ON DELETE SET NULL,
-            project_id  TEXT REFERENCES projects(id) ON DELETE SET NULL,
-            notes       TEXT NOT NULL DEFAULT '',
-            photo_path  TEXT NOT NULL DEFAULT '',
-            got_at      INTEGER,
-            stashed_at  INTEGER,
-            added_at    INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_wishlist_shop ON wishlist(shop_id);
-        CREATE INDEX IF NOT EXISTS idx_wishlist_project ON wishlist(project_id);
-
-        -- A project's diary: what was typed, and the milestones the app wrote.
-        CREATE TABLE IF NOT EXISTS project_log (
-            id          TEXT PRIMARY KEY,
-            project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            at          INTEGER NOT NULL,
-            text        TEXT NOT NULL DEFAULT '',
-            milestone   INTEGER NOT NULL DEFAULT 0,
-            photo_path  TEXT NOT NULL DEFAULT ''
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_log_project ON project_log(project_id);
-
-        -- A gauge swatch. Its yarn, needle and project only link: removing
-        -- one leaves the swatch, and a removed yarn's name is kept in
-        -- yarn_text. Counts are per 10 cm, 0 when not counted.
-        CREATE TABLE IF NOT EXISTS swatches (
-            id            TEXT PRIMARY KEY,
-            yarn_id       TEXT REFERENCES yarns(id) ON DELETE SET NULL,
-            yarn_text     TEXT NOT NULL DEFAULT '',
-            tool_id       TEXT REFERENCES tools(id) ON DELETE SET NULL,
-            needle_mm     REAL NOT NULL DEFAULT 0,
-            stitch        TEXT NOT NULL DEFAULT '',
-            sts           REAL NOT NULL DEFAULT 0,
-            rows          REAL NOT NULL DEFAULT 0,
-            sts_blocked   REAL NOT NULL DEFAULT 0,
-            rows_blocked  REAL NOT NULL DEFAULT 0,
-            project_id    TEXT REFERENCES projects(id) ON DELETE SET NULL,
-            photo_path    TEXT NOT NULL DEFAULT '',
-            notes         TEXT NOT NULL DEFAULT '',
-            made_at       INTEGER NOT NULL,
-            added_at      INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_swatches_yarn ON swatches(yarn_id);
-
-        -- Videos kept to learn from. A YouTube one has its video id, and its
-        -- picture in masterclasses/<id>.jpg when has_thumb.
-        CREATE TABLE IF NOT EXISTS masterclasses (
-            id          TEXT PRIMARY KEY,
-            title       TEXT NOT NULL,
-            url         TEXT NOT NULL,
-            video_id    TEXT NOT NULL DEFAULT '',
-            channel     TEXT NOT NULL DEFAULT '',
-            notes       TEXT NOT NULL DEFAULT '',
-            has_thumb   INTEGER NOT NULL DEFAULT 0,
-            added_at    INTEGER NOT NULL
-        );
-
-        -- A masterclass's videos, in order. One kept before there were several
-        -- is its own first video, with the masterclass's id.
-        CREATE TABLE IF NOT EXISTS masterclass_videos (
-            id              TEXT PRIMARY KEY,
-            masterclass_id  TEXT NOT NULL,
-            position        INTEGER NOT NULL DEFAULT 0,
-            title           TEXT NOT NULL,
-            url             TEXT NOT NULL,
-            video_id        TEXT NOT NULL DEFAULT '',
-            channel         TEXT NOT NULL DEFAULT '',
-            has_thumb       INTEGER NOT NULL DEFAULT 0,
-            watched         INTEGER NOT NULL DEFAULT 0,
-            added_at        INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_masterclass_videos ON masterclass_videos(masterclass_id, position);
-
-        -- Kept to look things up in: a web page, pages of a PDF, or an EPUB's
-        -- chapter (its copy is a file, cheatsheets/<id>.html). `pattern_id`
-        -- is not a reference: a book gone from the library leaves the
-        -- cheatsheet saying so.
-        CREATE TABLE IF NOT EXISTS cheatsheets (
-            id          TEXT PRIMARY KEY,
-            title       TEXT NOT NULL,
-            kind        TEXT NOT NULL,
-            url         TEXT NOT NULL DEFAULT '',
-            framable    INTEGER NOT NULL DEFAULT 1,
-            pattern_id  TEXT NOT NULL DEFAULT '',
-            page_from   INTEGER NOT NULL DEFAULT 0,
-            page_to     INTEGER NOT NULL DEFAULT 0,
-            notes       TEXT NOT NULL DEFAULT '',
-            position    INTEGER NOT NULL DEFAULT 0,
-            added_at    INTEGER NOT NULL,
-            region      TEXT NOT NULL DEFAULT ''
-        );
-
-        -- Someone knitted for. `extra` is the names of their own measurements,
-        -- beyond the standard ones, as a JSON list.
-        CREATE TABLE IF NOT EXISTS people (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            notes       TEXT NOT NULL DEFAULT '',
-            extra       TEXT NOT NULL DEFAULT '[]',
-            added_at    INTEGER NOT NULL
-        );
-
-        -- One time someone was measured: centimetres by measurement key, as
-        -- a JSON object, so a person's own measurements need no column.
-        CREATE TABLE IF NOT EXISTS measurement_sets (
-            id           TEXT PRIMARY KEY,
-            person_id    TEXT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
-            measured_at  INTEGER NOT NULL,
-            measures     TEXT NOT NULL DEFAULT '{}',
-            shoe_size    TEXT NOT NULL DEFAULT ''
-        );
-        CREATE INDEX IF NOT EXISTS idx_measurement_sets_person ON measurement_sets(person_id);
-
-        -- A colourwork chart. Its grid, colours and shaping are one JSON
-        -- object (`ChartData`), read and written whole: a chart is edited as
-        -- a picture is, never queried square by square.
-        CREATE TABLE IF NOT EXISTS charts (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            data        TEXT NOT NULL,
-            created_at  INTEGER NOT NULL,
-            updated_at  INTEGER NOT NULL
-        );
-
-        -- A page the reader turned, for a chart printed sideways to fit. Only
-        -- turned pages have a row; turning one back to upright removes it.
-        CREATE TABLE IF NOT EXISTS page_rotations (
-            pattern_id  TEXT NOT NULL REFERENCES patterns(id) ON DELETE CASCADE,
-            page        INTEGER NOT NULL,
-            rotation    INTEGER NOT NULL,
-            PRIMARY KEY (pattern_id, page)
-        );
-
-        -- A yarn in the stash. The weight is kept as written, with the
-        -- standard family derived from it on every write, exactly like
-        -- patterns; the family is a column because the filter matches on it.
-        CREATE TABLE IF NOT EXISTS yarns (
-            id                 TEXT PRIMARY KEY,
-            name               TEXT NOT NULL,
-            brand              TEXT NOT NULL DEFAULT '',
-            colourway          TEXT NOT NULL DEFAULT '',
-            yarn_weight        TEXT NOT NULL DEFAULT '',
-            yarn_weight_family TEXT NOT NULL DEFAULT '',
-            metres_per_ball    INTEGER NOT NULL DEFAULT 0,
-            grams_per_ball     INTEGER NOT NULL DEFAULT 0,
-            photo_path         TEXT NOT NULL DEFAULT '',
-            notes              TEXT NOT NULL DEFAULT '',
-            added_at           INTEGER NOT NULL
-        );
-
-        -- One purchase of a yarn: the dye lot, how many balls it was, and how
-        -- much is left. Partial balls are kept as grams left, weighed, rather
-        -- than as a fraction of a ball.
-        CREATE TABLE IF NOT EXISTS yarn_lots (
-            id         TEXT PRIMARY KEY,
-            yarn_id    TEXT NOT NULL REFERENCES yarns(id) ON DELETE CASCADE,
-            dye_lot    TEXT NOT NULL DEFAULT '',
-            balls      REAL NOT NULL DEFAULT 0,
-            grams_left INTEGER NOT NULL DEFAULT 0,
-            location   TEXT NOT NULL DEFAULT '',
-            bought_at  INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_yarn_lots_yarn ON yarn_lots(yarn_id);
-
-        -- Yarn used, when: a finished project's, weighed before and after, or
-        -- what was left of a yarn marked used up. Names are kept, so a
-        -- removed yarn or project still says.
-        CREATE TABLE IF NOT EXISTS yarn_usage (
-            id            TEXT PRIMARY KEY,
-            yarn_id       TEXT REFERENCES yarns(id) ON DELETE SET NULL,
-            yarn_name     TEXT NOT NULL DEFAULT '',
-            project_id    TEXT REFERENCES projects(id) ON DELETE SET NULL,
-            project_name  TEXT NOT NULL DEFAULT '',
-            at            INTEGER NOT NULL,
-            grams         INTEGER NOT NULL,
-            metres        INTEGER NOT NULL DEFAULT 0,
-            source        TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_yarn_usage_at ON yarn_usage(at);
-
-        -- What a yarn's ball band says of knitting it, by brand and yarn name:
-        -- every colour of the yarn shares it. 0 is not said.
-        CREATE TABLE IF NOT EXISTS yarn_details (
-            brand       TEXT NOT NULL COLLATE NOCASE,
-            name        TEXT NOT NULL COLLATE NOCASE,
-            gauge_sts   REAL NOT NULL DEFAULT 0,
-            gauge_rows  REAL NOT NULL DEFAULT 0,
-            needle_from REAL NOT NULL DEFAULT 0,
-            needle_to   REAL NOT NULL DEFAULT 0,
-            care        TEXT NOT NULL DEFAULT '[]',
-            PRIMARY KEY (brand, name)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
-        CREATE INDEX IF NOT EXISTS idx_patterns_designer ON patterns(designer);
-        "#,
-    )?;
-
-
-    // ALTER TABLE ADD COLUMN is not idempotent, so it is only issued when the
-    // column is genuinely missing. This is what brings an existing library
-    // (created before covers existed) up to date.
-    // Sections became counters. The concepts are the same -- a named thing you
-    // count with a target -- but a counter carries an `enabled` flag so several
-    // can count at once, where a section could only ever have one active.
-    //
-    // The previously active section becomes the one enabled counter, so
-    // reopening a pattern lands the user where they left off. Everything else
-    // carries over disabled, which is inert rather than lossy.
-    if table_exists(conn, "sections")? {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute(
-            "INSERT INTO counters
-               (id, pattern_id, name, target, current, enabled, excluded_from_total, position)
-             SELECT s.id, s.pattern_id, s.name, s.target, s.current,
-                    CASE WHEN s.id = p.current_section_id THEN 1 ELSE 0 END,
-                    s.excluded_from_total, s.position
-             FROM sections s
-             LEFT JOIN progress p ON p.pattern_id = s.pattern_id",
-            [],
-        )?;
-        tx.execute("DROP TABLE sections", [])?;
-        tx.commit()?;
-    }
-
-    // The active section is now expressed by `counters.enabled`, so the column
-    // that pointed at one is dead. Dropping it needs SQLite 3.35 or newer;
-    // where that is unavailable the column is simply left empty and unused,
-    // which costs nothing but a little clutter.
-    if column_exists(conn, "progress", "current_section_id")? {
-        let _ = conn.execute("ALTER TABLE progress DROP COLUMN current_section_id", []);
-    }
-
-    if !column_exists(conn, "patterns", "cover_path")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
-    }
-
-    // A content hash of the pattern's file, used to spot a duplicate before it
-    // is added. Empty for rows that predate the column until the backfill
-    // below hashes their files; an empty hash never counts as a match.
-    //
-    // The index is created here rather than in the batch above because an old
-    // database has no file_hash column until the ALTER runs, and CREATE INDEX
-    // on a missing column would fail.
-    if !column_exists(conn, "patterns", "file_hash")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN file_hash TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(file_hash)", [])?;
-    backfill_file_hashes(conn)?;
-
-    // Yarn weight as the pattern states it, plus the standard family derived
-    // from it. The family is a separate column because the filter matches on
-    // it: deriving a family from free text inside SQL would mean either a
-    // fuzzy match per row or a scan of the whole table.
-    for (column, kind) in [
-        ("yarn_weight", "TEXT NOT NULL DEFAULT ''"),
-        ("yarn_weight_family", "TEXT NOT NULL DEFAULT ''"),
-    ] {
-        if !column_exists(conn, "patterns", column)? {
-            conn.execute(
-                &format!("ALTER TABLE patterns ADD COLUMN {column} {kind}"),
-                [],
-            )?;
-        }
-    }
-    // A library that predates the column has no family to filter on, so any
-    // rows that already state a weight get their family filled in. This has to
-    // be done in Rust: the family is derived from free text, which SQL has no
-    // way to do per row.
-    backfill_yarn_families(conn)?;
-
-    // The canonical mm sizes derived from the stated needle size, as a JSON
-    // array -- the same arrangement as the yarn family: the text is kept as
-    // written for display, and the derived column is what the filter and the
-    // sidebar facet match on, since free text cannot be matched per row in
-    // SQL.
-    if !column_exists(conn, "patterns", "needle_sizes")? {
-        conn.execute(
-            "ALTER TABLE patterns ADD COLUMN needle_sizes TEXT NOT NULL DEFAULT '[]'",
-            [],
-        )?;
-    }
-    backfill_needle_sizes(conn)?;
-    // The ply counts changed meaning (4 ply is fingering, as in the UK and on
-    // Ravelry, not worsted), so every stored family is worked out again once.
-    let ply_fixed: bool = get_setting(conn, "yarn_families_ply_v2")?;
-    if !ply_fixed {
-        rederive_families(conn, "patterns")?;
-        rederive_families(conn, "yarns")?;
-        set_setting(conn, "yarn_families_ply_v2", &true)?;
-    }
-
-    // The highlight line's default opacity dropped from 0.9 to 0.3, which
-    // reads far better over a pattern: at 90% the text underneath was hard to
-    // follow. Only rows still sitting on the old default are moved, so a line
-    // someone has deliberately made more or less strong is left alone.
-    //
-    // This runs once, recorded in app_settings. migrate() runs on every
-    // launch, and without the flag a line deliberately set to exactly 0.9
-    // after the migration would be rewritten to 0.3 on every start.
-    let opacity_migrated: bool = get_setting(conn, "highlight_opacity_0_3")?;
-    if !opacity_migrated {
-        conn.execute(
-            "UPDATE highlights SET opacity = 0.3 WHERE ABS(opacity - 0.9) < 0.0001",
-            [],
-        )?;
-        set_setting(conn, "highlight_opacity_0_3", &true)?;
-    }
-
-    // A counter's own key; empty for the counters made before keys existed.
-    if !column_exists(conn, "counters", "hotkey")? {
-        conn.execute("ALTER TABLE counters ADD COLUMN hotkey TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // The project a counter counts for; empty for the pattern's own.
-    if !column_exists(conn, "counters", "project_id")? {
-        conn.execute("ALTER TABLE counters ADD COLUMN project_id TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // What a yarn is made of, and whether it is superwash.
-    if !column_exists(conn, "yarns", "fibres")? {
-        conn.execute("ALTER TABLE yarns ADD COLUMN fibres TEXT NOT NULL DEFAULT '[]'", [])?;
-    }
-    if !column_exists(conn, "yarns", "superwash")? {
-        conn.execute("ALTER TABLE yarns ADD COLUMN superwash INTEGER NOT NULL DEFAULT 0", [])?;
-    }
-    // What a yarn is planned for, as a JSON list of YarnPlan.
-    if !column_exists(conn, "yarns", "plans")? {
-        conn.execute("ALTER TABLE yarns ADD COLUMN plans TEXT NOT NULL DEFAULT '[]'", [])?;
-    }
-    // The chart a project is knitted from, and the row it starts on.
-    if !column_exists(conn, "projects", "chart_id")? {
-        conn.execute_batch(
-            "ALTER TABLE projects ADD COLUMN chart_id TEXT NOT NULL DEFAULT '';
-             ALTER TABLE projects ADD COLUMN chart_start INTEGER NOT NULL DEFAULT 1;",
-        )?;
-    }
-    // A finished project in the gallery: hidden from it, and the photos it leaves out.
-    if !column_exists(conn, "projects", "gallery_hidden")? {
-        conn.execute_batch(
-            "ALTER TABLE projects ADD COLUMN gallery_hidden INTEGER NOT NULL DEFAULT 0;
-             ALTER TABLE projects ADD COLUMN gallery_skip TEXT NOT NULL DEFAULT '[]';",
-        )?;
-    }
-    // A plan's time as said, its exact date, and its place in the plans' order.
-    if !column_exists(conn, "projects", "plan_when")? {
-        conn.execute_batch(
-            "ALTER TABLE projects ADD COLUMN plan_when TEXT NOT NULL DEFAULT '';
-             ALTER TABLE projects ADD COLUMN plan_date INTEGER;
-             ALTER TABLE projects ADD COLUMN plan_order REAL NOT NULL DEFAULT 0;",
-        )?;
-    }
-    // How much of a yarn a project is expected to take; NULL when not said.
-    if !column_exists(conn, "project_yarns", "planned_grams")? {
-        conn.execute("ALTER TABLE project_yarns ADD COLUMN planned_grams INTEGER", [])?;
-    }
-    // When a yarn was used up; NULL while it is in the stash.
-    if !column_exists(conn, "yarns", "used_up_at")? {
-        conn.execute("ALTER TABLE yarns ADD COLUMN used_up_at INTEGER", [])?;
-    }
-    // How far a pattern was zoomed when last read; 1 is fit-width.
-    if !column_exists(conn, "patterns", "zoom")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN zoom REAL NOT NULL DEFAULT 1", [])?;
-    }
-    // A pattern removed to the Bin, to restore or delete for good; NULL while
-    // it is in the library.
-    if !column_exists(conn, "patterns", "removed_at")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN removed_at INTEGER", [])?;
-    }
-    // A chart's line steps up the page when a row is counted; text's, down.
-    if !column_exists(conn, "highlights", "reads_up")? {
-        conn.execute("ALTER TABLE highlights ADD COLUMN reads_up INTEGER NOT NULL DEFAULT 0", [])?;
-    }
-    // The line on the page: which page, and its box there as shares of it.
-    if !column_exists(conn, "highlights", "page")? {
-        conn.execute_batch(
-            "ALTER TABLE highlights ADD COLUMN page INTEGER NOT NULL DEFAULT 0;
-             ALTER TABLE highlights ADD COLUMN box_x REAL NOT NULL DEFAULT 0;
-             ALTER TABLE highlights ADD COLUMN box_y REAL NOT NULL DEFAULT 0;
-             ALTER TABLE highlights ADD COLUMN box_w REAL NOT NULL DEFAULT 0;
-             ALTER TABLE highlights ADD COLUMN box_h REAL NOT NULL DEFAULT 0;",
-        )?;
-    }
-    // A lot that is what a finished project left over.
-    if !column_exists(conn, "yarn_lots", "leftover")? {
-        conn.execute("ALTER TABLE yarn_lots ADD COLUMN leftover INTEGER NOT NULL DEFAULT 0", [])?;
-    }
-    // Ball bands' pictures are gone (0.3.32): their table goes when nothing
-    // is in it, and stays, unread, when something is.
-    let bands: Option<i64> = conn
-        .query_row("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ball_bands'", [], |r| r.get(0))
-        .optional()?;
-    if bands.is_some() && conn.query_row("SELECT COUNT(*) FROM ball_bands", [], |r| r.get::<_, i64>(0))? == 0 {
-        conn.execute("DROP TABLE ball_bands", [])?;
-    }
-    // Whether a lot's grams were weighed. A lot of balls at 0 g was never
-    // weighed -- it is its balls by the ball band -- unless a finished project
-    // left none of that yarn.
-    if !column_exists(conn, "yarn_lots", "weighed")? {
-        conn.execute_batch(
-            "ALTER TABLE yarn_lots ADD COLUMN weighed INTEGER NOT NULL DEFAULT 1;
-             UPDATE yarn_lots SET weighed = 0 WHERE grams_left = 0 AND balls > 0
-               AND NOT EXISTS (SELECT 1 FROM project_yarns py WHERE py.yarn_id = yarn_lots.yarn_id AND py.leftover_grams = 0);",
-        )?;
-    }
-    move_tools_into_projects(conn)?;
-    // A shop's tags, and a wishlist item's picture and when it went into the
-    // stash: for a library made by the first build with shops in it.
-    if !column_exists(conn, "shops", "tags")? {
-        conn.execute("ALTER TABLE shops ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'", [])?;
-    }
-    if !column_exists(conn, "wishlist", "photo_path")? {
-        conn.execute("ALTER TABLE wishlist ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // The projects from before the log get their start, and their end, as
-    // milestones, so every log begins where its project did. Once only.
-    let log_backfilled: bool = get_setting(conn, "project_log_backfill")?;
-    if !log_backfilled {
-        let projects: Vec<(String, String, i64, Option<i64>)> = conn
-            .prepare("SELECT id, status, started_at, finished_at FROM projects")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
-            .collect::<Result<_, _>>()?;
-        for (id, status, started, finished) in projects {
-            log_milestone(conn, &id, "Started", Some(started))?;
-            if let Some(end) = finished {
-                let what = if status == "frogged" { "Frogged" } else { "Finished" };
-                log_milestone(conn, &id, what, Some(end))?;
-            }
-        }
-        set_setting(conn, "project_log_backfill", &true)?;
-    }
-    // Who a project is for.
-    if !column_exists(conn, "projects", "person_id")? {
-        conn.execute("ALTER TABLE projects ADD COLUMN person_id TEXT REFERENCES people(id) ON DELETE SET NULL", [])?;
-    }
-    if !column_exists(conn, "wishlist", "brand")? {
-        conn.execute("ALTER TABLE wishlist ADD COLUMN brand TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    if !column_exists(conn, "wishlist", "stashed_at")? {
-        conn.execute("ALTER TABLE wishlist ADD COLUMN stashed_at INTEGER", [])?;
-    }
-    // A project's cover picture.
-    if !column_exists(conn, "projects", "cover_path")? {
-        conn.execute("ALTER TABLE projects ADD COLUMN cover_path TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // The system an interchangeable tip's or cable's connector is, which
-    // decides what fits it; the ones there already take it from their brand.
-    if !column_exists(conn, "tools", "connector")? {
-        conn.execute("ALTER TABLE tools ADD COLUMN connector TEXT NOT NULL DEFAULT ''", [])?;
-        let rows: Vec<(String, String)> = conn
-            .prepare("SELECT id, brand FROM tools WHERE kind IN ('tips', 'cable')")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<Result<_, _>>()?;
-        for (id, brand) in rows {
-            let system = crate::tools::connector_of_brand(&brand);
-            if !system.is_empty() {
-                conn.execute("UPDATE tools SET connector = ?2 WHERE id = ?1", params![id, system])?;
-            }
-        }
-    }
-    // An adapter's cable end: tips of its connector size on a cable of this.
-    if !column_exists(conn, "tools", "adapter_to")? {
-        conn.execute("ALTER TABLE tools ADD COLUMN adapter_to TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // A masterclass kept as one video is that video, as its first part: its
-    // picture's file is named by the masterclass's id, which the part takes.
-    // A masterclass always has a part, so this only ever finds the old ones.
-    conn.execute(
-        "INSERT INTO masterclass_videos (id, masterclass_id, position, title, url, video_id, channel, has_thumb, watched, added_at)
-         SELECT m.id, m.id, 0, m.title, m.url, m.video_id, m.channel, m.has_thumb, 0, m.added_at FROM masterclasses m
-         WHERE NOT EXISTS (SELECT 1 FROM masterclass_videos v WHERE v.masterclass_id = m.id)",
-        [],
-    )?;
-    // One tip of a pair of interchangeable tips on a project: which.
-    if !column_exists(conn, "project_tools", "tip")? {
-        conn.execute("ALTER TABLE project_tools ADD COLUMN tip TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // A tip of a pair was once said as right or left: the two are alike, so one.
-    conn.execute("UPDATE project_tools SET tip = 'one' WHERE tip IN ('right', 'left')", [])?;
-    // Prices: a ball's, by brand and yarn as the band's details are; a
-    // pattern's. None when not said.
-    if !column_exists(conn, "yarn_lots", "price")? {
-        conn.execute("ALTER TABLE yarn_lots ADD COLUMN price REAL", [])?;
-    }
-    if !column_exists(conn, "yarn_details", "price")? {
-        conn.execute("ALTER TABLE yarn_details ADD COLUMN price REAL", [])?;
-        // A price was once a lot's (0.3.86): each yarn takes the one said
-        // last for any of its colours, and the lots' are left behind.
-        let said: Vec<(String, String, f64)> = conn
-            .prepare(
-                "SELECT y.brand, y.name, l.price FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id
-                 WHERE l.price IS NOT NULL ORDER BY COALESCE(l.bought_at, y.added_at), l.rowid",
-            )?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-            .collect::<Result<_, _>>()?;
-        for (brand, name, price) in said {
-            conn.execute(
-                "INSERT INTO yarn_details (brand, name, price) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (brand, name) DO UPDATE SET price = ?3",
-                params![details_key(&brand), details_key(&name), price],
-            )?;
-        }
-        conn.execute("UPDATE yarn_lots SET price = NULL", [])?;
-    }
-    // Deadstock or cone yarn: its price is for 100 g.
-    if !column_exists(conn, "yarn_details", "deadstock")? {
-        conn.execute("ALTER TABLE yarn_details ADD COLUMN deadstock INTEGER NOT NULL DEFAULT 0", [])?;
-    }
-    // Deadstock priced by the cone, as bought.
-    if !column_exists(conn, "yarn_details", "per_cone")? {
-        conn.execute("ALTER TABLE yarn_details ADD COLUMN per_cone INTEGER NOT NULL DEFAULT 0", [])?;
-    }
-    if !column_exists(conn, "patterns", "price")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN price REAL", [])?;
-    }
-    // The size knitted from a pattern, as its place among the sizes.
-    if !column_exists(conn, "patterns", "size_index")? {
-        conn.execute("ALTER TABLE patterns ADD COLUMN size_index INTEGER", [])?;
-    }
-    // Needles and hooks: what one cost alone, and the set it came in, a set
-    // having one price for all its pieces.
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS tool_sets (
-            id       TEXT PRIMARY KEY,
-            name     TEXT NOT NULL,
-            price    REAL,
-            added_at INTEGER NOT NULL
-        );",
-    )?;
-    if !column_exists(conn, "tools", "price")? {
-        conn.execute("ALTER TABLE tools ADD COLUMN price REAL", [])?;
-    }
-    if !column_exists(conn, "tools", "set_id")? {
-        conn.execute("ALTER TABLE tools ADD COLUMN set_id TEXT REFERENCES tool_sets(id) ON DELETE SET NULL", [])?;
-    }
-    // Abbreviations of your own, for the glossary.
-    crate::abbreviations::migrate(conn)?;
-    // Goals for a year, for Statistics.
-    crate::goals::migrate(conn)?;
-    // Charts kept as pictures, for knitting or crochet.
-    crate::chart_pictures::migrate(conn)?;
-    // Crochet diagrams, as written.
-    crate::crochet::migrate(conn)?;
-    // A project's own hour's worth, when not the standard.
-    if !column_exists(conn, "projects", "hour_rate")? {
-        conn.execute("ALTER TABLE projects ADD COLUMN hour_rate REAL", [])?;
-    }
-    // Time spent knitting a project: spells of it, one timed at a time.
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS knit_sessions (
-            id         TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            started_at INTEGER NOT NULL,
-            ended_at   INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_knit_sessions_project ON knit_sessions(project_id);",
-    )?;
-    // A sitting paused -- a break, not its end: the time paused, and when the pause now on began.
-    if !column_exists(conn, "knit_sessions", "paused_ms")? {
-        conn.execute("ALTER TABLE knit_sessions ADD COLUMN paused_ms INTEGER NOT NULL DEFAULT 0", [])?;
-        conn.execute("ALTER TABLE knit_sessions ADD COLUMN paused_at INTEGER", [])?;
-    }
-    // The pattern a masterclass goes with.
-    if !column_exists(conn, "masterclasses", "pattern_id")? {
-        conn.execute("ALTER TABLE masterclasses ADD COLUMN pattern_id TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // The masterclass a project is knitted along with.
-    if !column_exists(conn, "projects", "masterclass_id")? {
-        conn.execute("ALTER TABLE projects ADD COLUMN masterclass_id TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // The size a project is knitted in, as said.
-    if !column_exists(conn, "projects", "size")? {
-        conn.execute("ALTER TABLE projects ADD COLUMN size TEXT NOT NULL DEFAULT ''", [])?;
-    }
-    // A cheatsheet of part of a page: the box kept, as JSON; empty for all of it.
-    if !column_exists(conn, "cheatsheets", "region")? {
-        conn.execute("ALTER TABLE cheatsheets ADD COLUMN region TEXT NOT NULL DEFAULT ''", [])?;
-    }
-
-    // Books have a tab of their own, found by the tag `book`; the EPUBs
-    // already in the library are books, and are tagged so, once (one untagged
-    // afterwards stays untagged).
-    let epubs_tagged: bool = get_setting(conn, "epubs_tagged_book")?;
-    if !epubs_tagged {
-        tag_epubs_as_books(conn)?;
-        set_setting(conn, "epubs_tagged_book", &true)?;
-    }
-
-    // Every pattern used to start as "want to knit", so in a large library the
-    // status said nothing. Now a pattern starts with none, and "want to knit"
-    // is for the ones actually planned; the ones that only had it by default
-    // lose it, once.
-    let status_reset: bool = get_setting(conn, "patterns_no_default_status")?;
-    if !status_reset {
-        conn.execute("UPDATE patterns SET status = '' WHERE status = 'want-to-knit'", [])?;
-        set_setting(conn, "patterns_no_default_status", &true)?;
-    }
-    // A pattern with a project on the needles is in progress; ones started
-    // before that was automatic catch up, once.
-    let in_progress: bool = get_setting(conn, "patterns_in_progress_from_projects")?;
-    if !in_progress {
-        conn.execute(
-            "UPDATE patterns SET status = 'in-progress'
-             WHERE status IN ('', 'want-to-knit')
-               AND id IN (SELECT pattern_id FROM projects WHERE status = 'active' AND pattern_id IS NOT NULL)",
-            [],
-        )?;
-        set_setting(conn, "patterns_in_progress_from_projects", &true)?;
-    }
-
-    // The line is now off by default: most patterns are read rather than
-    // counted against a chart, and for those it was in the way. Lines still on
-    // the old factory setting -- every style field untouched -- are switched
-    // off; a line someone has restyled was set up on purpose and keeps its
-    // state. The position is not part of the test, since clicking the page
-    // moves it without anyone meaning to configure anything. Once only, for
-    // the same reason as the opacity migration above.
-    let off_migrated: bool = get_setting(conn, "highlight_off_by_default")?;
-    if !off_migrated {
-        conn.execute(
-            "UPDATE highlights SET enabled = 0
-             WHERE ABS(thickness - 3.0) < 0.0001 AND ABS(width) < 0.0001
-               AND ABS(inset_x - 24.0) < 0.0001 AND color = '#e5484d'
-               AND ABS(opacity - 0.3) < 0.0001 AND animate = 1 AND animation_ms = 260",
-            [],
-        )?;
-        set_setting(conn, "highlight_off_by_default", &true)?;
-    }
-    Ok(())
-}
-
-/// Works out the family of every row of `table` again, from what it states.
-fn rederive_families(conn: &Connection, table: &str) -> AppResult<()> {
-    // `table` is one of two literals from migrate(), never user input.
-    let rows: Vec<(String, String)> = conn
-        .prepare(&format!("SELECT id, yarn_weight FROM {table}"))?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<_, _>>()?;
-    for (id, weight) in rows {
-        conn.execute(
-            &format!("UPDATE {table} SET yarn_weight_family = ?2 WHERE id = ?1"),
-            params![id, crate::yarn::family_of(&weight)],
-        )?;
-    }
-    Ok(())
-}
-
-/// Fills in the derived yarn family for any row that states a weight but has
-/// no family yet.
-///
-/// Idempotent, and cheap on an already-migrated library because the `WHERE`
-/// matches nothing once every row is up to date.
-fn backfill_yarn_families(conn: &Connection) -> AppResult<()> {
-    let stale: Vec<(String, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT id, yarn_weight FROM patterns WHERE yarn_weight <> '' AND yarn_weight_family = ''")?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        out
-    };
-    for (id, weight) in stale {
-        conn.execute(
-            "UPDATE patterns SET yarn_weight_family = ?2 WHERE id = ?1",
-            params![id, crate::yarn::family_of(&weight)],
-        )?;
-    }
-    Ok(())
-}
-
-/// Fills in the derived needle sizes for any row that states a size but has
-/// none derived yet.
-///
-/// Idempotent in the same way as `backfill_yarn_families`: the `WHERE`
-/// matches nothing once every row is up to date, so no one-shot flag is
-/// needed.
-fn backfill_needle_sizes(conn: &Connection) -> AppResult<()> {
-    let stale: Vec<(String, String)> = {
-        let mut stmt = conn
-            .prepare("SELECT id, needle_size FROM patterns WHERE needle_size <> '' AND needle_sizes = '[]'")?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        out
-    };
-    for (id, size) in stale {
-        conn.execute(
-            "UPDATE patterns SET needle_sizes = ?2 WHERE id = ?1",
-            params![id, needle_sizes_json(&size)],
-        )?;
-    }
-    Ok(())
-}
-
 /// The derived needle sizes of a stated size, as the JSON array stored in
 /// `patterns.needle_sizes`.
 fn needle_sizes_json(text: &str) -> String {
     serde_json::to_string(&crate::needle_size::sizes_of(text)).unwrap_or_else(|_| "[]".to_string())
-}
-
-/// Fills in the content hash for any pattern added before hashing existed.
-///
-/// The originals folder is derived from the database's own location -- the db
-/// sits beside `library/originals` -- and each row's file is found there by
-/// the file name its `file_path` ends in, so both absolute and relative stored
-/// paths resolve. Best-effort: a file that is missing or unreadable keeps its
-/// empty hash rather than failing the launch, and an empty hash never matches
-/// anything, so the row simply stays outside duplicate detection.
-///
-/// Idempotent in the same way as `backfill_yarn_families`: the `WHERE` matches
-/// nothing once every readable row is done. An in-memory database has no file
-/// location, so there is nothing to derive and nothing to do.
-fn backfill_file_hashes(conn: &Connection) -> AppResult<()> {
-    let db_file: String = conn.query_row(
-        "SELECT file FROM pragma_database_list WHERE name = 'main'",
-        [],
-        |r| r.get(0),
-    )?;
-    if db_file.is_empty() {
-        return Ok(());
-    }
-    let originals = Path::new(&db_file)
-        .parent()
-        .map(|base| base.join("library").join("originals"));
-
-    let stale: Vec<(String, String)> = {
-        let mut stmt =
-            conn.prepare("SELECT id, file_path FROM patterns WHERE file_hash = ''")?;
-        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        let mut out = Vec::new();
-        for r in rows {
-            out.push(r?);
-        }
-        out
-    };
-    let Some(originals) = originals else { return Ok(()) };
-    for (id, file_path) in stale {
-        let Some(file_name) = Path::new(&file_path).file_name() else {
-            continue;
-        };
-        if let Ok(bytes) = std::fs::read(originals.join(file_name)) {
-            conn.execute(
-                "UPDATE patterns SET file_hash = ?2 WHERE id = ?1",
-                params![id, hash_bytes(&bytes)],
-            )?;
-        }
-    }
-    Ok(())
 }
 
 /// The hex SHA-256 of a pattern file's contents, which is what duplicate
@@ -1089,35 +69,6 @@ pub fn pattern_with_hash(conn: &Connection, hash: &str) -> AppResult<Option<Patt
         .optional()?)
 }
 
-/// Reports whether a table exists at all.
-///
-/// Used to decide whether the section-to-counter migration has already run,
-/// since `CREATE TABLE IF NOT EXISTS` cannot tell "not yet" from "already
-/// done" and the two need opposite handling.
-fn table_exists(conn: &Connection, table: &str) -> AppResult<bool> {
-    // The name is a compile-time constant from this module, never user input.
-    let found: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
-        [table],
-        |r| r.get(0),
-    )?;
-    Ok(found > 0)
-}
-
-/// Reports whether a table already has a column.
-fn column_exists(conn: &Connection, table: &str, column: &str) -> AppResult<bool> {
-    // table_info takes a literal, and both values here are compile-time
-    // constants from this module, never user input.
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let name: String = row.get(1)?;
-        if name == column {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -1346,6 +297,9 @@ pub fn insert_pattern(
     let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
     let added = now_ms();
 
+    // The pattern and the rows seeded with it, all or none.
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     conn.execute(
         "INSERT INTO patterns
          (id, title, designer, file_path, file_name, format, status, difficulty,
@@ -1379,8 +333,9 @@ pub fn insert_pattern(
     )?;
     let h = HighlightSettings::defaults(id);
     save_highlight(conn, &h)?;
-
-    get_pattern(conn, id)
+    let pattern = get_pattern(conn, id)?;
+    tx.commit()?;
+    Ok(pattern)
 }
 
 pub fn update_pattern(conn: &Connection, pattern: &Pattern) -> AppResult<Pattern> {
@@ -1551,8 +506,9 @@ pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppRe
         conn.execute("UPDATE projects SET pattern_id = ?1 WHERE pattern_id = ?2", params![keep, copy_id])?;
         conn.execute("UPDATE tools SET pattern_id = ?1 WHERE pattern_id = ?2", params![keep, copy_id])?;
         let cards: Vec<(String, String)> = conn
-            .prepare("SELECT id, data FROM board_items WHERE kind = 'pattern'")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            // Only the cards whose data names the copy at all; each read below.
+            .prepare("SELECT id, data FROM board_items WHERE kind = 'pattern' AND instr(data, ?1) > 0")?
+            .query_map(params![copy_id], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<Result<_, _>>()?;
         for (item, data) in cards {
             let mut value: serde_json::Value = serde_json::from_str(&data).unwrap_or_default();
@@ -2478,11 +1434,26 @@ fn row_to_annotation(row: &rusqlite::Row) -> rusqlite::Result<Annotation> {
     })
 }
 
+/// A mark's shape: a list of rectangles or points, each with a finite x and y.
+/// Anything else would fail to draw every time the pattern is opened.
+fn check_geometry(geometry: &str) -> AppResult<()> {
+    let invalid = || AppError::Message("Invalid mark shape.".to_string());
+    let parsed: serde_json::Value = serde_json::from_str(geometry).map_err(|_| invalid())?;
+    let items = parsed.as_array().filter(|a| !a.is_empty()).ok_or_else(invalid)?;
+    let finite = |i: &serde_json::Value, k: &str| i.get(k).and_then(|v| v.as_f64()).is_some_and(f64::is_finite);
+    if items.iter().all(|i| finite(i, "x") && finite(i, "y")) {
+        Ok(())
+    } else {
+        Err(invalid())
+    }
+}
+
 pub fn insert_annotation(
     conn: &Connection,
     pattern_id: &str,
     input: &AnnotationInput,
 ) -> AppResult<Annotation> {
+    check_geometry(&input.geometry)?;
     let id = uuid::Uuid::new_v4().to_string();
     // An unrecognised kind becomes a highlight, so a row written by a future
     // version can never leave a pattern with a mark nothing knows how to draw.
@@ -2525,11 +1496,7 @@ pub fn insert_annotation(
 /// A mark moved or resized: its new geometry, which must be a list of
 /// rectangles or points, as every mark's is.
 pub fn set_annotation_geometry(conn: &Connection, id: &str, geometry: &str) -> AppResult<Annotation> {
-    let parsed: serde_json::Value = serde_json::from_str(geometry).map_err(|_| AppError::Message("Invalid mark shape.".to_string()))?;
-    let items = parsed.as_array().filter(|a| !a.is_empty()).ok_or_else(|| AppError::Message("Invalid mark shape.".to_string()))?;
-    if !items.iter().all(|i| i.get("x").and_then(|v| v.as_f64()).is_some_and(f64::is_finite) && i.get("y").and_then(|v| v.as_f64()).is_some_and(f64::is_finite)) {
-        return Err(AppError::Message("Invalid mark shape.".to_string()));
-    }
+    check_geometry(geometry)?;
     let changed = conn.execute("UPDATE annotations SET geometry = ?2 WHERE id = ?1", params![id, geometry])?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("No annotation with id {id}.")));
@@ -2797,12 +1764,16 @@ fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> App
 }
 
 pub fn delete_tool(conn: &Connection, id: &str) -> AppResult<()> {
+    let tx = conn.unchecked_transaction()?;
     // A swatch knitted on it keeps the size.
-    conn.execute("UPDATE swatches SET tool_id = NULL WHERE tool_id = ?1", params![id])?;
-    let changed = conn.execute("DELETE FROM tools WHERE id = ?1", params![id])?;
+    tx.execute("UPDATE swatches SET tool_id = NULL WHERE tool_id = ?1", params![id])?;
+    // Off its projects: said here, not left to ON DELETE CASCADE.
+    tx.execute("DELETE FROM project_tools WHERE tool_id = ?1", params![id])?;
+    let changed = tx.execute("DELETE FROM tools WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("No needle or hook with id {id}.")));
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -3118,37 +2089,61 @@ const PROJECT_SELECT: &str = "SELECT pr.*, COALESCE(p.title, '') AS pattern_titl
      LEFT JOIN people pe ON pe.id = pr.person_id
      LEFT JOIN masterclasses mc ON mc.id = pr.masterclass_id";
 
-/// Fills in a project's tools and yarns.
-fn with_links(conn: &Connection, mut project: Project) -> AppResult<Project> {
+/// Projects' tools and yarns by project: one project's, or with None, every
+/// project's in one go -- two queries, however many projects.
+type ProjectLinks = (HashMap<String, Vec<(String, String)>>, HashMap<String, Vec<ProjectYarn>>);
+fn project_links(conn: &Connection, project_id: Option<&str>) -> AppResult<ProjectLinks> {
+    let mut tools: HashMap<String, Vec<(String, String)>> = HashMap::new();
     let mut stmt = conn.prepare(
-        "SELECT tool_id, tip FROM project_tools WHERE project_id = ?1 ORDER BY added_at, rowid",
+        "SELECT project_id, tool_id, tip FROM project_tools WHERE ?1 IS NULL OR project_id = ?1 ORDER BY added_at, rowid",
     )?;
-    let links: Vec<(String, String)> = stmt
-        .query_map(params![project.id], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<_, _>>()?;
-    project.tool_tips = links.iter().filter(|(_, tip)| !tip.is_empty()).cloned().collect();
-    project.tool_ids = links.into_iter().map(|(id, _)| id).collect();
+    let rows = stmt.query_map(params![project_id], |r| Ok((r.get::<_, String>(0)?, (r.get(1)?, r.get(2)?))))?;
+    for row in rows {
+        let (project, link) = row?;
+        tools.entry(project).or_default().push(link);
+    }
+    let mut yarns: HashMap<String, Vec<ProjectYarn>> = HashMap::new();
     let mut stmt = conn.prepare(
-        "SELECT py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams, py.planned_grams
+        "SELECT py.project_id, py.id, py.yarn_id, y.name, py.lot_id, COALESCE(l.dye_lot, '') AS dye_lot, py.leftover_grams, py.planned_grams
          FROM project_yarns py
          JOIN yarns y ON y.id = py.yarn_id
          LEFT JOIN yarn_lots l ON l.id = py.lot_id
-         WHERE py.project_id = ?1 ORDER BY py.added_at, py.rowid",
+         WHERE ?1 IS NULL OR py.project_id = ?1 ORDER BY py.added_at, py.rowid",
     )?;
-    project.yarns = stmt
-        .query_map(params![project.id], |r| {
-            Ok(ProjectYarn {
-                id: r.get(0)?,
-                yarn_id: r.get(1)?,
-                yarn_name: r.get(2)?,
-                lot_id: r.get(3)?,
-                dye_lot: r.get(4)?,
-                leftover_grams: r.get(5)?,
-                planned_grams: r.get(6)?,
-            })
-        })?
-        .collect::<Result<_, _>>()?;
-    Ok(project)
+    let rows = stmt.query_map(params![project_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            ProjectYarn {
+                id: r.get(1)?,
+                yarn_id: r.get(2)?,
+                yarn_name: r.get(3)?,
+                lot_id: r.get(4)?,
+                dye_lot: r.get(5)?,
+                leftover_grams: r.get(6)?,
+                planned_grams: r.get(7)?,
+            },
+        ))
+    })?;
+    for row in rows {
+        let (project, yarn) = row?;
+        yarns.entry(project).or_default().push(yarn);
+    }
+    Ok((tools, yarns))
+}
+
+/// Puts a project's tools and yarns on it, from what project_links found.
+fn put_links(mut project: Project, links: &mut ProjectLinks) -> Project {
+    let tools = links.0.remove(&project.id).unwrap_or_default();
+    project.tool_tips = tools.iter().filter(|(_, tip)| !tip.is_empty()).cloned().collect();
+    project.tool_ids = tools.into_iter().map(|(id, _)| id).collect();
+    project.yarns = links.1.remove(&project.id).unwrap_or_default();
+    project
+}
+
+/// Fills in a project's tools and yarns.
+fn with_links(conn: &Connection, project: Project) -> AppResult<Project> {
+    let mut links = project_links(conn, Some(&project.id))?;
+    Ok(put_links(project, &mut links))
 }
 
 /// Every project: active ones first, the latest started first within each.
@@ -3157,7 +2152,8 @@ pub fn list_projects(conn: &Connection) -> AppResult<Vec<Project>> {
         "{PROJECT_SELECT} ORDER BY (pr.status = 'active') DESC, (pr.status = 'paused') DESC, pr.started_at DESC, pr.created_at DESC"
     ))?;
     let rows: Vec<Project> = stmt.query_map([], row_to_project)?.collect::<Result<_, _>>()?;
-    rows.into_iter().map(|p| with_links(conn, p)).collect()
+    let mut links = project_links(conn, None)?;
+    Ok(rows.into_iter().map(|p| put_links(p, &mut links)).collect())
 }
 
 pub fn get_project(conn: &Connection, id: &str) -> AppResult<Project> {
@@ -3446,6 +2442,16 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
     if !is_live(&project.status) {
         return Err(AppError::Message("That project is already finished or frogged.".to_string()));
     }
+    // Each yarn once: a second line for it would take its use off twice.
+    let said: Vec<&str> = input
+        .leftovers
+        .iter()
+        .filter(|l| l.grams.is_some() || l.used_grams.is_some() || l.used_balls.is_some())
+        .map(|l| l.entry_id.as_str())
+        .collect();
+    if said.iter().enumerate().any(|(i, e)| said[..i].contains(e)) {
+        return Err(AppError::Message("A yarn is listed twice.".to_string()));
+    }
     let now = now_ms();
     let tx = conn.unchecked_transaction()?;
     tx.execute(
@@ -3501,6 +2507,11 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
                 .unwrap_or(0),
             None => 0,
         };
+        // A lot does not grow by being knitted from: more left than it held
+        // is a slip in the weighing or the sum. Not known (0 g), anything goes.
+        if let Some(g) = left.grams.filter(|g| lot.is_some() && before > 0 && *g > before) {
+            return Err(AppError::Message(format!("{}: {g} g left is more than its lot held ({before} g).", entry.yarn_name)));
+        }
         // A ball used is the ball band's weight of it.
         let used_balls = match left.used_balls {
             Some(balls) => {
@@ -3666,41 +2677,71 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
 const CARD_PICTURES: usize = 4;
 const CARD_COLOURS: usize = 6;
 
-fn row_to_inspiration(conn: &Connection, id: String, name: String, created_at: i64, updated_at: i64) -> AppResult<InspirationBoard> {
-    let items: Vec<(String, String, String, String)> = conn
-        .prepare(
-            "SELECT id, kind, data, image_file FROM board_items WHERE board_id = ?1
-             ORDER BY created_at DESC",
-        )?
-        .query_map(params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
-        .collect::<Result<_, _>>()?;
-    let mut pictures = Vec::new();
-    let mut colours = Vec::new();
-    for (item, kind, data, image) in &items {
-        let data: serde_json::Value = serde_json::from_str(data).unwrap_or_default();
+/// What a board's card shows of its items: how many, the first pictures and
+/// the first swatch colours.
+#[derive(Default)]
+struct BoardCard {
+    count: i64,
+    pictures: Vec<BoardPicture>,
+    colours: Vec<String>,
+}
+
+/// The cards of one board or, with None, of every board, in one query: a
+/// pattern item's cover and a yarn item's photo come with it, joined.
+fn board_cards(conn: &Connection, board: Option<&str>) -> AppResult<HashMap<String, BoardCard>> {
+    let mut stmt = conn.prepare(
+        "SELECT bi.board_id, bi.id, bi.kind, bi.data, bi.image_file,
+                COALESCE(p.cover_path, ''), COALESCE(y.photo_path, '')
+         FROM board_items bi
+         LEFT JOIN patterns p ON bi.kind = 'pattern' AND json_valid(bi.data)
+              AND json_type(bi.data, '$.patternId') = 'text' AND p.id = json_extract(bi.data, '$.patternId')
+         LEFT JOIN yarns y ON bi.kind = 'yarn' AND json_valid(bi.data)
+              AND json_type(bi.data, '$.yarnId') = 'text' AND y.id = json_extract(bi.data, '$.yarnId')
+         WHERE ?1 IS NULL OR bi.board_id = ?1
+         ORDER BY bi.created_at DESC",
+    )?;
+    let rows = stmt.query_map(params![board], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+            r.get::<_, String>(5)?,
+            r.get::<_, String>(6)?,
+        ))
+    })?;
+    let mut cards: HashMap<String, BoardCard> = HashMap::new();
+    for row in rows {
+        let (board, item, kind, data, image, cover, photo) = row?;
+        let card = cards.entry(board).or_default();
+        card.count += 1;
+        let data: serde_json::Value = serde_json::from_str(&data).unwrap_or_default();
         let field = |k: &str| data.get(k).and_then(|v| v.as_str()).map(str::to_string);
         // Only what has a picture to show: a pattern with a cover, a yarn with a photo.
-        let has = |sql: &str, id: &str| -> bool {
-            conn.query_row(sql, params![id], |r| r.get::<_, String>(0)).map(|f| !f.is_empty()).unwrap_or(false)
-        };
         let picture = match kind.as_str() {
-            "image" if !image.is_empty() => Some(item.clone()),
-            "pattern" => field("patternId").filter(|id| has("SELECT cover_path FROM patterns WHERE id = ?1", id)),
-            "yarn" => field("yarnId").filter(|id| has("SELECT photo_path FROM yarns WHERE id = ?1", id)),
+            "image" if !image.is_empty() => Some(item),
+            "pattern" if !cover.is_empty() => field("patternId"),
+            "yarn" if !photo.is_empty() => field("yarnId"),
             _ => None,
         };
         if let Some(pic) = picture {
-            if pictures.len() < CARD_PICTURES {
-                pictures.push(BoardPicture { kind: kind.clone(), id: pic });
+            if card.pictures.len() < CARD_PICTURES {
+                card.pictures.push(BoardPicture { kind: kind.clone(), id: pic });
             }
         }
-        if kind == "swatch" && colours.len() < CARD_COLOURS {
+        if kind == "swatch" && card.colours.len() < CARD_COLOURS {
             if let Some(c) = field("colour") {
-                colours.push(c);
+                card.colours.push(c);
             }
         }
     }
-    Ok(InspirationBoard { id, name, created_at, updated_at, item_count: items.len() as i64, pictures, colours })
+    Ok(cards)
+}
+
+fn row_to_inspiration(id: String, name: String, created_at: i64, updated_at: i64, cards: &mut HashMap<String, BoardCard>) -> InspirationBoard {
+    let card = cards.remove(&id).unwrap_or_default();
+    InspirationBoard { id, name, created_at, updated_at, item_count: card.count, pictures: card.pictures, colours: card.colours }
 }
 
 pub fn list_inspiration_boards(conn: &Connection) -> AppResult<Vec<InspirationBoard>> {
@@ -3708,7 +2749,8 @@ pub fn list_inspiration_boards(conn: &Connection) -> AppResult<Vec<InspirationBo
         .prepare("SELECT id, name, created_at, updated_at FROM inspiration_boards ORDER BY updated_at DESC, created_at DESC")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
         .collect::<Result<_, _>>()?;
-    rows.into_iter().map(|(id, name, c, u)| row_to_inspiration(conn, id, name, c, u)).collect()
+    let mut cards = board_cards(conn, None)?;
+    Ok(rows.into_iter().map(|(id, name, c, u)| row_to_inspiration(id, name, c, u, &mut cards)).collect())
 }
 
 pub fn get_inspiration_board(conn: &Connection, id: &str) -> AppResult<InspirationBoard> {
@@ -3718,7 +2760,8 @@ pub fn get_inspiration_board(conn: &Connection, id: &str) -> AppResult<Inspirati
         })
         .optional()?
         .ok_or_else(|| AppError::NotFound("This board no longer exists.".to_string()))?;
-    row_to_inspiration(conn, id.to_string(), name, c, u)
+    let mut cards = board_cards(conn, Some(id))?;
+    Ok(row_to_inspiration(id.to_string(), name, c, u, &mut cards))
 }
 
 /// A board's name: what was typed, or a plain one when nothing was.
@@ -5122,39 +4165,96 @@ fn row_to_yarn(row: &rusqlite::Row) -> rusqlite::Result<Yarn> {
 /// grams left across every lot, the total ball count, and the metres that
 /// much yarn works out to. The metres need both per-ball figures; with either
 /// missing the honest answer is zero rather than a guess.
-fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
-    yarn.lots = list_yarn_lots(conn, &yarn.id)?;
-    yarn.projects = conn
-        .prepare(
-            "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
-             WHERE py.yarn_id = ?1 AND pr.status IN ('active', 'paused') ORDER BY pr.name",
-        )?
-        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
-        .collect::<Result<_, _>>()?;
-    yarn.planned_in = conn
-        .prepare(
-            "SELECT DISTINCT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
-             WHERE py.yarn_id = ?1 AND pr.status = 'planned' ORDER BY pr.plan_order, pr.name",
-        )?
-        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
-        .collect::<Result<_, _>>()?;
-    yarn.used_in = conn
-        .prepare(
-            "SELECT pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
-             WHERE py.yarn_id = ?1 AND pr.status <> 'planned' GROUP BY pr.id ORDER BY MIN(pr.started_at), pr.name",
-        )?
-        .query_map(params![yarn.id], |r| r.get::<_, String>(0))?
-        .collect::<Result<_, _>>()?;
+/// What a yarn shows besides its own row -- its lots, the projects it is on,
+/// planned for and was used in, its plans' pattern titles and its ball band --
+/// for one yarn or, with None, for every yarn: a query each, however many yarns.
+#[derive(Default)]
+struct YarnLinks {
+    lots: HashMap<String, Vec<YarnLot>>,
+    projects: HashMap<String, Vec<String>>,
+    planned_in: HashMap<String, Vec<String>>,
+    used_in: HashMap<String, Vec<String>>,
+    titles: HashMap<String, String>,
+    /// By brand and name as yarn_details matches them (NOCASE: ASCII case folded).
+    details: HashMap<(String, String), YarnDetails>,
+}
+
+/// The key yarn_details is matched by, as a map key.
+fn details_map_key(brand: &str, name: &str) -> (String, String) {
+    (details_key(brand).to_ascii_lowercase(), details_key(name).to_ascii_lowercase())
+}
+
+fn yarn_links(conn: &Connection, only: Option<&Yarn>, plans: &[&YarnPlan]) -> AppResult<YarnLinks> {
+    let id = only.map(|y| y.id.as_str());
+    let mut links = YarnLinks::default();
+    let mut stmt = conn.prepare("SELECT * FROM yarn_lots WHERE ?1 IS NULL OR yarn_id = ?1 ORDER BY rowid ASC")?;
+    for lot in stmt.query_map(params![id], row_to_lot)? {
+        let lot = lot?;
+        links.lots.entry(lot.yarn_id.clone()).or_default().push(lot);
+    }
+    let names = |sql: &str, into: &mut HashMap<String, Vec<String>>| -> AppResult<()> {
+        let mut stmt = conn.prepare(sql)?;
+        for row in stmt.query_map(params![id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            let (yarn, name) = row?;
+            into.entry(yarn).or_default().push(name);
+        }
+        Ok(())
+    };
+    names(
+        "SELECT DISTINCT py.yarn_id, pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+         WHERE (?1 IS NULL OR py.yarn_id = ?1) AND pr.status IN ('active', 'paused') ORDER BY pr.name",
+        &mut links.projects,
+    )?;
+    names(
+        "SELECT DISTINCT py.yarn_id, pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+         WHERE (?1 IS NULL OR py.yarn_id = ?1) AND pr.status = 'planned' ORDER BY pr.plan_order, pr.name",
+        &mut links.planned_in,
+    )?;
+    names(
+        "SELECT py.yarn_id, pr.name FROM project_yarns py JOIN projects pr ON pr.id = py.project_id
+         WHERE (?1 IS NULL OR py.yarn_id = ?1) AND pr.status <> 'planned'
+         GROUP BY py.yarn_id, pr.id ORDER BY MIN(pr.started_at), pr.name",
+        &mut links.used_in,
+    )?;
+    let ids: Vec<&str> = plans.iter().filter_map(|p| p.pattern_id.as_deref()).collect();
+    if !ids.is_empty() {
+        let mut stmt = conn.prepare("SELECT id, title FROM patterns WHERE id IN (SELECT value FROM json_each(?1))")?;
+        for row in stmt.query_map(params![serde_json::to_string(&ids)?], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+            let (id, title) = row?;
+            links.titles.insert(id, title);
+        }
+    }
+    match only {
+        Some(y) => {
+            links.details.insert(details_map_key(&y.brand, &y.name), get_yarn_details(conn, &y.brand, &y.name)?);
+        }
+        None => {
+            let mut stmt = conn.prepare(&format!("SELECT brand, name, {DETAILS_COLUMNS} FROM yarn_details"))?;
+            for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, row_to_details(r, 2)?)))? {
+                let (brand, name, details) = row?;
+                links.details.insert(details_map_key(&brand, &name), details);
+            }
+        }
+    }
+    Ok(links)
+}
+
+/// Puts on a yarn what yarn_links found for it, and the sums of its lots.
+fn put_yarn_links(mut yarn: Yarn, links: &mut YarnLinks) -> Yarn {
+    yarn.lots = links.lots.remove(&yarn.id).unwrap_or_default();
+    yarn.projects = links.projects.remove(&yarn.id).unwrap_or_default();
+    yarn.planned_in = links.planned_in.remove(&yarn.id).unwrap_or_default();
+    yarn.used_in = links.used_in.remove(&yarn.id).unwrap_or_default();
     // A linked pattern's title as it is now; a pattern removed since leaves
     // the plan with the title it had.
     for plan in &mut yarn.plans {
-        let Some(id) = plan.pattern_id.clone() else { continue };
-        match conn.query_row("SELECT title FROM patterns WHERE id = ?1", params![id], |r| r.get::<_, String>(0)).optional()? {
-            Some(title) => plan.title = title,
+        let Some(id) = &plan.pattern_id else { continue };
+        match links.titles.get(id) {
+            Some(title) => plan.title = title.clone(),
             None => plan.pattern_id = None,
         }
     }
-    yarn.details = Some(get_yarn_details(conn, &yarn.brand, &yarn.name)?);
+    yarn.details = Some(links.details.get(&details_map_key(&yarn.brand, &yarn.name)).cloned().unwrap_or_default());
     yarn.grams_left = yarn.lots.iter().map(|l| l.grams(yarn.grams_per_ball)).sum();
     yarn.balls_total = yarn.lots.iter().map(|l| l.balls).sum();
     yarn.metres_left = if yarn.grams_per_ball > 0 && yarn.metres_per_ball > 0 {
@@ -5163,9 +4263,15 @@ fn with_lots(conn: &Connection, mut yarn: Yarn) -> AppResult<Yarn> {
     } else {
         0
     };
-    Ok(yarn)
+    yarn
 }
 
+fn with_lots(conn: &Connection, yarn: Yarn) -> AppResult<Yarn> {
+    let mut links = yarn_links(conn, Some(&yarn), &yarn.plans.iter().collect::<Vec<_>>())?;
+    Ok(put_yarn_links(yarn, &mut links))
+}
+
+#[cfg(test)]
 pub fn list_yarn_lots(conn: &Connection, yarn_id: &str) -> AppResult<Vec<YarnLot>> {
     let mut stmt =
         conn.prepare("SELECT * FROM yarn_lots WHERE yarn_id = ?1 ORDER BY rowid ASC")?;
@@ -5225,12 +4331,12 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
 
     let mut stmt = conn.prepare(&sql)?;
     let refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|b| b.as_ref()).collect();
-    let rows = stmt.query_map(refs.as_slice(), row_to_yarn)?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(with_lots(conn, r?)?);
-    }
-    Ok(out)
+    let yarns: Vec<Yarn> = stmt.query_map(refs.as_slice(), row_to_yarn)?.collect::<Result<_, _>>()?;
+    let mut links = {
+        let plans: Vec<&YarnPlan> = yarns.iter().flat_map(|y| &y.plans).collect();
+        yarn_links(conn, None, &plans)?
+    };
+    Ok(yarns.into_iter().map(|y| put_yarn_links(y, &mut links)).collect())
 }
 
 /// A fibre content as stored: names trimmed, empty ones dropped, a fibre
@@ -5324,26 +4430,31 @@ fn details_key(v: &str) -> String {
     v.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+const DETAILS_COLUMNS: &str = "gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock, per_cone";
+
+/// A yarn_details row's DETAILS_COLUMNS, from the column at `at` on.
+fn row_to_details(r: &rusqlite::Row, at: usize) -> rusqlite::Result<YarnDetails> {
+    Ok(YarnDetails {
+        gauge_sts: r.get(at)?,
+        gauge_rows: r.get(at + 1)?,
+        needle_from: r.get(at + 2)?,
+        needle_to: r.get(at + 3)?,
+        care: serde_json::from_str(&r.get::<_, String>(at + 4)?).unwrap_or_default(),
+        price: r.get(at + 5)?,
+        deadstock: r.get(at + 6)?,
+        per_cone: r.get(at + 7)?,
+    })
+}
+
 /// What the ball band says of a yarn, and what a ball of it (or 100 g of a
 /// deadstock one) costs, by its brand and name; all 0 and no price when
 /// nothing is.
 pub fn get_yarn_details(conn: &Connection, brand: &str, name: &str) -> AppResult<YarnDetails> {
     Ok(conn
         .query_row(
-            "SELECT gauge_sts, gauge_rows, needle_from, needle_to, care, price, deadstock, per_cone FROM yarn_details WHERE brand = ?1 AND name = ?2",
+            &format!("SELECT {DETAILS_COLUMNS} FROM yarn_details WHERE brand = ?1 AND name = ?2"),
             params![details_key(brand), details_key(name)],
-            |r| {
-                Ok(YarnDetails {
-                    gauge_sts: r.get(0)?,
-                    gauge_rows: r.get(1)?,
-                    needle_from: r.get(2)?,
-                    needle_to: r.get(3)?,
-                    care: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or_default(),
-                    price: r.get(5)?,
-                    deadstock: r.get(6)?,
-                    per_cone: r.get(7)?,
-                })
-            },
+            |r| row_to_details(r, 0),
         )
         .optional()?
         .unwrap_or_default())
@@ -5518,6 +4629,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
 }
 
 pub fn delete_yarn(conn: &Connection, id: &str) -> AppResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     // Its swatches stay, and still say what they were knitted in.
     conn.execute(
         "UPDATE swatches SET yarn_text = COALESCE((SELECT TRIM(brand || ' ' || name) || CASE WHEN colourway <> '' THEN ', ' || colourway ELSE '' END
@@ -5525,11 +4638,13 @@ pub fn delete_yarn(conn: &Connection, id: &str) -> AppResult<()> {
          WHERE yarn_id = ?1",
         params![id],
     )?;
-    // Lots go with it via ON DELETE CASCADE.
+    // Its lots go with it: said here, not left to ON DELETE CASCADE.
+    conn.execute("DELETE FROM yarn_lots WHERE yarn_id = ?1", params![id])?;
     let changed = conn.execute("DELETE FROM yarns WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound(id.to_string()));
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -5714,7 +4829,10 @@ pub fn move_masterclass_part(conn: &Connection, id: &str, position: i64) -> AppR
     let mut ids: Vec<String> = parts_of(conn, &part.masterclass_id)?.into_iter().map(|p| p.id).collect();
     ids.retain(|x| x != id);
     ids.insert((position.max(0) as usize).min(ids.len()), id.to_string());
-    renumber(conn, &ids)?;
+    // The whole order or none of it.
+    let tx = conn.unchecked_transaction()?;
+    renumber(&tx, &ids)?;
+    tx.commit()?;
     get_masterclass(conn, &part.masterclass_id)
 }
 
@@ -5726,8 +4844,10 @@ pub fn delete_masterclass_part(conn: &Connection, id: &str) -> AppResult<Masterc
     if ids.is_empty() {
         return Err(AppError::Message("It is the masterclass's only video: remove the masterclass instead.".into()));
     }
-    conn.execute("DELETE FROM masterclass_videos WHERE id = ?1", params![id])?;
-    renumber(conn, &ids)?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM masterclass_videos WHERE id = ?1", params![id])?;
+    renumber(&tx, &ids)?;
+    tx.commit()?;
     get_masterclass(conn, &part.masterclass_id)
 }
 
@@ -5782,7 +4902,11 @@ pub fn bundle_masterclasses(conn: &Connection, ids: &[String], title: &str) -> A
     if !title.is_empty() {
         kept.title = title.chars().take(200).collect();
     }
-    kept.notes = notes.into_iter().filter(|n| !n.trim().is_empty()).collect::<Vec<_>>().join("\n\n").chars().take(4000).collect();
+    // Notes too long together are refused, not cut: none of them is lost.
+    kept.notes = notes.into_iter().filter(|n| !n.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
+    if kept.notes.chars().count() > 4000 {
+        return Err(AppError::Message("Their notes together are over 4000 characters, more than a masterclass holds: shorten them first.".into()));
+    }
     update_masterclass(&tx, &kept)?;
     tx.commit()?;
     get_masterclass(conn, first)
@@ -5790,9 +4914,11 @@ pub fn bundle_masterclasses(conn: &Connection, ids: &[String], title: &str) -> A
 
 /// Removes it and its videos; the projects it was for keep going without it.
 pub fn delete_masterclass(conn: &Connection, id: &str) -> AppResult<()> {
-    conn.execute("UPDATE projects SET masterclass_id = '' WHERE masterclass_id = ?1", params![id])?;
-    conn.execute("DELETE FROM masterclass_videos WHERE masterclass_id = ?1", params![id])?;
-    conn.execute("DELETE FROM masterclasses WHERE id = ?1", params![id])?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("UPDATE projects SET masterclass_id = '' WHERE masterclass_id = ?1", params![id])?;
+    tx.execute("DELETE FROM masterclass_videos WHERE masterclass_id = ?1", params![id])?;
+    tx.execute("DELETE FROM masterclasses WHERE id = ?1", params![id])?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -5880,8 +5006,11 @@ pub fn move_cheatsheet(conn: &Connection, id: &str, position: i64) -> AppResult<
     let moved = ids.remove(at);
     let to = position.clamp(0, ids.len() as i64) as usize;
     ids.insert(to, moved);
+    // The whole order or none of it.
+    let tx = conn.unchecked_transaction()?;
     for (i, sid) in ids.iter().enumerate() {
-        conn.execute("UPDATE cheatsheets SET position = ?2 WHERE id = ?1", params![sid, i as i64])?;
+        tx.execute("UPDATE cheatsheets SET position = ?2 WHERE id = ?1", params![sid, i as i64])?;
     }
+    tx.commit()?;
     Ok(())
 }

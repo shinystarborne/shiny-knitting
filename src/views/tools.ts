@@ -239,7 +239,7 @@ function cardHtml(t: Tool, currency: string): string {
     .join("");
   const use = !uses.length ? `<span class="pill tool-free">Free</span>` : `${on}${t.kind === "tips" && tipsFree(t) === 1 ? `<span class="pill tool-free">One tip free</span>` : ""}`;
   return `
-    <article class="tool-card${free ? " free" : " in-use"}" data-open="${t.id}" title="${escapeHtml(t.notes)}">
+    <article class="tool-card${free ? " free" : " in-use"}" tabindex="0" data-open="${t.id}" title="${escapeHtml(t.notes)}">
       <div class="tool-head">
         <span class="tool-size">${escapeHtml(headline(t))}</span>
         <span class="tool-kind">${escapeHtml(kindLabel(t.kind))}</span>

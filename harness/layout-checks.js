@@ -101,14 +101,7 @@ export async function verifyLayout() {
   };
 }
 
-// Exposed for a driver; also runs on load so the harness shows the result.
+// Run by the driver like every suite, not on load as well (row-checks.js).
 if (typeof window !== "undefined") {
   window.__layoutChecks = verifyLayout;
-  window.addEventListener("load", () => {
-    window.__layoutCheckResult = null;
-    // Deferred: the app renders its first screen asynchronously.
-    setTimeout(async () => {
-      window.__layoutCheckResult = await verifyLayout();
-    }, 2500);
-  });
 }

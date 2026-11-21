@@ -474,7 +474,12 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   color: var(--text-dim);
   z-index: 2;
 }
-.card:hover .card-del { opacity: 1; }
+.card:hover .card-del,
+.card:focus-within .card-del,
+.card-del:focus-visible { opacity: 1; }
+/* A card reached with Tab, which Enter or Space opens (card-keys.ts). */
+[data-open]:focus-visible,
+[data-open-chart]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-del:hover { background: var(--accent); color: #fff; }
 
 .tag {
@@ -1040,7 +1045,8 @@ kbd {
   border-color: var(--accent);
   color: var(--text);
 }
-/* The remove cross only shows on hover, so a chip reads as just its number. */
+/* The remove cross only shows on hover or focus (Delete removes then), so a
+   chip reads as just its number. */
 .pin-chip-delete {
   position: absolute;
   top: -6px;
@@ -1056,7 +1062,8 @@ kbd {
   background: #c04040;
   border-radius: 50%;
 }
-.pin-chip:hover .pin-chip-delete { display: flex; }
+.pin-chip:hover .pin-chip-delete,
+.pin-chip:focus-within .pin-chip-delete { display: flex; }
 
 /* Shown while the Pin tool is armed. */
 .pin-hint {

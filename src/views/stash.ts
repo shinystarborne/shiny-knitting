@@ -222,7 +222,7 @@ export class StashView {
       .map(
         (w) => `
           <label class="check${w.count ? "" : " unused"}">
-            <input type="checkbox" data-filter="yarnWeight" value="${escapeHtml(w.key)}" />
+            <input type="checkbox" data-filter="yarnWeight" value="${escapeHtml(w.key)}" ${this.filter.yarnWeight?.includes(w.key) ? "checked" : ""} />
             <span>${escapeHtml(w.label)}</span>
             <em>${w.count}</em>
           </label>`,
@@ -353,7 +353,7 @@ export class StashView {
   private cardHtml(y: Yarn): string {
     const where = [y.brand, y.colourway].filter(Boolean).join(" · ");
     return `
-      <article class="card" data-open="${y.id}">
+      <article class="card" tabindex="0" data-open="${y.id}">
         <div class="cover" data-id="${y.id}">
           <div class="cover-photo" data-el="photo"></div>
           <div class="cover-fallback format-yarn">

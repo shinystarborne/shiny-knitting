@@ -388,12 +388,32 @@ pub async fn download_update(asset_api_url: String, file_name: String) -> CmdRes
     Ok(download_to_temp(&asset_api_url, &file_name).await?.to_string_lossy().into_owned())
 }
 
+/// The start of every installer's name in the temp folder: install_update
+/// runs nothing else.
+const DOWNLOAD_PREFIX: &str = "ShinyKnitting-update-";
+
+/// More than any installer of the app will be (they are a few megabytes).
+const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
+
+/// Where an update may come from: one of this app's own release assets, as
+/// the releases feed names them. The address is passed back by the app, so it
+/// is checked here rather than trusted.
+fn check_asset_url(url: &str) -> CmdResult<()> {
+    const ASSETS: &str = "https://api.github.com/repos/shinystarborne/shiny-knitting/releases/assets/";
+    let id = url.strip_prefix(ASSETS).unwrap_or("");
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::Message("The update must come from the app's own releases.".into()));
+    }
+    Ok(())
+}
+
 /// Downloads a release's installer into the temp folder; where it went.
 async fn download_to_temp(asset_api_url: &str, file_name: &str) -> CmdResult<PathBuf> {
     let err = |e: &dyn std::fmt::Display| {
         AppError::Message(format!("could not download the update: {e}"))
     };
 
+    check_asset_url(asset_api_url)?;
     let client = client().map_err(|e| AppError::Message(format!("could not download the update: {e}")))?;
     let mut response = client
         .get(asset_api_url)
@@ -414,13 +434,20 @@ async fn download_to_temp(asset_api_url: &str, file_name: &str) -> CmdResult<Pat
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
         .collect();
-    let path = std::env::temp_dir().join(format!("ShinyKnitting-update-{safe}"));
+    let path = std::env::temp_dir().join(format!("{DOWNLOAD_PREFIX}{safe}"));
 
     // Gathered, then written in one go off the async threads: an installer
-    // is a few megabytes.
+    // is a few megabytes, and anything past MAX_DOWNLOAD is no installer of ours.
+    let too_big = || err(&"it is larger than any installer of the app");
+    if response.content_length().is_some_and(|n| n > MAX_DOWNLOAD) {
+        return Err(too_big());
+    }
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| err(&e))? {
         bytes.extend_from_slice(&chunk);
+        if bytes.len() as u64 > MAX_DOWNLOAD {
+            return Err(too_big());
+        }
     }
     crate::files::write(path.clone(), bytes).await.map_err(|e| err(&e))?;
     Ok(path)
@@ -437,15 +464,19 @@ fn validate_install_path(path: &Path) -> CmdResult<()> {
             "Only the downloaded installer (.exe) can be run.".into(),
         ));
     }
-    if !path.starts_with(std::env::temp_dir()) {
-        return Err(AppError::Message(
-            "The installer must be the one this app downloaded.".into(),
-        ));
-    }
     if !path.is_file() {
         return Err(AppError::Message(
             "The downloaded installer is missing.".into(),
         ));
+    }
+    // Where it really is, ".." and links resolved: directly in the temp
+    // folder, under the name download_to_temp gives it.
+    let not_ours = || AppError::Message("The installer must be the one this app downloaded.".into());
+    let real = path.canonicalize().map_err(|_| not_ours())?;
+    let temp = std::env::temp_dir().canonicalize().map_err(|_| not_ours())?;
+    let named = real.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(DOWNLOAD_PREFIX));
+    if real.parent() != Some(temp.as_path()) || !named {
+        return Err(not_ours());
     }
     Ok(())
 }
@@ -745,12 +776,38 @@ mod tests {
     }
 
     #[test]
+    fn downloads_only_from_this_apps_releases() {
+        assert!(check_asset_url("https://api.github.com/repos/shinystarborne/shiny-knitting/releases/assets/123456").is_ok());
+        for bad in [
+            "http://api.github.com/repos/shinystarborne/shiny-knitting/releases/assets/1",
+            "https://api.github.com/repos/someone-else/shiny-knitting/releases/assets/1",
+            "https://example.com/repos/shinystarborne/shiny-knitting/releases/assets/1",
+            "https://api.github.com.example.com/repos/shinystarborne/shiny-knitting/releases/assets/1",
+            "https://api.github.com/repos/shinystarborne/shiny-knitting/releases/assets/../../other",
+            "",
+        ] {
+            assert!(check_asset_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn install_path_validation() {
-        // A real .exe in the temp folder passes.
-        let ok = std::env::temp_dir().join("shiny-knitting-test-installer.exe");
+        // The installer as downloaded, in the temp folder, passes.
+        let ok = std::env::temp_dir().join("ShinyKnitting-update-test-installer.exe");
         std::fs::write(&ok, b"exe").unwrap();
         assert!(validate_install_path(&ok).is_ok());
+        // Not reached through "..", however it starts.
+        let round = std::env::temp_dir().join("..").join(std::env::temp_dir().file_name().unwrap()).join("ShinyKnitting-update-test-installer.exe");
+        assert!(validate_install_path(&round).is_ok(), "the same file, by another way, is the same file");
+        let out = std::env::temp_dir().join("..").join("..").join("ShinyKnitting-update-test-installer.exe");
+        assert!(validate_install_path(&out).is_err());
         std::fs::remove_file(&ok).unwrap();
+
+        // Another .exe in the temp folder, not one this app downloaded, is refused.
+        let other = std::env::temp_dir().join("shiny-knitting-test-installer.exe");
+        std::fs::write(&other, b"exe").unwrap();
+        assert!(validate_install_path(&other).is_err());
+        std::fs::remove_file(&other).unwrap();
 
         // A real .exe outside the temp folder (this test binary) is refused.
         let elsewhere = std::env::current_exe().unwrap();

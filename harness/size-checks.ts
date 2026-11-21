@@ -11,6 +11,7 @@
  */
 import type { Pattern } from "../src/api";
 import { runOf, sizeLabel, sizeNames, sizeRuns, sizesOf } from "../src/reader/sizes";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -52,6 +53,39 @@ function pure(results: CheckResult[]): void {
   check(results, "…numbers, and 2XL", JSON.stringify(sizeNames("size 1 (2, 3)")) === JSON.stringify(["1", "2", "3"]) && JSON.stringify(sizeNames("finished sizes: s (m, l, 2xl)")) === JSON.stringify(["S", "M", "L", "2XL"]));
   check(results, "…and none when it names none", sizeNames("a lovely shawl in one size") === null);
 
+  // The rules at their edges, as a table: what a text reads as.
+  const runTable: [string, string, number[]][] = [
+    // Past the brackets: bare numbers and groups, each a place it may end.
+    ["co 84 (84, 84, 88) 96, 96 [100, 100, 100] 104 sts.", "84|84|84|88|96|96|100|100|100|104", [4, 5, 6, 9, 10]],
+    ["decrease 4 (6, 8, 10) 2 times", "4|6|8|10|2", [4, 5]],
+    ["knit 2 (3, 4) [5, 6] cm", "2|3|4|5|6", [3, 5]],
+    ["86 (96) 106 116 126 cm", "86|96|106|116|126", [2, 3, 4, 5]],
+    ["1½ (2, -) 3¼ in", "1½|2|-|3¼", [3, 4]],
+    // A bare number must end there ("2nd" is no size); a stitch group is no group of sizes.
+    ["rnd 2: 12 (14) 2nd", "12|14", [2]],
+    ["100 (110) (k2, p2)", "100|110", [2]],
+  ];
+  for (const [text, items, cuts] of runTable) {
+    const run = sizeRuns(text)[0];
+    const got = run ? `${run.map((i) => text.slice(i.start, i.end)).join("|")} ${JSON.stringify(run.cuts)}` : "none";
+    check(results, `runs: ${text}`, got === `${items} ${JSON.stringify(cuts)}`, got);
+  }
+  const nameTable: [string, string[] | null][] = [
+    // Past the brackets: up to the last group, and one bare name after it.
+    ["sizes: xs (s, m, l) xl, 2xl [3xl, 4xl, 5xl] 6xl 7xl", ["XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL"]],
+    ["sizes: xs (s, m) l xl 2xl", ["XS", "S", "M", "L"]],
+    ["the size of the hat. sizes: 86 (96) 106, 116 [126] 136 146", ["86", "96", "106", "116", "126", "136"]],
+    // Ages as they are written; letter sizes in capitals.
+    ["size – 6-12m (12-18m, 2-3y) 4y 5y", ["6-12m", "12-18m", "2-3y", "4y"]],
+    ["size xs (s) to fit", ["XS", "S"]],
+    // No name before the brackets, or none in them: no sizes.
+    ["sizes (to fit): s (m)", null],
+    ["one size (fits most)", null],
+  ];
+  for (const [text, names] of nameTable) {
+    check(results, `names: ${text}`, JSON.stringify(sizeNames(text)) === JSON.stringify(names), JSON.stringify(sizeNames(text)));
+  }
+
   const unnamed = ["cast on 100 (110, 120, 130).", "work 2 (2, 3, 3) times; see page 4 (12).", "decrease 6 (6, 8, 8) times."];
   check(results, "unnamed, the sizes are the commonest run's length, met three times", sizesOf(unnamed).count === 4 && sizesOf(unnamed).names === null);
   check(results, "…a run or two is not enough to call them sizes", sizesOf(["cast on 100 (110)"]).count === 0);
@@ -75,6 +109,8 @@ export async function verifySizes() {
     await waitFor(() => !!pick() && !pick()!.hidden, "the Size picker");
   };
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["patterns"]);
   try {
     pure(results);
 
@@ -155,6 +191,7 @@ export async function verifySizes() {
   } finally {
     store.patterns = store.patterns.filter((p) => p.id !== sized.id);
     tab("patterns");
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

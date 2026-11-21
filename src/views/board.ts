@@ -41,6 +41,18 @@ export const MIN_SCALE = 0.2;
 export const MAX_SCALE = 3;
 
 /** A screen point, relative to the board's frame, as a board point. */
+/**
+ * Keeps the pointer on the board while it drags, as everywhere else in the
+ * app: a pointer already gone (lifted at once, or made up) is no error.
+ */
+function capture(el: Element, pointer: number): void {
+  try {
+    el.setPointerCapture(pointer);
+  } catch {
+    // No such pointer any more.
+  }
+}
+
 export function toBoard(view: View, sx: number, sy: number): { x: number; y: number } {
   return { x: (sx - view.x) / view.scale, y: (sy - view.y) / view.scale };
 }
@@ -315,7 +327,10 @@ export class Board {
       const key = field instanceof HTMLTextAreaElement ? "text" : "label";
       if (field.value !== String(item.data[key] ?? "")) {
         item.data = { ...item.data, [key]: field.value };
-        void api.updateBoardItem(item.id, { data: item.data }).catch(() => {});
+        // Finished after the board is gone, which is fine; not finished is said.
+        void api.updateBoardItem(item.id, { data: item.data }).catch((err) =>
+          say(`Words typed on the board could not be saved: ${err instanceof Error ? err.message : String(err)}`, "Board"),
+        );
       }
     }
   }
@@ -371,15 +386,28 @@ export class Board {
     const text = input?.value.trim() ?? "";
     const photo = this.logPhoto;
     if (!input || (!text && !photo)) return void input?.focus();
+    const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+    let entry: { id: string };
     try {
-      const entry = await api.addLogEntry(this.boardId, text);
-      if (photo) await api.setLogPhoto(entry.id, await blobBytes(photo));
+      entry = await api.addLogEntry(this.boardId, text);
     } catch (err) {
-      return void (await say(err instanceof Error ? err.message : String(err), "Log"));
+      return void (await say(reason(err), "Log"));
+    }
+    // The entry is in the log from here on, so the card is cleared whatever
+    // happens to its photo: left filled, the photo would go with the next
+    // entry, and Add again would add this one twice (as project-log.ts).
+    let photoFailed = "";
+    if (photo) {
+      try {
+        await api.setLogPhoto(entry.id, await blobBytes(photo));
+      } catch (err) {
+        photoFailed = reason(err);
+      }
     }
     this.logDraft = "";
     this.setLogPhoto(null);
     await this.refreshLog();
+    if (photoFailed) await say(`The entry is in the log; its photo could not be stored: ${photoFailed}`, "Log");
     this.world.querySelector<HTMLInputElement>(`.board-item[data-id="${id}"] input[data-f="log-text"]`)?.focus();
   }
 
@@ -560,7 +588,7 @@ export class Board {
       };
       // A video's player is not to take the pointer while its card moves.
       this.root.classList.add("dragging");
-      this.root.setPointerCapture(e.pointerId);
+      capture(this.root, e.pointerId);
       return;
     }
     // Empty board: drag it about. The middle button pans from anywhere.
@@ -569,7 +597,7 @@ export class Board {
     this.root.focus();
     this.drag = { mode: "pan", pointer: e.pointerId, sx: e.clientX, sy: e.clientY, vx: this.view.x, vy: this.view.y };
     this.root.classList.add("panning");
-    this.root.setPointerCapture(e.pointerId);
+    capture(this.root, e.pointerId);
   }
 
   private onMove(e: PointerEvent): void {
@@ -780,7 +808,12 @@ export class Board {
       }
       return;
     }
-    if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, select")) return;
+    // A button of the toolbar keeps its keys (Delete there is not the
+    // selected item's), and Enter or Space on any button presses it. A
+    // button on an item, a calculator's say, still passes the item its keys.
+    if (target.closest("button, a") && (!this.world.contains(target) || e.key === "Enter" || e.key === " ")) return;
     // A calculator selected takes its keys: figures, + − * /, Enter, Backspace, Escape.
     const sum = this.selected ? this.items.find((i) => i.id === this.selected && i.kind === "calc") : undefined;
     const sumKey = sum ? sumKeyOf(e) : null;
@@ -910,13 +943,27 @@ export class Board {
     // to go with it; several are an entry each, at once.
     if (files.length && (e.target as HTMLElement | null)?.closest?.('.board-item[data-kind="log"]')) {
       if (files.length === 1) return void (await this.takeLogPhoto(files[0]));
+      // An entry each; one whose photo cannot be stored is nothing, and goes.
+      let failed = "";
       for (const f of files) {
-        const blob = await prepareChosenImage(f);
-        if (!blob) continue;
-        const entry = await api.addLogEntry(this.boardId, "");
-        await api.setLogPhoto(entry.id, await blobBytes(blob));
+        try {
+          const blob = await prepareChosenImage(f);
+          if (!blob) continue;
+          const entry = await api.addLogEntry(this.boardId, "");
+          try {
+            await api.setLogPhoto(entry.id, await blobBytes(blob));
+          } catch (err) {
+            await api.deleteLogEntry(entry.id).catch(() => {});
+            throw err;
+          }
+        } catch (err) {
+          failed = err instanceof Error ? err.message : String(err);
+          break;
+        }
       }
-      return void (await this.refreshLog());
+      await this.refreshLog();
+      if (failed) await say(`Not every photo went into the log: ${failed}`, "Log");
+      return;
     }
     if (files.length) {
       for (const [i, f] of files.entries()) await this.addImage(f, { x: Math.round(at.x + i * 30), y: Math.round(at.y + i * 30) });

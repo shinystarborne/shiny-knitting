@@ -54,9 +54,13 @@ export function fitTextToPdfFonts(divs: HTMLElement[], items: TextItem[]): numbe
     if (!(before > 0) || !(after > 0)) continue;
     div.style.fontFamily = own;
     div.dataset.pdfFont = item.fontName;
-    // Stretched as before, to the printed width: by as much more as the own font is narrower.
+    // Stretched as before, to the printed width: by as much more as the own
+    // font is narrower. A span pdf.js did not stretch (its stand-in was the
+    // width already) is stretched now, or the own font would change it.
     const m = /scaleX\(([^)]+)\)/.exec(transform);
-    if (m) div.style.transform = transform.replace(m[0], `scaleX(${(Number(m[1]) * before) / after})`);
+    div.style.transform = m
+      ? transform.replace(m[0], `scaleX(${(Number(m[1]) * before) / after})`)
+      : `${transform} scaleX(${before / after})`.trim();
     fitted++;
   }
   return fitted;

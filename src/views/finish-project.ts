@@ -150,7 +150,8 @@ export class FinishProjectDialog {
       const used = "usedGrams" in said ? said.usedGrams : Math.round(said.usedBalls * held.perBall);
       left = Math.max(0, held.before - used);
     }
-    const after = left == null ? "" : left === 0 ? "used up" : `${left} g left`;
+    const over = left != null && held.before != null && held.before > 0 && left > held.before;
+    const after = left == null ? "" : over ? "more than it held" : left === 0 ? "used up" : `${left} g left`;
     el.textContent = [held.text, after].filter(Boolean).join(" → ");
   }
 

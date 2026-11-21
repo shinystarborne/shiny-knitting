@@ -13,6 +13,7 @@
 import type { Shop, Wish } from "../src/api";
 import { ballsIn, filterShops, filterWishes, shopForUrl, shopTagFacets, siteOf, toolStart, wishFacets, yarnStart } from "../src/views/shopping";
 import { withoutBrand } from "../src/views/wish-form";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -147,6 +148,8 @@ export async function verifyShopping() {
     [...document.querySelectorAll<HTMLButtonElement>(".dialog-card button")].find((b) => b.textContent === label)!.click();
   };
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["shops", "wishes"]);
   try {
     pure(results, await invoke<Shop[]>("list_shops"), await invoke<Wish[]>("list_wishes"));
 
@@ -188,8 +191,10 @@ export async function verifyShopping() {
     check(results, "a new item starts as yarn, from no shop", field("wish-form", "kind")?.value === "yarn" && field("wish-form", "shop")?.value === "");
     // Earlier suites finish and frog projects, so what is live is read, not assumed.
     const live = store.projects.filter((p) => p.status === "active" || p.status === "paused");
-    const projectChoices = [...field("wish-form", "project")!.options].map((o) => o.textContent).join("|");
-    check(results, "For offers the projects on the needles, and only those", live.length > 0 && projectChoices === ["Nothing in particular", ...live.map((p) => p.name)].join("|"), projectChoices);
+    // Which, not in what order: the list is the backend's order, the store its own.
+    const [none, ...offered] = [...field("wish-form", "project")!.options].map((o) => o.textContent ?? "");
+    const projectChoices = [none, ...offered].join("|");
+    check(results, "For offers the projects on the needles, and only those", live.length > 0 && none === "Nothing in particular" && [...offered].sort().join("|") === live.map((p) => p.name).sort().join("|"), projectChoices);
     act("wish-form", "save");
     await waitFor(() => !!errorText("wish-form"), "the name error");
     check(results, "saving without a name says what is missing", /Item name needed/.test(errorText("wish-form")));
@@ -198,6 +203,7 @@ export async function verifyShopping() {
     check(results, "a pasted link picks its shop", field("wish-form", "shop")?.value === "s2");
     check(results, "…and says so", /Deadstock Yarns, from the link/.test(modal("wish-form")?.querySelector('[data-el="shop-hint"]')?.textContent ?? ""));
     type("wish-form", "amount", "5 balls");
+    if (!live.length) throw new Error("no project on the needles to want the yarn for");
     type("wish-form", "project", live[0].id);
     const before = store.wishes.length;
     act("wish-form", "save");
@@ -232,7 +238,8 @@ export async function verifyShopping() {
     type("wish-form", "name", "3.5 mm tips");
     const n = store.wishes.length;
     act("wish-form", "save-another");
-    await waitFor(() => store.wishes.length === n + 1 && !modal("wish-form")?.querySelector<HTMLElement>('[data-el="saved"]')?.hidden, "save and add another");
+    // The form still open, its "saved" notice there and showing.
+    await waitFor(() => store.wishes.length === n + 1 && modal("wish-form")?.querySelector<HTMLElement>('[data-el="saved"]')?.hidden === false, "save and add another");
     check(results, "Save and add another keeps the kind and shop, and clears the rest",
       field("wish-form", "kind")?.value === "tool" && field("wish-form", "shop")?.value === newShop.id && field("wish-form", "name")?.value === "" && field("wish-form", "url")?.value === "");
     act("wish-form", "cancel");
@@ -543,6 +550,7 @@ export async function verifyShopping() {
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="cancel"]')?.click();
     tab("patterns");
     await waitFor(() => !!document.querySelector(".library:not(.stash):not(.tools):not(.wishlist):not(.shops)"), "the library", 5000).catch(() => {});
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

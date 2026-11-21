@@ -283,7 +283,11 @@ export class AbbreviationsPanel {
     if (act === "abbr-remove") {
       const own = this.entries.find((x) => x.own?.id === btn.dataset.id)?.own;
       if (!own || !(await askYesNo(`Remove “${own.term}” from the custom abbreviations?`, { okLabel: "Remove", danger: true }))) return;
-      await api.removeAbbreviation(own.id);
+      try {
+        await api.removeAbbreviation(own.id);
+      } catch (err) {
+        return say(err instanceof Error ? err.message : String(err), "Abbreviations");
+      }
       if (this.editing === own.id) this.clearForm();
       await this.reload();
     }

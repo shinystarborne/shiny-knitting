@@ -7,6 +7,7 @@
  *   window.__eraserChecks()
  */
 import { near } from "./near";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -54,6 +55,16 @@ export async function verifyEraser() {
     scroller().dispatchEvent(new PointerEvent("pointerup", at(to)));
   };
 
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["annotations"]);
+  // The reader's own memory of the pattern, cleared for the suite and put back.
+  const saved = (["pages", "beside"] as const).map((k) => {
+    try {
+      return [`${k}:${pattern}`, localStorage.getItem(`${k}:${pattern}`)] as const;
+    } catch {
+      return [`${k}:${pattern}`, null] as const;
+    }
+  });
   try {
     try {
       localStorage.removeItem(`pages:${pattern}`);
@@ -96,6 +107,15 @@ export async function verifyEraser() {
     for (const a of store.annotations.filter((m) => m.patternId === pattern && (m.kind === "draw" || m.kind === "note"))) await invoke("delete_annotation", { id: a.id }).catch(() => {});
     (document.querySelector('.reader [data-mark="none"]') as HTMLElement | null)?.click();
     tab("patterns");
+    restore();
+    try {
+      for (const [key, value] of saved) {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }
+    } catch {
+      // Nothing kept.
+    }
   }
 
   const failed = results.filter((r) => !r.ok);

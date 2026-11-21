@@ -2,6 +2,7 @@ import "./styles.css";
 import { open } from "@tauri-apps/plugin-dialog";
 import { clock, isPaused, sessionMs } from "./views/knit-time";
 import { installAutoTimer, noteActivity, stopIfLeft } from "./auto-timer";
+import { installCardKeys } from "./views/card-keys";
 import { api, toBytes, type AiSettingsView, type KnitSession, type Pattern, type Project, type ScannedFile, type Shop, type Swatch, type Tool, type UpdateInfo, type Wish, type Yarn } from "./api";
 import { LibraryView } from "./views/library";
 import { StashView } from "./views/stash";
@@ -208,6 +209,7 @@ class App {
     // Heard on the document: started or stopped on a page, or by the row counter.
     document.addEventListener("knit-timer", () => void this.refreshTimer());
     installAutoTimer();
+    installCardKeys();
     void this.refreshTimer();
     this.screen.addEventListener("open-project-page", (e) => {
       void this.showProjectPage((e as CustomEvent<string>).detail);
@@ -753,7 +755,15 @@ class App {
     this.setActiveTab("patterns");
     const reader = new ReaderView(this.screen, pattern, this.layout);
     this.activeReader = reader;
-    await reader.mount();
+    try {
+      await reader.mount();
+    } catch (error) {
+      // A file that will not read shows its own error in the reader; anything
+      // else that stops it opening goes back to the library, not a blank screen.
+      if (token !== this.navToken) return;
+      await say(`That pattern could not be opened.\n\n${error instanceof Error ? error.message : String(error)}`);
+      if (token === this.navToken) await this.showLibrary();
+    }
   }
 
   private openForm(pattern: Pattern | null, startTags: string[] = []): void {

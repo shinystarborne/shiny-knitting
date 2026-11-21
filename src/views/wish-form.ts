@@ -1,6 +1,6 @@
 import { api, isLive, toBytes, WISH_KINDS, type LinkPreview, type Project, type Shop, type Wish, type WishInput, type WishKind } from "../api";
 import { forgetWishPhoto, prepareChosenImage, wishPhotoUrl } from "../covers";
-import { askText } from "../dialogs";
+import { askText, say } from "../dialogs";
 import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { shopForUrl, siteOf } from "./shopping";
 
@@ -437,13 +437,22 @@ export class WishForm {
     try {
       const saved = this.editing ? await api.updateWish(this.editing.id, this.input()) : await api.addWish(this.input());
       // The picture goes up after the save: a new item has no id until then.
-      if (this.pendingPhoto) {
-        await api.setWishPhoto(saved.id, Array.from(new Uint8Array(await this.pendingPhoto.arrayBuffer())));
-        forgetWishPhoto(saved.id);
-      } else if (this.photoRemoved && this.editing?.photoPath) {
-        await api.removeWishPhoto(saved.id);
-        forgetWishPhoto(saved.id);
+      // The item is saved from here on, so the form goes on as saved and a
+      // photo that fails is said: left as it was, Save again would add the
+      // item a second time.
+      let photoFailed = "";
+      try {
+        if (this.pendingPhoto) {
+          await api.setWishPhoto(saved.id, Array.from(new Uint8Array(await this.pendingPhoto.arrayBuffer())));
+          forgetWishPhoto(saved.id);
+        } else if (this.photoRemoved && this.editing?.photoPath) {
+          await api.removeWishPhoto(saved.id);
+          forgetWishPhoto(saved.id);
+        }
+      } catch (err) {
+        photoFailed = err instanceof Error ? err.message : String(err);
       }
+      if (photoFailed) void say(`${saved.name} is saved; its photo could not be: ${photoFailed}`, "Wishlist");
       if (another) {
         // The kind, shop and project stay; the rest is the next thing's.
         for (const name of ["name", "brand", "amount", "price", "url", "notes"]) this.field(name).value = "";

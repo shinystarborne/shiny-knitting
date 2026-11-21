@@ -9,6 +9,7 @@
  *   window.__yarnWeightChecks()
  */
 import { coneCount, familyOf } from "../src/views/yarn-weight";
+import { keep } from "./keep";
 
 interface CheckResult {
   name: string;
@@ -76,6 +77,8 @@ export async function verifyYarnWeights() {
     f(name).value = value;
     f(name).dispatchEvent(new Event("input", { bubbles: true }));
   };
+  // What this suite changes in the store, put back at the end for the suites after it.
+  const restore = keep(["yarns", "yarnDetails", "covers"]);
   try {
     (document.querySelector('.tab-bar [data-tab="stash"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector('.stash [data-act="add"]'), "the stash");
@@ -186,6 +189,7 @@ export async function verifyYarnWeights() {
     document.querySelector<HTMLElement>('.modal-backdrop:not(.hidden) [data-act="cancel"]')?.click();
     (document.querySelector('.tab-bar [data-tab="patterns"]') as HTMLElement).click();
     await waitFor(() => !!document.querySelector(".library:not(.stash):not(.tools):not(.projects)"), "the library", 5000).catch(() => {});
+    restore();
   }
 
   const failed = results.filter((r) => !r.ok);

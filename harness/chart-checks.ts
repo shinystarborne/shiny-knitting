@@ -288,9 +288,13 @@ export async function verifyCharts() {
     await waitFor(() => page()?.querySelector('[data-el="saved"]')?.textContent === "Saved", "the chart to save", 5000);
   };
 
+  let seed: { charts: typeof store.charts; boardItems: typeof store.boardItems } | null = null;
   try {
     pure(results);
     await pdfChecks(results);
+    // Begun with none, and put back at the end, the board too: the suites
+    // after this one expect what was there.
+    seed = structuredClone({ charts: store.charts, boardItems: store.boardItems });
     store.charts = [];
 
     tab("calculators");
@@ -466,6 +470,9 @@ export async function verifyCharts() {
       await waitFor(() => store.boardItems.length === before + 2, "the board items");
       const added = store.boardItems.slice(-2);
       check(results, "Save to a project puts the chart itself and the rows in words on its board", added[0].kind === "chart" && typeof added[0].data.chartId === "string" && added[1].kind === "text" && added.every((i) => i.boardId === live.id) && /Round 1 \(240 sts\)/.test(added[1].data.text ?? ""), JSON.stringify(added.map((a) => a.kind)));
+    } else {
+      // Not skipped unseen: without one, saving to a board goes unchecked.
+      check(results, "a project on the needles to put the chart on", false, "none active or paused");
     }
 
     // ---------- the list again ----------
@@ -501,6 +508,10 @@ export async function verifyCharts() {
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
+    if (seed) {
+      store.charts = seed.charts;
+      store.boardItems = seed.boardItems;
+    }
     document.querySelector<HTMLElement>(".dialog-card [data-act='cancel']")?.click();
     tab("calculators");
     await waitFor(() => !!calc()?.querySelector('[data-calc="raglan"]'), "the calculators", 5000).catch(() => {});

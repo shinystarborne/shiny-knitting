@@ -139,15 +139,22 @@ pub fn extract_json_object(text: &str) -> Option<serde_json::Value> {
         }
     }
 
-    // Otherwise scan for the first balanced {...}, respecting strings so a
-    // brace inside a quoted value does not end the object early.
-    let bytes: Vec<char> = trimmed.chars().collect();
-    let start = bytes.iter().position(|c| *c == '{')?;
+    // Otherwise the first balanced {...} that reads as an object. A brace in
+    // the words before it ("{see below}") is passed over, not the end.
+    let chars: Vec<char> = trimmed.chars().collect();
+    (0..chars.len())
+        .filter(|&i| chars[i] == '{')
+        .find_map(|start| balanced_from(&chars, start).and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()))
+        .filter(|v| v.is_object())
+}
+
+/// The balanced {...} opening at `start`, respecting strings so a brace inside
+/// a quoted value does not end the object early.
+fn balanced_from(chars: &[char], start: usize) -> Option<String> {
     let mut depth = 0usize;
     let mut in_string = false;
     let mut escaped = false;
-    for i in start..bytes.len() {
-        let c = bytes[i];
+    for (i, &c) in chars.iter().enumerate().skip(start) {
         if in_string {
             if escaped {
                 escaped = false;
@@ -164,8 +171,7 @@ pub fn extract_json_object(text: &str) -> Option<serde_json::Value> {
             '}' => {
                 depth -= 1;
                 if depth == 0 {
-                    let candidate: String = bytes[start..=i].iter().collect();
-                    return serde_json::from_str(&candidate).ok();
+                    return Some(chars[start..=i].iter().collect());
                 }
             }
             _ => {}
@@ -173,7 +179,6 @@ pub fn extract_json_object(text: &str) -> Option<serde_json::Value> {
     }
     None
 }
-
 /// Coerces a model's JSON into a `Suggestion`, discarding anything unusable.
 ///
 /// A model that returns one bad field should not cost us the rest, so each
@@ -514,6 +519,9 @@ mod tests {
     #[test]
     fn returns_nothing_when_there_is_no_object() {
         assert!(extract_json_object("I cannot help with that.").is_none());
+        // A brace in the words before the answer is not the answer.
+        let v = extract_json_object(r#"Note: {see below} for details. {"designer":"X"}"#).unwrap();
+        assert_eq!(v["designer"], "X");
         assert!(extract_json_object("").is_none());
         assert!(extract_json_object("[1, 2, 3]").is_none());
     }
@@ -701,9 +709,9 @@ mod tests {
     /// The shipped default points at a remote server, so the UI must not
     /// claim nothing leaves the machine.
     #[test]
-    fn the_default_server_is_recognised_as_remote() {
+    fn by_default_there_is_no_server_and_describing_is_off() {
         let s = AiSettings::default();
-        assert!(s.base_url.starts_with("https://"));
+        assert!(!s.enabled && s.base_url.is_empty() && s.model.is_empty() && s.fallback_model.is_empty(), "no address built in");
         assert!(!is_local_model_server(&s));
     }
 }

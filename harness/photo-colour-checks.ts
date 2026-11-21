@@ -67,7 +67,7 @@ function pure(results: CheckResult[]): void {
 
 export async function verifyPhotoColours() {
   const results: CheckResult[] = [];
-  const store = (window as unknown as { __store: { charts: Chart[]; yarns: Yarn[] } }).__store;
+  const store = (window as unknown as { __store: { charts: Chart[]; yarns: Yarn[]; covers: Map<string, unknown> } }).__store;
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const calc = () => document.querySelector<HTMLElement>(".calculators");
   const page = () => document.querySelector<HTMLElement>(".chart-page");
@@ -76,6 +76,8 @@ export async function verifyPhotoColours() {
   const charts = [...store.charts];
   const red = store.yarns.find((y) => !y.usedUpAt)!;
   const photoBefore = red.photoPath;
+  // Its own photo, if it had one, put back after.
+  const bytesBefore = store.covers.get(red.id);
   try {
     pure(results);
 
@@ -133,6 +135,10 @@ export async function verifyPhotoColours() {
     HTMLInputElement.prototype.click = realClick;
     document.querySelector<HTMLElement>('.photo-colours-dialog [data-act="cancel"]')?.click();
     if (!photoBefore) await invoke("remove_yarn_photo", { yarnId: red.id }).catch(() => {});
+    else {
+      red.photoPath = photoBefore;
+      store.covers.set(red.id, bytesBefore);
+    }
     store.charts = charts;
     tab("patterns");
   }

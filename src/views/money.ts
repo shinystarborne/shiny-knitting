@@ -23,9 +23,11 @@ export function money(n: number, currency: string): string {
  * "12 EUR". Null when there is no number in it.
  */
 export function parsePrice(text: string): number | null {
-  const m = /\d[\d.,\s]*/.exec(text.replace(/ /g, " "));
+  // A separator before the first digit is the decimal one: ".50" and ",50" are half a unit.
+  const m = /[.,]?\d[\d.,\s]*/.exec(text.replace(/ /g, " "));
   if (!m) return null;
   let t = m[0].trim().replace(/\s/g, "");
+  if (t[0] === "." || t[0] === ",") t = `0${t}`;
   const comma = t.lastIndexOf(",");
   const dot = t.lastIndexOf(".");
   const last = Math.max(comma, dot);
@@ -45,7 +47,9 @@ export function parsePrice(text: string): number | null {
 export function pricePerBall(text: string, balls: number): number | null {
   const n = parsePrice(text);
   if (n === null) return null;
-  const each = /\b(a|per|each|je|pro|stück|stk)\b|ball|knäuel|skein|\//i.test(text);
+  // Said to be for one: "a ball", "per skein", "each", "/ball". A ball named
+  // alone is not ("10 for 2 balls" is the two).
+  const each = /\b(a|per|each|je|pro|stück|stk)\b|\//i.test(text);
   return each || !(balls > 1) ? n : Math.round((n / balls) * 100) / 100;
 }
 

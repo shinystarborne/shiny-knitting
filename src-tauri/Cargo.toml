@@ -3,6 +3,7 @@ name = "shiny-knitting-app"
 version = "1.1.0"
 description = "A reading app for knitting patterns with row counters and a moving highlight line."
 authors = ["Shiny"]
+license = "MIT"
 edition = "2021"
 rust-version = "1.77"
 
