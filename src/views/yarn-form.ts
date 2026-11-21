@@ -21,7 +21,7 @@ import {
   yarnPhotoUrl,
 } from "../covers";
 import { makeCombo } from "./combo";
-import { dialogOpen } from "../dialogs";
+import { dialogOpen, say } from "../dialogs";
 import { FIBRES, fibreTotal, parseFibres } from "./fibres";
 import { canonical, mostUsedSpellings } from "./tool-filter";
 import { WEIGHTS, byWeight, coneCount, familyByMetres, familyOf, grouped, metresPer100g, per100gOf, readPer100g, weightLabel } from "./yarn-weight";
@@ -1234,29 +1234,44 @@ export class YarnForm {
         saved = await api.addYarn(input);
       }
 
+      // The yarn is saved from here on. What follows can fail on its own, and
+      // is then said, with the form closed: left open, Save again would add
+      // the yarn a second time.
+      const unsaved: string[] = [];
+      const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
       // The other colours of the yarn get its fibres, when that was offered and left ticked.
       const share = this.root.querySelector<HTMLElement>('[data-el="share-fibres"]');
       const shareBox = this.root.querySelector<HTMLInputElement>('[data-f="shareFibres"]');
       if (share && !share.hidden && shareBox?.checked && shared.fibres.length) {
-        for (const other of this.otherColours()) {
-          if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
-          // Without its details: they are this yarn's, just saved, and the copy read earlier is stale.
-          await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash, details: undefined });
+        try {
+          for (const other of this.otherColours()) {
+            if (other.id === saved.id || (sameFibres(other.fibres, shared.fibres) && other.superwash === shared.superwash)) continue;
+            // Without its details: they are this yarn's, just saved, and the copy read earlier is stale.
+            await api.updateYarn({ ...other, fibres: shared.fibres, superwash: shared.superwash, details: undefined });
+          }
+        } catch (err) {
+          unsaved.push(`The fibres could not be given to the other colours: ${reason(err)}`);
         }
       }
 
       // The photo goes up after the save, because it is attached by yarn id
       // and a new yarn only has one now.
-      if (this.pendingPhoto) {
-        await saveYarnPhoto(saved.id, this.pendingPhoto);
-        forgetYarnPhoto(saved.id);
-      } else if (this.photoRemoved) {
-        await removeYarnPhoto(saved.id);
-        forgetYarnPhoto(saved.id);
+      try {
+        if (this.pendingPhoto) {
+          await saveYarnPhoto(saved.id, this.pendingPhoto);
+          forgetYarnPhoto(saved.id);
+        } else if (this.photoRemoved) {
+          await removeYarnPhoto(saved.id);
+          forgetYarnPhoto(saved.id);
+        }
+      } catch (err) {
+        unsaved.push(`The photo could not be stored: ${reason(err)}`);
       }
 
       this.onDone(saved);
       this.close();
+      if (unsaved.length) await say(`The yarn is saved. ${unsaved.join(" ")}`, "Yarn");
     } catch (err) {
       this.showError(err instanceof Error ? err.message : String(err));
       saveBtn.disabled = false;

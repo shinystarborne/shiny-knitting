@@ -132,7 +132,9 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace
 export function findAbbreviations(text: string, entries: Entry[]): Found[] {
   const byForm = new Map<string, Entry>();
   for (const e of entries) for (const form of [e.term, ...(e.also ?? [])]) byForm.set(form.toLowerCase().replace(/\s+/g, " "), e);
-  const forms = [...byForm.keys()].sort((a, b) => b.length - a.length);
+  // An empty form would match between every two letters; the backend refuses
+  // one, and this keeps one from older data out all the same.
+  const forms = [...byForm.keys()].filter((f) => f.trim()).sort((a, b) => b.length - a.length);
   const re = new RegExp(`(?<![A-Za-z0-9])(${forms.map(escapeRe).join("|")}|${COUNTED_SOURCE})(?![A-Za-z0-9])`, "gi");
   const out: Found[] = [];
   for (const m of text.matchAll(re)) {

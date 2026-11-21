@@ -262,7 +262,15 @@ export class ProjectPage {
 
   /** Re-reads the project after a dialog changed it: needles, yarn, finishing. */
   async refresh(): Promise<void> {
-    const found = (await api.listProjects().catch(() => [] as Project[])).find((p) => p.id === this.projectId);
+    // Only a project that is gone takes the page away; one that could not be
+    // read just now leaves it as it is, and says so.
+    let projects: Project[];
+    try {
+      projects = await api.listProjects();
+    } catch (err) {
+      return void (await say(`The project could not be read again: ${err instanceof Error ? err.message : String(err)}`, "Project"));
+    }
+    const found = projects.find((p) => p.id === this.projectId);
     if (!found) return this.hooks.removed();
     this.project = found;
     this.tools = await api.listTools().catch(() => this.tools);
@@ -285,6 +293,13 @@ export class ProjectPage {
     const finished = isRecord(p.status);
     const plan = p.status === "planned";
     const tools = p.toolIds.map((id) => this.tools.find((t) => t.id === id)).filter((t): t is Tool => !!t);
+    // A name or notes typed and not saved yet (the save waits for typing to
+    // stop) are carried into the new side: drawn from the project as saved,
+    // they would be put back as they were, and the save that follows would
+    // store that.
+    const typed = this.typingTimer === null
+      ? null
+      : Object.fromEntries(["name", "notes"].map((f) => [f, side.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-f="${f}"]`)?.value]));
     side.innerHTML = `
       <button class="ghost back" data-act="back">← Projects</button>
 
@@ -378,6 +393,12 @@ ${plan ? "" : `      <div class="project-side-dates">
     const chartSlot = side.querySelector('[data-el="chart"]');
     if (chartSlot && this.chart) chartSlot.replaceWith(this.chart.host);
     mountPatternPicker(side.querySelector<HTMLElement>('[data-el="pattern-pick"]')!, this.patterns, p.patternId);
+    if (typed) {
+      for (const [f, v] of Object.entries(typed)) {
+        const field = side.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-f="${f}"]`);
+        if (field && v !== undefined) field.value = v;
+      }
+    }
     side.onclick = (e) => void this.onClick(e);
     side.onchange = (e) => void this.onChange(e);
     // The name and notes save a moment after typing stops, too, so nothing

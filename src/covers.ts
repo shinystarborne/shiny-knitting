@@ -36,7 +36,7 @@ export async function extractFromDocument(
 
 /** Renders page 1 of a PDF to a JPEG. */
 async function extractFromPdf(bytes: Uint8Array): Promise<ExtractedCover | null> {
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
   try {
     const page = await doc.getPage(1);
     const base = page.getViewport({ scale: 1 });

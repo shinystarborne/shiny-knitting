@@ -9,7 +9,7 @@
  *   window.__laceChecks()
  */
 import type { Chart } from "../src/api";
-import { decode, encode, isLace, laceColour, laceMismatches, laceRows, longFloats, MAX_COLOURS, newGrid, nextColour, NO_STITCH_COLOUR, normalize, writeOut, writtenText, type Grid } from "../src/views/chart";
+import { copyBlock, decode, encode, isLace, laceColour, laceMismatches, laceRows, longFloats, MAX_COLOURS, newGrid, nextColour, NO_STITCH_COLOUR, normalize, pasteBlock, stitchMask, writeOut, writtenText, type Grid } from "../src/views/chart";
 import { LACE_START, STITCHES, symbolSvg } from "../src/views/stitches";
 
 interface CheckResult {
@@ -46,6 +46,18 @@ function pure(results: CheckResult[]): void {
   check(results, "a new lace chart: knit its background, every square knit", JSON.stringify(fresh.colours.map((c) => c.stitch)) === JSON.stringify(LACE_START) && LACE_START.join() === "knit" && fresh.cells.every((c) => c === 0) && fresh.colours[0].hex === "#ffffff");
   check(results, "…another stitch offered is one not in it yet", nextColour(fresh).stitch === "purl");
   check(results, "every stitch has a symbol, knit and no stitch blank", STITCHES.every((s) => symbolSvg(s.key).startsWith("<svg")) && STITCHES.filter((s) => !/<(line|polygon)/.test(symbolSvg(s.key))).map((s) => s.key).join() === "knit,none");
+
+  // Copied and pasted, a stitch stays the stitch it is: every lace stitch is
+  // the same white, so a match by colour made them all the first one, knit.
+  const source = chart([["purl", "yo", "k2tog", "knit"]], true);
+  const block = copyBlock(source, stitchMask(source), { x0: 0, x1: 3, y0: 0, y1: 0 });
+  const stitchesOf = (g: Grid) => [...g.cells].map((c) => g.colours[c].stitch).join(",");
+  const target = newGrid({ kind: "lace", width: 4, height: 1, flat: true });
+  pasteBlock(target, stitchMask(target), block, 0, 0);
+  check(results, "pasted into another lace chart, purl, yo and k2tog stay themselves", stitchesOf(target) === "purl,yo,k2tog,knit", stitchesOf(target));
+  const again = chart([["knit", "knit", "knit", "knit"], ["yo", "purl", "knit", "k2tog"]], true);
+  pasteBlock(again, stitchMask(again), block, 0, 0);
+  check(results, "…and into a chart that has them already, as its own entries", stitchesOf(again).startsWith("purl,yo,k2tog,knit") && again.colours.length === 4, `${stitchesOf(again)} (${again.colours.length} entries)`);
 
   const k = "knit";
   const flat = chart(

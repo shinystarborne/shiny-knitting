@@ -1539,7 +1539,12 @@ pub fn duplicate_groups(conn: &Connection) -> AppResult<Vec<(bool, Vec<(Pattern,
 /// tags are joined; a status, notes or details the kept one lacks are taken
 /// from a copy. Highlights, pins and counters stay with their copy and go
 /// with it, which is why the copy with the most of them is the one suggested.
+///
+/// One transaction: a failure part way leaves every copy as it was, not some
+/// projects moved and others not.
 pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppResult<Pattern> {
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     let mut kept = get_pattern(conn, keep)?;
     for copy_id in copies.iter().filter(|c| c.as_str() != keep) {
         let copy = get_pattern(conn, copy_id)?;
@@ -1580,7 +1585,9 @@ pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppRe
             }
         }
     }
-    update_pattern(conn, &kept)
+    let merged = update_pattern(conn, &kept)?;
+    tx.commit()?;
+    Ok(merged)
 }
 
 /// Moves a pattern to the Bin: out of the library, everything of it kept, to
@@ -3630,7 +3637,12 @@ pub fn set_project_status(conn: &Connection, id: &str, status: &str) -> AppResul
     get_project(conn, id)
 }
 
+/// Deletes a project and what is only its own, in one transaction, so a
+/// failure part way leaves it whole. Its needles and yarn links go by the
+/// tables' ON DELETE CASCADE; the needles and yarn themselves stay.
 pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound("This project no longer exists.".to_string()));
@@ -3644,6 +3656,7 @@ pub fn delete_project(conn: &Connection, id: &str) -> AppResult<()> {
     // Its own counters and row totals go with it; the pattern keeps its own.
     conn.execute("DELETE FROM counters WHERE project_id = ?1", params![id])?;
     conn.execute("DELETE FROM project_progress WHERE project_id = ?1", params![id])?;
+    tx.commit()?;
     Ok(())
 }
 

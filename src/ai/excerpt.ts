@@ -42,7 +42,7 @@ export async function extractExcerpt(
 export async function pageCount(format: "pdf" | "epub", bytes: Uint8Array): Promise<number> {
   if (format !== "pdf") return 0;
   try {
-    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
     const n = doc.numPages;
     await doc.destroy().catch(() => {});
     return n;
@@ -150,7 +150,7 @@ async function pictureForModel(blob: Blob): Promise<string | null> {
 }
 
 async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
   try {
     const out: string[] = [];
     const pages = Math.min(VISION_PAGES, doc.numPages);
@@ -186,7 +186,7 @@ async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
 }
 
 async function excerptFromPdf(bytes: Uint8Array, maxChars: number): Promise<string> {
-  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
   try {
     const pages = Math.min(MAX_PDF_PAGES, doc.numPages);
     const parts: string[] = [];

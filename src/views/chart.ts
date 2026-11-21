@@ -643,13 +643,20 @@ export function flippedBlock(b: Block, across: "x" | "y"): Block {
  * Which of the chart's colours each of a block's is: the same colour if the
  * chart has it, else added (as the chart can take more), else the nearest it
  * has. Adds what it needs to the chart.
+ *
+ * On a lace chart a square is a stitch, and every stitch is the same white,
+ * so a stitch is matched by which stitch it is: by colour, a purl or a
+ * yarn-over pasted in would become the chart's first white entry, a knit.
  */
 export function blockColours(g: Grid, b: Block): number[] {
   const used = new Set<number>();
   for (const c of b.cells) if (c >= 0) used.add(c);
+  const byStitch = isLace(g);
   return b.colours.map((colour, i) => {
     if (!used.has(i)) return 0;
-    const same = g.colours.findIndex((c) => c.hex.toLowerCase() === colour.hex.toLowerCase());
+    const same = byStitch && colour.stitch !== undefined
+      ? g.colours.findIndex((c) => c.stitch === colour.stitch)
+      : g.colours.findIndex((c) => c.hex.toLowerCase() === colour.hex.toLowerCase());
     if (same >= 0) return same;
     if (g.colours.length < MAX_COLOURS) {
       g.colours.push({ ...colour });

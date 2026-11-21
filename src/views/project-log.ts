@@ -182,15 +182,28 @@ export class ProjectLog {
     const area = this.host.querySelector<HTMLTextAreaElement>('[data-f="text"]')!;
     const photo = this.composerPhoto?.pending ?? null;
     if (!area.value.trim() && !photo) return void area.focus();
+    const reason = (err: unknown) => (err instanceof Error ? err.message : String(err));
+    let entry: LogEntry;
     try {
-      const entry = await api.addLogEntry(this.projectId, area.value);
-      if (photo) await api.setLogPhoto(entry.id, await bytes(photo));
-      area.value = "";
-      this.composerPhoto?.reset();
-      await this.reload();
+      entry = await api.addLogEntry(this.projectId, area.value);
     } catch (err) {
-      await say(err instanceof Error ? err.message : String(err), "Log");
+      return void (await say(reason(err), "Log"));
     }
+    // The entry is in the log from here on, so the composer is cleared
+    // whatever happens to its photo: left filled, Add again would add the
+    // entry a second time.
+    let photoFailed = "";
+    if (photo) {
+      try {
+        await api.setLogPhoto(entry.id, await bytes(photo));
+      } catch (err) {
+        photoFailed = reason(err);
+      }
+    }
+    area.value = "";
+    this.composerPhoto?.reset();
+    await this.reload();
+    if (photoFailed) await say(`The entry is in the log; its photo could not be stored: ${photoFailed}`, "Log");
   }
 
   private async saveEdit(): Promise<void> {

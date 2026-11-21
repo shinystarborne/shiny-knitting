@@ -34,6 +34,11 @@ export interface ProjectPreset {
 export class ProjectForm {
   private root: HTMLElement;
   private editing: Project | null;
+  /**
+   * A new project once it has been added, though something after (its
+   * masterclass) failed: Save again changes it, not adding a second.
+   */
+  private created: Project | null = null;
   private preset: ProjectPreset;
   /** Made or edited as a plan. */
   private plan = false;
@@ -270,12 +275,14 @@ export class ProjectForm {
     const buttons = [...this.root.querySelectorAll<HTMLButtonElement>(".modal-actions button")];
     buttons.forEach((b) => (b.disabled = true));
     try {
-      let saved = this.editing
-        ? await api.updateProject(this.editing.id, this.input())
+      const existing = this.editing ?? this.created;
+      let saved = existing
+        ? await api.updateProject(existing.id, this.input())
         : await api.addProject(this.input());
       // Started from a masterclass, it is knitted along with it; from a
       // pattern a masterclass goes with, along with that masterclass.
       if (!this.editing) {
+        this.created = saved;
         const along = this.preset.masterclassId || (saved.patternId ? (await api.listMasterclasses().catch(() => [])).find((m) => m.patternId === saved.patternId)?.id : "");
         if (along) saved = await api.setProjectMasterclass(saved.id, along);
       }

@@ -278,8 +278,11 @@ export class PersonPage {
       clearTimeout(this.typingTimer);
       this.typingTimer = null;
     }
+    // Both read now, when the save is asked for: the page may be gone by the
+    // time a save before this one is done.
     const name = this.value("name").trim() || this.person.name;
-    await this.save(() => api.updatePerson(this.personId, { name, notes: this.value("notes"), extra }));
+    const notes = this.value("notes");
+    await this.save(() => api.updatePerson(this.personId, { name, notes, extra }));
     this.mark("Saved");
   }
 

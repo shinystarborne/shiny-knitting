@@ -2715,6 +2715,8 @@ fn removing_a_project_frees_what_was_on_it() {
     delete_project(&conn, &pr.id).unwrap();
     assert_eq!(get_tool(&conn, "t1").unwrap().project_id, None);
     assert!(list_projects(&conn).unwrap().is_empty());
+    let links: i64 = conn.query_row("SELECT COUNT(*) FROM project_tools WHERE project_id = ?1", [&pr.id], |r| r.get(0)).unwrap();
+    assert_eq!(links, 0, "its needle links go with it, by ON DELETE CASCADE");
 }
 
 #[test]

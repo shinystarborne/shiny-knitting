@@ -183,6 +183,27 @@ export class MarkLayer {
     return this.colour;
   }
 
+  /** The saving of new marks, one after another; see `saveNew`. */
+  private saving: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Saves a new mark once those before it are saved, and adds it to the
+   * marks once, by its id.
+   *
+   * One after another, so marks are stored and listed in the order they were
+   * made, and undo (which waits for this) takes back the last one drawn, not
+   * the one before it whose save happened to finish last. By id, so a
+   * refresh that already listed it does not add it twice.
+   */
+  private saveNew(input: Parameters<typeof api.addAnnotation>[1]): Promise<Annotation> {
+    const saved = this.saving.then(() => api.addAnnotation(this.patternId, input));
+    this.saving = saved.catch(() => undefined);
+    return saved.then((created) => {
+      if (!this.marks.some((m) => m.id === created.id)) this.marks.push(created);
+      return created;
+    });
+  }
+
   async refresh(): Promise<void> {
     try {
       this.marks = await api.listAnnotations(this.patternId);
@@ -338,7 +359,7 @@ export class MarkLayer {
     if (!at) return;
     const box = page.getBoundingClientRect();
     const rect = { x: at.x, y: at.y, ...textSize(text, TEXT_LINE, box) };
-    const created = await api.addAnnotation(this.patternId, {
+    await this.saveNew({
       kind: "text",
       page: pageNumber,
       geometry: rectsToJson([boxFromView(rect, this.turnOf(pageNumber))]),
@@ -347,7 +368,6 @@ export class MarkLayer {
       color: this.colour,
       text,
     });
-    this.marks.push(created);
     this.onChange?.();
     this.repaint();
   }
@@ -414,7 +434,7 @@ export class MarkLayer {
       w: 0.03,
       h: 0.022,
     };
-    const created = await api.addAnnotation(this.patternId, {
+    await this.saveNew({
       kind: "note",
       page: pageNumber,
       // Measured on the page as shown, stored upright.
@@ -424,7 +444,6 @@ export class MarkLayer {
       color: this.colour,
       text,
     });
-    this.marks.push(created);
     this.onChange?.();
     this.repaint();
     return true;
@@ -536,6 +555,8 @@ export class MarkLayer {
    * regardless of which page it landed on.
    */
   async undoLast(): Promise<boolean> {
+    // A stroke still being saved is the last one made.
+    await this.saving;
     const last = this.marks[this.marks.length - 1];
     if (!last) return false;
     await this.removeById(last.id);
@@ -844,22 +865,22 @@ export class MarkLayer {
     // Saved against the page the stroke started on: its points were measured
     // there. A highlighter stroke is stored as a highlight whose geometry is
     // points rather than rectangles -- see isMarkerStroke.
-    void api
-      .addAnnotation(this.patternId, {
-        kind,
-        page: pageNumber,
-        // Measured on the page as shown, stored upright.
-        geometry: pointsToJson(points.map((p) => pointFromView(p, this.turnOf(pageNumber)))),
-        quote: "",
-        occurrence: 0,
-        color: this.colour,
-        text: "",
-      })
-      .then((created) => {
-        this.marks.push(created);
+    void this.saveNew({
+      kind,
+      page: pageNumber,
+      // Measured on the page as shown, stored upright.
+      geometry: pointsToJson(points.map((p) => pointFromView(p, this.turnOf(pageNumber)))),
+      quote: "",
+      occurrence: 0,
+      color: this.colour,
+      text: "",
+    })
+      .then(() => {
         this.onChange?.();
         this.repaint();
-      });
+      })
+      // Not saved: shown as it is stored.
+      .catch(() => this.refresh());
   };
 
   /**

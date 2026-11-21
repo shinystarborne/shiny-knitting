@@ -204,7 +204,7 @@ export class PdfView implements RenderedDoc {
 
   async load(bytes: Uint8Array): Promise<void> {
     // pdf.js takes ownership of a copy of the buffer.
-    this.task = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+    this.task = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
     this.pageCount = this.task.numPages;
 
     for (let n = 1; n <= this.pageCount; n++) {

@@ -92,7 +92,7 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
     } else {
       list.innerHTML = Array.from({ length: max }, (_, i) => `<button class="save-thumb" data-page="${i + 1}" title="Page ${i + 1}"><canvas></canvas><span>${i + 1}</span></button>`).join("");
       void api.readFile(pattern.id).then(async (raw) => {
-        thumbDoc = await pdfjs.getDocument({ data: toBytes(raw).slice() }).promise;
+        thumbDoc = await pdfjs.getDocument({ isEvalSupported: false, data: toBytes(raw).slice() }).promise;
         observer = new IntersectionObserver(
           (entries) => {
             for (const entry of entries) {

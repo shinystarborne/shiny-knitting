@@ -97,6 +97,55 @@ fn write_file(dir: &Path, id: &str, ext: &str, bytes: &[u8]) -> AppResult<String
     Ok(file_name)
 }
 
+/// Puts image bytes in place of the picture stored as `old`, so that at no
+/// point is there neither: the new one is written beside it under a
+/// temporary name and flushed to disk, moved in as `<id>.<ext>`, and recorded
+/// by `record`; only then is the old file, if it had another name, deleted.
+/// If anything fails before that, the old picture and its record stay as they
+/// were and the new file is cleared away.
+///
+/// With the same name (a JPEG replaced by a JPEG), the move replaces the old
+/// file in one step, and the record already names it.
+fn replace_file(
+    dir: &Path,
+    id: &str,
+    ext: &str,
+    bytes: &[u8],
+    old: &str,
+    record: impl FnOnce(&str) -> AppResult<()>,
+) -> AppResult<String> {
+    use std::io::Write;
+    std::fs::create_dir_all(dir)?;
+    let file_name = format!("{}.{}", safe_name(id), ext);
+    let temp = dir.join(format!("{}.{}.part", safe_name(id), uuid::Uuid::new_v4()));
+    let written = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    })()
+    .and_then(|()| std::fs::rename(&temp, dir.join(&file_name)));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e.into());
+    }
+    let old_name = safe_name(old);
+    let replaced_in_place = !old.is_empty() && old_name == file_name;
+    if let Err(e) = record(&file_name) {
+        // The old picture is still there, under its own name, and still the
+        // one recorded; only the new file goes.
+        if !replaced_in_place {
+            let _ = std::fs::remove_file(dir.join(&file_name));
+        }
+        return Err(e);
+    }
+    if !old.is_empty() && !replaced_in_place {
+        if let Some(path) = existing_file(dir, old) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    Ok(file_name)
+}
+
 /// Reads an image back, reporting its MIME type from the extension.
 fn read_file(path: PathBuf) -> AppResult<(String, Vec<u8>)> {
     let ext = path
@@ -132,10 +181,10 @@ pub fn safe_name(name: &str) -> String {
 pub fn set_cover(state: &AppState, pattern_id: &str, bytes: Vec<u8>) -> AppResult<CoverImage> {
     let (ext, mime) = validate(&bytes)?;
 
-    // Clear the old file first so a replaced cover does not linger.
-    remove_cover(state, pattern_id).ok();
-    let file_name = write_file(&covers_dir(state), pattern_id, ext, &bytes)?;
-    db::set_cover(&state.db(), pattern_id, &file_name)?;
+    let old = db::get_cover(&state.db(), pattern_id)?;
+    let file_name = replace_file(&covers_dir(state), pattern_id, ext, &bytes, &old, |name| {
+        db::set_cover(&state.db(), pattern_id, name)
+    })?;
 
     Ok(CoverImage {
         pattern_id: pattern_id.to_string(),
@@ -185,10 +234,10 @@ pub fn yarn_photo_path(state: &AppState, yarn_id: &str) -> AppResult<Option<Path
 pub fn set_yarn_photo(state: &AppState, yarn_id: &str, bytes: Vec<u8>) -> AppResult<PhotoInfo> {
     let (ext, mime) = validate(&bytes)?;
 
-    // Clear the old file first so a replaced photo does not linger.
-    remove_yarn_photo(state, yarn_id).ok();
-    let file_name = write_file(&yarn_photos_dir(state), yarn_id, ext, &bytes)?;
-    db::set_yarn_photo(&state.db(), yarn_id, &file_name)?;
+    let old = db::get_yarn_photo(&state.db(), yarn_id)?;
+    let file_name = replace_file(&yarn_photos_dir(state), yarn_id, ext, &bytes, &old, |name| {
+        db::set_yarn_photo(&state.db(), yarn_id, name)
+    })?;
 
     Ok(PhotoInfo {
         yarn_id: yarn_id.to_string(),
@@ -227,9 +276,11 @@ pub fn board_images_dir(state: &AppState) -> PathBuf {
 /// Saves a project's cover, replacing any previous one.
 pub fn set_project_cover(state: &AppState, project_id: &str, bytes: Vec<u8>) -> AppResult<()> {
     let (ext, _mime) = validate(&bytes)?;
-    remove_project_cover(state, project_id).ok();
-    let file_name = write_file(&project_covers_dir(state), project_id, ext, &bytes)?;
-    db::set_project_cover(&state.db(), project_id, &file_name)
+    let old = db::get_project(&state.db(), project_id)?.cover_path;
+    replace_file(&project_covers_dir(state), project_id, ext, &bytes, &old, |name| {
+        db::set_project_cover(&state.db(), project_id, name)
+    })
+    .map(|_| ())
 }
 
 pub fn remove_project_cover(state: &AppState, project_id: &str) -> AppResult<()> {
@@ -251,11 +302,10 @@ pub fn read_project_cover(state: &AppState, project_id: &str) -> AppResult<(Stri
 pub fn set_board_image(state: &AppState, item_id: &str, bytes: Vec<u8>) -> AppResult<()> {
     let (ext, _mime) = validate(&bytes)?;
     let old = db::board_item_image(&state.db(), item_id)?;
-    if let Some(path) = existing_file(&board_images_dir(state), &old) {
-        let _ = std::fs::remove_file(path);
-    }
-    let file_name = write_file(&board_images_dir(state), item_id, ext, &bytes)?;
-    db::set_board_item_image(&state.db(), item_id, &file_name)
+    replace_file(&board_images_dir(state), item_id, ext, &bytes, &old, |name| {
+        db::set_board_item_image(&state.db(), item_id, name)
+    })
+    .map(|_| ())
 }
 
 pub fn read_board_image(state: &AppState, item_id: &str) -> AppResult<(String, Vec<u8>)> {
@@ -306,9 +356,11 @@ pub fn log_photos_dir(state: &AppState) -> PathBuf {
 /// Saves a log entry's photo, replacing any previous one.
 pub fn set_log_photo(state: &AppState, entry_id: &str, bytes: Vec<u8>) -> AppResult<()> {
     let (ext, _mime) = validate(&bytes)?;
-    remove_log_photo(state, entry_id).ok();
-    let file_name = write_file(&log_photos_dir(state), entry_id, ext, &bytes)?;
-    db::set_log_photo(&state.db(), entry_id, &file_name)
+    let old = db::get_log_entry(&state.db(), entry_id)?.photo_path;
+    replace_file(&log_photos_dir(state), entry_id, ext, &bytes, &old, |name| {
+        db::set_log_photo(&state.db(), entry_id, name)
+    })
+    .map(|_| ())
 }
 
 pub fn remove_log_photo(state: &AppState, entry_id: &str) -> AppResult<()> {
@@ -340,9 +392,11 @@ pub fn swatch_photos_dir(state: &AppState) -> PathBuf {
 /// Saves a swatch's photo, replacing any previous one.
 pub fn set_swatch_photo(state: &AppState, swatch_id: &str, bytes: Vec<u8>) -> AppResult<()> {
     let (ext, _mime) = validate(&bytes)?;
-    remove_swatch_photo(state, swatch_id).ok();
-    let file_name = write_file(&swatch_photos_dir(state), swatch_id, ext, &bytes)?;
-    db::set_swatch_photo(&state.db(), swatch_id, &file_name)
+    let old = db::get_swatch(&state.db(), swatch_id)?.photo_path;
+    replace_file(&swatch_photos_dir(state), swatch_id, ext, &bytes, &old, |name| {
+        db::set_swatch_photo(&state.db(), swatch_id, name)
+    })
+    .map(|_| ())
 }
 
 pub fn remove_swatch_photo(state: &AppState, swatch_id: &str) -> AppResult<()> {
@@ -374,9 +428,11 @@ pub fn wish_photos_dir(state: &AppState) -> PathBuf {
 /// Saves a wishlist item's picture, replacing any previous one.
 pub fn set_wish_photo(state: &AppState, wish_id: &str, bytes: Vec<u8>) -> AppResult<()> {
     let (ext, _mime) = validate(&bytes)?;
-    remove_wish_photo(state, wish_id).ok();
-    let file_name = write_file(&wish_photos_dir(state), wish_id, ext, &bytes)?;
-    db::set_wish_photo(&state.db(), wish_id, &file_name)
+    let old = db::get_wish(&state.db(), wish_id)?.photo_path;
+    replace_file(&wish_photos_dir(state), wish_id, ext, &bytes, &old, |name| {
+        db::set_wish_photo(&state.db(), wish_id, name)
+    })
+    .map(|_| ())
 }
 
 pub fn remove_wish_photo(state: &AppState, wish_id: &str) -> AppResult<()> {
@@ -409,6 +465,54 @@ pub fn delete_project_cover_file(state: &AppState, file_name: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What is in a folder, names sorted, and the folder of a test.
+    fn listing(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_picture_replaced_by_another_kind_is_recorded_then_the_old_one_goes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("p1.jpg"), b"old").unwrap();
+        let mut recorded = String::new();
+        let name = replace_file(dir.path(), "p1", "png", b"new", "p1.jpg", |n| {
+            // The old one is still there while the new one is recorded.
+            assert!(dir.path().join("p1.jpg").exists() && dir.path().join("p1.png").exists());
+            recorded = n.to_string();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!((name.as_str(), recorded.as_str()), ("p1.png", "p1.png"));
+        assert_eq!(listing(dir.path()), ["p1.png"]);
+        assert_eq!(std::fs::read(dir.path().join("p1.png")).unwrap(), b"new");
+    }
+
+    #[test]
+    fn a_picture_whose_record_fails_leaves_the_old_one_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("p1.jpg"), b"old").unwrap();
+        let failed = replace_file(dir.path(), "p1", "png", b"new", "p1.jpg", |_| Err(AppError::Message("locked".into())));
+        assert!(failed.is_err());
+        assert_eq!(listing(dir.path()), ["p1.jpg"], "the new file and any temporary one cleared away");
+        assert_eq!(std::fs::read(dir.path().join("p1.jpg")).unwrap(), b"old");
+    }
+
+    #[test]
+    fn a_picture_of_the_same_kind_is_replaced_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("p1.jpg"), b"old").unwrap();
+        let name = replace_file(dir.path(), "p1", "jpg", b"new", "p1.jpg", |_| Ok(())).unwrap();
+        assert_eq!(name, "p1.jpg");
+        assert_eq!(listing(dir.path()), ["p1.jpg"]);
+        assert_eq!(std::fs::read(dir.path().join("p1.jpg")).unwrap(), b"new");
+        // And a first picture, with nothing before it.
+        let first = replace_file(dir.path(), "p2", "png", b"one", "", |_| Ok(())).unwrap();
+        assert_eq!(first, "p2.png");
+        assert_eq!(listing(dir.path()), ["p1.jpg", "p2.png"]);
+    }
 
     /// The smallest byte sequences that should be recognised.
     #[test]

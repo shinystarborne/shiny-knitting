@@ -215,11 +215,13 @@ export async function verifyCalculators() {
     type("rows", "30");
     check(results, "typing a gauge over a swatch's leaves it typed in", field("swatch")!.value === "");
 
-    // A person fills the measurements they have.
+    // A person fills the measurements they have: Mo's latest, as seeded
+    // (ms2, chest 60). This read 58 once, which was what the people checks
+    // before it had left changed; they now put the seed back.
     const mo = [...field("person")!.options].find((o) => o.textContent === "Mo");
     if (mo) {
       type("person", mo.value);
-      check(results, "picking someone fills in their measurements", field("chest")!.value === "58", field("chest")!.value);
+      check(results, "picking someone fills in their measurements", field("chest")!.value === "60", field("chest")!.value);
     }
     for (const [k, v] of [["chest", "92"], ["upperArm", "30"], ["wrist", "16"], ["neck", "36"], ["yokeDepth", "20"], ["armLength", "45"], ["bodyLength", "35"]]) type(k, v);
     type("fit", "relaxed");

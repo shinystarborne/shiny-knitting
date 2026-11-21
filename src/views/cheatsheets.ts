@@ -527,7 +527,7 @@ export async function drawSheetPages(
 ): Promise<string | null> {
   let doc: pdfjs.PDFDocumentProxy;
   try {
-    doc = await pdfjs.getDocument({ data: toBytes(await api.readFile(book.id)) }).promise;
+    doc = await pdfjs.getDocument({ isEvalSupported: false, data: toBytes(await api.readFile(book.id)) }).promise;
   } catch (err) {
     return `The book could not be read: ${err instanceof Error ? err.message : String(err)}`;
   }

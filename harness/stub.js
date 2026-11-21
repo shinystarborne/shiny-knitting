@@ -74,6 +74,28 @@ const store = {
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
+/** update_project's changes, which syncLinks can refuse part way; see update_project. */
+function changeProject(pr, id, input) {
+  pr.name = projectName(input);
+  if (pr.status === "active" && (input.patternId || null) !== pr.patternId) inProgress(input.patternId);
+  if ((input.patternId || null) !== pr.patternId) {
+    const title = store.patterns.find((p) => p.id === input.patternId)?.title;
+    logMilestone(id, title ? `Pattern: ${title}` : "No pattern now");
+  }
+  pr.patternId = input.patternId || null;
+  pr.startedAt = input.startedAt ?? pr.startedAt;
+  pr.notes = input.notes || "";
+  // A finished project's end can be corrected; an active one has none.
+  if (!isLive(pr.status) && pr.status !== "planned" && input.finishedAt != null) pr.finishedAt = input.finishedAt;
+  if (isLive(pr.status)) syncLinks(id, input);
+  if (pr.status === "planned") {
+    pr.planWhen = planWhen(input.planWhen);
+    pr.planDate = input.planDate ?? null;
+    syncLinks(id, { ...input, toolIds: [] });
+  }
+  return projectOut(pr);
+}
+
 /** Strings in the backend's order: Rust compares them byte by byte, not by locale. */
 const byCode = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -2221,24 +2243,17 @@ const handlers = {
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("This project no longer exists.");
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
-    pr.name = projectName(input);
-    if (pr.status === "active" && (input.patternId || null) !== pr.patternId) inProgress(input.patternId);
-    if ((input.patternId || null) !== pr.patternId) {
-      const title = store.patterns.find((p) => p.id === input.patternId)?.title;
-      logMilestone(id, title ? `Pattern: ${title}` : "No pattern now");
+    // All or nothing, as the backend's transaction is: kept to put back if the links fail.
+    const was = clone(pr);
+    const links = clone({ tools: store.projectTools, yarns: store.projectYarns });
+    try {
+      return changeProject(pr, id, input);
+    } catch (err) {
+      Object.assign(pr, was);
+      store.projectTools = links.tools;
+      store.projectYarns = links.yarns;
+      throw err;
     }
-    pr.patternId = input.patternId || null;
-    pr.startedAt = input.startedAt ?? pr.startedAt;
-    pr.notes = input.notes || "";
-    // A finished project's end can be corrected; an active one has none.
-    if (!isLive(pr.status) && pr.status !== "planned" && input.finishedAt != null) pr.finishedAt = input.finishedAt;
-    if (isLive(pr.status)) syncLinks(id, input);
-    if (pr.status === "planned") {
-      pr.planWhen = planWhen(input.planWhen);
-      pr.planDate = input.planDate ?? null;
-      syncLinks(id, { ...input, toolIds: [] });
-    }
-    return projectOut(pr);
   },
   // As db::list_gallery_photos: a finished project's log photos, oldest first.
   list_gallery_photos: () =>
@@ -3100,7 +3115,9 @@ const handlers = {
   // Every save is a new revision, as commands.rs::ai_settings_revision.
   save_ai_settings: ({ settings, apiKey }) => {
     store.aiRevision = (store.aiRevision ?? 0) + 1;
-    store.aiSettings = { ...settings, hasApiKey: !!(apiKey || settings.hasApiKey), revision: `r${store.aiRevision}` };
+    // As commands.rs: only whether there is a key goes back, never a key sent in the settings.
+    const { apiKey: _ignored, ...view } = settings;
+    store.aiSettings = { ...view, hasApiKey: !!(apiKey || settings.hasApiKey), revision: `r${store.aiRevision}` };
     if (apiKey) store.apiKey = apiKey;
     return clone(store.aiSettings);
   },
@@ -3132,6 +3149,9 @@ const handlers = {
     if (!store.aiSettings?.enabled) throw new Error("Describing with a model is switched off in Settings.");
     const p = store.patterns.find((x) => x.id === patternId);
     if (!p) throw new Error("not found");
+    // As the backend's columns, never missing: no notes is "", no tags [].
+    p.notes = String(p.notes ?? "");
+    p.tags = Array.isArray(p.tags) ? p.tags : [];
     // Confirmed against other settings: nothing sent, as commands.rs.
     if (revision != null && revision !== (store.aiSettings.revision ?? "r0")) {
       return { patternId, patternTitle: p.title, failed: true, error: "The model settings were changed after this was confirmed.", suggestion: {}, before: clone(p), after: clone(p), changedFields: [], applied: false, settingsChanged: true };
@@ -3336,7 +3356,8 @@ const handlers = {
     // the last file — without this, a fast stub makes Stop untestable.
     await new Promise((r) => setTimeout(r, 20));
     // A source path is authoritative about the file's name, as the backend is.
-    let fileName = input.fileName;
+    let fileName = input.fileName ?? "";
+    const tags = Array.isArray(input.tags) ? input.tags : [];
     if (input.sourcePath && input.sourcePath.trim()) {
       fileName = input.sourcePath.split(/[\\/]/).pop() || fileName;
     }
@@ -3373,8 +3394,8 @@ const handlers = {
       yarnWeight: input.yarnWeight || "",
       yarnWeightFamily: yarnFamily(input.yarnWeight),
       // An EPUB is a book from the start, as db::insert_pattern tags it.
-      tags: ext === "epub" && !input.tags.some((t) => t.toLowerCase() === "book") ? [...input.tags, "book"] : input.tags,
-      notes: input.notes,
+      tags: ext === "epub" && !tags.some((t) => t.toLowerCase() === "book") ? [...tags, "book"] : tags,
+      notes: input.notes ?? "",
       addedAt: Date.now(),
       lastOpenedAt: null,
       lastPage: 0,

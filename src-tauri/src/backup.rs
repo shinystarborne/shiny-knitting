@@ -265,31 +265,65 @@ pub fn swap_in(conn: &Mutex<Connection>, library: &Path, staging: &Path) -> Resu
         std::fs::rename(staging.join("library.db"), &db_path)?;
         Ok(())
     })();
-    if let Err(e) = moved {
-        // As it was: the backup's taken back out, and the library's put back.
-        if aside.join("library").exists() {
-            if library.exists() {
-                let _ = std::fs::rename(library, staging.join("library"));
-            }
-            let _ = std::fs::rename(aside.join("library"), library);
+    // Moved in, and it opens: done, and what was there before goes (it was
+    // saved as a backup first).
+    let failure = match moved.and_then(|()| crate::db::open(&db_path)) {
+        Ok(restored) => {
+            *guard = restored;
+            drop(guard);
+            let _ = std::fs::remove_dir_all(&aside);
+            return Ok(());
         }
-        if aside.join("library.db").exists() {
-            if db_path.exists() {
-                let _ = std::fs::rename(&db_path, staging.join("library.db"));
-            }
-            let _ = std::fs::rename(aside.join("library.db"), &db_path);
+        Err(e) => e,
+    };
+    // As it was: the backup's taken back out, and the library's put back.
+    put_back(library, &db_path, staging, &aside);
+    // Only an empty folder goes: if anything could not be moved back, it is
+    // still there, not deleted.
+    let _ = std::fs::remove_dir(&aside);
+    match crate::db::open(&db_path) {
+        Ok(original) => {
+            *guard = original;
+            Err(AppError::Message(format!("The backup could not be restored; the library is unchanged: {failure}")))
         }
-        for side in ["library.db-wal", "library.db-shm"] {
-            let _ = std::fs::rename(aside.join(side), library.with_file_name(side));
-        }
-        *guard = crate::db::open(&db_path)?;
-        let _ = std::fs::remove_dir_all(&aside);
-        return Err(AppError::Message(format!("The backup could not be restored; the library is unchanged: {e}")));
+        // The placeholder stays, and it has no tables, so nothing can be
+        // saved into it by mistake: every change is refused until a restart
+        // opens the library again.
+        Err(reopen) => Err(AppError::Message(format!(
+            "The backup could not be restored ({failure}), and the library could not be opened again ({reopen}). \
+             Close the app and open it again. If the library is not there, it is in {}.",
+            aside.display()
+        ))),
     }
-    *guard = crate::db::open(&db_path)?;
-    drop(guard);
-    let _ = std::fs::remove_dir_all(&aside);
-    Ok(())
+}
+
+/// Undoes the moves of `swap_in`, as far as they went: the backup's library
+/// and database back into staging, the ones set aside back in place, and the
+/// restored database's side files (made by trying to open it) cleared first,
+/// so the original never meets another database's write-ahead log.
+fn put_back(library: &Path, db_path: &Path, staging: &Path, aside: &Path) {
+    if aside.join("library").exists() {
+        if library.exists() {
+            let _ = std::fs::rename(library, staging.join("library"));
+        }
+        let _ = std::fs::rename(aside.join("library"), library);
+    }
+    // Side files beside the database are the restored one's only if the
+    // original was moved aside; otherwise they are the original's own.
+    let original_aside = aside.join("library.db").exists();
+    if original_aside {
+        if db_path.exists() {
+            let _ = std::fs::rename(db_path, staging.join("library.db"));
+        }
+        let _ = std::fs::rename(aside.join("library.db"), db_path);
+        for side in ["library.db-wal", "library.db-shm"] {
+            let here = library.with_file_name(side);
+            let _ = std::fs::remove_file(&here);
+            if aside.join(side).exists() {
+                let _ = std::fs::rename(aside.join(side), &here);
+            }
+        }
+    }
 }
 
 /// A clean copy of the database: everything committed, the WAL folded in.

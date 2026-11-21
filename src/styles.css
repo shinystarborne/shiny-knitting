@@ -7,6 +7,9 @@
   --border: #2e333d;
   --text: #e6e8ec;
   --text-dim: #9aa2b1;
+  /* Secondary text and quiet controls: the pin grip, chips, hints. Used
+     before it was defined, which left the pin grip with no background at all. */
+  --muted: var(--text-dim);
   --accent: #e5484d;
   --accent-soft: rgba(229, 72, 77, 0.16);
   --ok: #46a758;
@@ -511,6 +514,7 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   --border: #d8d2c4;
   --text: #24221d;
   --text-dim: #6b665a;
+  --muted: var(--text-dim);
   --accent-soft: rgba(229, 72, 77, 0.12);
   color-scheme: light;
   background: var(--bg);

@@ -63,6 +63,9 @@ function pure(results: CheckResult[]): void {
 export async function verifyPeople() {
   const results: CheckResult[] = [];
   const store = (window as unknown as { __store: Store }).__store;
+  // Put back at the end: the suite adds, edits and removes people and
+  // changes projects, and the suites after it expect the seed.
+  const seed = structuredClone({ people: store.people, measurementSets: store.measurementSets, projects: store.projects });
   const tab = (name: string) => (document.querySelector(`.tab-bar [data-tab="${name}"]`) as HTMLElement).click();
   const cards = () => [...document.querySelectorAll<HTMLElement>(".people .person-card")];
   const card = (id: string) => document.querySelector<HTMLElement>(`.people .person-card[data-open="${id}"]`);
@@ -227,6 +230,9 @@ export async function verifyPeople() {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
     store.measureUnit = "cm";
+    store.people = seed.people;
+    store.measurementSets = seed.measurementSets;
+    store.projects = seed.projects;
     document.querySelector<HTMLElement>(".dialog-card button.ghost")?.click();
     tab("patterns");
     await waitFor(() => !!document.querySelector(".library:not(.people)"), "the library", 5000).catch(() => {});
