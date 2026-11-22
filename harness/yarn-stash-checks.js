@@ -233,7 +233,7 @@ export async function verifyYarnStash() {
     rows[1].querySelector('[data-lf="gramsLeft"]').value = "25";
     saveModal();
     await waitFor(() => lotsOf(added().id) === "2 lots", "the second lot");
-    const dyeLots = () => added().lots.map((l) => l.dyeLot).sort().join(",");
+    const dyeLots = () => added().lots.map((l) => l.dyeLot).sort((a, b) => a.localeCompare(b)).join(",");
     check(
       results,
       "the card counts both lots",

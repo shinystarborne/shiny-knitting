@@ -194,7 +194,8 @@ export async function verifyShopping() {
     // Which, not in what order: the list is the backend's order, the store its own.
     const [none, ...offered] = [...field("wish-form", "project")!.options].map((o) => o.textContent ?? "");
     const projectChoices = [none, ...offered].join("|");
-    check(results, "For offers the projects on the needles, and only those", live.length > 0 && none === "Nothing in particular" && [...offered].sort().join("|") === live.map((p) => p.name).sort().join("|"), projectChoices);
+    const byName = (a: string, b: string) => a.localeCompare(b);
+    check(results, "For offers the projects on the needles, and only those", live.length > 0 && none === "Nothing in particular" && [...offered].sort(byName).join("|") === live.map((p) => p.name).sort(byName).join("|"), projectChoices);
     act("wish-form", "save");
     await waitFor(() => !!errorText("wish-form"), "the name error");
     check(results, "saving without a name says what is missing", /Item name needed/.test(errorText("wish-form")));
