@@ -27,7 +27,7 @@
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "fflate": "^0.8.2",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.9.155"
+    "pdfjs-dist": "^6.5.438"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
