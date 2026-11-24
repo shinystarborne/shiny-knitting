@@ -47,3 +47,6 @@ desktop.ini
 
 # Coverage reports (harness/coverage.mjs, cargo llvm-cov)
 coverage/
+
+# Code audits, kept to work through. Ours only, not published.
+/audits/
