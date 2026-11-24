@@ -1,5 +1,12 @@
 # Release history
 
+## Toward 1.2.0
+
+The betas after [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
+
+- **[v1.2.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.1)** —
+  a chart from a picture: chosen, pasted or dropped, cropped, and made into squares in a few colours, the picture's own or the stash's yarn.
+
 ## Toward 1.1.0
 
 The betas that led to [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
