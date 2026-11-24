@@ -56,7 +56,8 @@ import { longDate } from "./project-form";
 import { NO_STITCH_KEY, STITCHES, symbolSvg } from "./stitches";
 import { loadGlossary, stitchHtml, type Entry } from "./abbreviations";
 import type { Masterclass } from "../api";
-import { colourName, likeness, mainColours, nearestYarns, pixelsOf, yarnColour, type PhotoColour } from "./photo-colours";
+import { pictureChartDialog } from "./picture-chart-dialog";
+import { colourName, likeness, mainColours, nearestYarns, pixelsOf, yarnColour, yarnLabel, type PhotoColour } from "./photo-colours";
 
 // ---------- the list, in the Calculators tab ----------
 
@@ -74,6 +75,21 @@ export class ChartList {
     this.root.className = "chart-list";
     host.appendChild(this.root);
     this.root.addEventListener("click", (e) => void this.onClick(e));
+    // A picture dropped on the list starts a chart from it.
+    this.root.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      this.root.classList.add("over");
+    });
+    this.root.addEventListener("dragleave", (e) => {
+      if (!this.root.contains(e.relatedTarget as Node)) this.root.classList.remove("over");
+    });
+    this.root.addEventListener("drop", (e) => {
+      e.preventDefault();
+      this.root.classList.remove("over");
+      const file = [...(e.dataTransfer?.files ?? [])].find((f) => f.type.startsWith("image/"));
+      if (file) void this.fromPicture(file);
+    });
   }
 
   async mount(): Promise<void> {
@@ -89,12 +105,15 @@ export class ChartList {
           <h2>Charts</h2>
           <p class="hint">Grid charts where each square is a stitch: standard charts worked flat or in the round, or a round yoke repeat with its shaping.</p>
         </div>
-        <button class="primary" data-act="new-chart">+ New chart</button>
+        <div class="chart-list-actions">
+          <button class="ghost" data-act="from-picture" title="A picture made into squares, in a few colours: choose one, paste it or drop it here">🖼 From a picture…</button>
+          <button class="primary" data-act="new-chart">+ New chart</button>
+        </div>
       </header>
       ${
         this.charts.length
           ? `<div class="chart-cards">${this.charts.map(cardHtml).join("")}</div>`
-          : `<div class="empty"><h2>No charts yet</h2><p>Draw a motif, border or yoke, name its colours, preview it knitted up, and print it at real size.</p></div>`
+          : `<div class="empty"><h2>No charts yet</h2><p>Draw a motif, border or yoke, or make one from a picture; name its colours, preview it knitted up, and print it at real size.</p></div>`
       }`;
     for (const canvas of this.root.querySelectorAll<HTMLCanvasElement>("canvas[data-id]")) {
       const chart = this.charts.find((c) => c.id === canvas.dataset.id);
@@ -110,6 +129,7 @@ export class ChartList {
   private async onClick(e: MouseEvent): Promise<void> {
     const act = closestEl(e.target, "button[data-act]");
     if (act?.dataset.act === "new-chart") return void (await this.create());
+    if (act?.dataset.act === "from-picture") return void (await this.fromPicture());
     if (act?.dataset.act === "remove-chart") {
       e.stopPropagation();
       const chart = this.charts.find((c) => c.id === act.dataset.id);
@@ -134,13 +154,20 @@ export class ChartList {
   }
 
   private async create(): Promise<void> {
-    const made = await newChartDialog();
+    await this.add(await newChartDialog(), "New chart");
+  }
+
+  private async fromPicture(file: File | null = null): Promise<void> {
+    await this.add(await pictureChartDialog(file), "Chart from a picture");
+  }
+
+  private async add(made: { name: string; grid: Grid } | null, title: string): Promise<void> {
     if (!made) return;
     try {
       const chart = await api.addChart(made.name, encode(made.grid));
       open(this.root, chart.id);
     } catch (err) {
-      await say(err instanceof Error ? err.message : String(err), "New chart");
+      await say(err instanceof Error ? err.message : String(err), title);
     }
   }
 }
@@ -1788,11 +1815,6 @@ export class ChartPage {
 }
 
 /** A stash yarn, as a colour's legend names it: "Jamieson's Spindrift, Peat". */
-function yarnLabel(y: Yarn): string {
-  const name = [y.brand, y.name].filter(Boolean).join(" ");
-  return [name, y.colourway].filter(Boolean).join(", ") || "A yarn";
-}
-
 /** "3, 5–7, 12": row numbers, runs joined. */
 function listRows(rows: number[]): string {
   const sorted = [...new Set(rows)].sort((a, b) => a - b);

@@ -14,8 +14,8 @@ export interface PhotoColour {
   share: number;
 }
 
-type Rgb = [number, number, number];
-type Lab = [number, number, number];
+export type Rgb = [number, number, number];
+export type Lab = [number, number, number];
 
 export function hexToRgb(hex: string): Rgb {
   const n = Number.parseInt(hex.replace("#", "").slice(0, 6), 16) || 0;
@@ -62,39 +62,7 @@ export function mainColours(pixels: Uint8ClampedArray, count = 6): PhotoColour[]
     points.push(rgbToLab(rgb));
   }
   if (!points.length) return [];
-  const dist = (a: Lab, b: Lab) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
-  // Started apart: the first point, then each time the one farthest from those chosen.
-  const centres: Lab[] = [points[0]];
-  const nearest = points.map((p) => dist(p, centres[0]));
-  while (centres.length < Math.min(count, points.length)) {
-    let far = 0;
-    for (let i = 1; i < points.length; i++) if (nearest[i] > nearest[far]) far = i;
-    if (nearest[far] === 0) break;
-    centres.push(points[far]);
-    for (let i = 0; i < points.length; i++) nearest[i] = Math.min(nearest[i], dist(points[i], points[far]));
-  }
-  const group = new Array<number>(points.length).fill(0);
-  for (let round = 0; round < 12; round++) {
-    let moved = false;
-    for (let i = 0; i < points.length; i++) {
-      let best = 0;
-      for (let c = 1; c < centres.length; c++) if (dist(points[i], centres[c]) < dist(points[i], centres[best])) best = c;
-      if (best !== group[i]) moved = true;
-      group[i] = best;
-    }
-    const sums = centres.map(() => [0, 0, 0, 0]);
-    points.forEach((p, i) => {
-      const s = sums[group[i]];
-      s[0] += p[0];
-      s[1] += p[1];
-      s[2] += p[2];
-      s[3]++;
-    });
-    sums.forEach((s, c) => {
-      if (s[3]) centres[c] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
-    });
-    if (!moved && round) break;
-  }
+  const { centres, group } = kMeans(points, count);
   // Each group's colour: the average of its pixels as they are.
   const totals = centres.map(() => [0, 0, 0, 0]);
   rgbs.forEach((rgb, i) => {
@@ -118,6 +86,58 @@ export function mainColours(pixels: Uint8ClampedArray, count = 6): PhotoColour[]
     .map((f) => ({ hex: f.hex, share: f.weight / points.length }))
     .filter((f) => f.share >= 0.02)
     .sort((a, b) => b.share - a.share);
+}
+
+/** How far apart two CIELAB colours are, squared. */
+export function labDistance(a: Lab, b: Lab): number {
+  return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+}
+
+/**
+ * Points (CIELAB colours) grouped into up to `count` groups by k-means:
+ * started apart (the first point, then each time the one farthest from those
+ * chosen), then each point to its nearest centre and each centre to the middle
+ * of its points, until nothing moves. The same points always give the same groups.
+ */
+export function kMeans(points: Lab[], count: number): { centres: Lab[]; group: number[] } {
+  if (!points.length) return { centres: [], group: [] };
+  const dist = labDistance;
+  const centres: Lab[] = [points[0]];
+  const nearest = points.map((p) => dist(p, centres[0]));
+  while (centres.length < Math.min(count, points.length)) {
+    let far = 0;
+    for (let i = 1; i < points.length; i++) if (nearest[i] > nearest[far]) far = i;
+    if (nearest[far] === 0) break;
+    centres.push(points[far]);
+    for (let i = 0; i < points.length; i++) nearest[i] = Math.min(nearest[i], dist(points[i], points[far]));
+  }
+  const group = new Array<number>(points.length).fill(0);
+  for (let round = 0; round < 12; round++) {
+    let moved = false;
+    for (let i = 0; i < points.length; i++) {
+      let best = 0;
+      let bestDist = dist(points[i], centres[0]);
+      for (let c = 1; c < centres.length; c++) {
+        const d = dist(points[i], centres[c]);
+        if (d < bestDist) [best, bestDist] = [c, d];
+      }
+      if (best !== group[i]) moved = true;
+      group[i] = best;
+    }
+    const sums = centres.map(() => [0, 0, 0, 0]);
+    points.forEach((p, i) => {
+      const s = sums[group[i]];
+      s[0] += p[0];
+      s[1] += p[1];
+      s[2] += p[2];
+      s[3]++;
+    });
+    sums.forEach((s, c) => {
+      if (s[3]) centres[c] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
+    });
+    if (!moved && round) break;
+  }
+  return { centres, group };
 }
 
 /** A picture's pixels, scaled down so the longer side is `side`; null when it cannot be read. */
@@ -173,6 +193,12 @@ export function nearestYarns(hex: string, coloured: { yarn: Yarn; hex: string }[
     .filter((c) => c.distance <= within)
     .sort((a, b) => a.distance - b.distance)
     .slice(0, count);
+}
+
+/** A yarn as a chart's legend names it: "Brand Name, colourway". */
+export function yarnLabel(y: Yarn): string {
+  const name = [y.brand, y.name].filter(Boolean).join(" ");
+  return [name, y.colourway].filter(Boolean).join(", ") || "A yarn";
 }
 
 /** How alike, in words: for a yarn offered for a colour. */

@@ -404,6 +404,15 @@ typed in.
   PDF and the rows in words then name it ("Peat (Jamieson's Spindrift,
   Peat)"), and a colour still called by the palette's name takes the yarn's
   colourway.
+  **From a picture…**, beside New chart, makes a chart from a picture: choose
+  one, paste it, or drop it on the list of charts, and crop it if you like.
+  Say how many stitches wide and how many colours, and the chart is shown as
+  it will knit up while you change them. The rows follow from the gauge,
+  since stitches are wider than tall (4 to 3 when no gauge is given). The
+  colours are the picture's own, or the stash yarns nearest them, each then
+  linked to its yarn. A square alone in its colour takes the colour around
+  it, unless **Tidy single squares** is unticked. The chart is then drawn on
+  like any other.
   **Knitting from a chart**: on a project's page, under its row counter,
   **Chart** picks the chart it is knitted from and the project's row its first
   row is knitted on (after a rib, say). The chart is drawn there with the row

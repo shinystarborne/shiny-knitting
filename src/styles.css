@@ -4518,3 +4518,33 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .sheet-back { flex: none; align-self: flex-start; }
 .cheatsheets.sheet-open .sheet-view { padding: 14px 20px; }
 .sheet-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* A chart from a picture: the chart as it knits up beside its settings. */
+.chart-list-actions { display: flex; gap: 8px; flex: none; }
+.chart-list.over { box-shadow: inset 0 0 0 2px var(--accent); border-radius: var(--radius); }
+.dialog-card.picture-chart-dialog { max-width: min(860px, 94vw); }
+.picture-chart-body { display: flex; gap: 16px; align-items: flex-start; }
+.picture-chart-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: #0f1114;
+}
+.picture-chart-stage.over { border-color: var(--accent); background: var(--accent-soft); }
+.picture-chart-stage canvas { display: block; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.picture-chart-stage canvas[hidden], .picture-chart-empty[hidden] { display: none; }
+.picture-chart-empty { text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 0; }
+.picture-chart-empty button { margin-top: 10px; }
+.picture-chart-fields { width: 280px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+.picture-chart-fields .dialog-checkfield > span { display: flex; flex-direction: column; gap: 2px; }
+.picture-chart-fields .hint { margin: 0; }
+.picture-chart-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.picture-chart-colours { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
+.picture-chart-colour { white-space: nowrap; }
+@media (max-width: 700px) { .picture-chart-body { flex-direction: column; } .picture-chart-fields { width: 100%; } .picture-chart-stage { width: 100%; } }
