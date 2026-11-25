@@ -4,6 +4,8 @@
 
 The betas after [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
 
+- **[v1.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.2)** —
+  fixes from an audit of the code, security updates, and the grams bought kept for deadstock bought by weight.
 - **[v1.2.0-beta.1](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.1)** —
   a chart from a picture: chosen, pasted or dropped, cropped, and made into squares in a few colours, the picture's own or the stash's yarn.
 
