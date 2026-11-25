@@ -4,6 +4,8 @@
 
 The betas after [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
 
+- **[v1.2.0-beta.6](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.6)** —
+  the card's choices scroll clear of its buttons; a saved card named with one .png.
 - **[v1.2.0-beta.5](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.5)** —
   each cost on the card its own choice, the cost with time among them; the card's text size and font; yarn shown with its colour.
 - **[v1.2.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.4)** —
