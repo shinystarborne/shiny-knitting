@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(seen.borrow().last(), Some(&(3, 3)));
 
         let mut zip = zip::ZipArchive::new(File::open(&out).unwrap()).unwrap();
-        let mut names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().to_string()).collect();
+        let mut names: Vec<String> = (0..zip.len()).map(|i| zip.by_index(i).unwrap().name().unwrap().to_string()).collect();
         names.sort();
         assert_eq!(names, vec!["backup.json", "library.db", "library/covers/a.jpg", "library/originals/sub/pattern.pdf"]);
         let mut pdf = String::new();
@@ -527,6 +527,32 @@ mod tests {
         let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with("before-restore")).collect();
         assert!(left.is_empty(), "nothing set aside is left: {left:?}");
         drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A backup made to do harm: names leading out of where it is unpacked,
+    /// or to somewhere else altogether, are passed over; the rest unpacks.
+    #[test]
+    fn a_crafted_backup_writes_nothing_outside_the_library() {
+        let dir = std::env::temp_dir().join(format!("shiny-restore-crafted-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("source.db");
+        drop(crate::db::open(&db).unwrap());
+        let crafted = dir.join("crafted.zip");
+        let mut zip = zip::ZipWriter::new(File::create(&crafted).unwrap());
+        zip.start_file("library.db", SimpleFileOptions::default()).unwrap();
+        zip.write_all(&std::fs::read(&db).unwrap()).unwrap();
+        for name in ["library/../../escaped.txt", "../escaped-too.txt", "library/originals/kept.pdf"] {
+            zip.start_file(name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"%PDF").unwrap();
+        }
+        zip.finish().unwrap();
+
+        let to = dir.join("restoring");
+        unpack_backup(&crafted, &to, |_, _| {}).unwrap();
+        assert!(to.join("library/originals/kept.pdf").exists(), "what belongs in the library is unpacked");
+        assert!(!dir.join("escaped.txt").exists() && !dir.join("escaped-too.txt").exists(), "nothing lands outside it");
+        assert!(!std::env::temp_dir().join("escaped-too.txt").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
