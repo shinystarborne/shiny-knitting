@@ -675,13 +675,15 @@ export class LibraryView {
     // every family is listed whether or not it is used. A weight you have not
     // got is still worth seeing: it tells you what you could be looking for.
     // The count is shown, and an unused one is dimmed rather than hidden.
+    // Ticked ones are ticked again, as the needle sizes are.
+    const weightsTicked = new Set(this.checkedValues("yarnWeight"));
     this.root.querySelector('[data-slot="yarn"] .facet-list')!.innerHTML =
       this.facets.yarnWeights.length
         ? this.facets.yarnWeights
             .map(
               (w) => `
                 <label class="check${w.count ? "" : " unused"}">
-                  <input type="checkbox" data-filter="yarnWeight" value="${escapeHtml(w.key)}" />
+                  <input type="checkbox" data-filter="yarnWeight" value="${escapeHtml(w.key)}"${weightsTicked.has(w.key) ? " checked" : ""} />
                   <span>${escapeHtml(w.label)}</span>
                   <em>${w.count}</em>
                 </label>`,
@@ -790,21 +792,16 @@ export class LibraryView {
       field,
       values: this.checkedValues(field),
     }));
+    // One value ticked in a group is asked of the backend; several are kept
+    // here, from one list, as the backend matches them (exactly): one query,
+    // not one for every combination of the ticked values.
     const base: Filter = { ...this.filter };
     for (const g of groups) {
-      (base as Record<string, unknown>)[g.field] = g.values.length ? g.values[0] : undefined;
+      (base as Record<string, unknown>)[g.field] = g.values.length === 1 ? g.values[0] : undefined;
     }
-    let queries: Filter[] = [base];
-    for (const g of groups) {
-      if (g.values.length > 1) {
-        queries = queries.flatMap((q) => g.values.map((v) => ({ ...q, [g.field]: v })));
-      }
-    }
-    const batches = await Promise.all(queries.map((q) => api.listPatterns(q)));
-    const seen = new Set<string>();
-    const all = batches.flat().filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
-    // Each batch is in order, not the lot: sorted again as db::list_patterns sorts.
-    return queries.length > 1 ? all.sort(patternOrder(base.sort)) : all;
+    const several = groups.filter((g) => g.values.length > 1 && !g.values.includes(""));
+    const all = await api.listPatterns(base);
+    return several.length ? all.filter((p) => several.every((g) => g.values.includes(String((p as unknown as Record<string, unknown>)[g.field] ?? "")))) : all;
   }
 
   /**
@@ -1107,23 +1104,6 @@ function yarnPill(p: Pattern): string {
   const saysMore = stated.toLowerCase() !== label.toLowerCase();
   const title = saysMore ? ` title="${escapeHtml(stated)}"` : "";
   return `<span class="pill weight"${title}>${escapeHtml(label)}</span>`;
-}
-
-/** The order db::list_patterns gives for a sort: title as NOCASE compares, newest first by default. */
-function patternOrder(sort: string | undefined): (a: Pattern, b: Pattern) => number {
-  const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
-  // NOCASE folds only A-Z.
-  const fold = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
-  switch (sort) {
-    case "title":
-      return (a, b) => cmp(fold(a.title), fold(b.title));
-    case "oldest":
-      return (a, b) => a.addedAt - b.addedAt;
-    case "lastOpened":
-      return (a, b) => (b.lastOpenedAt ?? -Infinity) - (a.lastOpenedAt ?? -Infinity) || 0;
-    default:
-      return (a, b) => b.addedAt - a.addedAt;
-  }
 }
 
 function escapeHtml(v: string): string {

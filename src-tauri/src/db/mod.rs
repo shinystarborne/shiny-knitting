@@ -526,6 +526,9 @@ pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppRe
         if kept.status.is_empty() {
             kept.status = copy.status;
         }
+        // Its price and the size being knitted, when the kept one has none.
+        kept.price = kept.price.or(copy.price);
+        kept.size_index = kept.size_index.or(copy.size_index);
         let note = copy.notes.trim();
         if !note.is_empty() && !kept.notes.contains(note) {
             kept.notes = if kept.notes.trim().is_empty() { note.to_string() } else { format!("{}\n\n{}", kept.notes.trim_end(), note) };
@@ -541,7 +544,13 @@ pub fn merge_patterns(conn: &Connection, keep: &str, copies: &[String]) -> AppRe
             }
         }
     }
-    let merged = update_pattern(conn, &kept)?;
+    update_pattern(conn, &kept)?;
+    // Not among update_pattern's columns: each has a command of its own.
+    conn.execute(
+        "UPDATE patterns SET price = ?2, size_index = ?3 WHERE id = ?1",
+        params![keep, kept.price, kept.size_index],
+    )?;
+    let merged = get_pattern(conn, keep)?;
     tx.commit()?;
     Ok(merged)
 }
@@ -1735,6 +1744,8 @@ fn tool_uses(conn: &Connection) -> AppResult<std::collections::HashMap<String, V
 /// to the end -- and putting it on one takes it off any other active one,
 /// since a needle is in one project at a time.
 fn place_tool(conn: &Connection, tool_id: &str, project_id: Option<&str>) -> AppResult<()> {
+    // No project said as an empty one is no project, not a missing one.
+    let project_id = project_id.filter(|p| !p.is_empty());
     if let Some(p) = project_id {
         let status: Option<String> = conn
             .query_row("SELECT status FROM projects WHERE id = ?1", params![p], |r| r.get(0))
@@ -3007,7 +3018,8 @@ fn move_tools_into_projects(conn: &Connection) -> AppResult<()> {
     if done {
         return Ok(());
     }
-    let tx = conn.unchecked_transaction()?;
+    // A step of migrate, which runs each step in a transaction of its own.
+    let tx = conn;
     let now = now_ms();
     let on_patterns: Vec<(String, String, String)> = tx
         .prepare(
@@ -3063,8 +3075,7 @@ fn move_tools_into_projects(conn: &Connection) -> AppResult<()> {
     // The old columns stay in the table, empty: SQLite cannot drop a column
     // with a foreign key on every version this runs on.
     tx.execute("UPDATE tools SET pattern_id = NULL, project = ''", [])?;
-    set_setting(&tx, "tools_into_projects", &true)?;
-    tx.commit()?;
+    set_setting(tx, "tools_into_projects", &true)?;
     Ok(())
 }
 
@@ -3597,12 +3608,16 @@ pub fn update_chart(conn: &Connection, id: &str, input: &ChartInput) -> AppResul
 }
 
 pub fn delete_chart(conn: &Connection, id: &str) -> AppResult<()> {
+    // The chart and the links to it, all or none.
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     let changed = conn.execute("DELETE FROM charts WHERE id = ?1", params![id])?;
     if changed == 0 {
         return Err(AppError::NotFound("This chart no longer exists.".to_string()));
     }
     // The projects knitted from it are knitted from none now.
     conn.execute("UPDATE projects SET chart_id = '' WHERE chart_id = ?1", params![id])?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -3689,6 +3704,9 @@ pub fn update_person(conn: &Connection, id: &str, input: &PersonInput) -> AppRes
 
 /// Removes a person and their measurements. Their projects stay, for no one.
 pub fn delete_person(conn: &Connection, id: &str) -> AppResult<()> {
+    // The person, their measurements and the links to them, all or none.
+    let tx = conn.unchecked_transaction()?;
+    let conn: &Connection = &tx;
     // The foreign keys do this too, where they are on; said here so it never
     // depends on that.
     conn.execute("UPDATE projects SET person_id = NULL WHERE person_id = ?1", params![id])?;
@@ -3697,6 +3715,7 @@ pub fn delete_person(conn: &Connection, id: &str) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound("This person no longer exists.".to_string()));
     }
+    tx.commit()?;
     Ok(())
 }
 
@@ -4349,6 +4368,10 @@ pub fn list_yarns(conn: &Connection, filter: &YarnFilter) -> AppResult<Vec<Yarn>
 pub fn tidy_plans(conn: &Connection, plans: &[crate::models::YarnPlan]) -> AppResult<String> {
     let mut out: Vec<crate::models::YarnPlan> = Vec::new();
     for plan in plans {
+        // Twenty kept, the rest are not looked at.
+        if out.len() >= 20 {
+            break;
+        }
         let typed: String = plan.title.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect();
         let linked = match plan.pattern_id.as_deref().filter(|id| !id.trim().is_empty()) {
             Some(id) => conn
@@ -4367,7 +4390,7 @@ pub fn tidy_plans(conn: &Connection, plans: &[crate::models::YarnPlan]) -> AppRe
             (None, None) => p.title.to_lowercase() == plan.title.to_lowercase(),
             _ => false,
         };
-        if !out.iter().any(same) && out.len() < 20 {
+        if !out.iter().any(same) {
             out.push(plan);
         }
     }

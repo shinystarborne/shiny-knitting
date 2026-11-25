@@ -207,9 +207,22 @@ export async function prepareChosenImage(file: Blob): Promise<Blob | null> {
   }
 }
 
+/**
+ * A canvas as a JPEG, on white: a JPEG has no transparency, and what is
+ * transparent in a PNG, SVG or WebP would otherwise turn black.
+ */
 function toJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  const paper = document.createElement("canvas");
+  paper.width = canvas.width;
+  paper.height = canvas.height;
+  const ctx = paper.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, paper.width, paper.height);
+    ctx.drawImage(canvas, 0, 0);
+  }
   return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+    (ctx ? paper : canvas).toBlob((blob) => resolve(blob), "image/jpeg", quality);
   });
 }
 
@@ -403,9 +416,7 @@ export async function prepareBoardImage(
     if (!ctx) return null;
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     const png = file.type === "image/png";
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), png ? "image/png" : "image/jpeg", 0.88),
-    );
+    const blob = png ? await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/png")) : await toJpeg(canvas, 0.88);
     return blob ? { blob, width: canvas.width, height: canvas.height } : null;
   } finally {
     bitmap.close();

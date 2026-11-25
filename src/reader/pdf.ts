@@ -87,9 +87,9 @@ export interface RenderedDoc {
   /** PDF only: shows a query's matches, marking one as current; null clears. */
   setSearch?(query: string | null, current?: SearchHit | null): void;
   /**
-   * PDF only: the size knitted, among a pattern's `count` sizes: in every run
-   * of the sizes' numbers its number is marked and the others dimmed. Null
-   * marks nothing.
+   * PDF only: the size knitted, among a pattern's `count` sizes, counted from
+   * 0 (the first size is 0): in every run of the sizes' numbers its number is
+   * marked and the others dimmed. Null marks nothing.
    */
   setSizes?(count: number, chosen: number | null): void;
   /**
@@ -138,6 +138,12 @@ export class PdfView implements RenderedDoc {
   onReflow: (() => void) | null = null;
   private pages: HTMLDivElement[] = [];
   private rendered = new Set<number>();
+  /**
+   * Counted up each time every page is to be painted again (a zoom, a new
+   * width): a paint begun before, still waiting for its page, then stops
+   * rather than painting the old size over the new one.
+   */
+  private paintRound = 0;
   /**
    * The text layer of each page, once built.
    *
@@ -481,7 +487,7 @@ export class PdfView implements RenderedDoc {
 
   /** Marks the size knitted in every run of the sizes' numbers, dimming the others; null clears. */
   setSizes(count: number, chosen: number | null): void {
-    this.sizes = count >= 2 && chosen !== null && chosen < count ? { count, chosen } : null;
+    this.sizes = count >= 2 && chosen !== null && chosen >= 0 && chosen < count ? { count, chosen } : null;
     for (let n = 1; n <= this.pages.length; n++) this.paintSizes(n);
   }
 
@@ -614,6 +620,7 @@ export class PdfView implements RenderedDoc {
     const prevHeight = this.scroller.clientHeight;
     const prevWidth = this.scroller.clientWidth;
 
+    this.paintRound++;
     this.rendered.clear();
     for (const page of this.pages) page.style.height = "";
     await this.reserveHeights();
@@ -632,8 +639,11 @@ export class PdfView implements RenderedDoc {
   private async renderPage(n: number, width: number): Promise<void> {
     if (!this.task || this.rendered.has(n)) return;
     this.rendered.add(n);
+    const round = this.paintRound;
     try {
       const page = await this.task.getPage(n);
+      // All pages to be painted again meanwhile: the newer paint has it.
+      if (round !== this.paintRound) return;
       const pageEl = this.pages[n - 1];
       const canvas = pageEl.querySelector("canvas") as HTMLCanvasElement;
       if (!canvas) return;
@@ -724,7 +734,9 @@ export class PdfView implements RenderedDoc {
   private linkService = {
     externalLinkEnabled: true,
     addLinkAttributes: (link: HTMLAnchorElement, url: string) => {
-      link.href = url;
+      // Only a web or email address goes on the link; anything else (a
+      // javascript: one in a crafted PDF) is no address at all.
+      link.href = /^(https?:|mailto:)/i.test(url.trim()) ? url : "#";
       link.rel = "noopener noreferrer nofollow";
       link.title = url;
       link.onclick = (e) => {
@@ -1037,6 +1049,7 @@ export class PdfView implements RenderedDoc {
     const spot = page ? null : this.anchor();
     // A page fitted whole stays fitted whole in a window of another size.
     if (this.pageMode) this.zoom = await this.fitPageZoom();
+    this.paintRound++;
     this.rendered.clear();
     for (const page of this.pages) {
       page.style.height = "";
@@ -1096,6 +1109,7 @@ export class PdfView implements RenderedDoc {
     this.task?.destroy();
     this.container.remove();
     this.pages = [];
+    this.paintRound++;
     this.rendered.clear();
   }
 }

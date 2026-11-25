@@ -603,14 +603,14 @@ export class MarkLayer {
    * Removes the most recently made mark, with no confirmation.
    *
    * Undo is the fast path for "that was a mistake", made right after making
-   * it, so asking first would defeat the point. `marks` is appended to in the
-   * order marks are created, so the last element is the last one made,
-   * regardless of which page it landed on.
+   * it, so asking first would defeat the point. The last made is the one
+   * made latest, on whichever page: not the last in `marks`, which a refresh
+   * lists by page. On a tie, the later in the list (saved after).
    */
   async undoLast(): Promise<boolean> {
     // A stroke still being saved is the last one made.
     await this.saving;
-    const last = this.marks[this.marks.length - 1];
+    const last = this.marks.reduce<Annotation | undefined>((latest, m) => (!latest || m.createdAt >= latest.createdAt ? m : latest), undefined);
     if (!last) return false;
     await this.removeById(last.id);
     this.repaint();
@@ -740,7 +740,17 @@ export class MarkLayer {
     for (const mark of this.marks) {
       if (mark.page !== er.n || !isStroke(mark) || mark.id.startsWith("erase:")) continue;
       const base = er.base.get(mark.id) ?? mark;
-      const parts = er.parts.get(mark.id) ?? [parsePoints(this.shown(base).geometry)];
+      // Points filled in along long lines first, so the eraser takes the part
+      // of a line it passes over: a fast stroke can be two points far apart,
+      // and taking one of those would take the whole line.
+      const fill = (part: Point[]): Point[] =>
+        part.flatMap((p, i) => {
+          const q = part[i + 1];
+          if (!q) return [p];
+          const gaps = Math.ceil(Math.hypot((q.x - p.x) / ERASER, (q.y - p.y) / ry) / 0.5);
+          return Array.from({ length: Math.max(1, gaps) }, (_, k) => ({ x: p.x + ((q.x - p.x) * k) / Math.max(1, gaps), y: p.y + ((q.y - p.y) * k) / Math.max(1, gaps) }));
+        });
+      const parts = (er.parts.get(mark.id) ?? [parsePoints(this.shown(base).geometry)]).map(fill);
       if (!parts.some((part) => part.some(near))) continue;
       er.base.set(mark.id, base);
       const next: Point[][] = [];
@@ -791,21 +801,31 @@ export class MarkLayer {
           await api.deleteAnnotation(id);
           continue;
         }
-        const first = this.marks.find((m) => m.id === id);
-        if (first) Object.assign(first, await api.moveAnnotation(id, first.geometry));
-        for (let i = 1; i < parts.length; i++) {
-          const piece = this.marks.find((m) => m.id === `erase:${id}:${i}`);
-          if (!piece) continue;
-          const created = await api.addAnnotation(this.patternId, {
-            kind: base.kind,
-            page: base.page,
-            geometry: piece.geometry,
-            quote: "",
-            occurrence: 0,
-            color: base.color,
-            text: "",
-          });
-          Object.assign(piece, created);
+        // The pieces first, then the drawing cut to its first: a failure on
+        // the way takes the pieces off again and leaves the drawing whole.
+        const made: string[] = [];
+        try {
+          for (let i = 1; i < parts.length; i++) {
+            const piece = this.marks.find((m) => m.id === `erase:${id}:${i}`);
+            if (!piece) continue;
+            const created = await api.addAnnotation(this.patternId, {
+              kind: base.kind,
+              page: base.page,
+              geometry: piece.geometry,
+              quote: "",
+              occurrence: 0,
+              color: base.color,
+              text: "",
+            });
+            // Its own id at once, so a second rub can take it too.
+            Object.assign(piece, created);
+            made.push(created.id);
+          }
+          const first = this.marks.find((m) => m.id === id);
+          if (first) Object.assign(first, await api.moveAnnotation(id, first.geometry));
+        } catch (err) {
+          for (const made1 of made) await api.deleteAnnotation(made1).catch(() => {});
+          throw err;
         }
       } catch (err) {
         // What could not be kept is shown as it is stored, and said.
@@ -876,13 +896,19 @@ export class MarkLayer {
         this.pendingClick = null;
         const mark = this.marks.find((m) => m.id === grabbed.id);
         if (mark) {
-          void api
-            .moveAnnotation(mark.id, mark.geometry)
-            .then((stored) => Object.assign(mark, stored))
-            .catch(() => {
-              mark.geometry = grabbed.stored;
-              this.repaint();
-            });
+          // In line with the other saves, so a mark moved twice quickly is
+          // stored where it was put last; one that fails is shown where it
+          // is stored, and said.
+          const geometry = mark.geometry;
+          const saved = this.saving.then(() => api.moveAnnotation(mark.id, geometry));
+          this.saving = saved.catch(() => undefined);
+          void saved.then(
+            (stored) => {
+              // Moved again meanwhile: that newer place is the one to show.
+              if (mark.geometry === geometry) Object.assign(mark, stored);
+            },
+            (err) => this.failed(err),
+          );
         }
         return;
       }

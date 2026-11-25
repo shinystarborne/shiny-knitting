@@ -1224,6 +1224,8 @@ function outcome(patternId, projectId) {
 }
 /** As db::record_use: grams of a yarn used, with the metres they come to by its ball band. */
 function recordUse(yarn, project, at, grams, source) {
+  // Grams are an i64 in the app: NaN never gets that far.
+  if (!Number.isFinite(grams)) throw new Error("Grams used must be a number.");
   const metres = yarn.metresPerBall > 0 && yarn.gramsPerBall > 0 ? Math.round((grams / yarn.gramsPerBall) * yarn.metresPerBall) : 0;
   const name = [yarn.brand, yarn.name].filter(Boolean).join(" ") + (yarn.colourway ? ` (${yarn.colourway})` : "");
   store.yarnUsage.push({ id: `u${store.nextId++}`, yarnId: yarn.id, yarnName: name, projectId: project?.id ?? null, projectName: project?.name ?? "", at, grams, metres, source });
@@ -1290,6 +1292,8 @@ function findChart(id) {
 /** A sitting's end, as db::sitting checks it: a minute to a day long, not in the future. */
 function knitSitting(startedAt, seconds) {
   if (!(seconds >= 60 && seconds <= 86400)) throw new Error("A session must be between 1 minute and 24 hours.");
+  // A start is an i64 in the app: NaN never gets that far.
+  if (!Number.isFinite(startedAt)) throw new Error("A session needs the time it started.");
   const endedAt = startedAt + seconds * 1000;
   if (endedAt > Date.now() + 60000) throw new Error("That time is in the future.");
   return endedAt;
@@ -1430,6 +1434,8 @@ const handlers = {
       if (!kept.status) kept.status = copy.status;
       if (copy.notes.trim() && !kept.notes.includes(copy.notes.trim())) kept.notes = kept.notes.trim() ? `${kept.notes.trimEnd()}\n\n${copy.notes.trim()}` : copy.notes.trim();
       for (const f of ["designer", "difficulty", "needleSize", "yarnWeight"]) if (!kept[f].trim()) kept[f] = copy[f];
+      kept.price ??= copy.price ?? null;
+      kept.sizeIndex ??= copy.sizeIndex ?? null;
       store.patterns = store.patterns.filter((p) => p.id !== id);
       store.covers.delete(id);
     }
@@ -2264,15 +2270,20 @@ const handlers = {
     const pr = store.projects.find((x) => x.id === id);
     if (!pr) throw new Error("This project no longer exists.");
     if (input.patternId && !store.patterns.some((p) => p.id === input.patternId)) throw new Error("That pattern is no longer in the library.");
-    // All or nothing, as the backend's transaction is: kept to put back if the links fail.
+    // All or nothing, as the backend's transaction is: everything changeProject
+    // can touch (the project, its links, its log, a pattern's status) kept to
+    // put back if the links fail.
     const was = clone(pr);
-    const links = clone({ tools: store.projectTools, yarns: store.projectYarns });
+    const kept = clone({ tools: store.projectTools, yarns: store.projectYarns, log: store.projectLog, statuses: store.patterns.map((p) => [p.id, p.status]) });
     try {
       return changeProject(pr, id, input);
     } catch (err) {
       Object.assign(pr, was);
-      store.projectTools = links.tools;
-      store.projectYarns = links.yarns;
+      store.projectTools = kept.tools;
+      store.projectYarns = kept.yarns;
+      store.projectLog = kept.log;
+      const statuses = new Map(kept.statuses);
+      for (const p of store.patterns) if (statuses.has(p.id)) p.status = statuses.get(p.id);
       throw err;
     }
   },

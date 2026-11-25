@@ -1,6 +1,7 @@
 import { api, isLive, MEASUREMENTS, type Chart, type MeasureUnit, type Person, type Project, type Swatch, type Yarn } from "../api";
 import { askChoice, askForm, askText, askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { showNotice } from "../notice";
 import { cardigan, cardiganSteps, heldTogether, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, rowsFor, spreadEvenly, stitchesFor, type Gauge, type RaglanInput, type RaglanResult, type RoundYokeResult } from "./calc";
 import { decode, encode, fitLoses, fitsYoke, fittedToYoke, MAX_SIDE, newGrid, normalize, type YokeFit } from "./chart";
 import { drawRing } from "./chart-draw";
@@ -168,14 +169,24 @@ export class CalculatorsView {
   async mount(): Promise<void> {
     let yarns: Yarn[];
     let charts: Chart[];
+    // A list that cannot be read leaves the constructors working without it,
+    // and says so: an empty list that is really unread would offer a second
+    // of a person, or no swatch, as if there were none.
+    let unread = false;
+    const or = <T,>(read: Promise<T>, none: T): Promise<T> =>
+      read.catch(() => {
+        unread = true;
+        return none;
+      });
     [this.people, this.swatches, this.projects, this.unit, yarns, charts] = await Promise.all([
-      api.listPeople().catch(() => [] as Person[]),
-      api.listSwatches().catch(() => [] as Swatch[]),
-      api.listProjects().catch(() => [] as Project[]),
+      or(api.listPeople(), [] as Person[]),
+      or(api.listSwatches(), [] as Swatch[]),
+      or(api.listProjects(), [] as Project[]),
       api.getMeasureUnit().catch(() => "cm" as const),
-      api.listYarns().catch(() => [] as Yarn[]),
-      api.listCharts().catch(() => [] as Chart[]),
+      or(api.listYarns(), [] as Yarn[]),
+      or(api.listCharts(), [] as Chart[]),
     ]);
+    if (unread) showNotice("Not everything could be read: people, swatches, projects, yarns or charts may be missing here.");
     this.charts = charts.filter((c) => c.data.kind === "yoke");
     this.stash = yarns;
     if (kept.values.chart && !this.charts.some((c) => c.id === kept.values.chart)) kept.values.chart = "";

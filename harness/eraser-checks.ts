@@ -89,7 +89,8 @@ export async function verifyEraser() {
 
     // Across the middle, top to bottom.
     await rub([0.4, 0.44], [0.4, 0.56]);
-    await waitFor(() => drawings().length === 2, "the line in two");
+    // Kept in two steps (the piece, then the line cut short): waited for whole.
+    await waitFor(() => drawings().length === 2 && drawings().every((d) => Math.max(...xs(d)) < 0.4 || Math.min(...xs(d)) > 0.4), "the line in two");
     const [a, b] = drawings().map(xs).sort((p, q) => p[0] - q[0]);
     check(results, "dragged across a line, it rubs out its middle and leaves two", Math.max(...a) < 0.4 && Math.min(...b) > 0.4 && near(Math.min(...a), 0.2) && Math.max(...b) > 0.59, `${Math.max(...a)} / ${Math.min(...b)}`);
 

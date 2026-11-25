@@ -62,18 +62,44 @@ pub fn open_link(url: String) -> AppResult<()> {
 pub fn open_pattern_file(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let pattern = db::get_pattern(&state.db(), &id)?;
     let path = PathBuf::from(&pattern.file_path);
-    if !path.starts_with(&state.library_dir) {
-        return Err(AppError::Message("That file is outside the library.".into()));
-    }
     if !path.is_file() {
         return Err(AppError::Message("This pattern's file is missing from the library.".into()));
+    }
+    // Compared as resolved, so a ".." in the stored path cannot lead out of
+    // the library while still starting with it.
+    if !within(&path, &state.library_dir) {
+        return Err(AppError::Message("That file is outside the library.".into()));
     }
     shell_open(&path.to_string_lossy())
 }
 
+/// Whether `path` is inside `dir`, both resolved first; false when either cannot be.
+fn within(path: &std::path::Path, dir: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(path), std::fs::canonicalize(dir)) {
+        (Ok(path), Ok(dir)) => path.starts_with(dir),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_openable_link;
+    use super::{is_openable_link, within};
+
+    #[test]
+    fn a_path_leading_out_of_the_library_is_outside_it() {
+        let root = tempfile::tempdir().unwrap();
+        let library = root.path().join("library");
+        std::fs::create_dir_all(library.join("originals")).unwrap();
+        let inside = library.join("originals").join("a.pdf");
+        std::fs::write(&inside, b"pdf").unwrap();
+        let outside = root.path().join("elsewhere.exe");
+        std::fs::write(&outside, b"exe").unwrap();
+        assert!(within(&inside, &library));
+        let sneaking = library.join("..").join("elsewhere.exe");
+        assert!(sneaking.starts_with(&library), "a plain prefix check would let it through");
+        assert!(!within(&sneaking, &library));
+        assert!(!within(&outside, &library));
+    }
 
     #[test]
     fn only_web_and_mail_links_open() {

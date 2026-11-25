@@ -42,6 +42,7 @@ export async function verifyBooks() {
   const shown = () => [...document.querySelectorAll<HTMLElement>(".library .card[data-open]")].map((c) => c.dataset.open!);
   const book = store.patterns.find((p) => p.format === "pdf" && p.id !== "p1")!;
   const tagsBefore = [...book.tags];
+  const aiBefore = store.aiSettings;
   const added: string[] = [];
 
   try {
@@ -89,9 +90,8 @@ export async function verifyBooks() {
     check(results, "an EPUB is tagged book as it is added", epub.tags.includes("book") && epub.tags.includes("shawls"), epub.tags.join(","));
 
     // The model is told the length, and a long file comes back a book.
-    const before = store.aiSettings;
     // No server is set by default: this one is the suite's own.
-    store.aiSettings = { ...(before ?? {}), enabled: true, baseUrl: "https://models.example/v1", model: "test-model" } as never;
+    store.aiSettings = { ...(aiBefore ?? {}), enabled: true, baseUrl: "https://models.example/v1", model: "test-model" } as never;
     const long = await api.addPattern({ title: "Sock anthology", designer: "", fileName: "anthology.pdf", sourcePath: "C:/books/anthology.pdf", status: "", difficulty: "", needleSize: "", tags: [], notes: "" } as never);
     added.push(long.id);
     const described = await api.suggestMetadata(long.id, "Contents: Sock one, Sock two, Sock three", [], 120);
@@ -129,10 +129,11 @@ export async function verifyBooks() {
     check(results, "Describe files a described PDF of 60 pages under Books, the model not asked", !!store.patterns.find((p) => p.id === longBook.id)?.tags.includes("book") && (store.lastAiRequest as { patternId?: string } | undefined)?.patternId !== longBook.id, JSON.stringify(store.patterns.find((p) => p.id === longBook.id)?.tags));
     check(results, "…not one of 40", !store.patterns.find((p) => p.id === fortyPages.id)?.tags.includes("book"));
     check(results, "…each measured once, not again next time", measuredNow().some((k) => k.startsWith(fortyPages.id)) && measuredNow().some((k) => k.startsWith(longBook.id)));
-    store.aiSettings = before;
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
+    store.aiSettings = aiBefore;
+    delete store.aiSaysBook;
     book.tags = tagsBefore;
     store.patterns = store.patterns.filter((p) => !added.includes(p.id));
     try {

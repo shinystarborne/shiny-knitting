@@ -1,6 +1,7 @@
 import { api, type Tool, type ToolSet } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { closestEl } from "../dom";
+import { showNotice } from "../notice";
 import {
   describe,
   filterTools,
@@ -108,7 +109,11 @@ export class ToolsView {
 
   private async reload(): Promise<void> {
     [this.tools, this.sets, this.currency] = await Promise.all([
-      api.listTools(),
+      // Unread, the tab still opens, with what it had, and says so.
+      api.listTools().catch(() => {
+        showNotice("The needles and hooks could not be read just now.");
+        return this.tools;
+      }),
       api.listToolSets().catch(() => [] as ToolSet[]),
       api.getCurrency().catch(() => "EUR"),
     ]);
@@ -210,7 +215,11 @@ export class ToolsView {
     ) {
       return;
     }
-    await api.deleteTool(id);
+    try {
+      await api.deleteTool(id);
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Remove needle or hook"));
+    }
     await this.reload();
   }
 }

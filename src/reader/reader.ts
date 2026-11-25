@@ -680,7 +680,11 @@ export class ReaderView {
         await say("This file is not a readable picture.", "Cover");
         return;
       }
-      await saveCover(this.pattern.id, blob);
+      try {
+        await saveCover(this.pattern.id, blob);
+      } catch (err) {
+        return void (await say(err instanceof Error ? err.message : String(err), "Cover"));
+      }
       forgetCover(this.pattern.id);
       this.root.dispatchEvent(
         new CustomEvent("pattern-updated", { bubbles: true, detail: this.pattern }),
@@ -861,7 +865,9 @@ export class ReaderView {
 
     panel.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
       const field = (input.dataset.f ?? "") as keyof HighlightSettings;
-      const handler = () => {
+      // Shown as it changes (a slider as it is dragged), kept once it is set:
+      // a drag is one save, not one for every step of it.
+      const handler = (e: Event) => {
         const line = this.highlight!;
         const current = line.current;
         let value: unknown;
@@ -873,7 +879,7 @@ export class ReaderView {
         line.update(current);
         // Shown for the first time, it is given a place on the page in view.
         if (field === "enabled" && value && line.placeIfNew()) line.show();
-        void api.saveHighlight(line.current);
+        if (e.type === "change") void api.saveHighlight(line.current);
         this.updatePanelReadout(panel, line.current);
       };
       input.addEventListener("input", handler);
@@ -1113,12 +1119,20 @@ export class ReaderView {
     const zoom = this.doc?.zoomLevel?.();
     if (zoom === undefined || Math.abs(zoom - (this.pattern.zoom ?? 1)) < 0.001) return;
     if (this.zoomTimer !== null) window.clearTimeout(this.zoomTimer);
-    this.zoomTimer = window.setTimeout(() => {
+    this.zoomSave = () => {
       this.zoomTimer = null;
+      this.zoomSave = null;
       this.pattern.zoom = zoom;
       void api.saveZoom(this.pattern.id, zoom).catch(() => {});
-    }, 400);
+    };
+    this.zoomTimer = window.setTimeout(this.zoomSave, 400);
   }
+
+  /** The zoom waiting to be kept, kept at once when the pattern is left. */
+  private zoomSave: (() => void) | null = null;
+
+  /** Watches the pane for being minimised and shown again; let go when the view goes. */
+  private paneWatch: ResizeObserver | null = null;
 
   /** Another pattern open beside this one, to read the two together. */
   private beside: ReaderView | null = null;
@@ -1136,7 +1150,12 @@ export class ReaderView {
       .sort((a, b) => a.label.localeCompare(b.label));
     if (!choices.length) return void (await say("No other pattern in the library to open alongside.", "Beside"));
     const id = await askChoice("Which pattern to open alongside?", choices, { title: "Open beside" });
-    if (id) await this.openBeside(id);
+    if (!id) return;
+    try {
+      await this.openBeside(id);
+    } catch (err) {
+      await say(err instanceof Error ? err.message : String(err), "Beside");
+    }
   }
 
   private async openBeside(id: string): Promise<void> {
@@ -1428,7 +1447,8 @@ export class ReaderView {
       // Minimised, the pane has no height and forgets how far it was
       // scrolled; shown again, the line is brought back into view.
       let hidden = false;
-      new ResizeObserver(() => {
+      this.paneWatch?.disconnect();
+      this.paneWatch = new ResizeObserver(() => {
         if (this.destroyed) return;
         if (!this.scroller.clientHeight) {
           hidden = true;
@@ -1437,7 +1457,8 @@ export class ReaderView {
         if (!hidden) return;
         hidden = false;
         this.settleLine();
-      }).observe(this.scroller);
+      });
+      this.paneWatch.observe(this.scroller);
       if (this.highlight.enabled) {
         this.settleLine();
         if (this.highlight.placed) return;
@@ -1471,6 +1492,12 @@ export class ReaderView {
       this.saveTimer = null;
       this.savePosition();
     }
+    if (this.zoomTimer !== null) {
+      clearTimeout(this.zoomTimer);
+      this.zoomSave?.();
+    }
+    this.paneWatch?.disconnect();
+    this.paneWatch = null;
     this.destroyed = true;
     if (this.embedded?.counter?.onRowsCounted === this.stepLine) this.embedded.counter.onRowsCounted = null;
     this.beside?.destroy();

@@ -86,7 +86,7 @@ export async function verifyMasterclasses() {
     const frame = view()!.querySelector<HTMLIFrameElement>("iframe.mc-player")!;
     check(results, "…played here, YouTube's player in a sandboxed frame", frame.getAttribute("src") === "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0" && (frame.getAttribute("sandbox") ?? "").includes("allow-scripts") && !(frame.getAttribute("sandbox") ?? "").includes("allow-top-navigation"), frame.getAttribute("src") ?? "");
     act("browser")!.click();
-    await wait(100);
+    await waitFor(() => (w.__opened ?? []).at(-1) === "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "the browser", 3000).catch(() => {});
     check(results, "…or in the browser", (w.__opened ?? []).at(-1) === "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
     act("window")!.click();
     await waitFor(() => (w.__sheetWindows ?? []).some((x) => x.url === "https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "the window");
@@ -274,7 +274,7 @@ export async function verifyMasterclasses() {
     await wait(200);
     check(results, "…put on it again, the one there is picked, not a second put down", cards().length === 1 && cards()[0].classList.contains("selected"));
     card.querySelector<HTMLElement>('.board-video-bar [data-act="open"]')!.click();
-    await wait(100);
+    await waitFor(() => (w.__opened ?? []).at(-1) === "https://www.youtube.com/watch?v=aaaaaaaaaaa", "the browser", 3000).catch(() => {});
     check(results, "…its ↗ opens it in the browser", (w.__opened ?? []).at(-1) === "https://www.youtube.com/watch?v=aaaaaaaaaaa");
     // The board's own Video: any masterclass's, the project's first.
     page()!.querySelector<HTMLElement>('.board-tools [data-add="video"]')!.click();
@@ -287,7 +287,7 @@ export async function verifyMasterclasses() {
     await waitFor(() => cards().length === 2, "a second video");
     check(results, "…the one chosen put on the board", cards().some((c) => c.querySelector("iframe")!.getAttribute("src")!.includes("dQw4w9WgXcQ")));
     page()!.querySelector<HTMLElement>('[data-act="mc-open"]')!.click();
-    await wait(100);
+    await waitFor(() => (w.__opened ?? []).at(-1) === kept.parts[0].url, "the browser", 3000).catch(() => {});
     check(results, "Open it ↗ opens it in the browser", (w.__opened ?? []).at(-1) === kept.parts[0].url);
 
     // Back in the tab: the project with it, and removed.

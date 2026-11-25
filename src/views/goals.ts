@@ -193,13 +193,19 @@ export class GoalsPanel {
       });
       const save = async () => {
         const target = Number(field<HTMLInputElement>("target").value.trim().replace(/\s/g, "").replace(",", "."));
+        const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
+        // Said here, as the app says it: text that is no number would reach it as nothing at all.
+        if (!Number.isFinite(target) || target <= 0) {
+          error.textContent = "A goal must be a number above 0.";
+          error.hidden = false;
+          return;
+        }
         try {
           const saved = await api.saveGoal({ id: goal?.id ?? null, year: goal?.year ?? this.year, kind: field<HTMLSelectElement>("kind").value as Goal["kind"], label: field<HTMLInputElement>("label").value, target });
           this.goals = goal ? this.goals.map((g) => (g.id === saved.id ? saved : g)) : [...this.goals, saved];
           this.paint();
           finish();
         } catch (err) {
-          const error = card.querySelector<HTMLElement>('[data-el="error"]')!;
           error.textContent = err instanceof Error ? err.message : String(err);
           error.hidden = false;
         }

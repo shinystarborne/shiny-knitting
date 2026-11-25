@@ -541,7 +541,10 @@ export class RowCounter {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       return false;
     }
-    if (isPlainPress(e) && e.code) {
+    // Ctrl, Alt or Cmd with a key is a shortcut of its own (Ctrl+= zooms),
+    // never a row. Shift is the ×10.
+    if (!isPlainPress(e)) return false;
+    if (e.code) {
       const own = this.counters.find((c) => c.hotkey === e.code);
       if (own) {
         void this.countOne(own.id, e.shiftKey ? -1 : 1).catch((err) => console.error("Counting failed:", err));

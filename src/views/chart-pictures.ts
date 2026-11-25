@@ -198,11 +198,21 @@ export class ChartPicturesView {
     try {
       // The picture first: a crop that cannot be stored leaves the chart as
       // it was, its name and notes too, rather than half changed.
-      if (answer.cropped && answer.picture) {
-        await api.replaceChartPicture(chart.id, new Uint8Array(await answer.picture.blob.arrayBuffer()), answer.picture);
+      const recropped = !!(answer.cropped && answer.picture);
+      if (recropped) {
+        await api.replaceChartPicture(chart.id, new Uint8Array(await answer.picture!.blob.arrayBuffer()), answer.picture!);
         forgetChartPicture(chart.id);
       }
-      await api.updateChartPicture(chart.id, answer.input);
+      try {
+        await api.updateChartPicture(chart.id, answer.input);
+      } catch (err) {
+        // Its details not kept: its picture put back as it was too.
+        if (recropped && bytes?.length) {
+          await api.replaceChartPicture(chart.id, bytes, { width: chart.width, height: chart.height }).catch(() => {});
+          forgetChartPicture(chart.id);
+        }
+        throw err;
+      }
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "The chart");
     }

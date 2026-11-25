@@ -57,7 +57,7 @@ export async function verifyPageNumber() {
     document.querySelector(".library")!.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: long.id }));
     await waitFor(() => /^\d+ \/ \d+$/.test(readout()?.textContent ?? "") && pages().length > 5, "the page number");
     scroller().scrollTop = 0;
-    await wait(200);
+    await waitFor(() => readout()!.textContent === `1 / ${pages().length}`, "page 1 in view", 3000).catch(() => {});
     const total = Number(readout()!.textContent!.split(" / ")[1]);
     check(results, "a PDF says which page is in view, of how many", readout()!.textContent === `1 / ${total}` && total === pages().length, readout()!.textContent ?? "");
 

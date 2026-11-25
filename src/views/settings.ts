@@ -2,7 +2,7 @@ import { api, type AiSettingsView, type MeasureUnit, type ModelInfo, type Needle
 import { askYesNo, say } from "../dialogs";
 import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { parsePrice } from "./money";
-import { TABS, hiddenTabs, type Tab } from "../tabs";
+import { TABS } from "../tabs";
 import { longDate, toDateInput } from "./project-form";
 
 /** Currencies offered for prices, the commonest for a knitter in Europe first. */
@@ -279,12 +279,18 @@ export class SettingsDialog {
         if (input && rate != null) input.value = String(rate);
       })
       .catch(() => {});
-    // The tabs hidden, as kept; every one shown until it answers.
-    void hiddenTabs().then((hidden) => {
-      for (const box of this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')) {
-        box.checked = !hidden.has(box.dataset.tab as Tab);
-      }
-    });
+    // The tabs hidden, as kept; every one shown until it answers. Unread,
+    // Save leaves the hidden tabs as they are rather than show them all.
+    void api
+      .getHiddenTabs()
+      .then((kept) => {
+        const hidden = new Set(kept);
+        for (const box of this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')) {
+          box.checked = !hidden.has(box.dataset.tab!);
+        }
+        this.tabsRead = true;
+      })
+      .catch(() => {});
     // The currency, as kept; EUR until it answers.
     void api
       .getCurrency()
@@ -323,7 +329,10 @@ export class SettingsDialog {
       });
     }, 400);
     try {
-      const done = await api.makeBackup(`Shiny Knitting backup ${toDateInput(Date.now())}.zip`);
+      // With the time, as a backup before restoring has: two on one day are two files.
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, "0")}.${String(now.getMinutes()).padStart(2, "0")}`;
+      const done = await api.makeBackup(`Shiny Knitting backup ${toDateInput(now.getTime())} ${time}.zip`);
       if (done) out.textContent = `Backup saved: ${done.files} files, ${bytesLabel(done.bytes)}, in ${done.path}`;
     } catch (err) {
       out.textContent = `The backup was not made: ${err instanceof Error ? err.message : String(err)}`;
@@ -512,7 +521,7 @@ export class SettingsDialog {
     if (typed && rate === null) throw new Error("Hour cost must be a number, like 15 or 12,50.");
     // First, so every tab unticked is refused before anything else is saved.
     const unticked = [...this.root.querySelectorAll<HTMLInputElement>('[data-el="tabs"] input[data-tab]')].filter((b) => !b.checked);
-    await api.saveHiddenTabs(unticked.map((b) => b.dataset.tab!));
+    if (this.tabsRead) await api.saveHiddenTabs(unticked.map((b) => b.dataset.tab!));
     const saved = await this.persistAi();
     await api.saveUpdateSettings(this.collectUpdates());
     await api.saveNeedleSizeDisplay(this.collectNeedleSizeDisplay());
@@ -641,6 +650,9 @@ export class SettingsDialog {
       button.disabled = false;
     }
   }
+
+  /** Whether the hidden tabs were read, so the boxes say what is kept. */
+  private tabsRead = false;
 
   private close(): void {
     this.root.className = "modal-backdrop hidden";

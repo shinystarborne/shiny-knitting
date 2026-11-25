@@ -1,5 +1,5 @@
 import { api, type Tool, type ToolSet } from "../api";
-import { askYesNo } from "../dialogs";
+import { askYesNo, say } from "../dialogs";
 import { clickedOn, closeOnDispose, closestEl } from "../dom";
 import { money, parsePrice } from "./money";
 import { describe, kindLabel } from "./tool-filter";
@@ -29,7 +29,11 @@ export class ToolSetsDialog {
   }
 
   async open(): Promise<void> {
-    await this.load();
+    try {
+      await this.load();
+    } catch (err) {
+      return void (await say(`The sets could not be read: ${err instanceof Error ? err.message : String(err)}`, "Sets"));
+    }
     this.root.className = "modal-backdrop";
     closeOnDispose(this.root, () => this.close());
     this.root.addEventListener("click", this.onClick);

@@ -2,6 +2,7 @@ import { api, isLive, toBytes, WISH_KINDS, type LinkPreview, type Project, type 
 import { forgetWishPhoto, prepareChosenImage, wishPhotoUrl } from "../covers";
 import { askText, say } from "../dialogs";
 import { clickedOn, closeOnDispose, closestEl } from "../dom";
+import { showNotice } from "../notice";
 import { shopForUrl, siteOf } from "./shopping";
 
 /** The shop picker's "no shop" choice, and the one that adds a shop. */
@@ -49,10 +50,18 @@ export class WishForm {
   }
 
   async open(): Promise<void> {
+    // Unread, the form still opens, and says its lists may be short: an
+    // empty list of shops that is really unread would lead to a second shop.
+    let unread = false;
+    const none = <T,>(): T[] => {
+      unread = true;
+      return [];
+    };
     const [shops, projects] = await Promise.all([
-      api.listShops().catch(() => [] as Shop[]),
-      api.listProjects().catch(() => [] as Project[]),
+      api.listShops().catch(() => none<Shop>()),
+      api.listProjects().catch(() => none<Project>()),
     ]);
+    if (unread) showNotice("The shops or projects could not be read just now: the lists here may be missing some.");
     const e = this.editing;
     this.shops = shops;
     this.projects = projects.filter((p) => isLive(p.status) || p.id === e?.projectId);

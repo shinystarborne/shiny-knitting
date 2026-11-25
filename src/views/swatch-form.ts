@@ -268,12 +268,19 @@ export class SwatchForm {
     };
   }
 
+  /** A new swatch saved while its photo was not: kept so Save again finishes it. */
+  private addedNow: Swatch | null = null;
+
   private async save(another: boolean): Promise<void> {
     const buttons = [...this.root.querySelectorAll<HTMLButtonElement>(".modal-actions button")];
     buttons.forEach((b) => (b.disabled = true));
     try {
       const input = this.input();
-      const saved = this.editing ? await api.updateSwatch(this.editing.id, input) : await api.addSwatch(input);
+      // A new swatch saved already, its photo not (Save pressed again after
+      // that failed), is that swatch again, not a second one.
+      const kept = this.editing ?? this.addedNow;
+      const saved = kept ? await api.updateSwatch(kept.id, input) : await api.addSwatch(input);
+      if (!this.editing) this.addedNow = saved;
       // The photo goes up after the save: a new swatch has no id until then.
       if (this.photo?.pending) {
         await api.setSwatchPhoto(saved.id, Array.from(new Uint8Array(await this.photo.pending.arrayBuffer())));
@@ -282,6 +289,7 @@ export class SwatchForm {
         await api.removeSwatchPhoto(saved.id);
         forgetSwatchPhoto(saved.id);
       }
+      this.addedNow = null;
       if (another) {
         // The yarn, needle and date stay: a run of swatches is usually one
         // yarn on several needles, or one needle in several stitches.

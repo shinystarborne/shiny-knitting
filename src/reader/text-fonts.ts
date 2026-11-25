@@ -44,6 +44,9 @@ export function fitTextToPdfFonts(divs: HTMLElement[], items: TextItem[]): numbe
     // Marked content has no span of its own.
     if (item.str === undefined) continue;
     const div = divs[i++];
+    // A span that is not this item's words means the spans and items have
+    // come apart (a pdf.js that lays them out differently): left as they are.
+    if (div && div.textContent !== item.str) continue;
     if (!div || div.dataset.pdfFont || !item.str.trim() || !item.fontName || !loaded.has(item.fontName)) continue;
     const transform = div.style.transform;
     if (/rotate/.test(transform)) continue;

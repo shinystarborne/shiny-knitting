@@ -47,6 +47,7 @@ function pure(results: CheckResult[]): void {
   check(results, "brackets go into one place; in next sp under the chains", places("(3 dc, ch 2, 3 dc) in next sp").join(",") === "dc+dc+dc+ch+ch+dc+dc+dc@sp");
   check(results, "*…* x 3 is three times; around fills the round before", places("*sc, ch 3, sk 1* x 3").length === 9 && places("*sc, sk 1* around", 12).filter((p) => p === "sc").length === 6, places("*sc, sk 1* around", 12).join(","));
   check(results, "2 sc in each st around: a pair into each of the 6", places("2 sc in each st around", 6).join(",") === "sc+sc,sc+sc,sc+sc,sc+sc,sc+sc,sc+sc");
+  check(results, "*sc, sc in same st* around, at a row's start: an increase into each of the 6", places("*sc, sc in same st* around", 6).length === 12, places("*sc, sc in same st* around", 6).join(","));
   check(results, "ch 3, dc in same st; sl st to join", places("ch 3, dc in same st, sl st to join").join(",") === "ch3,dc@same,join");
   check(results, "UK terms: dc is US sc, tr is US dc, ss a slip stitch", places("3 dc, 2 tr in next, ss to join", 0, "uk").join(",") === "sc,sc,sc,dc+dc,join", places("3 dc, 2 tr in next, ss to join", 0, "uk").join(","));
   check(results, "a repeat straight after a stitch, the comma left out, and round for around", places("2 ch *(1 hdc) in next* round", 20).join(",") === ["ch2", ...Array(20).fill("hdc")].join(","), places("2 ch *(1 hdc) in next* round", 20).join(","));
@@ -179,7 +180,9 @@ export async function verifyCrochet() {
   } finally {
     if (dialog()) (dialog()!.querySelector("button.ghost, button") as HTMLElement)?.click();
     await wait(800);
-    for (const d of await invoke<CrochetDiagram[]>("list_crochet_diagrams")) if (!kept.some((k) => k.id === d.id)) await invoke("delete_crochet_diagram", { id: d.id });
+    // A cleanup that fails must not take the report with it.
+    const left = await invoke<CrochetDiagram[]>("list_crochet_diagrams").catch(() => [] as CrochetDiagram[]);
+    for (const d of left) if (!kept.some((k) => k.id === d.id)) await invoke("delete_crochet_diagram", { id: d.id }).catch(() => {});
     if (projectId) await invoke("delete_project", { id: projectId }).catch(() => {});
     (document.querySelector('[data-act="list"]') as HTMLElement | null)?.click();
     await wait(100);

@@ -30,6 +30,7 @@ type Store = {
   projectLog: { id: string; projectId: string; at: number; text: string; milestone: boolean; photoPath: string }[];
   boardItems: { boardId: string }[];
   patterns: { id: string; title: string }[];
+  projects: { id: string }[];
   covers: Map<string, unknown>;
 };
 
@@ -60,8 +61,10 @@ export async function verifyLog() {
     await waitFor(() => !!page()?.querySelector(".project-view-switch") && !!page()?.querySelector(".board"), "the project page");
   };
 
+  let made = "";
   try {
     const project = await invoke<{ id: string }>("add_project", { input: { name: "Log test sweater", startedAt: Date.now() - 1000 } });
+    made = project.id;
     await open(project.id);
     check(results, "a project's page shows its board, with a switch to its log", !page()!.querySelector<HTMLElement>(".project-board")!.hidden && log()!.hidden && !!page()!.querySelector('[data-view="board"].on'));
     view("log");
@@ -239,6 +242,8 @@ export async function verifyLog() {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
     document.querySelector<HTMLElement>(".dialog-card button.ghost")?.click();
+    // Taken away by the checks when they ran to the end; here when they did not.
+    if (made && store.projects.some((p) => p.id === made)) await invoke("delete_project", { id: made }).catch(() => {});
     tab("patterns");
     await waitFor(() => !page(), "the library", 5000).catch(() => {});
   }

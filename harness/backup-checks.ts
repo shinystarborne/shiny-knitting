@@ -73,8 +73,8 @@ export async function verifyBackup() {
     await waitFor(() => /Backup saved/.test(result()), "the backup", 20000);
     const today = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
-    const name = `Shiny Knitting backup ${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}.zip`;
-    check(results, "the save dialog suggests a name with today's date", store.backupName === name, store.backupName ?? "");
+    const name = `Shiny Knitting backup ${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())} `;
+    check(results, "the save dialog suggests a name with today's date and the time", (store.backupName ?? "").startsWith(name) && /\d\d\.\d\d\.zip$/.test(store.backupName ?? ""), store.backupName ?? "");
     check(results, "done, it says how many files, how big, and where", /Backup saved: \d+ files, 6\.1 GB, in D:\/Backups\/Shiny Knitting backup/.test(result()) && !button().disabled, result());
     await close();
 

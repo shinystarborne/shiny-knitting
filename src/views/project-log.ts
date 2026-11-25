@@ -177,8 +177,21 @@ export class ProjectLog {
     await this.reload();
   }
 
+  /** An entry being added: a second click (or Ctrl+Enter) meanwhile adds nothing more. */
+  private adding = false;
+
   /** Adds what is typed, and the photo if there is one, dated now. */
   private async add(): Promise<void> {
+    if (this.adding) return;
+    this.adding = true;
+    try {
+      await this.addNow();
+    } finally {
+      this.adding = false;
+    }
+  }
+
+  private async addNow(): Promise<void> {
     const area = this.host.querySelector<HTMLTextAreaElement>('[data-f="text"]')!;
     const photo = this.composerPhoto?.pending ?? null;
     if (!area.value.trim() && !photo) return void area.focus();

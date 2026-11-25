@@ -13,6 +13,15 @@
   --accent: #e5484d;
   --accent-soft: rgba(229, 72, 77, 0.16);
   --ok: #46a758;
+  /* A state's words, on its tinted pill or alone: light on the dark app.
+     The light reader gives them darker shades, to read on paper. */
+  --ok-text: #8fdca0;
+  --bad-text: #ffb3b5;
+  --info: #5a8cdc;
+  --info-text: #a8c6f0;
+  --warn-text: #f0cf8a;
+  --paused-text: #f2d27a;
+  --frogged-text: #c3c8d0;
   --radius: 10px;
   --sidebar: 232px;
   color-scheme: dark;
@@ -170,12 +179,12 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   color: var(--text-dim);
   text-transform: capitalize;
 }
-.pill.status-in-progress { background: var(--accent-soft); border-color: var(--accent); color: #ffb3b5; }
+.pill.status-in-progress { background: var(--accent-soft); border-color: var(--accent); color: var(--bad-text); }
 /* The yarn weight carries its own wording, so the generic capitalisation that
    suits a status must not be applied to it. */
 .pill.weight { text-transform: none; }
-.pill.status-finished { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; }
-.pill.status-want-to-knit { background: rgba(90, 140, 220, 0.16); border-color: #5a8cdc; color: #a8c6f0; }
+.pill.status-finished { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: var(--ok-text); }
+.pill.status-want-to-knit { background: rgba(90, 140, 220, 0.16); border-color: var(--info); color: var(--info-text); }
 
 .hint {
   color: var(--text-dim);
@@ -223,11 +232,11 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   border-radius: 8px;
   background: var(--bg-input);
   border: 1px solid var(--ok);
-  color: #8fdca0;
+  color: var(--ok-text);
   font-size: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-.flash.bad { border-color: var(--accent); color: #ffb3b5; }
+.flash.bad { border-color: var(--accent); color: var(--bad-text); }
 
 .lib-body {
   flex: 1;
@@ -285,7 +294,7 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   border-radius: 999px;
   background: var(--bg-raised);
 }
-.tag-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: #ffb3b5; }
+.tag-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--bad-text); }
 
 .clear-filters { margin-top: auto; font-size: 12px; }
 
@@ -366,9 +375,9 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   border-radius: 4px;
 }
 .cover-fallback.format-pdf span { background: rgba(229, 72, 77, 0.2); color: #ff9b9e; }
-.cover-fallback.format-epub span { background: rgba(70, 167, 88, 0.2); color: #8fdca0; }
+.cover-fallback.format-epub span { background: rgba(70, 167, 88, 0.2); color: var(--ok-text); }
 /* A yarn with no photo shows its weight family instead of a file format. */
-.cover-fallback.format-yarn span { background: rgba(90, 140, 220, 0.2); color: #a8c6f0; }
+.cover-fallback.format-yarn span { background: rgba(90, 140, 220, 0.2); color: var(--info-text); }
 .cover.has-cover .cover-fallback { opacity: 0; }
 
 /* Cover actions stay out of the way until the card is hovered or focused. */
@@ -458,7 +467,7 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   letter-spacing: 0.04em;
 }
 .format-badge.pdf { background: rgba(229, 72, 77, 0.2); color: #ff9b9e; }
-.format-badge.epub { background: rgba(70, 167, 88, 0.2); color: #8fdca0; }
+.format-badge.epub { background: rgba(70, 167, 88, 0.2); color: var(--ok-text); }
 
 .card-del {
   position: absolute;
@@ -521,6 +530,12 @@ h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: 
   --text-dim: #6b665a;
   --muted: var(--text-dim);
   --accent-soft: rgba(229, 72, 77, 0.12);
+  --ok-text: #1f7a37;
+  --bad-text: #b4232a;
+  --info-text: #2f5a9e;
+  --warn-text: #8a5a00;
+  --paused-text: #7a5c00;
+  --frogged-text: #4b5563;
   color-scheme: light;
   background: var(--bg);
   color: var(--text);
@@ -1657,7 +1672,7 @@ body.sizing-highlight { cursor: nwse-resize; user-select: none; }
 .suggest-table tbody th { width: 28%; color: var(--text-dim); font-weight: 500; }
 .suggest-table td.was { color: var(--text-dim); }
 .suggest-table td.was em { opacity: 0.6; font-style: italic; }
-.suggest-table td.now { color: #8fdca0; }
+.suggest-table td.now { color: var(--ok-text); }
 
 /* ---------- scanning ---------- */
 
@@ -1721,7 +1736,7 @@ body.sizing-highlight { cursor: nwse-resize; user-select: none; }
   border-left: 2px solid var(--border);
 }
 .scan-log li.ok { border-left-color: var(--ok); color: #a8dcb4; }
-.scan-log li.bad { border-left-color: var(--accent); color: #ffb3b5; }
+.scan-log li.bad { border-left-color: var(--accent); color: var(--bad-text); }
 
 /* ---------- model settings ---------- */
 
@@ -1762,7 +1777,7 @@ body.sizing-highlight { cursor: nwse-resize; user-select: none; }
   border-radius: 4px;
 }
 
-.hint.ok { color: #8fdca0; }
+.hint.ok { color: var(--ok-text); }
 .hint.bad { color: #ff9b9e; }
 .hint.block { display: block; margin: -4px 0 10px 24px; }
 
@@ -2069,8 +2084,8 @@ button.link {
   text-decoration-color: var(--border);
   text-underline-offset: 2px;
 }
-button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
-.pill.tool-free { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; text-transform: none; }
+button.link:hover { color: var(--bad-text); text-decoration-color: currentColor; }
+.pill.tool-free { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: var(--ok-text); text-transform: none; }
 .tool-card .card-tools-row { margin-top: auto; justify-content: flex-end; }
 .tool-card .card-tools-row .card-remove { margin-left: 0; }
 
@@ -2081,7 +2096,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .tool-form .hint[hidden] { display: none; }
 .form-saved {
   margin: 0;
-  color: #8fdca0;
+  color: var(--ok-text);
   font-size: 12px;
   background: rgba(70, 167, 88, 0.12);
   border: 1px solid var(--ok);
@@ -2158,7 +2173,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   font-size: 13px;
 }
 .combo-list li:hover,
-.combo-list li.active { background: var(--accent-soft); color: #ffb3b5; }
+.combo-list li.active { background: var(--accent-soft); color: var(--bad-text); }
 
 /* A project's pattern, searched for: the matches drop down under the box,
    grouped in progress, wanted, then the rest. */
@@ -2252,8 +2267,8 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   overflow: hidden;
 }
 .project-head .pill { flex: none; text-transform: none; }
-.pill.project-active { background: var(--accent-soft); border-color: var(--accent); color: #ffb3b5; }
-.pill.project-finished { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; }
+.pill.project-active { background: var(--accent-soft); border-color: var(--accent); color: var(--bad-text); }
+.pill.project-finished { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: var(--ok-text); }
 .project-pattern {
   font-size: 12px;
   color: var(--text-dim);
@@ -2296,11 +2311,11 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .project-panel-item > button.ghost { font-size: 12px; padding: 4px 10px; }
 
 /* The stash: what a project left over, and what is on one now. */
-.pill.yarn-leftover { background: rgba(214, 167, 72, 0.16); border-color: #d6a748; color: #f0cf8a; text-transform: none; }
+.pill.yarn-leftover { background: rgba(214, 167, 72, 0.16); border-color: #d6a748; color: var(--warn-text); text-transform: none; }
 .card-use {
   margin: 0;
   font-size: 12px;
-  color: #ffb3b5;
+  color: var(--bad-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2398,7 +2413,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 
 /* The stash's history: what a yarn went into, and when it ran out. */
 .card-used-up { margin: 0; font-size: 12px; color: var(--text-dim); }
-.card-went { margin: 0; font-size: 12px; color: #a8c6f0; line-height: 1.35; }
+.card-went { margin: 0; font-size: 12px; color: var(--info-text); line-height: 1.35; }
 .stash-history .card .cover { filter: saturate(0.6); }
 
 .card-details { margin: 0; font-size: 12px; color: var(--text-dim); }
@@ -2435,7 +2450,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .card-care li { display: flex; align-items: center; gap: 4px; }
 .card-care .care-icon { width: 20px; height: 20px; color: var(--text); }
 
-.card-plan { margin: 0; font-size: 12px; color: #a8c6f0; white-space: normal; line-height: 1.35; }
+.card-plan { margin: 0; font-size: 12px; color: var(--info-text); white-space: normal; line-height: 1.35; }
 
 /* A yarn's form: what it is planned for. */
 .plan-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -3023,8 +3038,8 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .icon-btn[hidden] { display: none; }
 
 /* Paused and frogged projects. */
-.pill.project-paused { background: rgba(242, 201, 76, 0.12); border-color: rgba(242, 201, 76, 0.6); color: #f2d27a; }
-.pill.project-frogged { background: rgba(140, 150, 165, 0.14); border-color: #6b7280; color: #c3c8d0; }
+.pill.project-paused { background: rgba(242, 201, 76, 0.12); border-color: rgba(242, 201, 76, 0.6); color: var(--paused-text); }
+.pill.project-frogged { background: rgba(140, 150, 165, 0.14); border-color: #6b7280; color: var(--frogged-text); }
 .project-card.paused { border-left-color: #f2c94c; }
 .project-card.frogged { border-left-color: #6b7280; }
 .project-status select { width: 100%; }
@@ -3184,7 +3199,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .fibre-percent input { width: 100%; min-width: 0; }
 .fibre-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .fibre-actions input { flex: 1; min-width: 0; }
-.hint.bad { color: #ffb3b5; }
+.hint.bad { color: var(--bad-text); }
 .check.superwash { margin-top: 6px; }
 .check.superwash em { font-style: normal; margin-left: 4px; }
 .check.share-fibres { margin-top: 2px; }
@@ -3235,14 +3250,14 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 }
 .wish-card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .wish-card.kind-yarn { border-left-color: #c98bd0; }
-.wish-card.kind-tool { border-left-color: #5a8cdc; }
+.wish-card.kind-tool { border-left-color: var(--info); }
 .wish-card.kind-pattern { border-left-color: #e0a84f; }
 /* What was got steps back, but stays readable: it is the record of a purchase. */
 .wish-card.got { opacity: 0.6; border-left-color: var(--ok); }
 .wish-card.got:hover { opacity: 1; }
 .wish-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .wish-kind { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
-.pill.wish-got-pill { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; text-transform: none; }
+.pill.wish-got-pill { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: var(--ok-text); text-transform: none; }
 .wish-name {
   margin: 0;
   font-size: 15px;
@@ -3277,7 +3292,7 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
 .wish-card .spacer,
 .shop-card .spacer { flex: 1; }
 .card-remove.wish-got-btn:hover,
-.card-remove.wish-got-btn:focus-visible { color: #8fdca0; border-color: var(--ok); }
+.card-remove.wish-got-btn:focus-visible { color: var(--ok-text); border-color: var(--ok); }
 .card-remove.wish-open:hover,
 .card-remove.wish-open:focus-visible,
 .card-remove.shop-wanted:hover,
@@ -3351,10 +3366,10 @@ button.link:hover { color: #ffb3b5; text-decoration-color: currentColor; }
   background: var(--bg-input) center / cover no-repeat;
 }
 .wish-card.got .wish-thumb { filter: saturate(0.6); }
-.wish-stashed { color: #8fdca0; }
-.card-remove.wish-stash-btn { color: #8fdca0; }
+.wish-stashed { color: var(--ok-text); }
+.card-remove.wish-stash-btn { color: var(--ok-text); }
 .card-remove.wish-stash-btn:hover,
-.card-remove.wish-stash-btn:focus-visible { color: #8fdca0; border-color: var(--ok); }
+.card-remove.wish-stash-btn:focus-visible { color: var(--ok-text); border-color: var(--ok); }
 
 .wish-form { max-width: 640px; }
 .wish-link-row { display: flex; gap: 8px; }
@@ -3501,7 +3516,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .measure-table td { white-space: nowrap; }
 .measure-table td input { width: 72px; padding: 4px 6px; font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
 .measure-table td input::placeholder { color: var(--text-dim); opacity: 0.5; }
-.measure-delta { display: inline-block; min-width: 34px; margin-left: 4px; font-size: 11px; color: #8fdca0; font-variant-numeric: tabular-nums; }
+.measure-delta { display: inline-block; min-width: 34px; margin-left: 4px; font-size: 11px; color: var(--ok-text); font-variant-numeric: tabular-nums; }
 .measure-remove { padding: 0 5px; font-size: 12px; line-height: 18px; color: var(--text-dim); border-color: transparent; background: transparent; }
 .measure-remove:hover { color: var(--accent); border-color: var(--accent); }
 
@@ -3580,10 +3595,10 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .swatch-gauge b { font-size: 20px; font-variant-numeric: tabular-nums; }
 .swatch-gauge span { font-size: 11px; color: var(--text-dim); }
 .swatch-gauge .pill { margin-left: auto; text-transform: none; }
-.pill.swatch-blocked { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: #8fdca0; }
+.pill.swatch-blocked { background: rgba(70, 167, 88, 0.16); border-color: var(--ok); color: var(--ok-text); }
 /* What blocking did: the counts before, and wider or narrower, longer or shorter. */
 .swatch-before { margin: 0; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.swatch-blocking { margin: 2px 0; font-size: 13px; color: #8fdca0; }
+.swatch-blocking { margin: 2px 0; font-size: 13px; color: var(--ok-text); }
 .swatch-blocking[hidden] { display: none; }
 .gauge-table th .hint { font-weight: 400; }
 .swatch-needle,
@@ -3595,7 +3610,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .swatch-card .spacer { flex: 1; }
 
 /* A yarn's card says it was swatched. */
-.card-swatched { margin: 0; font-size: 11px; color: #8fdca0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-swatched { margin: 0; font-size: 11px; color: var(--ok-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The form: the photo beside what it was knitted in, then the gauge as a small table. */
 .swatch-form { max-width: 640px; }
@@ -3751,7 +3766,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .plan-when { font-size: 13px; white-space: nowrap; }
 .plan-when.none { color: var(--text-dim); font-style: italic; }
 .plan-row button { flex: none; padding: 5px 12px; font-size: 12px; }
-.pill.project-planned { background: rgba(90, 140, 220, 0.16); border-color: #5a8cdc; color: #a8c6f0; text-transform: none; }
+.pill.project-planned { background: rgba(90, 140, 220, 0.16); border-color: var(--info); color: var(--info-text); text-transform: none; }
 .project-plan-head { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .plan-when-row { grid-template-columns: 1fr 1fr; }
 .card-make-plan { font-size: 12px; padding: 0 0 0 4px; }
@@ -3939,7 +3954,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .log-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 /* A milestone the project wrote: one quiet line, not a card. */
 .log-entry.milestone { background: transparent; border-style: dashed; padding: 6px 14px; }
-.log-milestone { font-weight: 600; color: #8fdca0; }
+.log-milestone { font-weight: 600; color: var(--ok-text); }
 .log-milestone::before { content: "● "; }
 .log-photo { max-width: 260px; max-height: 200px; border-radius: 8px; cursor: zoom-in; object-fit: cover; align-self: flex-start; }
 /* Remove photo only when there is one. */
@@ -3972,7 +3987,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .board-log-entry { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
 .board-log-when { font-size: 11px; color: var(--text-dim); }
 .board-log-entry p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
-.board-log-entry.milestone b { color: #8fdca0; font-weight: 600; }
+.board-log-entry.milestone b { color: var(--ok-text); font-weight: 600; }
 .board-log-entry.milestone b::before { content: "● "; }
 .board-log-photo { position: relative; width: 100%; height: 140px; border-radius: 6px; background: var(--bg-input) center / cover no-repeat; }
 .board-log-empty { margin: 0; color: var(--text-dim); font-size: 13px; }

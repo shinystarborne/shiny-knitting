@@ -104,6 +104,10 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
           { root: list, rootMargin: "200px" },
         );
         for (const el of list.querySelectorAll("[data-page]")) observer.observe(el);
+      }).catch((err) => {
+        // No pictures of the pages; the numbers still choose them.
+        error.textContent = `The pages could not be shown: ${err instanceof Error ? err.message : String(err)}`;
+        error.hidden = false;
       });
       sync();
     }

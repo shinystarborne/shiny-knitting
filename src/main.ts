@@ -968,6 +968,9 @@ class App {
     // The same element the Describe scan's panel is appended to.
     const host = this.screen.querySelector<HTMLElement>(".lib-body");
     if (!host) return;
+    // Gone elsewhere while the files were added, the knitter is left there:
+    // the library shows them when it is next opened.
+    const token = this.navToken;
     try {
       const ai = await api.getAiSettings().catch(() => null);
       await runBulkAdd(host, files, {
@@ -981,7 +984,7 @@ class App {
       return;
     }
     // One repaint at the end, rather than one per file.
-    await this.showLibrary();
+    if (token === this.navToken) await this.showLibrary();
   }
 
   private async openSettings(current?: AiSettingsView): Promise<void> {

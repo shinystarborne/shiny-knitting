@@ -45,9 +45,15 @@ pub(super) const STEPS: &[(&str, fn(&Connection) -> AppResult<()>)] = &[
     ("highlight_off_once", highlight_off_once),
 ];
 
+/// Each step in a transaction of its own: one that fails partway (a disk
+/// full, a file unreadable) leaves nothing half done -- a table renamed and
+/// not refilled, a column added and not backfilled, half a log -- and runs
+/// whole again on the next launch, as its column or flag is not there yet.
 pub(super) fn migrate(conn: &Connection) -> AppResult<()> {
     for (_, step) in STEPS {
-        step(conn)?;
+        let tx = conn.unchecked_transaction()?;
+        step(&tx)?;
+        tx.commit()?;
     }
     Ok(())
 }
@@ -558,8 +564,7 @@ fn sections_into_counters(conn: &Connection) -> AppResult<()> {
     // reopening a pattern lands the user where they left off. Everything else
     // carries over disabled, which is inert rather than lossy.
     if table_exists(conn, "sections")? {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute(
+        conn.execute(
             "INSERT INTO counters
                (id, pattern_id, name, target, current, enabled, excluded_from_total, position)
              SELECT s.id, s.pattern_id, s.name, s.target, s.current,
@@ -569,8 +574,7 @@ fn sections_into_counters(conn: &Connection) -> AppResult<()> {
              LEFT JOIN progress p ON p.pattern_id = s.pattern_id",
             [],
         )?;
-        tx.execute("DROP TABLE sections", [])?;
-        tx.commit()?;
+        conn.execute("DROP TABLE sections", [])?;
     }
 
     // The active section is now expressed by `counters.enabled`, so the column

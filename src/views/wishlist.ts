@@ -2,6 +2,7 @@ import { api, type Wish } from "../api";
 import { askYesNo, say } from "../dialogs";
 import { wishPhotoUrl } from "../covers";
 import { closestEl } from "../dom";
+import { showNotice } from "../notice";
 import { longDate } from "./project-form";
 import { filterWishes, isFiltering, kindLabel, siteOf, wishFacets, type Facet, type WishFilter } from "./shopping";
 
@@ -88,7 +89,12 @@ export class WishlistView {
 
   /** Reads the list again, keeping the filters; after a form saved over it. */
   async reload(): Promise<void> {
-    this.wishes = await api.listWishes();
+    try {
+      this.wishes = await api.listWishes();
+    } catch {
+      // Unread, what was shown stays, and it is said.
+      showNotice("The wishlist could not be read just now.");
+    }
     this.renderFacets();
     this.paint();
   }

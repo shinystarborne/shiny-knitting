@@ -483,33 +483,14 @@ function pageClientRects(range: Range, page: HTMLElement): ClientRect[] {
 }
 
 /**
- * The rectangles for a set of ranges that actually fall inside the page.
- *
- * Unlike `rectsForRanges`, a rectangle entirely outside the page is dropped
- * rather than clamped into it. That matters for a reflowable document: while a
- * chapter is re-laying out, or before its frame has been resized to fit, the
- * text a mark refers to can be outside the frame's visible box. Clamping would
- * then paint the mark against the wrong edge of the page, which looks like a
- * mark on the wrong words -- worse than no mark at all. A rectangle that
- * overhangs the edge slightly is still drawn, because that is just a
- * selection running past a margin.
+ * The rectangles for a set of ranges that fall inside the page: the same as
+ * `rectsForRanges`, which drops a rectangle entirely outside the page too.
+ * Named for what an EPUB chapter needs: while it re-lays out, or before its
+ * frame is fitted, the words a mark refers to can be outside the frame, and
+ * clamping would paint the mark against the wrong edge -- worse than no mark.
  */
 export function visibleRectsForRanges(ranges: Range[], page: HTMLElement): Rect[] {
-  const box = page.getBoundingClientRect();
-  const inside: Rect[] = [];
-  for (const range of ranges) {
-    for (const rect of pageClientRects(range, page)) {
-      const overlaps =
-        rect.left < box.right &&
-        rect.left + rect.width > box.left &&
-        rect.top < box.bottom &&
-        rect.top + rect.height > box.top;
-      if (!overlaps) continue;
-      const r = toPageRect(rect, page);
-      if (r.w > 0 && r.h > 0) inside.push(r);
-    }
-  }
-  return mergeRects(inside);
+  return rectsForRanges(ranges, page);
 }
 
 /**

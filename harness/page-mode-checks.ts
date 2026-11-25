@@ -62,7 +62,7 @@ export async function verifyPageMode() {
     const zoomBefore = readout();
     button()!.click();
     await waitFor(() => scroller().classList.contains("page-mode") && readout() !== zoomBefore, "a page fitted whole");
-    await wait(300);
+    await waitFor(() => pageEl(1).getBoundingClientRect().height <= scroller().clientHeight + 1, "the page to fit", 3000).catch(() => {});
     check(results, "Pages fits a whole page to the pane", pageEl(1).getBoundingClientRect().height <= scroller().clientHeight + 1, `${pageEl(1).getBoundingClientRect().height} in ${scroller().clientHeight}`);
     check(results, "…with the page-turning buttons at its sides", getComputedStyle(document.querySelector<HTMLElement>(".reader .page-turn.next")!).display !== "none");
 

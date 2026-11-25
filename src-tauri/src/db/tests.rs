@@ -939,13 +939,20 @@ fn deleting_a_pattern_removes_its_counters() {
 #[test]
 fn counters_persist_across_reopening() {
     // Counts are the one thing that must never be lost by closing the app, so
-    // this reads back through a fresh handle rather than the same connection.
-    let conn = test_db();
-    let p = sample(&conn, "Kept", "A", "in-progress", &[]);
-    let c = enabled_counter(&conn, &p.id, "Front", 100);
-    count_rows(&conn, &p.id, "", 42).unwrap();
-    set_total_rows(&conn, &p.id, "", 42).unwrap();
+    // this writes to a library file, closes it, and reads back through a
+    // fresh handle opened on the file again.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("library.db");
+    let (p, c) = {
+        let conn = open(&path).expect("library");
+        let p = sample(&conn, "Kept", "A", "in-progress", &[]);
+        let c = enabled_counter(&conn, &p.id, "Front", 100);
+        count_rows(&conn, &p.id, "", 42).unwrap();
+        set_total_rows(&conn, &p.id, "", 42).unwrap();
+        (p, c)
+    };
 
+    let conn = open(&path).expect("library reopened");
     let reopened = get_progress(&conn, &p.id, "").unwrap();
     assert_eq!(reopened.total_rows, 42);
     let counters = list_counters(&conn, &p.id, "").unwrap();
@@ -2345,6 +2352,9 @@ fn a_tool_is_on_one_active_project_at_a_time() {
     assert!(get_project(&conn, &a.id).unwrap().tool_ids.is_empty(), "and off the first");
     let free = set_tool_project(&conn, "t1", None).unwrap();
     assert_eq!((free.project_id, free.project_name.as_str()), (None, ""));
+    set_tool_project(&conn, "t1", Some(&a.id)).unwrap();
+    let freed = set_tool_project(&conn, "t1", Some("")).expect("an empty project is none, not a missing one");
+    assert_eq!(freed.project_id, None);
     assert!(set_tool_project(&conn, "t1", Some("gone")).is_err(), "an unknown project is refused");
     assert!(set_tool_project(&conn, "nope", None).is_err());
 }
@@ -3018,6 +3028,24 @@ fn merging_copies_keeps_what_was_made_from_them() {
     assert_eq!(merged.yarn_weight, "fingering");
     assert_eq!(get_project(&conn, &pr.id).unwrap().pattern_id.as_deref(), Some(keep.id.as_str()));
     assert_eq!(get_board_item(&conn, "card").unwrap().data["patternId"], keep.id.as_str());
+}
+
+#[test]
+fn merging_keeps_a_copys_price_and_size_when_the_kept_one_has_none() {
+    let conn = test_db();
+    let keep = sample(&conn, "Raglan", "", "", &[]);
+    let copy = sample(&conn, "Raglan (1)", "", "", &[]);
+    set_pattern_price(&conn, &copy.id, Some(6.5)).unwrap();
+    set_pattern_size(&conn, &copy.id, Some(2)).unwrap();
+    let merged = merge_patterns(&conn, &keep.id, &[copy.id.clone()]).unwrap();
+    assert_eq!((merged.price, merged.size_index), (Some(6.5), Some(2)));
+
+    // The kept one's own are kept.
+    let other = sample(&conn, "Raglan (2)", "", "", &[]);
+    set_pattern_price(&conn, &other.id, Some(9.0)).unwrap();
+    set_pattern_size(&conn, &other.id, Some(4)).unwrap();
+    let again = merge_patterns(&conn, &keep.id, &[other.id.clone()]).unwrap();
+    assert_eq!((again.price, again.size_index), (Some(6.5), Some(2)));
 }
 
 // ---------- shops and the wishlist ----------

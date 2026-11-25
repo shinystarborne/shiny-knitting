@@ -300,7 +300,11 @@ export function stepsOf(row: ReadRow, around: number, spaces = around): Step[] {
         }
       };
       flat(p.parts);
-      const each = once.reduce((n, s) => n + consumes(s), 0);
+      // Counted as the repeat is worked: "in the same" after a stitch of the
+      // repeat's own takes no new place, even at the row's start.
+      let n = used.n;
+      for (const s of once) n += s.kind === "place" ? (s.same && n > 0 ? 0 : 1) : s.kind === "skip" ? s.n : 0;
+      const each = n - used.n;
       // Into chain spaces, around: as many times as there are spaces.
       const inSpaces = once.filter((s) => s.kind === "place" && s.space).length;
       let times = p.times !== "around" ? p.times : inSpaces ? Math.max(1, Math.floor((spaces - used.spaces) / inSpaces)) : each > 0 ? Math.max(1, Math.floor((around - used.n) / each)) : 1;

@@ -39,7 +39,7 @@ function pure(results: CheckResult[]): void {
   const t0 = 1_000_000_000;
   const min = 60_000;
   check(results, "a timer is left thirty minutes after the last row counted, ending at that row", idleEnd(t0, t0 + 10 * min, t0 + 39 * min) === null && idleEnd(t0, t0 + 10 * min, t0 + 40 * min) === t0 + 10 * min && IDLE_MS === 30 * min);
-  check(results, "…with no row counted since it started, thirty minutes after its start", idleEnd(t0, null, t0 + 29 * min) === null && idleEnd(t0, null, t0 + 31 * min) === t0 + 30 * min && idleEnd(t0, t0 - 60 * min, t0 + 31 * min) === t0 + 30 * min);
+  check(results, "…with no row counted since it started (one before it is not counted), thirty minutes after its start", idleEnd(t0, null, t0 + 29 * min) === null && idleEnd(t0, null, t0 + 31 * min) === t0 + 30 * min && idleEnd(t0, t0 - 60 * min, t0 + 31 * min) === t0 + 30 * min);
   const paused = { id: "k", projectId: "p", startedAt: t0, endedAt: null, pausedMs: 10 * min, pausedAt: t0 + 50 * min };
   check(results, "a paused sitting's time stops at its pause, its earlier breaks left out", sessionMs(paused, t0 + 90 * min) === 40 * min && sessionMs({ ...paused, pausedAt: null }, t0 + 90 * min) === 80 * min && sessionMs({ ...paused, pausedAt: null, endedAt: t0 + 60 * min }) === 50 * min);
 }

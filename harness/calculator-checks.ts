@@ -6,6 +6,7 @@
  * Run with the harness open, after the other suites:
  *   window.__calculatorChecks()
  */
+import { keep } from "./keep";
 import { backNeck, cardigan, cardiganSteps, even, heldTogether, nearestRepeat, raglan, raglanBottomUpSteps, raglanSteps, regauge, roundYoke, roundYokeSteps, ribCount, rowsFor, spreadEvenly, stitchesFor, type RaglanInput, type RaglanResult, type RoundYokeResult } from "../src/views/calc";
 
 interface CheckResult {
@@ -197,6 +198,8 @@ export async function verifyCalculators() {
   const cell = (row: string) =>
     [...(view()?.querySelectorAll<HTMLTableRowElement>(".calc-table tr") ?? [])].find((tr) => tr.querySelector("th")?.textContent === row)?.querySelector("td")?.textContent ?? "";
 
+  // Saving puts steps on a project's board: taken off again at the end.
+  const restore = keep(["boardItems"]);
   try {
     pure(results);
 
@@ -341,6 +344,7 @@ export async function verifyCalculators() {
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));
   } finally {
+    restore();
     tab("patterns");
     await waitFor(() => !view(), "the library", 5000).catch(() => {});
   }

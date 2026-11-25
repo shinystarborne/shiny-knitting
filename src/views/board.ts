@@ -724,8 +724,12 @@ export class Board {
           } else {
             await api.pauseKnitting();
           }
-        } else if (running) await api.stopKnitting();
-        else await api.startKnitting(this.boardId);
+        } else if (act === "timer-go") {
+          if (running) await api.stopKnitting();
+          else await api.startKnitting(this.boardId);
+        }
+        // Pause with nothing running (a card not yet redrawn) starts nothing:
+        // the card is brought up to date below.
       } catch (err) {
         return void (await say(err instanceof Error ? err.message : String(err), "Knitting time"));
       }

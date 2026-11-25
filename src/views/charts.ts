@@ -1179,13 +1179,16 @@ export class ChartPage {
   private chooseStitch(key: string): void {
     let i = this.g.colours.findIndex((c) => c.stitch === key);
     if (i < 0) {
-      if (this.g.colours.length >= MAX_COLOURS) {
-        const counts = usage(this.g, this.mask);
-        for (let k = this.g.colours.length - 1; k > 0; k--) if (!counts[k] && k !== this.colour) removeColour(this.g, k);
-        this.colour = Math.min(this.colour, this.g.colours.length - 1);
-      }
-      if (this.g.colours.length >= MAX_COLOURS) return void say(`A chart can have up to ${MAX_COLOURS} different stitches; this one has them all.`, "Stitches");
-      this.g.colours.push(laceColour(key));
+      // Full, the stitches drawn nowhere make room; none to spare, it is said.
+      const full = this.g.colours.length >= MAX_COLOURS;
+      const counts = usage(this.g, this.mask);
+      const spare = full ? this.g.colours.map((_, k) => k).filter((k) => k > 0 && !counts[k] && k !== this.colour) : [];
+      if (full && !spare.length) return void say(`A chart can have up to ${MAX_COLOURS} different stitches; this one has them all.`, "Stitches");
+      // A change like any other: undone with Ctrl+Z, and saved.
+      this.change(() => {
+        for (const k of spare.reverse()) removeColour(this.g, k);
+        this.g.colours.push(laceColour(key));
+      }, true);
       i = this.g.colours.length - 1;
     }
     this.colour = i;
