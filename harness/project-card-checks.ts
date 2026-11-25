@@ -1,7 +1,7 @@
 /**
  * Checks for a project's card, to post: its words as chosen (the pattern and
- * designer, dates, the yarn and how much, needles, size, who for, lines from
- * the log), where photos go, what does not fit left out from the end; and
+ * designer, dates, the yarn and how much, needles, size, who for, knitting
+ * time, the yarn's cost and the total, lines from the log), where photos go, what does not fit left out from the end; and
  * the screen, clicked through from the project's page and the gallery: the
  * shape, the colours, the photos, the size saved to the project, copied and
  * saved as a PNG.
@@ -68,22 +68,33 @@ function pure(results: CheckResult[]): void {
   } as Project;
   const d: CardData = {
     project,
-    pattern: { title: "Riddari", designer: "Védís Jónsdóttir" } as CardData["pattern"],
+    pattern: { id: "pt", title: "Riddari", designer: "Védís Jónsdóttir", price: 6 } as CardData["pattern"],
     log: [{ id: "lg1", projectId: "pc", at: day, text: "Blocked it over a chair, and it grew 4 cm.", milestone: false, photoPath: "" } as CardData["log"][number]],
     tools: [{ id: "t1", kind: "circular", sizeMm: 4.5, cableCm: 80, brand: "ChiaoGoo" } as CardData["tools"][number]],
-    yarns: [{ id: "y1", colourway: "Lava" } as CardData["yarns"][number]],
+    yarns: [{ id: "y1", colourway: "Lava", gramsPerBall: 50, details: { price: 4.5 } } as CardData["yarns"][number]],
     usage: [
       { id: "u1", yarnId: "y1", yarnName: "Léttlopi", projectId: "pc", projectName: "", at: 0, grams: 410, metres: 820, source: "finished" },
       { id: "u2", yarnId: "y1", yarnName: "Léttlopi", projectId: "other", projectName: "", at: 0, grams: 999, metres: 0, source: "finished" },
     ],
+    sessions: [
+      { id: "s1", projectId: "pc", startedAt: 0, endedAt: 12 * 3600000, pausedMs: 0 },
+      { id: "s2", projectId: "pc", startedAt: day, endedAt: day + 35 * 60000 },
+      { id: "s3", projectId: "other", startedAt: day, endedAt: day + 9 * 3600000 },
+    ],
+    currency: "EUR",
   };
-  const all: CardOptions = { shape: "portrait", theme: "cream", photos: [], show: ["pattern", "dates", "yarn", "needles", "size", "person"], log: ["lg1"] };
+  const all: CardOptions = { shape: "portrait", theme: "cream", photos: [], show: ["pattern", "dates", "yarn", "needles", "size", "person", "time", "cost"], log: ["lg1"] };
   const text = cardText(d, all);
   const said = JSON.stringify(text);
   check(results, "a card says the name first, then the pattern by its designer", text[0].kind === "title" && (text[0] as { text: string }).text === "Lopi for Anna" && (text[1] as { text: string }).text === "Riddari by Védís Jónsdóttir", said);
   check(results, "…when, started and finished", /Started 3 March 2026 · Finished 12 October 2026/.test(said), said);
   check(results, "…the yarn with its colourway and what this project used, grams and metres", /Léttlopi, Lava — 410 g \(820 m\)/.test(said) && !/999/.test(said), said);
   check(results, "…the needles, the size, who for, and a line from the log", /"Needles","lines":\["4\.5 mm/.test(said) && /"Size","lines":\["M"\]/.test(said) && /"For","lines":\["Anna"\]/.test(said) && /Blocked it over a chair/.test(said), said);
+  check(results, "…its knitting time, this project's alone", /"Time","lines":\["12 h 35 min"\]/.test(said), said);
+  // 410 g at 4.50 a 50 g ball is 36.90; with the pattern's 6, 42.90.
+  check(results, "…what its yarn cost, by what it used, and the total with the pattern", /"Yarn cost","lines":\["[^"]*36[.,]90[^"]*"\]/.test(said) && /"Total cost","lines":\["[^"]*42[.,]90[^"]*"\]/.test(said), said);
+  const unpriced = JSON.stringify(cardText({ ...d, yarns: [{ id: "y1", colourway: "Lava" } as CardData["yarns"][number]], pattern: { ...d.pattern!, price: null }, sessions: [] }, all));
+  check(results, "with no prices and no time, no cost and no time on it", !/Yarn cost|Total cost|"Time"/.test(unpriced), unpriced);
   const bare = cardText(d, { ...all, show: [], log: [] });
   check(results, "with nothing chosen, only its name", bare.length === 1, JSON.stringify(bare));
   const active = cardText({ ...d, project: { ...project, status: "active", finishedAt: null } }, all);
@@ -127,7 +138,8 @@ export async function verifyProjectCard() {
     const p = await invoke<Project>("add_project", { input: { name: "Card sweater", patternId: "p1", notes: "", startedAt: Date.now() - 40 * 86400000, toolIds: ["t2"], yarns: [{ yarnId: yarn.id, lotId: null }] } });
     id = p.id;
     try {
-      localStorage.removeItem(`project-card:${id}`);
+      // Kept from before the time and cost were there to choose.
+      localStorage.setItem(`project-card:${id}`, JSON.stringify({ show: ["pattern", "dates", "yarn"] }));
     } catch {
       // Nothing kept.
     }
@@ -149,6 +161,8 @@ export async function verifyProjectCard() {
     page()!.querySelector<HTMLElement>('[data-act="card"]')!.click();
     await waitFor(() => !!dlg() && canvas().width === 1080, "the card");
     await wait(300);
+    const ticked = (k: string) => dlg()!.querySelector<HTMLInputElement>(`[data-show="${k}"]`)!.checked;
+    check(results, "a card made before there were time and cost to choose shows them, and keeps what was left off", ticked("time") && ticked("cost") && ticked("yarn") && !ticked("needles"));
     check(results, "the card opens 4:5, its first three photos in, numbered in order", canvas().height === 1350 && dlg()!.querySelectorAll(".pc-photo.on").length === 3 && dlg()!.querySelector(".pc-photo.on b")!.textContent === "1");
     check(results, "…the photos drawn on it, the first big", near(pixel(canvas(), 100, 100), "#33aa66"), pixel(canvas(), 100, 100));
     check(results, "…on cream", near(pixel(canvas(), 8, 1340), "#f5f0e6"), pixel(canvas(), 8, 1340));

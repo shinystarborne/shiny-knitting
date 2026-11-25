@@ -1,19 +1,21 @@
 /**
  * A project's card, to post: one picture with what there is to say about it
  * -- its name, the pattern and its designer, when it was knitted, a few of
- * its photos, the yarn and how much of it, the needles, the size, and lines
- * from its log. Square, 4:5 or a story's 9:16, chosen each time; copied, or
+ * its photos, the yarn and how much of it, the needles, the size, its
+ * knitting time and what it cost, and lines from its log. Square, 4:5 or a story's 9:16, chosen each time; copied, or
  * saved as a PNG.
  *
  * The layout is worked out apart from the drawing (`cardText`, `fitBlocks`,
  * `photoRects`), so the harness checks it directly. What does not fit is
  * shrunk a little, then left out from the end, and the screen says so.
  */
-import { api, type GalleryPhoto, type LogEntry, type Pattern, type Project, type Tool, type Yarn, type YarnUse } from "../api";
+import { api, type GalleryPhoto, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn, type YarnUse } from "../api";
 import { customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { copyPng } from "../copy-picture";
 import { showNotice } from "../notice";
+import { hoursText, totalMs } from "./knit-time";
+import { money, projectCost } from "./money";
 import { photosOf, photoUrl, shownPhotos, type Photo } from "./gallery";
 import { longDate } from "./project-form";
 import { describe, tipLabel } from "./tool-filter";
@@ -40,9 +42,14 @@ export const SHOWS = [
   { key: "yarn", label: "Yarn and amount" },
   { key: "needles", label: "Needles & hooks" },
   { key: "size", label: "Size knitted" },
+  { key: "time", label: "Knitting time" },
+  { key: "cost", label: "Yarn cost and total cost" },
   { key: "person", label: "Made for" },
 ] as const;
 export type Show = (typeof SHOWS)[number]["key"];
+
+/** What a card shows when nothing else has been chosen. */
+export const SHOWN_FIRST: Show[] = ["pattern", "dates", "yarn", "needles", "size", "time", "cost"];
 
 export const MAX_PHOTOS = 4;
 
@@ -64,6 +71,15 @@ export interface CardData {
   tools: Tool[];
   yarns: Yarn[];
   usage: YarnUse[];
+  /** Its knitting time. */
+  sessions: KnitSession[];
+  /** The currency prices are in. */
+  currency: string;
+}
+
+/** What the project cost, as the project's page sums it: the yarn, and all of it with the pattern. */
+export function cardCost(d: CardData): ReturnType<typeof projectCost> {
+  return projectCost(d.project, d.yarns, d.pattern ? [d.pattern] : [], d.usage);
 }
 
 /** One block of the card's words: a heading line, a fact with its label, or a quote. */
@@ -104,6 +120,13 @@ export function cardText(d: CardData, o: CardOptions): Block[] {
     if (lines.length) blocks.push({ kind: "fact", label: "Needles", lines });
   }
   if (on("size") && p.size.trim()) blocks.push({ kind: "fact", label: "Size", lines: [p.size.trim()] });
+  const ms = totalMs(d.sessions.filter((x) => x.projectId === p.id));
+  if (on("time") && ms >= 60000) blocks.push({ kind: "fact", label: "Time", lines: [hoursText(ms)] });
+  if (on("cost")) {
+    const c = cardCost(d);
+    if (c.yarn) blocks.push({ kind: "fact", label: "Yarn cost", lines: [money(c.yarn, d.currency)] });
+    if (c.total) blocks.push({ kind: "fact", label: "Total cost", lines: [money(c.total, d.currency)] });
+  }
   if (on("person") && p.personName) blocks.push({ kind: "fact", label: "For", lines: [p.personName] });
   for (const id of o.log) {
     const e = d.log.find((x) => x.id === id);
@@ -276,10 +299,10 @@ export function drawCard(canvas: HTMLCanvasElement, d: CardData, o: CardOptions,
 
 // ---------- the screen ----------
 
-/** The choices last made for a project's card, kept in this window. */
-function remembered(id: string): Partial<CardOptions> {
+/** The choices last made for a project's card, kept in this window, with what there was to choose from then. */
+function remembered(id: string): Partial<CardOptions> & { offered?: string[] } {
   try {
-    return JSON.parse(localStorage.getItem(`project-card:${id}`) ?? "{}") as Partial<CardOptions>;
+    return JSON.parse(localStorage.getItem(`project-card:${id}`) ?? "{}") as Partial<CardOptions> & { offered?: string[] };
   } catch {
     return {};
   }
@@ -287,7 +310,7 @@ function remembered(id: string): Partial<CardOptions> {
 
 function remember(id: string, o: CardOptions): void {
   try {
-    localStorage.setItem(`project-card:${id}`, JSON.stringify(o));
+    localStorage.setItem(`project-card:${id}`, JSON.stringify({ ...o, offered: SHOWS.map((s) => s.key) }));
   } catch {
     // Chosen again next time.
   }
@@ -301,13 +324,15 @@ export interface CardHooks {
 /** Opens a project's card: chosen, seen as it will look, copied or saved. */
 export async function openProjectCard(project: Project, hooks: CardHooks = {}): Promise<void> {
   let p = project;
-  const [pattern, log, tools, yarns, usage, logged] = await Promise.all([
+  const [pattern, log, tools, yarns, usage, logged, sessions, currency] = await Promise.all([
     p.patternId ? api.getPattern(p.patternId).catch(() => null) : Promise.resolve(null),
     api.listProjectLog(p.id).catch(() => [] as LogEntry[]),
     api.listTools().catch(() => [] as Tool[]),
     api.listYarns({ used: "all" }).catch(() => [] as Yarn[]),
     api.listYarnUsage().catch(() => [] as YarnUse[]),
     api.listGalleryPhotos().catch(() => [] as GalleryPhoto[]),
+    api.listKnitSessions(p.id).catch(() => [] as KnitSession[]),
+    api.getCurrency().catch(() => "EUR"),
   ]);
   const photos: Photo[] = photosOf(p, logged);
   const kept = remembered(p.id);
@@ -316,10 +341,11 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     shape: SHAPES.some((s) => s.key === kept.shape) ? kept.shape! : "portrait",
     theme: THEMES.some((t) => t.key === kept.theme) ? kept.theme! : "cream",
     photos: kept.photos ? known(kept.photos, photos.map((x) => x.key)).slice(0, MAX_PHOTOS) : shownPhotos(p, photos).slice(0, 3).map((x) => x.key),
-    show: kept.show ? (known(kept.show, SHOWS.map((s) => s.key)) as Show[]) : ["pattern", "dates", "yarn", "needles", "size"],
+    // What was not there to choose when the card was last made is shown as at first.
+    show: kept.show ? ([...known(kept.show, SHOWS.map((s) => s.key)), ...SHOWN_FIRST.filter((k) => !(kept.offered ?? ["pattern", "dates", "yarn", "needles", "size", "person"]).includes(k))] as Show[]) : [...SHOWN_FIRST],
     log: known(kept.log, log.map((e) => e.id)),
   };
-  const data = (): CardData => ({ project: p, pattern, log, tools, yarns, usage });
+  const data = (): CardData => ({ project: p, pattern, log, tools, yarns, usage, sessions, currency });
   const pictures = new Map<string, ImageBitmap | null>();
   const urls = new Map<string, string | null>();
 
@@ -330,7 +356,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     "beforeend",
     `
     <div class="pc-body">
-      <div class="pc-preview"><canvas data-el="card" aria-label="Card preview"></canvas><p class="hint" data-el="left-out"></p></div>
+      <div class="pc-preview"><canvas data-el="card" aria-label="Card preview"></canvas><p class="hint" data-el="left-out"></p><p class="hint" data-el="unpriced"></p></div>
       <aside class="pc-controls">
         <div class="field"><span>Shape</span><div class="seg pc-shapes">${SHAPES.map((s) => `<button type="button" class="ghost" data-shape="${s.key}">${s.label}</button>`).join("")}</div></div>
         <div class="field"><span>Colours</span><div class="pc-themes">${THEMES.map((t) => `<button type="button" class="pc-theme" data-theme="${t.key}" title="${t.label}" style="background:${t.bg};color:${t.ink};border-color:${t.accent}">${t.label}</button>`).join("")}</div></div>
@@ -396,6 +422,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     card.querySelector<HTMLElement>('[data-el="left-out"]')!.textContent = left
       ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit. Fewer log lines, fewer photos or a taller shape make room.`
       : "";
+    const unpriced = o.show.includes("cost") ? cardCost(data()).unknown : [];
+    card.querySelector<HTMLElement>('[data-el="unpriced"]')!.textContent = unpriced.length ? `Not counted in the cost (no price or amount): ${unpriced.join(", ")}.` : "";
   };
 
   const pngOfCard = (): Promise<Blob> =>
