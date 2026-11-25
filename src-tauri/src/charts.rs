@@ -239,6 +239,12 @@ fn file_name(name: &str, ext: &str) -> String {
         .collect();
     let base = line(&base, 80);
     let base = base.trim_end_matches('.').trim();
+    // A name given with its extension already ("card.png") is not given it twice.
+    let dotted = format!(".{ext}");
+    let base = match base.len().checked_sub(dotted.len()) {
+        Some(at) if base.is_char_boundary(at) && base[at..].eq_ignore_ascii_case(&dotted) => base[..at].trim_end_matches('.').trim(),
+        _ => base,
+    };
     format!("{}.{ext}", if base.is_empty() { "Chart" } else { base })
 }
 
@@ -479,5 +485,10 @@ mod tests {
         assert_eq!(percent_decode("%zz"), "%zz");
         assert_eq!(file_name("Snow: \"flakes\"?", "pdf"), "Snow flakes.pdf");
         assert_eq!(file_name(" ... ", "png"), "Chart.png");
+        assert_eq!(file_name("nocturnal by saskieco card.png", "png"), "nocturnal by saskieco card.png", "its extension once");
+        assert_eq!(file_name("Hat.PNG", "png"), "Hat.png");
+        assert_eq!(file_name("Hat.png", "pdf"), "Hat.png.pdf", "another kind's ending is part of the name");
+        assert_eq!(file_name(".png", "png"), "Chart.png");
+        assert_eq!(file_name("Mütze.png", "png"), "Mütze.png");
     }
 }

@@ -540,7 +540,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
   const save = async (): Promise<void> => {
     try {
       const bytes = new Uint8Array(await (await pngOfCard()).arrayBuffer());
-      const path = await api.saveFile("png", `${p.name} card.png`, bytes);
+      // The extension is the saving's to add.
+      const path = await api.saveFile("png", `${p.name} card`, bytes);
       if (path) showNotice("Card saved.", undefined, 3000);
     } catch (err) {
       await say(err instanceof Error ? err.message : String(err), "Save the card");
