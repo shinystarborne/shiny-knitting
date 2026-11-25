@@ -24,7 +24,7 @@ export function additions(yarns: Yarn[]): StashAdd[] {
     const name = [y.brand, y.name].filter(Boolean).join(" ") + (y.colourway ? ` (${y.colourway})` : "");
     for (const lot of y.lots) {
       if (!lot.balls && lot.leftover) continue;
-      const grams = lot.balls && y.gramsPerBall ? Math.round(lot.balls * y.gramsPerBall) : lot.gramsLeft;
+      const grams = lot.balls && y.gramsPerBall ? Math.round(lot.balls * y.gramsPerBall) : (lot.boughtGrams ?? lot.gramsLeft);
       if (!grams && !lot.balls) continue;
       const metres = y.metresPerBall && y.gramsPerBall ? Math.round((grams / y.gramsPerBall) * y.metresPerBall) : 0;
       const balls = lot.balls ? `${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : "";

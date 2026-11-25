@@ -43,6 +43,7 @@ pub(super) const STEPS: &[(&str, fn(&Connection) -> AppResult<()>)] = &[
     ("epubs_tagged_once", epubs_tagged_once),
     ("pattern_status_once", pattern_status_once),
     ("highlight_off_once", highlight_off_once),
+    ("lot_bought_grams", lot_bought_grams),
 ];
 
 /// Each step in a transaction of its own: one that fails partway (a disk
@@ -1192,4 +1193,26 @@ mod tests {
         names.dedup();
         assert_eq!(names.len(), STEPS.len(), "each step has a name of its own");
     }
+}
+
+/// The grams a lot bought by weight was bought as. Before, only what is left
+/// was kept, so what it cost and what was added shrank as it was knitted
+/// from. An older lot's is worked out once: what is left, and for a yarn with
+/// that one lot, what its projects took of it as well.
+fn lot_bought_grams(conn: &Connection) -> AppResult<()> {
+    if column_exists(conn, "yarn_lots", "bought_grams")? {
+        return Ok(());
+    }
+    conn.execute("ALTER TABLE yarn_lots ADD COLUMN bought_grams INTEGER", [])?;
+    conn.execute(
+        "UPDATE yarn_lots SET bought_grams = grams_left
+           + CASE WHEN (SELECT COUNT(*) FROM yarn_lots o WHERE o.yarn_id = yarn_lots.yarn_id) = 1
+                  THEN COALESCE((SELECT SUM(u.grams) FROM yarn_usage u WHERE u.yarn_id = yarn_lots.yarn_id), 0)
+                  ELSE 0 END
+         WHERE balls = 0 AND weighed = 1",
+        [],
+    )?;
+    // Nothing to say it was ever bought: none kept.
+    conn.execute("UPDATE yarn_lots SET bought_grams = NULL WHERE bought_grams <= 0", [])?;
+    Ok(())
 }

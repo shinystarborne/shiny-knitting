@@ -1887,6 +1887,7 @@ fn updating_a_yarn_reconciles_its_lots() {
             location: String::new(),
             bought_at: None,
             leftover: false,
+            bought_grams: None,
         },
     ];
 
@@ -4051,4 +4052,41 @@ fn the_lists_show_each_thing_as_it_shows_alone() {
     pictures.sort();
     assert_eq!(pictures, vec![("pattern", pattern.id.as_str()), ("yarn", a.id.as_str())], "a yarn without a photo has no picture");
     assert_eq!((ideas.item_count, ideas.colours.clone()), (4, vec!["#7aa874".to_string()]));
+}
+
+#[test]
+fn a_lot_bought_by_weight_keeps_what_it_was_bought_as() {
+    let conn = test_db();
+    let weighed = |grams: i64| YarnLotInput { weighed: Some(true), ..lot("", 0.0, grams) };
+    let y = stash(&conn, "Cone", "lace", vec![weighed(500), lot("B", 2.0, 0)]);
+    assert_eq!(y.lots[0].bought_grams, Some(500), "a lot by weight: the grams first written down");
+    assert_eq!(y.lots[1].bought_grams, None, "balls say it already");
+
+    // Knitted from: what is left goes down, what was bought stays.
+    let mut edited = y.clone();
+    edited.lots[0].grams_left = 320;
+    let saved = update_yarn(&conn, &edited).unwrap();
+    assert_eq!((saved.lots[0].grams_left, saved.lots[0].bought_grams), (320, Some(500)));
+    // Corrected by hand, it is as typed.
+    edited.lots[0].bought_grams = Some(550);
+    assert_eq!(update_yarn(&conn, &edited).unwrap().lots[0].bought_grams, Some(550));
+}
+
+#[test]
+fn an_older_lot_by_weight_is_given_what_it_was_bought_as() {
+    let conn = test_db();
+    let weighed = |grams: i64| YarnLotInput { weighed: Some(true), ..lot("", 0.0, grams) };
+    let one = stash(&conn, "Cone", "lace", vec![weighed(300)]);
+    let two = stash(&conn, "Cones", "lace", vec![weighed(200), weighed(100)]);
+    record_use(&conn, &one.id, None, 1, 200, "finished").unwrap();
+    record_use(&conn, &two.id, None, 1, 50, "finished").unwrap();
+    // As a library from before: no such column.
+    conn.execute("ALTER TABLE yarn_lots DROP COLUMN bought_grams", []).unwrap();
+    migrate(&conn).unwrap();
+
+    let one = get_yarn(&conn, &one.id).unwrap();
+    assert_eq!(one.lots[0].bought_grams, Some(500), "its one lot: what is left and what its projects took");
+    let two = get_yarn(&conn, &two.id).unwrap();
+    let bought: Vec<_> = two.lots.iter().map(|l| l.bought_grams).collect();
+    assert_eq!(bought, vec![Some(200), Some(100)], "two lots: which one the 50 g came from is not known");
 }

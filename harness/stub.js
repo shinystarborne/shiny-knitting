@@ -1099,6 +1099,12 @@ function isWeighed(lot) {
   return lot.weighed ?? ((lot.gramsLeft || 0) > 0 || !lot.balls);
 }
 
+/** As db::bought_grams: as given; else, a lot by weight, the grams it holds as it is written down. */
+function boughtGramsOf(lot) {
+  if (lot.boughtGrams > 0) return Math.round(lot.boughtGrams);
+  return !lot.balls && isWeighed(lot) && lot.gramsLeft > 0 ? lot.gramsLeft : null;
+}
+
 /** As YarnLot::grams: weighed, or its balls by the ball band. */
 function lotGrams(lot, yarn) {
   return isWeighed(lot) ? lot.gramsLeft || 0 : Math.round((lot.balls || 0) * (yarn.gramsPerBall || 0));
@@ -2415,7 +2421,7 @@ const handlers = {
       if (used > 0) recordUse(yarn, pr, pr.finishedAt, used, "finished");
       e.leftoverGrams = grams;
       if (!lot) {
-        lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, weighed: true, location: "", boughtAt: null, leftover: false };
+        lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: 0, weighed: true, location: "", boughtAt: null, leftover: false, boughtGrams: null };
         yarn.lots.push(lot);
       }
       lot.gramsLeft = grams;
@@ -3042,6 +3048,7 @@ const handlers = {
         location: lot.location || "",
         boughtAt: lot.boughtAt ?? null,
         leftover: !!lot.leftover,
+        boughtGrams: boughtGramsOf(lot),
       })),
     };
     if (input.details) setYarnDetails(y.brand, y.name, input.details);
@@ -3064,6 +3071,7 @@ const handlers = {
       location: lot.location || "",
       boughtAt: lot.boughtAt ?? null,
       leftover: !!lot.leftover,
+      boughtGrams: boughtGramsOf(lot),
     }));
     const next = {
       ...clone(yarn),

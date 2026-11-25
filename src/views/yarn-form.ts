@@ -41,6 +41,8 @@ interface LotRow {
   location: string;
   /** `YYYY-MM-DD`, as the date input speaks it; empty means not recorded. */
   boughtAt: string;
+  /** Grams bought, for a lot bought by weight; shown for deadstock, kept as it is otherwise. */
+  boughtGrams: string;
   /** What a finished project left over; the stash tags it. */
   leftover: boolean;
 }
@@ -125,6 +127,7 @@ export class YarnForm {
           gramsLeft: lot.weighed ? String(lot.gramsLeft) : "",
           location: lot.location,
           boughtAt: lot.boughtAt != null ? toDateInput(lot.boughtAt) : "",
+          boughtGrams: lot.boughtGrams != null ? String(lot.boughtGrams) : "",
           leftover: lot.leftover ?? false,
         }))
       : this.start
@@ -615,6 +618,11 @@ export class YarnForm {
     this.priceWords();
     this.figuresBy(deadstock);
     this.weightHint();
+    // The lots drawn again: cones for balls, and the grams bought beside them.
+    if (this.root.querySelector(".lot-row")) {
+      this.readLots();
+      this.renderLots();
+    }
   }
 
   /**
@@ -836,10 +844,11 @@ export class YarnForm {
     holder.innerHTML = this.lots
       .map(
         (lot, i) => `
-          <div class="lot-row" data-lot="${i}">
+          <div class="lot-row${this.details.deadstock ? " by-weight" : ""}" data-lot="${i}">
             <input data-lf="dyeLot" value="${escapeAttr(lot.dyeLot)}" placeholder="Dye lot" />
             <input data-lf="balls" type="number" min="0" step="any" value="${escapeAttr(lot.balls)}" placeholder="${this.details.deadstock ? "Cones bought" : "Balls bought"}" title="Balls bought, for Statistics. Once balls are started, the current amount is the grams left." />
             <input data-lf="gramsLeft" type="number" min="0" step="any" value="${escapeAttr(lot.gramsLeft)}" placeholder="Grams left" title="Once started: the weight left. Empty means whole balls, by the ball band." />
+            ${this.details.deadstock ? `<input data-lf="boughtGrams" type="number" min="0" step="1" value="${escapeAttr(lot.boughtGrams)}" placeholder="g bought" title="Bought by weight: the grams bought, for Statistics. Empty, the grams left when it is added." />` : ""}
             <input data-lf="location" value="${escapeAttr(lot.location)}" placeholder="Location" />
             <input data-lf="boughtAt" type="date" value="${escapeAttr(lot.boughtAt)}" title="Date bought" />
             <label class="lot-leftover" title="Left over from a finished project">
@@ -861,6 +870,8 @@ export class YarnForm {
       gramsLeft: field(row, "gramsLeft"),
       location: field(row, "location"),
       boughtAt: field(row, "boughtAt"),
+      // Not shown (not deadstock), it stays as it was.
+      boughtGrams: row.querySelector('[data-lf="boughtGrams"]') ? field(row, "boughtGrams") : (this.lots[i]?.boughtGrams ?? ""),
       leftover: (row.querySelector('[data-lf="leftover"]') as HTMLInputElement).checked,
     }));
   }
@@ -1185,6 +1196,7 @@ export class YarnForm {
           location: lot.location.trim(),
           boughtAt: lot.boughtAt ? Date.parse(lot.boughtAt) : null,
           leftover: lot.leftover,
+          boughtGrams: lot.boughtGrams.trim() ? Math.round(num(lot.boughtGrams)) || null : null,
         }))
         // A new row with only the date it starts with is an empty one.
         .filter(
@@ -1227,7 +1239,7 @@ export class YarnForm {
           ...shared,
           // Existing lots keep their ids, which is how the backend knows what
           // to keep; a row added in this dialog has none yet.
-          lots: lots.map((lot) => ({ ...lot, id: lot.id ?? "", yarnId: this.editing!.id, weighed: !!lot.weighed })),
+          lots: lots.map((lot) => ({ ...lot, id: lot.id ?? "", yarnId: this.editing!.id, weighed: !!lot.weighed, boughtGrams: lot.boughtGrams ?? null })),
         });
       } else {
         const input: YarnInput = { ...shared, lots };
@@ -1347,7 +1359,7 @@ async function readableImage(file: Blob, longest = 1600): Promise<string | null>
 }
 
 function emptyLot(): LotRow {
-  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: toDateInput(Date.now()), leftover: false };
+  return { id: null, dyeLot: "", balls: "", gramsLeft: "", location: "", boughtAt: toDateInput(Date.now()), leftover: false, boughtGrams: "" };
 }
 
 function field(row: HTMLElement, name: string): string {

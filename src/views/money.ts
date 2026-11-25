@@ -97,9 +97,9 @@ export function lotCost(lot: YarnLot, y: Yarn): number | null {
   return Math.round(cost * 100) / 100;
 }
 
-/** The grams a lot was bought as: its balls at the weight per ball, or what it weighed. */
-function boughtGrams(lot: YarnLot, y: Yarn): number {
-  return lot.balls && y.gramsPerBall ? lot.balls * y.gramsPerBall : lot.gramsLeft || 0;
+/** The grams a lot was bought as: its balls at the weight per ball, or what it weighed when bought. */
+export function boughtGrams(lot: YarnLot, y: Yarn): number {
+  return lot.balls && y.gramsPerBall ? lot.balls * y.gramsPerBall : (lot.boughtGrams ?? lot.gramsLeft) || 0;
 }
 
 /** What is left of a lot is worth: its balls whole, or the share of a ball weighed; deadstock by its grams. */
@@ -163,7 +163,8 @@ export function spending(yarns: Yarn[], patterns: Pattern[], tools: Tool[] = [],
     const name = [y.brand, y.name].filter(Boolean).join(" ") + (y.colourway ? ` (${y.colourway})` : "");
     for (const lot of y.lots) {
       const cost = lotCost(lot, y);
-      const amount = lot.balls ? `, ${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : y.details?.deadstock && lot.gramsLeft ? `, ${lot.gramsLeft} g` : "";
+      const grams = lot.boughtGrams ?? lot.gramsLeft;
+      const amount = lot.balls ? `, ${lot.balls} ball${lot.balls === 1 ? "" : "s"}` : y.details?.deadstock && grams ? `, ${grams} g` : "";
       if (cost) out.push({ at: lot.boughtAt ?? y.addedAt, kind: "yarn", name: `${name}${amount}`, amount: cost });
     }
   }

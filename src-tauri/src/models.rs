@@ -358,6 +358,10 @@ pub struct YarnLot {
     /// leftovers, shown as a Leftover tag in the stash.
     #[serde(default)]
     pub leftover: bool,
+    /// The grams bought, for a lot bought by weight (no balls): what it cost
+    /// and what was added, for Statistics, however much is left of it now.
+    #[serde(default)]
+    pub bought_grams: Option<i64>,
 }
 
 impl YarnLot {
@@ -568,6 +572,9 @@ pub struct YarnLotInput {
     pub bought_at: Option<i64>,
     #[serde(default)]
     pub leftover: bool,
+    /// As `YarnLot::bought_grams`.
+    #[serde(default)]
+    pub bought_grams: Option<i64>,
 }
 
 impl YarnLotInput {

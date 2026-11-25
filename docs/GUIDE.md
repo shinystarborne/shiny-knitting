@@ -663,7 +663,10 @@ on. Fill in metres and grams per ball and the weight is filled in for you ("175 
 figures' weight said beside it if they disagree. **Cone yarn** can be given by its
 count: `2/28` is two strands of 28 m to the gram, 1 400 m/100 g, a lace weight;
 `2/2800` gives the single strand per 100 g and is the same yarn. With the cone's
-grams filled in, its metres are worked out too.
+grams filled in, its metres are worked out too. Deadstock bought by weight, with
+no cones counted, keeps the **g bought** beside its grams left: the grams typed
+when the lot is added, or corrected there. Statistics count its cost and what was
+added by those grams, however much has been knitted from it since.
 
 Ply counts follow the UK and Australian names Ravelry uses: 2 ply lace, 3–4 ply
 fingering, 5 ply sport, 8 ply DK, 10 ply worsted, 12 ply bulky, 14 ply chunky. A

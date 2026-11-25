@@ -13,6 +13,7 @@
 import type { Pattern, Project, Wish, Yarn, YarnLot, YarnUse } from "../src/api";
 import { money, parsePrice, per100gPrice, pricePerBall, projectCost, spending, spentByMonth, stashWorth } from "../src/views/money";
 import { yarnStart } from "../src/views/shopping";
+import { additions } from "../src/views/usage-chart";
 import { byWeight, per100gOf, readPer100g } from "../src/views/yarn-weight";
 import { near } from "./near";
 
@@ -88,6 +89,11 @@ function pure(results: CheckResult[]): void {
   check(results, "deadstock is worth its grams at its price per 100 g: 1000 g + 320 g + 400 g", near(coneWorth.worth, 80 + 25.6 + 22) && near(coneWorth.unpriced, 0), JSON.stringify(coneWorth));
   const coneSpends = spending(cones, []);
   check(results, "…it cost its cones by their weight, or the grams bought by weight", coneSpends.some((s) => s.amount === 80 && /2 balls/.test(s.name)) && coneSpends.some((s) => s.amount === 40) && coneSpends.some((s) => s.amount === 22 && /400 g/.test(s.name)), JSON.stringify(coneSpends));
+  // Knitted from, a lot bought by weight still cost what was bought, and is worth what is left.
+  const knitted = yarn({ id: "u", name: "Merino ends", gramsPerBall: 0, metresPerBall: 0, details: soldByWeight(5.5), lots: [lot({ id: "u1", weighed: true, gramsLeft: 150, boughtGrams: 400 })] });
+  const usedSpend = spending([knitted], [])[0];
+  check(results, "…the grams bought, however much is left: 400 g bought, 150 g left, still cost 22", usedSpend?.amount === 22 && /400 g/.test(usedSpend.name) && near(stashWorth([knitted]).worth, 8.25), JSON.stringify([usedSpend, stashWorth([knitted])]));
+  check(results, "…and Statistics count the 400 g as added", additions([knitted])[0]?.grams === 400, JSON.stringify(additions([knitted])));
   const coneProject = { id: "pc", patternId: null, yarns: [{ id: "e3", yarnId: "e", yarnName: "Merino ends", lotId: null, plannedGrams: 250 }] } as unknown as Project;
   const coneCost = projectCost(coneProject, cones, [], []);
   check(results, "…and a project takes it by the grams, with no weight per ball needed", coneCost.yarn === 13.75 && !coneCost.unknown.length, JSON.stringify(coneCost));

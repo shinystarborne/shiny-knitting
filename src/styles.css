@@ -1977,6 +1977,8 @@ body.sizing-highlight { cursor: nwse-resize; user-select: none; }
   gap: 6px;
   align-items: center;
 }
+/* Deadstock: the grams bought beside the grams left. */
+.lot-row.by-weight { grid-template-columns: 1fr 0.7fr 0.8fr 0.8fr 1.1fr 1fr auto auto; }
 .lot-row input { padding: 6px 8px; font-size: 12px; }
 .lot-row button { padding: 4px 9px; }
 .lot-row button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }

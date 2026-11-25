@@ -434,6 +434,8 @@ export interface YarnLot {
   boughtAt: number | null;
   /** What a finished project left over; shown as a Leftover tag. */
   leftover: boolean;
+  /** Grams bought, for a lot bought by weight (no balls); for Statistics, not the stock. */
+  boughtGrams: number | null;
 }
 
 /** Mirrors `models.rs::Yarn`. */
@@ -531,6 +533,8 @@ export interface YarnLotInput {
   location: string;
   boughtAt: number | null;
   leftover: boolean;
+  /** Left out, a lot by weight is taken as bought at the grams it is given. */
+  boughtGrams?: number | null;
 }
 
 /** What the yarn form sends; ids and derived figures are the backend's. */

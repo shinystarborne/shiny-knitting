@@ -4147,7 +4147,15 @@ fn row_to_lot(row: &rusqlite::Row) -> rusqlite::Result<YarnLot> {
         location: row.get("location")?,
         bought_at: row.get("bought_at")?,
         leftover: row.get("leftover")?,
+        bought_grams: row.get("bought_grams")?,
     })
+}
+
+/// The grams a lot was bought as, kept: as given; else, for a lot bought by
+/// weight (no balls, its grams weighed), the grams it holds as it is first
+/// written down. Balls bought say it already, by the ball band.
+fn bought_grams(given: Option<i64>, balls: f64, weighed: bool, grams_left: i64) -> Option<i64> {
+    given.filter(|g| *g > 0).or_else(|| (balls == 0.0 && weighed && grams_left > 0).then_some(grams_left))
 }
 
 /// The yarn row alone: no lots, and the derived figures left at zero for
@@ -4537,8 +4545,8 @@ fn insert_lot(
         .filter(|i| !i.is_empty())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     conn.execute(
-        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, bought_grams)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         params![
             id,
             yarn_id,
@@ -4548,7 +4556,8 @@ fn insert_lot(
             lot.location,
             lot.bought_at,
             lot.leftover,
-            lot.is_weighed()
+            lot.is_weighed(),
+            bought_grams(lot.bought_grams, lot.balls, lot.is_weighed(), lot.grams_left)
         ],
     )?;
     Ok(())
@@ -4603,7 +4612,7 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
             // Scoped to the yarn as well as the id, so a lot can never be
             // rewritten through another yarn's update.
             tx.execute(
-                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9
+                "UPDATE yarn_lots SET dye_lot=?3, balls=?4, grams_left=?5, location=?6, bought_at=?7, leftover=?8, weighed=?9, bought_grams=?10
                  WHERE id=?1 AND yarn_id=?2",
                 params![
                     lot.id,
@@ -4614,7 +4623,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed()
+                    lot.is_weighed(),
+                    bought_grams(lot.bought_grams, lot.balls, lot.is_weighed(), lot.grams_left)
                 ],
             )?;
             kept.push(&lot.id);
@@ -4625,8 +4635,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                 lot.id.clone()
             };
             tx.execute(
-                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed, bought_grams)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
                 params![
                     id,
                     yarn.id,
@@ -4636,7 +4646,8 @@ pub fn update_yarn(conn: &Connection, yarn: &Yarn) -> AppResult<Yarn> {
                     lot.location,
                     lot.bought_at,
                     lot.leftover,
-                    lot.is_weighed()
+                    lot.is_weighed(),
+                    bought_grams(lot.bought_grams, lot.balls, lot.is_weighed(), lot.grams_left)
                 ],
             )?;
         }
