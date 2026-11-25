@@ -60,13 +60,13 @@ export async function verifyLeftovers() {
     const caption = page()!.querySelector<HTMLElement>('.board-item[data-kind="yarn"] .board-caption')!;
     check(results, "its card on the board still shows the yarn used up", !caption.classList.contains("missing") && caption.textContent!.includes("Leftover Lopi"), caption.textContent ?? "");
     const row = () => page()!.querySelector<HTMLElement>('[data-act="leftover"]')!.closest("li")!.textContent ?? "";
-    check(results, "the project's page says it was used up, with Change by it", /used up/.test(row()), row());
+    check(results, "the project's page says it was used up, with Change by it, the yarn named with its colour", /Leftover Lopi · Lava · used up/.test(row()), row());
 
     // Put right: 120 g left after all.
     page()!.querySelector<HTMLElement>('[data-act="leftover"]')!.click();
     await waitFor(() => !!dialog()?.querySelector("input"), "the question");
     const field = dialog()!.querySelector<HTMLInputElement>("input")!;
-    check(results, "Change asks for the grams left, filled in with what was said", field.value === "0", field.value);
+    check(results, "Change asks for the grams left of the yarn in its colour, filled in with what was said", field.value === "0" && /Leftover Lopi · Lava/.test(dialog()!.textContent ?? ""), field.value);
     field.value = "120";
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await waitFor(() => /120 g left/.test(row()), "the page saying 120 g left");

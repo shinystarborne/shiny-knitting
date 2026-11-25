@@ -376,7 +376,7 @@ ${plan ? "" : `      <div class="project-side-dates">
                   const left = y.leftoverGrams === null ? "" : y.leftoverGrams === 0 ? " · used up" : ` · ${y.leftoverGrams} g left`;
                   const takes = y.plannedGrams && !finished ? ` · will take ${y.plannedGrams} g` : "";
                   const change = p.status === "finished" ? ` <button class="link" data-act="leftover" data-id="${esc(y.id)}" title="Correct the amount left at the finish">Change</button>` : "";
-                  return `<li><span>${esc(`${y.yarnName}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${takes}${left}`)}</span>${change}</li>`;
+                  return `<li><span>${esc(`${this.yarnLabel(y)}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${takes}${left}`)}</span>${change}</li>`;
                 })
                 .join("")}</ul>`
             : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`
@@ -551,6 +551,12 @@ ${plan ? "" : `      <div class="project-side-dates">
     return `<p class="knit-worth" data-el="knit-worth">Project cost with time: <b>${esc(money(trueCost(cost, ms, rate), this.currency))}</b></p>`;
   }
 
+  /** A yarn on the project by its name and colour: three colours of one yarn are otherwise three of the same line. */
+  private yarnLabel(y: Project["yarns"][number]): string {
+    const colourway = this.yarns.find((x) => x.id === y.yarnId)?.colourway.trim();
+    return colourway && !y.yarnName.includes(colourway) ? `${y.yarnName} · ${colourway}` : y.yarnName;
+  }
+
   /**
    * What is left of one of its yarns, said again after the finish: the
    * difference goes back into the stash, or comes out of it, and what it
@@ -559,7 +565,7 @@ ${plan ? "" : `      <div class="project-side-dates">
   private async changeLeftover(entryId: string): Promise<void> {
     const y = this.project.yarns.find((x) => x.id === entryId);
     if (!y) return;
-    const typed = await askText(`Grams of ${y.yarnName} left after the project (0 for none):`, {
+    const typed = await askText(`Grams of ${this.yarnLabel(y)} left after the project (0 for none):`, {
       title: "Yarn left",
       value: y.leftoverGrams == null ? "" : String(y.leftoverGrams),
       okLabel: "Save",
