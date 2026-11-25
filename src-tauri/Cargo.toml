@@ -41,7 +41,7 @@ tokio = { version = "1", features = ["time", "macros", "rt"] }
 encoding_rs = "0.8"
 # Used only to wrap the OpenRouter key with Windows DPAPI, so the stored
 # secret cannot be read by anything other than this Windows user account.
-windows = { version = "0.60", features = [
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
     "Win32_System_Memory",
