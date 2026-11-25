@@ -26,7 +26,9 @@ const SETTINGS_KEY: &str = "updates";
 /// quick restart from asking again, and stays far inside GitHub's limits.
 const STARTUP_CHECK_INTERVAL_SECS: i64 = 60 * 60;
 
-/// The installed version, as the build knows it.
+/// The installed version, as the build knows it. The installer is named from
+/// the same number: tauri.conf.json gives no version of its own, so Tauri
+/// takes Cargo.toml's, and the two cannot drift apart.
 fn current_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -506,6 +508,16 @@ pub fn install_update(app: tauri::AppHandle, path: String) -> CmdResult<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// package.json is bumped by hand beside Cargo.toml; a release with the
+    /// two apart would say one version in the app and another in npm.
+    #[test]
+    fn package_json_has_the_cargo_version() {
+        let package: Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
+        assert_eq!(package["version"], env!("CARGO_PKG_VERSION"));
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert!(config.get("version").is_none(), "tauri.conf.json names a version: the installer would not be named from Cargo.toml");
+    }
 
     fn asset(name: &str, size: u64) -> Value {
         json!({

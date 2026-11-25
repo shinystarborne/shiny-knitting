@@ -969,7 +969,10 @@ function projectOut(pr) {
 
 /** As db::planned_grams: grams, or null when not said; nothing a project could not take. */
 function plannedGrams(g) {
-  if (g == null || g === 0) return null;
+  // NaN and Infinity cross to Rust as JSON null, so they are "not said"; a
+  // fraction is no i64, and the app refuses it.
+  if (g == null || g === 0 || !Number.isFinite(g)) return null;
+  if (!Number.isInteger(g)) throw new Error("The amount for a project must be a number of grams.");
   if (g < 0) throw new Error("The amount for a project must be a number of grams.");
   if (g > 100000) throw new Error(`${g} g is more than a project takes: is it in grams?`);
   return g;
@@ -1612,6 +1615,8 @@ const handlers = {
   },
   get_progress: ({ patternId, projectId }) => clone(progressOf(patternId, projectId)),
   set_total_rows: ({ patternId, projectId, total }) => {
+    // The app takes an i64: anything else (NaN, a fraction) never reaches it.
+    if (!Number.isInteger(total)) throw new Error("The row total must be a whole number.");
     const pr = progressOf(patternId, projectId);
     pr.totalRows = Math.max(0, total);
     return clone(pr);

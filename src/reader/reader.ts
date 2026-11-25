@@ -130,7 +130,13 @@ export class ReaderView {
       const w = 420;
       const h = Math.max(40, Math.round((w * prepared.height) / prepared.width));
       const item = await api.addBoardItem(projectId, { kind: "pin", x: 40, y, w, h, data: { patternId: this.pattern.id, page: pin.page, title: pin.title || pin.quote || "" } });
-      await api.setBoardImage(item.id, await blobBytes(prepared.blob));
+      try {
+        await api.setBoardImage(item.id, await blobBytes(prepared.blob));
+      } catch (err) {
+        // A pin with no picture is no use: taken off the board again.
+        await api.deleteBoardItem(item.id).catch(() => {});
+        throw err;
+      }
     } catch (err) {
       return void (await say(err instanceof Error ? err.message : String(err), "Add to board"));
     }
@@ -1458,11 +1464,17 @@ export class ReaderView {
   }
 
   destroy(): void {
+    // A place scrolled to within the debounce window is written now, while
+    // the document is still here to read it from, rather than lost.
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+      this.savePosition();
+    }
     this.destroyed = true;
     if (this.embedded?.counter?.onRowsCounted === this.stepLine) this.embedded.counter.onRowsCounted = null;
     this.beside?.destroy();
     this.beside = null;
-    clearTimeout(this.saveTimer ?? undefined);
     // A note typed within the debounce window has not been written yet; fire
     // the save now rather than losing the text.
     if (this.notesTimer !== null) {

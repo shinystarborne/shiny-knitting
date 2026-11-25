@@ -28,7 +28,7 @@ async function waitFor(pred: () => boolean, what: string, timeoutMs = 15000): Pr
   }
 }
 
-type Store = { patterns: { id: string; fileName: string }[] };
+type Store = { patterns: { id: string; fileName: string; lastPage: number; lastScroll: number }[] };
 
 export async function verifyPageNumber() {
   const results: CheckResult[] = [];
@@ -47,6 +47,9 @@ export async function verifyPageNumber() {
     return { page: i + 1, share: (y - r.top) / r.height };
   };
   const long = store.patterns.find((p) => p.fileName === "long-pattern.pdf")!;
+  // Opened at its start, not where a suite before this one left it reading.
+  long.lastPage = 0;
+  long.lastScroll = 0;
 
   try {
     tab("patterns");

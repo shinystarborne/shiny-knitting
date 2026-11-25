@@ -79,4 +79,5 @@ export const CHECKS = [
   "__dialogCloseChecks",
   "__cardKeyChecks",
   "__pictureChartChecks",
+  "__keptWholeChecks",
 ];

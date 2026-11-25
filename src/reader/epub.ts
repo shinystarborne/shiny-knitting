@@ -25,10 +25,11 @@ export class EpubView implements RenderedDoc {
   private chapterHrefs: string[] = [];
   private files: Map<string, Uint8Array> = new Map();
   private resizeObserver: ResizeObserver | null = null;
-  /** Watches each chapter's own content, so a frame is re-fitted when it grows. */
-  private contentObserver: MutationObserver | null = null;
-  /** Watches a chapter's box for purely geometric changes. */
-  private sizeObserver: ResizeObserver | null = null;
+  /**
+   * Each chapter's own observers, of its content and of its box, so a frame
+   * is re-fitted when it grows; all disconnected when the book closes.
+   */
+  private observers: { disconnect(): void }[] = [];
   /** Frames already being watched, so none is watched twice. */
   private watched = new WeakSet<HTMLIFrameElement>();
 
@@ -304,52 +305,37 @@ export class EpubView implements RenderedDoc {
     // replaces the body element and the frame would then be watched twice.
     this.watched.add(frame);
 
-    // Both observers are built from the chapter's own window: an observer only
-    // watches elements in its own document, and a chapter's body lives in the
-    // iframe's, not this one.
+    // Both observers are built from the chapter's own window and belong to
+    // this chapter alone. An observer belongs to the document it was made in:
+    // one shared by every chapter would hang on the first chapter's document,
+    // and stop for all of them if that one went.
     const view = frame.contentWindow as (Window & typeof globalThis) | null;
     if (!view) return;
-    // A mutation's target is a node inside the chapter's document, which is
-    // how it finds its way back to the frame that owns it above. Content
-    // changing is the common case -- an image decoding, a stylesheet
+    // Content changing is the common case -- an image decoding, a stylesheet
     // applying, a late webfont -- and a mutation is the only way to hear
     // about most of them, since a chapter can grow while the container sits
     // still. A ResizeObserver is kept alongside it for the purely geometric
     // case, and `fitHeight` only writes a height that has really changed, so
     // neither can set the other off in a loop.
     const MutationCtor = view.MutationObserver ?? MutationObserver;
-    // The observer is shared by every chapter, so a mutation cannot be assumed
-    // to belong to the frame that happened to create the observer. Route each
-    // one back through its node's document to the frame that owns it.
-    this.contentObserver ??= new MutationCtor((mutations: MutationRecord[]) => {
-      for (const mutation of mutations) {
-        const owner = mutation.target.ownerDocument?.defaultView?.frameElement;
-        if (owner instanceof HTMLIFrameElement) this.fitHeight(owner);
-      }
-    });
+    const content = new MutationCtor(() => this.fitHeight(frame));
     // The whole document rather than the body, because the change that
     // resizes a chapter as often comes from its head: a stylesheet arriving or
     // a webfont rule applying changes every line below it without touching the
     // body itself.
-    this.contentObserver.observe(doc.documentElement, {
+    content.observe(doc.documentElement, {
       childList: true,
       subtree: true,
       characterData: true,
       attributes: true,
     });
-    if (!this.sizeObserver) {
-      const SizeCtor = view.ResizeObserver ?? ResizeObserver;
-      if (SizeCtor) {
-        this.sizeObserver = new SizeCtor((entries: ResizeObserverEntry[]) => {
-          for (const entry of entries) {
-            const target = entry.target as HTMLElement;
-            const owner = target.ownerDocument?.defaultView?.frameElement;
-            if (owner instanceof HTMLIFrameElement) this.fitHeight(owner);
-          }
-        });
-      }
+    this.observers.push(content);
+    const SizeCtor = view.ResizeObserver ?? ResizeObserver;
+    if (SizeCtor) {
+      const size = new SizeCtor(() => this.fitHeight(frame));
+      size.observe(doc.body);
+      this.observers.push(size);
     }
-    this.sizeObserver?.observe(doc.body);
   }
 
   get scrollTop(): number {
@@ -427,8 +413,8 @@ export class EpubView implements RenderedDoc {
 
   destroy(): void {
     this.resizeObserver?.disconnect();
-    this.contentObserver?.disconnect();
-    this.sizeObserver?.disconnect();
+    for (const o of this.observers) o.disconnect();
+    this.observers = [];
     this.container.remove();
     this.frames = [];
     this.chapterHrefs = [];

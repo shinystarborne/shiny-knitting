@@ -1041,7 +1041,10 @@ ${plan ? "" : `      <div class="project-side-dates">
     const started = value("started");
     const finishedAt = value("finished");
     const input: ProjectInput = {
-      name: value("name").trim(),
+      // A project needs a name: one cleared keeps the name it had, so the
+      // notes, dates and pattern saved with it are not held back, and the
+      // field shows that name again once it is left.
+      name: value("name").trim() || this.project.name,
       patternId: value("pattern") || null,
       notes: value("notes"),
       startedAt: started ? fromDateInput(started) : null,

@@ -1144,6 +1144,11 @@ export class Board {
       forgetBoardImage(item.id);
       this.render();
     } catch (err) {
+      // A frame with no picture in it is no use: taken off again.
+      await api.deleteBoardItem(item.id).catch(() => {});
+      this.items = this.items.filter((i) => i.id !== item.id);
+      if (this.selected === item.id) this.selected = null;
+      this.render();
       await say(err instanceof Error ? err.message : String(err), "Board");
     }
   }
