@@ -14,7 +14,7 @@ import { customDialog, say } from "../dialogs";
 import { closestEl } from "../dom";
 import { copyPng } from "../copy-picture";
 import { showNotice } from "../notice";
-import { hoursText, totalMs } from "./knit-time";
+import { hoursText, totalMs, trueCost } from "./knit-time";
 import { money, projectCost } from "./money";
 import { photosOf, photoUrl, shownPhotos, type Photo } from "./gallery";
 import { longDate } from "./project-form";
@@ -39,17 +39,23 @@ export type Theme = (typeof THEMES)[number]["key"];
 export const SHOWS = [
   { key: "pattern", label: "Pattern and designer" },
   { key: "dates", label: "Dates" },
+  { key: "time", label: "Knitting time" },
+  { key: "yarnCost", label: "Yarn cost" },
+  { key: "patternCost", label: "Pattern cost" },
+  { key: "totalCost", label: "Total cost" },
+  { key: "costWithTime", label: "Project cost with time" },
   { key: "yarn", label: "Yarn and amount" },
   { key: "needles", label: "Needles & hooks" },
   { key: "size", label: "Size knitted" },
-  { key: "time", label: "Knitting time" },
-  { key: "cost", label: "Yarn cost and total cost" },
   { key: "person", label: "Made for" },
 ] as const;
 export type Show = (typeof SHOWS)[number]["key"];
 
 /** What a card shows when nothing else has been chosen. */
-export const SHOWN_FIRST: Show[] = ["pattern", "dates", "yarn", "needles", "size", "time", "cost"];
+export const SHOWN_FIRST: Show[] = ["pattern", "dates", "time", "yarnCost", "patternCost", "totalCost", "costWithTime", "yarn", "needles", "size"];
+
+/** The costs a card can show. */
+const COSTS: Show[] = ["yarnCost", "patternCost", "totalCost", "costWithTime"];
 
 export const MAX_PHOTOS = 4;
 
@@ -75,6 +81,8 @@ export interface CardData {
   sessions: KnitSession[];
   /** The currency prices are in. */
   currency: string;
+  /** What an hour of knitting is worth: the project's own, else the one in Settings; null when neither is said. */
+  hourRate: number | null;
 }
 
 /** What the project cost, as the project's page sums it: the yarn, and all of it with the pattern. */
@@ -93,7 +101,11 @@ export function cardText(d: CardData, o: CardOptions): Block[] {
   if (on("pattern") && (d.pattern || p.patternTitle)) {
     const title = d.pattern?.title || p.patternTitle;
     const designer = d.pattern?.designer.trim();
-    blocks.push({ kind: "sub", text: designer ? `${title} by ${designer}` : title });
+    // A title that already names its designer ("Nocturnal by saskieco") is not followed by them again.
+    const named = !!designer && title.toLowerCase().includes(designer.toLowerCase());
+    const sub = designer && !named ? `${title} by ${designer}` : title;
+    // Said once: a project named as its pattern needs no second line saying so.
+    if (sub.trim().toLowerCase() !== p.name.trim().toLowerCase()) blocks.push({ kind: "sub", text: sub });
   }
   if (on("dates") && p.status !== "planned") {
     const text =
@@ -103,6 +115,23 @@ export function cardText(d: CardData, o: CardOptions): Block[] {
           ? `Started ${longDate(p.startedAt)} · Frogged`
           : `On the needles since ${longDate(p.startedAt)}`;
     blocks.push({ kind: "dates", text });
+  }
+  // Next to the dates, before the yarn and needles: what does not fit is
+  // left out from the end, and the time and cost were asked for.
+  const ms = totalMs(d.sessions.filter((x) => x.projectId === p.id));
+  if (on("time") && ms >= 60000) blocks.push({ kind: "fact", label: "Time", lines: [hoursText(ms)] });
+  // Each cost as chosen: the yarn, the pattern and the total on one line,
+  // with the knitting time at the hour cost under them, as on the project's page.
+  if (COSTS.some(on)) {
+    const c = cardCost(d);
+    const parts = [
+      on("yarnCost") && c.yarn ? `Yarn ${money(c.yarn, d.currency)}` : "",
+      on("patternCost") && c.pattern ? `Pattern ${money(c.pattern, d.currency)}` : "",
+      on("totalCost") && c.total ? `Total ${money(c.total, d.currency)}` : "",
+    ].filter(Boolean);
+    const lines = parts.length ? [parts.join(" · ")] : [];
+    if (on("costWithTime") && d.hourRate != null && ms >= 60000) lines.push(`With time ${money(trueCost(c.total, ms, d.hourRate), d.currency)}`);
+    if (lines.length) blocks.push({ kind: "fact", label: "Cost", lines });
   }
   if (on("yarn") && p.yarns.length) {
     const lines = p.yarns.map((y) => {
@@ -120,13 +149,6 @@ export function cardText(d: CardData, o: CardOptions): Block[] {
     if (lines.length) blocks.push({ kind: "fact", label: "Needles", lines });
   }
   if (on("size") && p.size.trim()) blocks.push({ kind: "fact", label: "Size", lines: [p.size.trim()] });
-  const ms = totalMs(d.sessions.filter((x) => x.projectId === p.id));
-  if (on("time") && ms >= 60000) blocks.push({ kind: "fact", label: "Time", lines: [hoursText(ms)] });
-  if (on("cost")) {
-    const c = cardCost(d);
-    if (c.yarn) blocks.push({ kind: "fact", label: "Yarn cost", lines: [money(c.yarn, d.currency)] });
-    if (c.total) blocks.push({ kind: "fact", label: "Total cost", lines: [money(c.total, d.currency)] });
-  }
   if (on("person") && p.personName) blocks.push({ kind: "fact", label: "For", lines: [p.personName] });
   for (const id of o.log) {
     const e = d.log.find((x) => x.id === id);
@@ -324,7 +346,7 @@ export interface CardHooks {
 /** Opens a project's card: chosen, seen as it will look, copied or saved. */
 export async function openProjectCard(project: Project, hooks: CardHooks = {}): Promise<void> {
   let p = project;
-  const [pattern, log, tools, yarns, usage, logged, sessions, currency] = await Promise.all([
+  const [pattern, log, tools, yarns, usage, logged, sessions, currency, standardRate] = await Promise.all([
     p.patternId ? api.getPattern(p.patternId).catch(() => null) : Promise.resolve(null),
     api.listProjectLog(p.id).catch(() => [] as LogEntry[]),
     api.listTools().catch(() => [] as Tool[]),
@@ -333,6 +355,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     api.listGalleryPhotos().catch(() => [] as GalleryPhoto[]),
     api.listKnitSessions(p.id).catch(() => [] as KnitSession[]),
     api.getCurrency().catch(() => "EUR"),
+    api.getHourRate().catch(() => null),
   ]);
   const photos: Photo[] = photosOf(p, logged);
   const kept = remembered(p.id);
@@ -345,7 +368,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     show: kept.show ? ([...known(kept.show, SHOWS.map((s) => s.key)), ...SHOWN_FIRST.filter((k) => !(kept.offered ?? ["pattern", "dates", "yarn", "needles", "size", "person"]).includes(k))] as Show[]) : [...SHOWN_FIRST],
     log: known(kept.log, log.map((e) => e.id)),
   };
-  const data = (): CardData => ({ project: p, pattern, log, tools, yarns, usage, sessions, currency });
+  const data = (): CardData => ({ project: p, pattern, log, tools, yarns, usage, sessions, currency, hourRate: p.hourRate ?? standardRate });
   const pictures = new Map<string, ImageBitmap | null>();
   const urls = new Map<string, string | null>();
 
@@ -422,8 +445,14 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     card.querySelector<HTMLElement>('[data-el="left-out"]')!.textContent = left
       ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit. Fewer log lines, fewer photos or a taller shape make room.`
       : "";
-    const unpriced = o.show.includes("cost") ? cardCost(data()).unknown : [];
-    card.querySelector<HTMLElement>('[data-el="unpriced"]')!.textContent = unpriced.length ? `Not counted in the cost (no price or amount): ${unpriced.join(", ")}.` : "";
+    // The yarn with no price or amount, a pattern with no price, and no hour cost for the cost with time.
+    const costing = COSTS.some((k) => o.show.includes(k));
+    const unpriced = costing ? [...cardCost(data()).unknown, ...(pattern && pattern.price == null ? [`${pattern.title} (the pattern)`] : [])] : [];
+    const notes = [
+      unpriced.length ? `Not counted in the cost (no price or amount): ${unpriced.join(", ")}.` : "",
+      o.show.includes("costWithTime") && data().hourRate == null ? "No hour cost for the cost with time: set in Settings → Prices, or on the project's page." : "",
+    ];
+    card.querySelector<HTMLElement>('[data-el="unpriced"]')!.textContent = notes.filter(Boolean).join(" ");
   };
 
   const pngOfCard = (): Promise<Blob> =>

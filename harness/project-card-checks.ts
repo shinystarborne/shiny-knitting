@@ -82,8 +82,9 @@ function pure(results: CheckResult[]): void {
       { id: "s3", projectId: "other", startedAt: day, endedAt: day + 9 * 3600000 },
     ],
     currency: "EUR",
+    hourRate: 20,
   };
-  const all: CardOptions = { shape: "portrait", theme: "cream", photos: [], show: ["pattern", "dates", "yarn", "needles", "size", "person", "time", "cost"], log: ["lg1"] };
+  const all: CardOptions = { shape: "portrait", theme: "cream", photos: [], show: ["pattern", "dates", "yarn", "needles", "size", "person", "time", "yarnCost", "patternCost", "totalCost", "costWithTime"], log: ["lg1"] };
   const text = cardText(d, all);
   const said = JSON.stringify(text);
   check(results, "a card says the name first, then the pattern by its designer", text[0].kind === "title" && (text[0] as { text: string }).text === "Lopi for Anna" && (text[1] as { text: string }).text === "Riddari by Védís Jónsdóttir", said);
@@ -92,9 +93,23 @@ function pure(results: CheckResult[]): void {
   check(results, "…the needles, the size, who for, and a line from the log", /"Needles","lines":\["4\.5 mm/.test(said) && /"Size","lines":\["M"\]/.test(said) && /"For","lines":\["Anna"\]/.test(said) && /Blocked it over a chair/.test(said), said);
   check(results, "…its knitting time, this project's alone", /"Time","lines":\["12 h 35 min"\]/.test(said), said);
   // 410 g at 4.50 a 50 g ball is 36.90; with the pattern's 6, 42.90.
-  check(results, "…what its yarn cost, by what it used, and the total with the pattern", /"Yarn cost","lines":\["[^"]*36[.,]90[^"]*"\]/.test(said) && /"Total cost","lines":\["[^"]*42[.,]90[^"]*"\]/.test(said), said);
+  check(results, "…what its yarn and pattern cost and the total on one line, the cost with time under it", /"Cost","lines":\["Yarn [^"]*36[.,]90[^"]* · Pattern [^"]*6[.,]00[^"]* · Total [^"]*42[.,]90[^"]*","With time [^"]*294[.,]57[^"]*"\]/.test(said), said);
+  // 12 h 35 min at 20 an hour is 251.67; with the 42.90, 294.57.
+  const costOf = (show: CardOptions["show"], data = d) => (cardText(data, { ...all, show, log: [] }).find((b) => b.kind === "fact" && b.label === "Cost") as { lines: string[] } | undefined)?.lines ?? [];
+  const alone = costOf(["patternCost"]);
+  check(results, "each cost is its own choice: the pattern's alone", alone.length === 1 && /^Pattern [^·]*6[.,]00[^·]*$/.test(alone[0]), JSON.stringify(alone));
+  const timed = costOf(["costWithTime"]);
+  check(results, "…the cost with time alone", timed.length === 1 && /^With time .*294[.,]57/.test(timed[0]), JSON.stringify(timed));
+  check(results, "…and none chosen, no cost at all", costOf(["time", "yarn"]).length === 0);
+  check(results, "with no hour cost, no cost with time", costOf(["costWithTime", "totalCost"], { ...d, hourRate: null }).join() .includes("With time") === false && costOf(["totalCost"], { ...d, hourRate: null }).length === 1);
+  const order = text.map((b) => (b.kind === "fact" ? b.label : b.kind));
+  check(results, "…the time and cost straight after the dates, before the yarn", order.join() === "title,sub,dates,Time,Cost,Yarn,Needles,Size,For,quote", order.join());
+  const named = cardText({ ...d, pattern: { ...d.pattern!, title: "Nocturnal by saskieco", designer: "Saskieco" } }, all);
+  check(results, "a title that names its designer is not followed by them again", (named[1] as { text: string }).text === "Nocturnal by saskieco", JSON.stringify(named[1]));
+  const same = cardText({ ...d, project: { ...project, name: "nocturnal by saskieco" }, pattern: { ...d.pattern!, title: "Nocturnal by saskieco", designer: "saskieco" } }, all);
+  check(results, "…and a project named as its pattern does not say it twice", same[1].kind === "dates", JSON.stringify(same.slice(0, 2)));
   const unpriced = JSON.stringify(cardText({ ...d, yarns: [{ id: "y1", colourway: "Lava" } as CardData["yarns"][number]], pattern: { ...d.pattern!, price: null }, sessions: [] }, all));
-  check(results, "with no prices and no time, no cost and no time on it", !/Yarn cost|Total cost|"Time"/.test(unpriced), unpriced);
+  check(results, "with no prices and no time, no cost and no time on it", !/"Cost"|"Time"/.test(unpriced), unpriced);
   const bare = cardText(d, { ...all, show: [], log: [] });
   check(results, "with nothing chosen, only its name", bare.length === 1, JSON.stringify(bare));
   const active = cardText({ ...d, project: { ...project, status: "active", finishedAt: null } }, all);
@@ -109,6 +124,18 @@ function pure(results: CheckResult[]): void {
   const many = [text[0], ...Array.from({ length: 12 }, (_, i) => ({ kind: "quote" as const, text: `A long line from the log, number ${i + 1}, that takes room.`, id: `q${i}` }))];
   const fit = fitBlocks(ctx, many, 952, 400);
   check(results, "what does not fit is shrunk, then left out from the end, the name kept", fit.left > 0 && fit.scale < 1 && fit.laid[0].block === many[0] && fit.laid.length + fit.left === many.length, `${fit.left} left, scale ${fit.scale}`);
+  // Three yarns and three needles under three photos on a 4:5 card: not all fits, and the cost stays.
+  const crowded = cardText(
+    {
+      ...d,
+      project: { ...project, yarns: [1, 2, 3].map((n) => ({ ...project.yarns[0], id: `e${n}`, yarnName: `Mota ${n}` })), toolIds: ["t1", "t1b", "t1c"] },
+      tools: ["t1", "t1b", "t1c"].map((id) => ({ ...d.tools[0], id })),
+    },
+    { ...all, log: [] },
+  );
+  const tight = fitBlocks(ctx, crowded, 952, 1350 - 64 - 740 - 48 - 64);
+  const kept = tight.laid.map((l) => (l.block.kind === "fact" ? l.block.label : l.block.kind));
+  check(results, "a crowded card keeps its time and cost, what is left out is from the end", tight.left > 0 && kept.includes("Time") && kept.includes("Cost"), `${kept.join()} (${tight.left} left out)`);
   const roomy = fitBlocks(ctx, text, 952, 1000);
   check(results, "…and with room, all of it at its size", roomy.left === 0 && roomy.scale === 1);
 }
@@ -162,7 +189,7 @@ export async function verifyProjectCard() {
     await waitFor(() => !!dlg() && canvas().width === 1080, "the card");
     await wait(300);
     const ticked = (k: string) => dlg()!.querySelector<HTMLInputElement>(`[data-show="${k}"]`)!.checked;
-    check(results, "a card made before there were time and cost to choose shows them, and keeps what was left off", ticked("time") && ticked("cost") && ticked("yarn") && !ticked("needles"));
+    check(results, "a card made before there were time and cost to choose shows them, and keeps what was left off", ticked("time") && ["yarnCost", "patternCost", "totalCost", "costWithTime"].every(ticked) && ticked("yarn") && !ticked("needles"));
     check(results, "the card opens 4:5, its first three photos in, numbered in order", canvas().height === 1350 && dlg()!.querySelectorAll(".pc-photo.on").length === 3 && dlg()!.querySelector(".pc-photo.on b")!.textContent === "1");
     check(results, "…the photos drawn on it, the first big", near(pixel(canvas(), 100, 100), "#33aa66"), pixel(canvas(), 100, 100));
     check(results, "…on cream", near(pixel(canvas(), 8, 1340), "#f5f0e6"), pixel(canvas(), 8, 1340));
