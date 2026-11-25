@@ -191,7 +191,9 @@ export function spentByMonth(spends: Spend[], now = Date.now(), count = 12): { s
 /**
  * What a project cost: its pattern, and its yarn by what it took -- what a
  * finished one used, else what it plans to take -- at the yarn's price a
- * ball, or 100 g for deadstock. Tools are not counted. Says what is not known.
+ * ball, or 100 g for deadstock. A yarn whose leftover was said at the finish
+ * took what it used, nothing if nothing: not what it was planned to take.
+ * Tools are not counted. Says what is not known.
  */
 export function projectCost(p: Project, yarns: Yarn[], patterns: Pattern[], uses: YarnUse[]): { yarn: number; pattern: number; total: number; unknown: string[] } {
   const unknown: string[] = [];
@@ -199,6 +201,8 @@ export function projectCost(p: Project, yarns: Yarn[], patterns: Pattern[], uses
   for (const py of p.yarns) {
     const y = yarns.find((x) => x.id === py.yarnId);
     const used = uses.filter((u) => u.projectId === p.id && u.yarnId === py.yarnId && u.source === "finished").reduce((n, u) => n + u.grams, 0);
+    // Finished with its leftover said, what it used is known, none or some.
+    if (!used && p.status === "finished" && py.leftoverGrams != null) continue;
     const grams = used || py.plannedGrams || 0;
     const cost = y && grams ? gramsCost(y, grams) : null;
     if (cost == null) {

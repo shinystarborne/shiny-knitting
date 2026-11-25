@@ -77,6 +77,10 @@ function pure(results: CheckResult[]): void {
   check(results, "a project's cost: the grams it plans at the yarn's price a ball, and its pattern", near(planned.yarn, 9.9) && near(planned.pattern, 6.5) && near(planned.total, 16.4) && planned.unknown.join() === "Kid-Silk", JSON.stringify(planned));
   const used = [{ projectId: "pr", yarnId: "a", grams: 150, source: "finished" }] as unknown as YarnUse[];
   check(results, "…what it used, once finished, before what it planned", near(projectCost(project, yarns, patterns, used).yarn, 14.85));
+  // Finished with the Kid-Silk all left over: it took nothing, and is not "not known".
+  const finished = { ...project, status: "finished", yarns: [{ ...project.yarns[0], leftoverGrams: 0 }, { ...project.yarns[1], leftoverGrams: 25 }] } as unknown as Project;
+  const leftOver = projectCost(finished, yarns, patterns, used);
+  check(results, "…a yarn finished with its leftover said and nothing used costs nothing, not what was planned", near(leftOver.yarn, 14.85) && leftOver.unknown.length === 0, JSON.stringify(leftOver));
 
   // Deadstock and cone yarn: the price is for 100 g. Two cones of 500 g, one
   // started (320 g left), and a lot bought by weight with no cones counted.
