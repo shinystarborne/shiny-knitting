@@ -33,7 +33,7 @@
     "@tauri-apps/cli": "^2.1.0",
     "@types/node": "^24.19.3",
     "monocart-coverage-reports": "3.2.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^8.3.8"
   }
 }
