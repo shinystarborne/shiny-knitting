@@ -7,7 +7,8 @@
  *
  * The layout is worked out apart from the drawing (`cardText`, `fitBlocks`,
  * `photoRects`), so the harness checks it directly. What does not fit is
- * shrunk a little, then left out from the end, and the screen says so.
+ * shrunk a little, then left out from the end, and the screen says so; a
+ * smaller text size or a narrower font, chosen, makes room.
  */
 import { api, type GalleryPhoto, type KnitSession, type LogEntry, type Pattern, type Project, type Tool, type Yarn, type YarnUse } from "../api";
 import { customDialog, say } from "../dialogs";
@@ -34,6 +35,26 @@ export const THEMES = [
   { key: "rose", label: "Rose", bg: "#f6e6e4", ink: "#3a2426", muted: "#7d5f61", accent: "#b04a5a", well: "#ead2cf" },
 ] as const;
 export type Theme = (typeof THEMES)[number]["key"];
+
+/** The card's fonts: for its name, its words, and quotes from the log. Ones Windows has. */
+const SERIF = 'Georgia, "Times New Roman", serif';
+const SANS = '"Segoe UI", system-ui, sans-serif';
+const SOFT = 'Candara, "Segoe UI", sans-serif';
+export const FONTS = [
+  { key: "classic", label: "Classic", title: SERIF, body: SANS, quote: SERIF },
+  { key: "modern", label: "Modern", title: SANS, body: SANS, quote: SANS },
+  { key: "soft", label: "Soft", title: SOFT, body: SOFT, quote: SOFT },
+] as const;
+export type Font = (typeof FONTS)[number]["key"];
+type Fonts = (typeof FONTS)[number];
+
+/** The size of the card's words, before any shrinking to fit. */
+export const TEXT_SIZES = [
+  { key: "large", label: "Large", scale: 1 },
+  { key: "medium", label: "Medium", scale: 0.85 },
+  { key: "small", label: "Small", scale: 0.7 },
+] as const;
+export type TextSize = (typeof TEXT_SIZES)[number]["key"];
 
 /** What a card shows, besides its name. */
 export const SHOWS = [
@@ -67,6 +88,9 @@ export interface CardOptions {
   show: Show[];
   /** Log entries quoted, by id. */
   log: string[];
+  /** Its font and the size of its words: Classic and Large when not said. */
+  font?: Font;
+  textSize?: TextSize;
 }
 
 /** What a card is made from, gathered once. */
@@ -179,23 +203,20 @@ export function photoRects(n: number, x: number, y: number, w: number, h: number
 
 const PAD = 64;
 const LABEL_W = 170;
-const SERIF = 'Georgia, "Times New Roman", serif';
-const SANS = '"Segoe UI", system-ui, sans-serif';
-
 /** A block's font and spacing, at a scale. */
-function style(kind: Block["kind"], s: number): { font: string; size: number; lead: number; after: number } {
+function style(kind: Block["kind"], s: number, f: Fonts = FONTS[0]): { font: string; size: number; lead: number; after: number } {
   const at = (px: number) => Math.round(px * s);
   switch (kind) {
     case "title":
-      return { font: `700 ${at(66)}px ${SERIF}`, size: at(66), lead: at(76), after: at(14) };
+      return { font: `700 ${at(66)}px ${f.title}`, size: at(66), lead: at(76), after: at(14) };
     case "sub":
-      return { font: `400 ${at(34)}px ${SANS}`, size: at(34), lead: at(44), after: at(6) };
+      return { font: `400 ${at(34)}px ${f.body}`, size: at(34), lead: at(44), after: at(6) };
     case "dates":
-      return { font: `400 ${at(28)}px ${SANS}`, size: at(28), lead: at(38), after: at(26) };
+      return { font: `400 ${at(28)}px ${f.body}`, size: at(28), lead: at(38), after: at(26) };
     case "fact":
-      return { font: `400 ${at(29)}px ${SANS}`, size: at(29), lead: at(40), after: at(14) };
+      return { font: `400 ${at(29)}px ${f.body}`, size: at(29), lead: at(40), after: at(14) };
     case "quote":
-      return { font: `italic 400 ${at(31)}px ${SERIF}`, size: at(31), lead: at(42), after: at(14) };
+      return { font: `italic 400 ${at(31)}px ${f.quote}`, size: at(31), lead: at(42), after: at(14) };
   }
 }
 
@@ -231,8 +252,8 @@ interface Laid {
   height: number;
 }
 
-function lay(ctx: CanvasRenderingContext2D, b: Block, width: number, s: number): Laid {
-  const st = style(b.kind, s);
+function lay(ctx: CanvasRenderingContext2D, b: Block, width: number, s: number, f: Fonts): Laid {
+  const st = style(b.kind, s, f);
   ctx.font = st.font;
   let lines: string[];
   if (b.kind === "fact") lines = b.lines.flatMap((l) => wrap(ctx, l, width - LABEL_W * s, 2));
@@ -241,18 +262,32 @@ function lay(ctx: CanvasRenderingContext2D, b: Block, width: number, s: number):
   return { block: b, lines, height: lines.length * st.lead + st.after };
 }
 
+/** The fonts and the starting size of a card's words, as chosen. */
+function lookOf(o: Pick<CardOptions, "font" | "textSize">): { fonts: Fonts; size: number } {
+  return { fonts: FONTS.find((f) => f.key === o.font) ?? FONTS[0], size: TEXT_SIZES.find((t) => t.key === o.textSize)?.scale ?? 1 };
+}
+
 /**
- * The blocks that fit in a height: shrunk a little first (to 0.7 of the size
- * at the least), then the last left out, one at a time. Says the scale, and
- * how many were left out.
+ * The blocks that fit in a height: at the size chosen, shrunk a little first
+ * (to 0.7 of it at the least), then the last left out, one at a time. Says
+ * the scale, and how many were left out.
  */
-export function fitBlocks(ctx: CanvasRenderingContext2D, blocks: Block[], width: number, height: number): { laid: Laid[]; scale: number; left: number } {
-  for (let s = 1; s >= 0.7; s -= 0.05) {
-    const laid = blocks.map((b) => lay(ctx, b, width, s));
+export function fitBlocks(
+  ctx: CanvasRenderingContext2D,
+  blocks: Block[],
+  width: number,
+  height: number,
+  look: Pick<CardOptions, "font" | "textSize"> = {},
+): { laid: Laid[]; scale: number; left: number } {
+  const { fonts, size } = lookOf(look);
+  // In twentieths of the size, so the steps add up exactly.
+  for (let step = 20; step >= 14; step--) {
+    const s = (size * step) / 20;
+    const laid = blocks.map((b) => lay(ctx, b, width, s, fonts));
     if (laid.reduce((n, l) => n + l.height, 0) <= height) return { laid, scale: s, left: 0 };
   }
-  const s = 0.7;
-  const laid = blocks.map((b) => lay(ctx, b, width, s));
+  const s = size * 0.7;
+  const laid = blocks.map((b) => lay(ctx, b, width, s, fonts));
   let left = 0;
   // The name stays, whatever else goes.
   while (laid.length > 1 && laid.reduce((n, l) => n + l.height, 0) > height) {
@@ -293,16 +328,17 @@ export function drawCard(canvas: HTMLCanvasElement, d: CardData, o: CardOptions,
   const photoH = photos.length ? shape.photoH : 0;
   photoRects(photos.length, PAD, PAD, inner, photoH).forEach((r, i) => drawCover(ctx, pictures.get(photos[i]) ?? null, r, t.well));
   const top = PAD + photoH + (photoH ? 48 : 16);
-  const { laid, scale } = fitBlocks(ctx, cardText(d, o), inner, shape.h - PAD - top);
+  const { laid, scale } = fitBlocks(ctx, cardText(d, o), inner, shape.h - PAD - top, o);
+  const { fonts } = lookOf(o);
   let y = top;
   ctx.textBaseline = "alphabetic";
   for (const l of laid) {
-    const st = style(l.block.kind, scale);
+    const st = style(l.block.kind, scale, fonts);
     ctx.font = st.font;
     const kind = l.block.kind;
     if (kind === "fact") {
       ctx.save();
-      ctx.font = `700 ${Math.round(22 * scale)}px ${SANS}`;
+      ctx.font = `700 ${Math.round(22 * scale)}px ${fonts.body}`;
       ctx.fillStyle = t.accent;
       ctx.fillText((l.block as { label: string }).label.toUpperCase(), PAD, y + st.size);
       ctx.restore();
@@ -363,6 +399,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
   const o: CardOptions = {
     shape: SHAPES.some((s) => s.key === kept.shape) ? kept.shape! : "portrait",
     theme: THEMES.some((t) => t.key === kept.theme) ? kept.theme! : "cream",
+    font: FONTS.some((f) => f.key === kept.font) ? kept.font! : "classic",
+    textSize: TEXT_SIZES.some((t) => t.key === kept.textSize) ? kept.textSize! : "large",
     photos: kept.photos ? known(kept.photos, photos.map((x) => x.key)).slice(0, MAX_PHOTOS) : shownPhotos(p, photos).slice(0, 3).map((x) => x.key),
     // What was not there to choose when the card was last made is shown as at first.
     show: kept.show ? ([...known(kept.show, SHOWS.map((s) => s.key)), ...SHOWN_FIRST.filter((k) => !(kept.offered ?? ["pattern", "dates", "yarn", "needles", "size", "person"]).includes(k))] as Show[]) : [...SHOWN_FIRST],
@@ -382,6 +420,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
       <div class="pc-preview"><canvas data-el="card" aria-label="Card preview"></canvas><p class="hint" data-el="left-out"></p><p class="hint" data-el="unpriced"></p></div>
       <aside class="pc-controls">
         <div class="field"><span>Shape</span><div class="seg pc-shapes">${SHAPES.map((s) => `<button type="button" class="ghost" data-shape="${s.key}">${s.label}</button>`).join("")}</div></div>
+        <div class="field"><span>Text size</span><div class="seg pc-sizes">${TEXT_SIZES.map((t) => `<button type="button" class="ghost" data-text-size="${t.key}">${t.label}</button>`).join("")}</div></div>
+        <div class="field"><span>Font</span><div class="seg pc-fonts">${FONTS.map((f) => `<button type="button" class="ghost" data-font="${f.key}" style="font-family:${esc(f.title)}">${f.label}</button>`).join("")}</div></div>
         <div class="field"><span>Colours</span><div class="pc-themes">${THEMES.map((t) => `<button type="button" class="pc-theme" data-theme="${t.key}" title="${t.label}" style="background:${t.bg};color:${t.ink};border-color:${t.accent}">${t.label}</button>`).join("")}</div></div>
         <div class="field"><span>Photos <em class="hint">up to ${MAX_PHOTOS}, in the order chosen</em></span>
           <div class="pc-photos">${
@@ -430,6 +470,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
 
   const paint = async (): Promise<void> => {
     for (const b of card.querySelectorAll<HTMLElement>("[data-shape]")) b.classList.toggle("on", b.dataset.shape === o.shape);
+    for (const b of card.querySelectorAll<HTMLElement>("[data-text-size]")) b.classList.toggle("on", b.dataset.textSize === o.textSize);
+    for (const b of card.querySelectorAll<HTMLElement>("[data-font]")) b.classList.toggle("on", b.dataset.font === o.font);
     for (const b of card.querySelectorAll<HTMLElement>("[data-theme]")) b.classList.toggle("on", b.dataset.theme === o.theme);
     for (const b of card.querySelectorAll<HTMLElement>("[data-photo]")) {
       const at = o.photos.indexOf(b.dataset.photo!);
@@ -443,7 +485,7 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     const left = drawCard(canvas, data(), o, pictures);
     canvas.dataset.shape = o.shape;
     card.querySelector<HTMLElement>('[data-el="left-out"]')!.textContent = left
-      ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit. Fewer log lines, fewer photos or a taller shape make room.`
+      ? `${left} thing${left === 1 ? "" : "s"} at the end did not fit. Smaller text, another font, fewer photos or log lines, or a taller shape make room.`
       : "";
     // The yarn with no price or amount, a pattern with no price, and no hour cost for the cost with time.
     const costing = COSTS.some((k) => o.show.includes(k));
@@ -462,6 +504,8 @@ export async function openProjectCard(project: Project, hooks: CardHooks = {}): 
     const btn = closestEl(e.target, "button");
     if (!btn) return;
     if (btn.dataset.shape) o.shape = btn.dataset.shape as Shape;
+    if (btn.dataset.textSize) o.textSize = btn.dataset.textSize as TextSize;
+    if (btn.dataset.font) o.font = btn.dataset.font as Font;
     if (btn.dataset.theme) o.theme = btn.dataset.theme as Theme;
     if (btn.dataset.photo) {
       const key = btn.dataset.photo;

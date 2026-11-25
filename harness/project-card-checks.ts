@@ -136,6 +136,12 @@ function pure(results: CheckResult[]): void {
   const tight = fitBlocks(ctx, crowded, 952, 1350 - 64 - 740 - 48 - 64);
   const kept = tight.laid.map((l) => (l.block.kind === "fact" ? l.block.label : l.block.kind));
   check(results, "a crowded card keeps its time and cost, what is left out is from the end", tight.left > 0 && kept.includes("Time") && kept.includes("Cost"), `${kept.join()} (${tight.left} left out)`);
+  const small = fitBlocks(ctx, crowded, 952, 1350 - 64 - 740 - 48 - 64, { textSize: "small" });
+  check(results, "smaller text makes room: less is left out", small.left < tight.left && small.scale < tight.scale, `large ${tight.left} left at ${tight.scale}, small ${small.left} left at ${small.scale}`);
+  const medium = fitBlocks(ctx, text, 952, 2000, { textSize: "medium" });
+  check(results, "…and with room, the words are at the size chosen", medium.scale === 0.85 && medium.left === 0, String(medium.scale));
+  const modern = fitBlocks(ctx, crowded, 952, 1350 - 64 - 740 - 48 - 64, { font: "modern" });
+  check(results, "another font is measured as it is drawn", modern.laid.length > 0 && modern.laid.length + modern.left === crowded.length);
   const roomy = fitBlocks(ctx, text, 952, 1000);
   check(results, "…and with room, all of it at its size", roomy.left === 0 && roomy.scale === 1);
 }
@@ -202,6 +208,17 @@ export async function verifyProjectCard() {
     click('[data-theme="night"]');
     await waitFor(() => near(pixel(canvas(), 8, 1910), "#1d1c21"), "night");
     check(results, "…and its colours", true);
+    // The card as drawn, to see it change.
+    const bodyOf = () => canvas().toDataURL();
+    const large = bodyOf();
+    click('[data-text-size="small"]');
+    await waitFor(() => !!dlg()!.querySelector('[data-text-size="small"].on'), "small text");
+    await wait(150);
+    const smallPic = bodyOf();
+    click('[data-font="soft"]');
+    await waitFor(() => !!dlg()!.querySelector('[data-font="soft"].on'), "the soft font");
+    await wait(150);
+    check(results, "its text size and font are chosen, the card drawn again with each", large !== smallPic && smallPic !== bodyOf() && dlg()!.querySelectorAll(".pc-sizes .on, .pc-fonts .on").length === 2);
 
     // Photos taken out, and one put back: it is first.
     for (const b of [...dlg()!.querySelectorAll<HTMLElement>(".pc-photo.on")]) b.click();
@@ -245,7 +262,7 @@ export async function verifyProjectCard() {
     check(results, "closed, the page shows the size said", page()!.querySelector<HTMLInputElement>('[data-f="size"]')!.value === "M (2nd size)");
     page()!.querySelector<HTMLElement>('[data-act="card"]')!.click();
     await waitFor(() => !!dlg() && canvas().height === 1920, "the card again");
-    check(results, "opened again, it is as it was left: a story, night, one photo, the line from the log", dlg()!.querySelector('[data-theme="night"].on') !== null && dlg()!.querySelectorAll(".pc-photo.on").length === 1 && dlg()!.querySelector<HTMLInputElement>(`[data-log="${words.id}"]`)!.checked);
+    check(results, "opened again, it is as it was left: a story, night, small text in the soft font, one photo, the line from the log", dlg()!.querySelector('[data-theme="night"].on') !== null && !!dlg()!.querySelector('[data-text-size="small"].on') && !!dlg()!.querySelector('[data-font="soft"].on') && dlg()!.querySelectorAll(".pc-photo.on").length === 1 && dlg()!.querySelector<HTMLInputElement>(`[data-log="${words.id}"]`)!.checked);
     click('[data-act="close"]');
     await waitFor(() => !dlg(), "closed");
 
