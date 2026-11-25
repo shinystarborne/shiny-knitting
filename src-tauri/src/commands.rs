@@ -154,6 +154,8 @@ fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
             .ok_or_else(|| AppError::Message("No file was given to add.".into()))?,
     };
 
+    is_what_it_says(format, bytes)?;
+
     let hash = db::hash_bytes(bytes);
     // Bound first: in the `if let` itself the lock would be held through the
     // block, and restoring takes it again -- a lock waiting on itself for ever.
@@ -172,6 +174,9 @@ fn add_pattern_to(state: &AppState, input: PatternInput) -> CmdResult<Pattern> {
     let dest = dir.join(format!("{}.{}", id, ext));
     // Copy rather than move: the user's original is theirs to keep.
     std::fs::write(&dest, bytes)?;
+    if let Some(path) = &source {
+        keep_internet_mark(path, &dest);
+    }
 
     let stored =
         match db::insert_pattern(&state.db(), &id, &input, &dest.to_string_lossy(), format, &hash)
@@ -252,6 +257,39 @@ fn with_file_checked(mut pattern: Pattern) -> Pattern {
 
 /// A pattern whose file went missing, given its file again: copied into the
 /// library as when it was added, everything else of it as it was.
+/// A file is what its name says before it goes in the library: a PDF begins
+/// with `%PDF-` (within its first 1024 bytes, as readers allow), an EPUB is a
+/// zip. Anything else named so (a program renamed, say) is refused, so it is
+/// never kept, or handed to Windows to open, as a pattern.
+fn is_what_it_says(format: &str, bytes: &[u8]) -> CmdResult<()> {
+    let ok = match format {
+        "pdf" => bytes[..bytes.len().min(1024)].windows(5).any(|w| w == b"%PDF-"),
+        "epub" => bytes.starts_with(b"PK\x03\x04"),
+        _ => false,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(AppError::Message(format!("This file is not a {}, whatever its name says, so it was not added.", format.to_uppercase())))
+    }
+}
+
+/// Windows marks a file that came from the internet (its Zone.Identifier);
+/// it is what makes a PDF reader open it in Protected View. The library's copy
+/// keeps that mark, so opening it outside the app is as careful as opening
+/// the download. Nothing to keep, or not on Windows, nothing is done.
+fn keep_internet_mark(from: &Path, to: &Path) {
+    #[cfg(windows)]
+    {
+        let stream = |p: &Path| PathBuf::from(format!("{}:Zone.Identifier", p.display()));
+        if let Ok(mark) = std::fs::read(stream(from)) {
+            let _ = std::fs::write(stream(to), mark);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (from, to);
+}
+
 #[tauri::command]
 pub fn replace_pattern_file(state: State<'_, AppState>, id: String, source_path: String) -> CmdResult<Pattern> {
     replace_pattern_file_in(&state, &id, &source_path)
@@ -265,10 +303,12 @@ fn replace_pattern_file_in(state: &AppState, id: &str, source_path: &str) -> Cmd
         return Err(AppError::Message(format!("This file is not a {}, like this pattern.", pattern.format.to_uppercase())));
     }
     let bytes = std::fs::read(&source).map_err(|e| AppError::Message(format!("Could not read {}: {}", source.display(), e)))?;
+    is_what_it_says(&pattern.format, &bytes)?;
     let dir = state.library_dir.join("originals");
     std::fs::create_dir_all(&dir)?;
     let dest = dir.join(format!("{id}.{ext}"));
     std::fs::write(&dest, &bytes)?;
+    keep_internet_mark(&source, &dest);
     db::set_pattern_file(&state.db(), id, &dest.to_string_lossy(), &db::hash_bytes(&bytes))?;
     Ok(with_file_checked(db::get_pattern(&state.db(), id)?))
 }
@@ -1538,6 +1578,37 @@ mod tests {
     }
 
     #[test]
+    fn a_file_that_is_not_what_its_name_says_is_not_added() {
+        let (state, dir) = state_in_temp_library();
+        // A program renamed: Windows programs begin MZ.
+        let err = add_pattern_to(&state, dropped("Free pattern", "free.pdf", b"MZ\x90\x00 a program")).unwrap_err().to_string();
+        assert!(err.contains("not a PDF"), "{err}");
+        assert!(add_pattern_to(&state, dropped("Shawl book", "shawls.epub", b"%PDF-1.7")).is_err(), "a PDF named .epub");
+        assert!(db::list_patterns(&state.db(), &Default::default()).unwrap().is_empty(), "nothing kept");
+        assert_eq!(std::fs::read_dir(state.library_dir.join("originals")).map(|d| d.count()).unwrap_or(0), 0, "no file left");
+        // The real thing goes in: a PDF's header may come after a little junk.
+        add_pattern_to(&state, dropped("Socks", "socks.pdf", b"\r\n%PDF-1.7 socks")).unwrap();
+        add_pattern_to(&state, dropped("Hats", "hats.epub", b"PK\x03\x04 hats")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_download_keeps_its_internet_mark_in_the_library() {
+        let (state, dir) = state_in_temp_library();
+        let download = dir.join("downloaded.pdf");
+        std::fs::write(&download, b"%PDF-1.7 from the web").unwrap();
+        let mark = b"[ZoneTransfer]\r\nZoneId=3\r\n";
+        std::fs::write(format!("{}:Zone.Identifier", download.display()), mark).unwrap();
+        let mut input = dropped("Web socks", "downloaded.pdf", b"");
+        input.bytes = None;
+        input.source_path = Some(download.to_string_lossy().to_string());
+        let added = add_pattern_to(&state, input).unwrap();
+        assert_eq!(std::fs::read(format!("{}:Zone.Identifier", added.file_path)).unwrap(), mark, "the copy is marked as from the internet");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_pattern_whose_file_went_missing_is_said_so_and_can_be_given_it_again() {
         let (state, dir) = state_in_temp_library();
         let added = add_pattern_to(&state, dropped("Lost Socks", "lost.pdf", b"%PDF-1.7 lost")).unwrap();
@@ -1579,10 +1650,10 @@ mod tests {
     fn adding_the_same_file_twice_is_refused_with_the_existing_title() {
         let (state, dir) = state_in_temp_library();
 
-        let first = add_pattern_to(&state, dropped("First Socks", "one.pdf", b"same bytes")).unwrap();
+        let first = add_pattern_to(&state, dropped("First Socks", "one.pdf", b"%PDF-1.7 same bytes")).unwrap();
 
         // The same contents under a different file name are the same pattern.
-        let err = add_pattern_to(&state, dropped("Second Copy", "two.pdf", b"same bytes"))
+        let err = add_pattern_to(&state, dropped("Second Copy", "two.pdf", b"%PDF-1.7 same bytes"))
             .unwrap_err();
         assert!(matches!(err, AppError::AlreadyHave(_)), "got {err}");
         // The frontend prefix-matches on this exact wording to offer opening
@@ -1594,7 +1665,7 @@ mod tests {
         );
 
         // A different file that happens to share a name is not a duplicate.
-        let other = add_pattern_to(&state, dropped("Renamed", "one.pdf", b"new bytes")).unwrap();
+        let other = add_pattern_to(&state, dropped("Renamed", "one.pdf", b"%PDF-1.7 new bytes")).unwrap();
         assert_ne!(other.id, first.id);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1607,7 +1678,7 @@ mod tests {
         // Added from a path on disk, the way the native dialog hands one over.
         let source = dir.join("downloads").join("Socks.pdf");
         std::fs::create_dir_all(source.parent().unwrap()).unwrap();
-        std::fs::write(&source, b"shared contents").unwrap();
+        std::fs::write(&source, b"%PDF-1.7 shared contents").unwrap();
         let via_path = add_pattern_to(
             &state,
             PatternInput {
@@ -1623,7 +1694,7 @@ mod tests {
 
         // The same contents dropped in as bytes are recognised as the same
         // pattern, whichever way they arrived the first time.
-        let err = add_pattern_to(&state, dropped("Dropped Copy", "dropped.pdf", b"shared contents"))
+        let err = add_pattern_to(&state, dropped("Dropped Copy", "dropped.pdf", b"%PDF-1.7 shared contents"))
             .unwrap_err();
         assert!(matches!(err, AppError::AlreadyHave(_)), "got {err}");
         assert!(

@@ -180,6 +180,9 @@ export class EpubView implements RenderedDoc {
     // Strip scripts and any inline event handlers. A pattern book has no need
     // to run code, and this keeps the iframe from doing anything unexpected.
     doc.querySelectorAll("script").forEach((s) => s.remove());
+    // Nor anything that would load or send something else in its place: a
+    // refresh or base to another address, a frame, an object or a form.
+    doc.querySelectorAll("meta[http-equiv], base, iframe, frame, frameset, object, embed, applet, form, link").forEach((el) => el.remove());
     doc.querySelectorAll("*").forEach((el) => {
       for (const attr of [...el.attributes]) {
         if (attr.name.toLowerCase().startsWith("on")) el.removeAttribute(attr.name);
