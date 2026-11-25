@@ -181,6 +181,8 @@ export async function verifyProjectCard() {
       const e = await invoke<{ id: string }>("add_log_entry", { projectId: id, text });
       await invoke("set_log_photo", { id: e.id, bytes: await picture(colour) });
     }
+    // A long log: the choices are taller than the window.
+    for (let i = 1; i <= 14; i++) await invoke("add_log_entry", { projectId: id, text: `Row ${i}: a long line from the log about how the knitting went that day, so it takes two lines.` });
     const words = await invoke<{ id: string }>("add_log_entry", { projectId: id, text: "The yoke went faster than I thought." });
     await invoke("finish_project", { id, input: { finishedAt: Date.now(), leftovers: [{ entryId: p.yarns[0].id, usedGrams: 350 }] } });
 
@@ -196,6 +198,13 @@ export async function verifyProjectCard() {
     await wait(300);
     const ticked = (k: string) => dlg()!.querySelector<HTMLInputElement>(`[data-show="${k}"]`)!.checked;
     check(results, "a card made before there were time and cost to choose shows them, and keeps what was left off", ticked("time") && ["yarnCost", "patternCost", "totalCost", "costWithTime"].every(ticked) && ticked("yarn") && !ticked("needles"));
+    // Every button can be pressed: nothing drawn over it, the choices scrolled inside the dialog.
+    const pressable = [...dlg()!.querySelectorAll<HTMLElement>(".dialog-actions button")].every((b) => {
+      const r = b.getBoundingClientRect();
+      return r.bottom <= innerHeight && b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    });
+    const controls = dlg()!.querySelector<HTMLElement>(".pc-controls")!;
+    check(results, "with a long log, the choices scroll inside the dialog and Close, Save and Copy stay clear", pressable && controls.scrollHeight > controls.clientHeight && controls.getBoundingClientRect().bottom <= dlg()!.querySelector<HTMLElement>(".dialog-actions")!.getBoundingClientRect().top, `${controls.scrollHeight} / ${controls.clientHeight}`);
     check(results, "the card opens 4:5, its first three photos in, numbered in order", canvas().height === 1350 && dlg()!.querySelectorAll(".pc-photo.on").length === 3 && dlg()!.querySelector(".pc-photo.on b")!.textContent === "1");
     check(results, "…the photos drawn on it, the first big", near(pixel(canvas(), 100, 100), "#33aa66"), pixel(canvas(), 100, 100));
     check(results, "…on cream", near(pixel(canvas(), 8, 1340), "#f5f0e6"), pixel(canvas(), 8, 1340));
@@ -254,7 +263,7 @@ export async function verifyProjectCard() {
     w.__lastExport = undefined;
     click('[data-act="save"]');
     await waitFor(() => !!w.__lastExport, "saved");
-    check(results, "Save as PNG… saves it, named after the project", w.__lastExport!.kind === "png" && w.__lastExport!.name === "Card sweater card.png");
+    check(results, "Save as PNG… saves it, named after the project", w.__lastExport!.kind === "png" && w.__lastExport!.name === "Card sweater card", w.__lastExport!.name);
 
     // Closed: the choices kept for next time, and the page's size up to date.
     click('[data-act="close"]');

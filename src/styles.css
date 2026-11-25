@@ -4029,11 +4029,13 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .pc-preview { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-height: 0; }
 .pc-preview canvas { max-width: 100%; max-height: calc(76vh - 30px); width: auto; height: auto; border-radius: 6px; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45); }
 .pc-preview .hint { margin: 0; color: #ffcf8a; text-align: center; }
-.pc-controls { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding-right: 4px; }
+/* As tall as the preview at most, scrolled inside it: a long log does not run over the buttons. */
+.pc-controls { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding-right: 4px; max-height: 76vh; min-height: 0; }
 .pc-themes { display: flex; flex-wrap: wrap; gap: 6px; }
 .pc-theme { padding: 5px 12px; font-size: 13px; border-radius: 8px; border: 2px solid; cursor: pointer; opacity: 0.75; }
 .pc-theme.on { opacity: 1; outline: 2px solid var(--accent); outline-offset: 2px; }
 .pc-photos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pc-photos > .hint { grid-column: 1 / -1; }
 .pc-photo { position: relative; padding: 0; aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 2px solid transparent; background: var(--bg-input); cursor: pointer; opacity: 0.55; }
 .pc-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pc-photo.on { opacity: 1; border-color: var(--accent); }
@@ -4043,6 +4045,7 @@ button.tag.shop-tag.on { background: var(--accent-soft); border-color: var(--acc
 .pc-log .hint { font-style: normal; }
 @media (max-width: 760px) {
   .pc-body { grid-template-columns: 1fr; max-height: none; }
+  .pc-controls { max-height: none; }
 }
 
 /* ---------- masterclasses: videos kept to learn from ---------- */
