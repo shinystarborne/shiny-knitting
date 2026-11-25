@@ -1,4 +1,5 @@
 import * as pdfjs from "pdfjs-dist";
+import { openPdf } from "../pdf-open";
 import { api, toBytes, type Pattern } from "../api";
 import { customDialog } from "../dialogs";
 import { closestEl } from "../dom";
@@ -31,7 +32,7 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
     let observer: IntersectionObserver | null = null;
     const finish = () => {
       observer?.disconnect();
-      void thumbDoc?.destroy();
+      void thumbDoc?.loadingTask.destroy();
       dialog.close();
       resolve();
     };
@@ -92,7 +93,7 @@ export function savePagesDialog(pattern: Pattern, source: PagesSource): Promise<
     } else {
       list.innerHTML = Array.from({ length: max }, (_, i) => `<button class="save-thumb" data-page="${i + 1}" title="Page ${i + 1}"><canvas></canvas><span>${i + 1}</span></button>`).join("");
       void api.readFile(pattern.id).then(async (raw) => {
-        thumbDoc = await pdfjs.getDocument({ isEvalSupported: false, data: toBytes(raw).slice() }).promise;
+        thumbDoc = await openPdf(toBytes(raw)).promise;
         observer = new IntersectionObserver(
           (entries) => {
             for (const entry of entries) {
@@ -178,7 +179,7 @@ async function drawThumb(doc: pdfjs.PDFDocumentProxy, tile: HTMLElement): Promis
     const canvas = tile.querySelector("canvas")!;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
+    await page.render({ canvas, viewport }).promise;
     tile.classList.add("drawn");
   } catch {
     // A page that cannot be drawn small is still chosen by its number.

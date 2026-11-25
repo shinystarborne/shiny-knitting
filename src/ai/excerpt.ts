@@ -1,4 +1,5 @@
 import * as pdfjs from "pdfjs-dist";
+import { openPdf } from "../pdf-open";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { unzipSync, strFromU8 } from "fflate";
 
@@ -42,9 +43,9 @@ export async function extractExcerpt(
 export async function pageCount(format: "pdf" | "epub", bytes: Uint8Array): Promise<number> {
   if (format !== "pdf") return 0;
   try {
-    const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
+    const doc = await openPdf(bytes).promise;
     const n = doc.numPages;
-    await doc.destroy().catch(() => {});
+    await doc.loadingTask.destroy().catch(() => {});
     return n;
   } catch {
     return 0;
@@ -150,7 +151,7 @@ async function pictureForModel(blob: Blob): Promise<string | null> {
 }
 
 async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
-  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
+  const doc = await openPdf(bytes).promise;
   try {
     const out: string[] = [];
     const pages = Math.min(VISION_PAGES, doc.numPages);
@@ -171,7 +172,7 @@ async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       // Drawn as for printing: not waiting on the screen's frames, which do
       // not come while the app's window is behind another or minimised.
-      await page.render({ canvasContext: ctx, viewport, intent: "print" }).promise;
+      await page.render({ canvas, viewport, intent: "print" }).promise;
 
       const dataUrl = canvas.toDataURL("image/jpeg", VISION_QUALITY);
       // toDataURL on a blank or failed render still returns a valid but
@@ -181,12 +182,12 @@ async function pdfPageImages(bytes: Uint8Array): Promise<string[]> {
     }
     return out;
   } finally {
-    await doc.destroy().catch(() => {});
+    await doc.loadingTask.destroy().catch(() => {});
   }
 }
 
 async function excerptFromPdf(bytes: Uint8Array, maxChars: number): Promise<string> {
-  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
+  const doc = await openPdf(bytes).promise;
   try {
     const pages = Math.min(MAX_PDF_PAGES, doc.numPages);
     const parts: string[] = [];
@@ -205,7 +206,7 @@ async function excerptFromPdf(bytes: Uint8Array, maxChars: number): Promise<stri
     }
     return parts.join("\n\n");
   } finally {
-    await doc.destroy().catch(() => {});
+    await doc.loadingTask.destroy().catch(() => {});
   }
 }
 

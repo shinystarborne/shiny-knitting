@@ -27,10 +27,11 @@
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "fflate": "^0.8.2",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^4.9.155"
+    "pdfjs-dist": "^6.5.438"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
+    "@types/node": "^24.19.3",
     "monocart-coverage-reports": "3.2.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.8"

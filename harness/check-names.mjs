@@ -80,4 +80,5 @@ export const CHECKS = [
   "__cardKeyChecks",
   "__pictureChartChecks",
   "__keptWholeChecks",
+  "__pdfDecoderChecks",
 ];

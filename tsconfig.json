@@ -14,6 +14,7 @@
     "resolveJsonModule": true,
     "useDefineForClassFields": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
   "include": ["src", "vite.config.ts", "harness"],

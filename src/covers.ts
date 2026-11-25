@@ -1,4 +1,5 @@
 import * as pdfjs from "pdfjs-dist";
+import { openPdf } from "./pdf-open";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { unzipSync, strFromU8 } from "fflate";
 import { api, toBytes, type Pattern } from "./api";
@@ -36,7 +37,7 @@ export async function extractFromDocument(
 
 /** Renders page 1 of a PDF to a JPEG. */
 async function extractFromPdf(bytes: Uint8Array): Promise<ExtractedCover | null> {
-  const doc = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
+  const doc = await openPdf(bytes).promise;
   try {
     const page = await doc.getPage(1);
     const base = page.getViewport({ scale: 1 });
@@ -55,12 +56,12 @@ async function extractFromPdf(bytes: Uint8Array): Promise<ExtractedCover | null>
     // dark card. Paper is white, so paint it.
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await page.render({ canvas, viewport }).promise;
 
     const blob = await toJpeg(canvas, 0.85);
     return blob ? { blob, source: "pdf-first-page" } : null;
   } finally {
-    await doc.destroy().catch(() => {});
+    await doc.loadingTask.destroy().catch(() => {});
   }
 }
 

@@ -244,14 +244,14 @@ async function pdfChecks(results: CheckResult[]): Promise<void> {
   const page = await doc.getPage(1);
   const [, , w, h] = page.view;
   check(results, "…on A4", Math.abs(w - 595.28) < 0.5 && Math.abs(h - 841.89) < 0.5, `${w} × ${h}`);
-  await doc.destroy();
+  await doc.loadingTask.destroy();
 
   const wide = newGrid({ kind: "standard", width: 120, height: 100 });
   const tiled = chartPdf("Blanket", wide, { paper: "letter", squares: 7, words: false });
   const tdoc = await pdfjs.getDocument({ data: tiled.slice() }).promise;
   const head = ((await (await tdoc.getPage(1)).getTextContent()).items as { str: string }[]).map((i) => i.str).join(" ");
   check(results, "a chart too big for a page goes over several, stitch 1 and row 1 first", tdoc.numPages > 6 && /Page 1 of \d+: stitches 1–\d+, rows 1–\d+/.test(head), `${tdoc.numPages}: ${head.slice(0, 160)}`);
-  await tdoc.destroy();
+  await tdoc.loadingTask.destroy();
 }
 
 export async function verifyCharts() {

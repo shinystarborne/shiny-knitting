@@ -36,7 +36,7 @@ async function pageTexts(bytes: Uint8Array): Promise<string[]> {
     const items = (await (await doc.getPage(n)).getTextContent()).items as { str: string }[];
     out.push(items.map((i) => i.str).join(" ").replace(/\s+/g, " ").trim());
   }
-  await doc.destroy();
+  await doc.loadingTask.destroy();
   return out;
 }
 
@@ -63,7 +63,7 @@ async function pure(results: CheckResult[]): Promise<void> {
   check(results, "chosen pages of a PDF are copied as they are, words and all, in the order chosen", copied.length === 2 && copied[0] === original[2] && copied[1] === original[0] && copied[0].length > 0, `${copied.length} pages`);
   const savedDoc = await pdfjs.getDocument({ data: saved.slice() }).promise;
   check(results, "…titled", (((await savedDoc.getMetadata()).info as { Title?: string }).Title ?? "") === "Two pages");
-  await savedDoc.destroy();
+  await savedDoc.loadingTask.destroy();
 
   // EPUB chapters, laid out on A4.
   const para = (n: number) => `<p>Row ${n}: knit across, then purl back, keeping the edge stitches in garter.</p>`;
@@ -73,7 +73,7 @@ async function pure(results: CheckResult[]): Promise<void> {
   const doc = await pdfjs.getDocument({ data: pdf.slice() }).promise;
   const [, , w, h] = (await doc.getPage(1)).view;
   check(results, "EPUB chapters are laid out on A4 pages, a long one over several, each chapter on a new page", doc.numPages >= 3 && Math.abs(w - 595.28) < 0.5 && Math.abs(h - 841.89) < 0.5, `${doc.numPages} pages, ${w} × ${h}`);
-  await doc.destroy();
+  await doc.loadingTask.destroy();
 }
 
 export async function verifySavePages() {
@@ -126,7 +126,7 @@ export async function verifySavePages() {
     await waitFor(() => /Saved to/.test(dialog()?.querySelector('[data-el="status"]')?.textContent ?? ""), "the chapters saved", 60000);
     const doc = await pdfjs.getDocument({ data: last()!.bytes.slice() }).promise;
     check(results, "…saved as A4 pages, every chapter chosen", doc.numPages >= dialog()!.querySelectorAll(".save-chapter").length, String(doc.numPages));
-    await doc.destroy();
+    await doc.loadingTask.destroy();
     (dialog()!.querySelector('[data-act="cancel"]') as HTMLElement).click();
   } catch (err) {
     check(results, "the suite ran to completion", false, String((err as Error)?.message ?? err));

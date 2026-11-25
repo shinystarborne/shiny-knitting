@@ -1,4 +1,5 @@
 import * as pdfjs from "pdfjs-dist";
+import { openPdf } from "../pdf-open";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { api, isLive, toBytes, type Cheatsheet, type Pattern, type SheetRegion } from "../api";
 import { askChoice, askForm, askYesNo, say } from "../dialogs";
@@ -527,7 +528,7 @@ export async function drawSheetPages(
 ): Promise<string | null> {
   let doc: pdfjs.PDFDocumentProxy;
   try {
-    doc = await pdfjs.getDocument({ isEvalSupported: false, data: toBytes(await api.readFile(book.id)) }).promise;
+    doc = await openPdf(toBytes(await api.readFile(book.id))).promise;
   } catch (err) {
     return `The book could not be read: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -552,12 +553,12 @@ export async function drawSheetPages(
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       place(canvas);
-      await page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -box.x * viewport.width, -box.y * viewport.height] }).promise;
+      await page.render({ canvas, viewport, transform: [1, 0, 0, 1, -box.x * viewport.width, -box.y * viewport.height] }).promise;
       page.cleanup();
     }
     return null;
   } finally {
-    await doc.destroy().catch(() => {});
+    await doc.loadingTask.destroy().catch(() => {});
   }
 }
 

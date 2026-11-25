@@ -1,4 +1,5 @@
 import * as pdfjs from "pdfjs-dist";
+import { openPdf } from "../pdf-open";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { findTextMatches, findTextParts, pageSearchText, rectsForRanges } from "../annotations";
 import { addressUrl, findAddresses } from "./links";
@@ -210,7 +211,7 @@ export class PdfView implements RenderedDoc {
 
   async load(bytes: Uint8Array): Promise<void> {
     // pdf.js takes ownership of a copy of the buffer.
-    this.task = await pdfjs.getDocument({ isEvalSupported: false, data: bytes.slice() }).promise;
+    this.task = await openPdf(bytes).promise;
     this.pageCount = this.task.numPages;
 
     for (let n = 1; n <= this.pageCount; n++) {
@@ -579,7 +580,7 @@ export class PdfView implements RenderedDoc {
     if (!ctx) return;
     this.regionTasks.get(canvas)?.cancel();
     const task = page.render({
-      canvasContext: ctx,
+      canvas,
       viewport: this.viewportOf(page, s),
       transform: [1, 0, 0, 1, -shown.x * base.width * s, -shown.y * base.height * s],
     });
@@ -689,7 +690,7 @@ export class PdfView implements RenderedDoc {
       // after it came into view, or a zoom mid-paint -- cancels the older
       // paint: pdf.js refuses two paints into one canvas at once.
       this.pageTasks.get(n)?.cancel();
-      const task = page.render({ canvasContext: ctx, viewport });
+      const task = page.render({ canvas, viewport });
       this.pageTasks.set(n, task);
       try {
         await task.promise;
@@ -811,6 +812,9 @@ export class PdfView implements RenderedDoc {
         annotationCanvasMap: null,
         annotationEditorUIManager: null,
         structTreeLayer: null,
+        commentManager: null,
+        linkService: this.linkService,
+        annotationStorage: null,
       });
       await layer.render({
         annotations: links,
@@ -1106,7 +1110,7 @@ export class PdfView implements RenderedDoc {
     this.resizeObserver.disconnect();
     if (this.onScroll) this.scroller.removeEventListener("scroll", this.onScroll);
     this.observer?.disconnect();
-    this.task?.destroy();
+    void this.task?.loadingTask.destroy();
     this.container.remove();
     this.pages = [];
     this.paintRound++;

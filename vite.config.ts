@@ -1,8 +1,11 @@
 import { defineConfig } from "vite";
+import { pdfjsWasm } from "./pdfjs-wasm.ts";
 
 // Tauri serves the built assets from src-tauri and points dev traffic at 1420.
 export default defineConfig({
   clearScreen: false,
+  // pdf.js's picture decoders, served beside the app.
+  plugins: [pdfjsWasm()],
   server: {
     port: 1420,
     strictPort: true,

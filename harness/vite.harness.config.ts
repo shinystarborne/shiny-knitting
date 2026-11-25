@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { pdfjsWasm } from "../pdfjs-wasm.ts";
 import { resolve } from "node:path";
 
 /**
@@ -10,6 +11,8 @@ import { resolve } from "node:path";
 export default defineConfig({
   root: resolve(import.meta.dirname, ".."),
   clearScreen: false,
+  // pdf.js's picture decoders, served beside the app.
+  plugins: [pdfjsWasm()],
   server: {
     port: 1421,
     strictPort: true,
