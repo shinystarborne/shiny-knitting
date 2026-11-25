@@ -2583,6 +2583,94 @@ pub fn finish_project(conn: &Connection, id: &str, input: &FinishInput) -> AppRe
     get_project(conn, id)
 }
 
+/// What is left of a finished project's yarn, said again: a slip at the
+/// finish put right. The difference goes back into its lot, or comes out of
+/// it, and off or onto what the project used; with some left, the yarn is in
+/// the stash again, and with none left anywhere, in its history. Said for a
+/// yarn left out at the finish, it is said as at the finish.
+pub fn change_leftover(conn: &Connection, project_id: &str, entry_id: &str, grams: i64) -> AppResult<Project> {
+    let project = get_project(conn, project_id)?;
+    if project.status != "finished" {
+        return Err(AppError::Message("Only a finished project's leftovers can be changed.".to_string()));
+    }
+    if grams < 0 {
+        return Err(AppError::Message("What is left is a number of grams, 0 or more.".to_string()));
+    }
+    let Some(entry) = project.yarns.iter().find(|y| y.id == entry_id) else {
+        return Err(AppError::Message("That yarn is not on this project.".to_string()));
+    };
+    let at = project.finished_at.unwrap_or_else(now_ms);
+    let tx = conn.unchecked_transaction()?;
+    // The lot it came from, as at the finish.
+    let lot: Option<String> = match &entry.lot_id {
+        Some(l) => tx.query_row("SELECT id FROM yarn_lots WHERE id = ?1", params![l], |r| r.get(0)).optional()?,
+        None => tx
+            .query_row("SELECT id FROM yarn_lots WHERE yarn_id = ?1 ORDER BY rowid LIMIT 1", params![entry.yarn_id], |r| r.get(0))
+            .optional()?,
+    };
+    let holds: i64 = match &lot {
+        Some(l) => tx.query_row(
+            &format!("SELECT {LOT_GRAMS} FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.id = ?1"),
+            params![l],
+            |r| r.get(0),
+        )?,
+        None => 0,
+    };
+    let used: i64 = tx.query_row(
+        "SELECT COALESCE(SUM(grams), 0) FROM yarn_usage WHERE project_id = ?1 AND yarn_id = ?2 AND source = 'finished'",
+        params![project_id, entry.yarn_id],
+        |r| r.get(0),
+    )?;
+    // What was said at the finish; left out then, the lot was not touched,
+    // and what it holds now is what it held.
+    let (was_left, had) = match entry.leftover_grams {
+        Some(g) => (g, g + used),
+        None => (holds, holds),
+    };
+    if had > 0 && grams > had {
+        return Err(AppError::Message(format!("{}: {grams} g left is more than the project had ({had} g).", entry.yarn_name)));
+    }
+    let back = grams - was_left;
+    let now_used = (used - back).max(0);
+    tx.execute(
+        "DELETE FROM yarn_usage WHERE project_id = ?1 AND yarn_id = ?2 AND source = 'finished'",
+        params![project_id, entry.yarn_id],
+    )?;
+    if now_used > 0 {
+        record_use(&tx, &entry.yarn_id, Some((project_id, project.name.as_str())), at, now_used, "finished")?;
+    }
+    tx.execute("UPDATE project_yarns SET leftover_grams = ?2 WHERE id = ?1", params![entry.id, grams])?;
+    match lot {
+        Some(l) => {
+            let after = (holds + back).max(0);
+            tx.execute(
+                "UPDATE yarn_lots SET grams_left = ?2, leftover = ?3, weighed = 1 WHERE id = ?1",
+                params![l, after, after > 0],
+            )?;
+        }
+        None if grams > 0 => {
+            tx.execute(
+                "INSERT INTO yarn_lots (id, yarn_id, dye_lot, balls, grams_left, location, bought_at, leftover, weighed)
+                 VALUES (?1, ?2, '', 0, ?3, '', NULL, 1, 1)",
+                params![uuid::Uuid::new_v4().to_string(), entry.yarn_id, grams],
+            )?;
+        }
+        None => {}
+    }
+    let left: i64 = tx.query_row(
+        &format!("SELECT COALESCE(SUM({LOT_GRAMS}), 0) FROM yarn_lots l JOIN yarns y ON y.id = l.yarn_id WHERE l.yarn_id = ?1"),
+        params![entry.yarn_id],
+        |r| r.get(0),
+    )?;
+    if left > 0 {
+        tx.execute("UPDATE yarns SET used_up_at = NULL WHERE id = ?1", params![entry.yarn_id])?;
+    } else {
+        tx.execute("UPDATE yarns SET used_up_at = ?2 WHERE id = ?1 AND used_up_at IS NULL", params![entry.yarn_id, at])?;
+    }
+    tx.commit()?;
+    get_project(conn, project_id)
+}
+
 /// Removes a project. Its tools and yarns are freed with it -- the links go,
 /// the needles and yarn stay.
 /// Moves a project between active, paused and frogged.

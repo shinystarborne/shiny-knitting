@@ -94,6 +94,12 @@ pub fn finish_project(state: State<'_, AppState>, id: String, input: FinishInput
     db::finish_project(&state.db(), &id, &input)
 }
 
+/// What is left of a finished project's yarn, said again.
+#[tauri::command]
+pub fn change_leftover(state: State<'_, AppState>, project_id: String, entry_id: String, grams: i64) -> CmdResult<Project> {
+    db::change_leftover(&state.db(), &project_id, &entry_id, grams)
+}
+
 /// The spells of knitting: one project's, or all of them.
 #[tauri::command]
 pub fn list_knit_sessions(state: State<'_, AppState>, project_id: Option<String>) -> CmdResult<Vec<KnitSession>> {

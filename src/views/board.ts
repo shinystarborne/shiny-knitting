@@ -283,7 +283,8 @@ export class Board {
     [this.items, this.patterns, this.yarns, this.tools, this.logEntries, this.charts] = await Promise.all([
       api.listBoardItems(this.boardId),
       api.listPatterns({}).catch(() => [] as Pattern[]),
-      api.listYarns({}).catch(() => [] as Yarn[]),
+      // Used up too: a yarn on the board is still this project's.
+      api.listYarns({ used: "all" }).catch(() => [] as Yarn[]),
       api.listTools().catch(() => [] as Tool[]),
       this.hooks.project() ? api.listProjectLog(this.boardId).catch(() => [] as LogEntry[]) : Promise.resolve([] as LogEntry[]),
       api.listCharts().catch(() => [] as Chart[]),
@@ -364,7 +365,7 @@ export class Board {
   async refreshLinked(): Promise<void> {
     [this.patterns, this.yarns, this.tools, this.charts] = await Promise.all([
       api.listPatterns({}).catch(() => this.patterns),
-      api.listYarns({}).catch(() => this.yarns),
+      api.listYarns({ used: "all" }).catch(() => this.yarns),
       api.listTools().catch(() => this.tools),
       api.listCharts().catch(() => this.charts),
     ]);
@@ -1012,7 +1013,9 @@ export class Board {
       if (id) await this.add("pattern", at, { patternId: id });
     } else if (kind === "yarn") {
       const own = new Set(this.hooks.project()?.yarns.map((y) => y.yarnId) ?? []);
+      // Used up, it is offered only as this project's own.
       const choices: Choice[] = this.yarns
+        .filter((y) => !y.usedUpAt || own.has(y.id))
         .map((y) => ({ value: y.id, label: [y.name, y.colourway, y.brand].filter(Boolean).join(" · "), group: own.has(y.id) ? "On this project" : "Stash" }))
         .sort((a, b) => (a.group === b.group ? a.label.localeCompare(b.label) : a.group === "Stash" ? 1 : -1));
       if (!choices.length) return void (await say("There is no yarn in the stash yet.", "Add a yarn"));

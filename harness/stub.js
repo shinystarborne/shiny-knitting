@@ -2432,6 +2432,39 @@ const handlers = {
     }
     return projectOut(pr);
   },
+  // As db::change_leftover: what is left said again; the difference into the lot and off what it used.
+  change_leftover: ({ projectId, entryId, grams }) => {
+    const pr = store.projects.find((x) => x.id === projectId);
+    if (!pr) throw new Error("This project no longer exists.");
+    if (pr.status !== "finished") throw new Error("Only a finished project's leftovers can be changed.");
+    if (!Number.isInteger(grams) || grams < 0) throw new Error("What is left is a number of grams, 0 or more.");
+    const e = store.projectYarns.find((x) => x.id === entryId && x.projectId === projectId);
+    if (!e) throw new Error("That yarn is not on this project.");
+    const yarn = store.yarns.find((y) => y.id === e.yarnId);
+    if (!yarn) throw new Error("That yarn is not on this project.");
+    const at = pr.finishedAt ?? Date.now();
+    let lot = (e.lotId ? yarn.lots.find((l) => l.id === e.lotId) : yarn.lots[0]) ?? null;
+    const holds = lot ? lotGrams(lot, yarn) : 0;
+    const mine = (u) => u.projectId === projectId && u.yarnId === yarn.id && u.source === "finished";
+    const used = store.yarnUsage.filter(mine).reduce((n, u) => n + u.grams, 0);
+    const [wasLeft, had] = e.leftoverGrams != null ? [e.leftoverGrams, e.leftoverGrams + used] : [holds, holds];
+    if (had > 0 && grams > had) throw new Error(`${yarn.name}: ${grams} g left is more than the project had (${had} g).`);
+    const back = grams - wasLeft;
+    const nowUsed = Math.max(0, used - back);
+    store.yarnUsage = store.yarnUsage.filter((u) => !mine(u));
+    if (nowUsed > 0) recordUse(yarn, pr, at, nowUsed, "finished");
+    e.leftoverGrams = grams;
+    if (lot) {
+      const after = Math.max(0, holds + back);
+      Object.assign(lot, { gramsLeft: after, leftover: after > 0, weighed: true });
+    } else if (grams > 0) {
+      lot = { id: `l${store.nextId++}`, yarnId: yarn.id, dyeLot: "", balls: 0, gramsLeft: grams, weighed: true, location: "", boughtAt: null, leftover: true, boughtGrams: null };
+      yarn.lots.push(lot);
+    }
+    if (yarn.lots.some((l) => lotGrams(l, yarn) > 0)) yarn.usedUpAt = null;
+    else if (!yarn.usedUpAt) yarn.usedUpAt = at;
+    return projectOut(pr);
+  },
   delete_project: ({ id }) => {
     if (!store.projects.some((x) => x.id === id)) throw new Error("This project no longer exists.");
     store.knitSessions = (store.knitSessions ?? []).filter((k) => k.projectId !== id);

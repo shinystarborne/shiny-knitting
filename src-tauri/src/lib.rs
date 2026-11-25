@@ -155,6 +155,7 @@ pub fn run() {
             projects::add_project,
             projects::update_project,
             projects::finish_project,
+            projects::change_leftover,
             projects::set_project_status,
             projects::set_plan_order,
             backup::make_backup,

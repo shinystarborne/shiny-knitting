@@ -45,6 +45,7 @@ export const CHECKS = [
   "__calcPeopleChecks",
   "__copyPictureChecks",
   "__projectCardChecks",
+  "__leftoverChecks",
   "__connectorChecks",
   "__masterclassChecks",
   "__tipChecks",

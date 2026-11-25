@@ -1,5 +1,5 @@
 import { api, isLive, isRecord, MEASUREMENTS, projectStatusLabel, type KnitSession, type LogEntry, type Masterclass, type MeasureUnit, type Pattern, type Yarn, type YarnUse, type Person, type Project, type ProjectInput, type ProjectStatus, type Tool } from "../api";
-import { askForm, askYesNo, dialogOpen, say } from "../dialogs";
+import { askForm, askText, askYesNo, dialogOpen, say } from "../dialogs";
 import { RowCounter } from "../reader/counter";
 import { ProjectChart } from "./project-chart";
 import { ReaderView } from "../reader/reader";
@@ -375,7 +375,8 @@ ${plan ? "" : `      <div class="project-side-dates">
                 .map((y) => {
                   const left = y.leftoverGrams === null ? "" : y.leftoverGrams === 0 ? " · used up" : ` · ${y.leftoverGrams} g left`;
                   const takes = y.plannedGrams && !finished ? ` · will take ${y.plannedGrams} g` : "";
-                  return `<li><span>${esc(`${y.yarnName}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${takes}${left}`)}</span></li>`;
+                  const change = p.status === "finished" ? ` <button class="link" data-act="leftover" data-id="${esc(y.id)}" title="Correct the amount left at the finish">Change</button>` : "";
+                  return `<li><span>${esc(`${y.yarnName}${y.dyeLot ? ` — lot ${y.dyeLot}` : ""}${takes}${left}`)}</span>${change}</li>`;
                 })
                 .join("")}</ul>`
             : `<p class="hint">None${finished ? " recorded" : " yet"}.</p>`
@@ -550,6 +551,31 @@ ${plan ? "" : `      <div class="project-side-dates">
     return `<p class="knit-worth" data-el="knit-worth">Project cost with time: <b>${esc(money(trueCost(cost, ms, rate), this.currency))}</b></p>`;
   }
 
+  /**
+   * What is left of one of its yarns, said again after the finish: the
+   * difference goes back into the stash, or comes out of it, and what it
+   * cost follows what it used.
+   */
+  private async changeLeftover(entryId: string): Promise<void> {
+    const y = this.project.yarns.find((x) => x.id === entryId);
+    if (!y) return;
+    const typed = await askText(`Grams of ${y.yarnName} left after the project (0 for none):`, {
+      title: "Yarn left",
+      value: y.leftoverGrams == null ? "" : String(y.leftoverGrams),
+      okLabel: "Save",
+    });
+    if (typed === null) return;
+    const raw = typed.trim().replace(",", ".");
+    if (!/^\d+(\.\d+)?$/.test(raw)) return void (await say(`“${typed.trim()}” is not a number of grams.`, "Yarn left"));
+    try {
+      this.project = await api.changeLeftover(this.projectId, entryId, Math.round(Number(raw)));
+    } catch (err) {
+      return void (await say(err instanceof Error ? err.message : String(err), "Yarn left"));
+    }
+    [this.yarns, this.uses] = await Promise.all([api.listYarns({ used: "all" }).catch(() => this.yarns), api.listYarnUsage().catch(() => this.uses)]);
+    this.renderSide();
+  }
+
   /** Keeps this project's hour's worth -- null for the standard -- and draws the time again. */
   private async setRate(rate: number | null): Promise<void> {
     try {
@@ -708,6 +734,7 @@ ${plan ? "" : `      <div class="project-side-dates">
     }
     if (act === "finish") this.hooks.finish(this.project);
     if (act === "rate-standard") return this.setRate(null);
+    if (act === "leftover" && btn.dataset.id) return this.changeLeftover(btn.dataset.id);
     if (act === "knit-start" || act === "knit-stop" || act === "knit-pause") {
       try {
         if (act === "knit-start") await api.startKnitting(this.projectId);

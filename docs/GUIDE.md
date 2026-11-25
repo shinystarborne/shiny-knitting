@@ -248,7 +248,9 @@ left"). What is left becomes what the lot holds, with a **Leftover** tag in the
 stash; nothing left is used up; left empty, the stash stays as it was. What it
 used goes into the stash's Statistics. It also offers to mark the pattern
 Finished. A finished project keeps the list of what it used and what was left,
-as a record.
+as a record. **Change** by a yarn on a finished project puts right what was
+left: the difference goes back into the stash (out of the History, if it was
+used up) or comes out of it, and what the project used follows.
 
 **The gallery.** The Projects tab switches between **Projects**, **Plans** and
 **Gallery**. Every finished project is in the gallery by itself, newest first,

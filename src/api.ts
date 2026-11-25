@@ -1600,6 +1600,8 @@ export const api = {
   /** Releases its tools and records each yarn's leftover in the stash. */
   finishProject: (id: string, leftovers: YarnLeftover[], finishedAt: number | null = null) =>
     invoke<Project>("finish_project", { id, input: { finishedAt, leftovers } }),
+  /** What is left of a finished project's yarn, said again: the difference goes back into the stash or comes out of it. */
+  changeLeftover: (projectId: string, entryId: string, grams: number) => invoke<Project>("change_leftover", { projectId, entryId, grams }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
   /** Active, paused or frogged; finishing goes through finishProject. */
   setProjectStatus: (id: string, status: ProjectStatus) => invoke<Project>("set_project_status", { id, status }),

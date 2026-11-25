@@ -2643,6 +2643,54 @@ fn finishing_takes_what_a_project_used_in_grams_or_balls() {
 }
 
 #[test]
+fn a_leftover_said_wrong_at_the_finish_is_put_right() {
+    let conn = test_db();
+    let wool = insert_yarn(&conn, "wool", &YarnInput { name: "Lettlopi".into(), grams_per_ball: 50, metres_per_ball: 100, lots: vec![lot("", 4.0, 0)], ..YarnInput::default() }).unwrap();
+    let silk = insert_yarn(&conn, "silk", &YarnInput { name: "Silk".into(), grams_per_ball: 50, lots: vec![lot("", 2.0, 0)], ..YarnInput::default() }).unwrap();
+    let yarns = [&wool, &silk].iter().map(|y| crate::models::ProjectYarnInput { id: None, yarn_id: y.id.clone(), lot_id: None, planned_grams: None }).collect();
+    let p = insert_project(&conn, "p", &crate::models::ProjectInput { name: "Sweater".into(), yarns, ..Default::default() }).unwrap();
+    let entry = |id: &str| p.yarns.iter().find(|e| e.yarn_id == id).unwrap().id.clone();
+    assert!(change_leftover(&conn, "p", &entry("wool"), 10).is_err(), "only once it is finished");
+    // All 200 g said used, the silk left out.
+    let finish = crate::models::FinishInput {
+        finished_at: Some(900),
+        leftovers: vec![crate::models::YarnLeftover { entry_id: entry("wool"), grams: Some(0), ..Default::default() }],
+    };
+    finish_project(&conn, "p", &finish).unwrap();
+    assert!(get_yarn(&conn, "wool").unwrap().used_up_at.is_some());
+
+    // 120 g was left after all: back in the stash, and the project used 80 g.
+    let done = change_leftover(&conn, "p", &entry("wool"), 120).unwrap();
+    assert_eq!(done.yarns.iter().find(|e| e.yarn_id == "wool").unwrap().leftover_grams, Some(120));
+    let w = get_yarn(&conn, "wool").unwrap();
+    assert_eq!((w.lots[0].grams_left, w.lots[0].leftover, w.used_up_at), (120, true, None), "in the stash again");
+    let took = |id: &str| list_yarn_usage(&conn).unwrap().iter().filter(|u| u.yarn_id.as_deref() == Some(id)).map(|u| (u.grams, u.metres, u.at)).collect::<Vec<_>>();
+    assert_eq!(took("wool"), vec![(80, 160, 900)], "one use, of what it really took, on the day it was finished");
+
+    // Some of it knitted into something else since: the change still adds up.
+    conn.execute("UPDATE yarn_lots SET grams_left = 100 WHERE yarn_id = 'wool'", []).unwrap();
+    change_leftover(&conn, "p", &entry("wool"), 150).unwrap();
+    assert_eq!(get_yarn(&conn, "wool").unwrap().lots[0].grams_left, 130, "30 g more left than said: 30 g more in the lot");
+    assert_eq!(took("wool"), vec![(50, 100, 900)]);
+    let err = change_leftover(&conn, "p", &entry("wool"), 250).unwrap_err().to_string();
+    assert!(err.contains("more than the project had (200 g)"), "{err}");
+    assert!(change_leftover(&conn, "p", &entry("wool"), -1).is_err());
+
+    // Back to none left, and nothing left anywhere: into the history again.
+    conn.execute("UPDATE yarn_lots SET grams_left = 150 WHERE yarn_id = 'wool'", []).unwrap();
+    change_leftover(&conn, "p", &entry("wool"), 0).unwrap();
+    let w = get_yarn(&conn, "wool").unwrap();
+    assert_eq!((w.lots[0].grams_left, w.used_up_at), (0, Some(900)));
+    assert_eq!(took("wool"), vec![(200, 400, 900)]);
+
+    // Left out at the finish, it is said as at the finish: 100 g held, 30 g left.
+    change_leftover(&conn, "p", &entry("silk"), 30).unwrap();
+    assert_eq!(get_yarn(&conn, "silk").unwrap().lots[0].grams_left, 30);
+    assert_eq!(took("silk").iter().map(|u| u.0).collect::<Vec<_>>(), vec![70]);
+    assert!(change_leftover(&conn, "p", "nope", 5).is_err());
+}
+
+#[test]
 fn finishing_releases_the_tools_and_records_the_leftovers() {
     let conn = test_db();
     insert_tool(&conn, "t1", &tool("circular", 4.0)).unwrap();
