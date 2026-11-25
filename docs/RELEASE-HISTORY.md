@@ -4,6 +4,8 @@
 
 The betas after [1.1.0](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.1.0), newest first.
 
+- **[v1.2.0-beta.4](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.4)** —
+  the card to post says the knitting time, the yarn's cost and the total; used-up yarn stays on the board; leftovers put right after the finish.
 - **[v1.2.0-beta.3](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.3)** —
   safer with files from anywhere: pdf.js 6.5, files checked to be what they say, downloads keep their internet mark.
 - **[v1.2.0-beta.2](https://github.com/shinystarborne/shiny-knitting/releases/tag/v1.2.0-beta.2)** —
