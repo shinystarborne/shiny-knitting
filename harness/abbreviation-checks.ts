@@ -105,6 +105,13 @@ export async function verifyAbbreviations() {
     tab("patterns");
     await waitFor(() => !!document.querySelector('.library [data-open="p1"]'), "the library");
     (document.querySelector('.library [data-open="p1"]') as HTMLElement).click();
+    // The words are on page 2, which is drawn only once near the view: scrolled
+    // to, rather than left to wherever an earlier suite left the pattern.
+    await waitFor(() => document.querySelectorAll(".reader .pdf-page").length >= 2, "the pattern's pages");
+    await new Promise((r) => setTimeout(r, 300));
+    const scroller = document.querySelector<HTMLElement>(".reader .doc-scroller")!;
+    scroller.scrollTop = document.querySelectorAll<HTMLElement>(".reader .pdf-page")[1].offsetTop - 40;
+    scroller.dispatchEvent(new Event("scroll"));
     const textNode = () => {
       for (const span of document.querySelectorAll<HTMLElement>(".reader .text-layer span")) {
         const node = span.firstChild;
@@ -123,7 +130,6 @@ export async function verifyAbbreviations() {
     range.setStart(node, at + 1);
     range.setEnd(node, at + 4);
     const rect = range.getBoundingClientRect();
-    const scroller = document.querySelector<HTMLElement>(".reader .doc-scroller")!;
     scroller.dispatchEvent(new MouseEvent("mousemove", { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, bubbles: true }));
     await waitFor(() => !!tip(), "the tip", 3000).catch(() => {});
     check(results, "in a pattern, resting on k2tog says what it means, beside it", /k2tog/.test(tip()?.textContent ?? "") && /Knit 2 together/.test(tip()?.textContent ?? ""), tip()?.textContent ?? `none (pointer at ${Math.round(rect.left)},${Math.round(rect.top)}, ${Math.round(rect.width)}×${Math.round(rect.height)})`);

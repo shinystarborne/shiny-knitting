@@ -50,6 +50,8 @@ async function main() {
   await new Promise((r) => (ws.onopen = r));
   await send("Runtime.enable");
   await send("Page.enable");
+  // Headless, the window never has focus; checks that leave a field need it.
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await send("Page.navigate", { url: "http://localhost:1422/harness/index.html" });
   await wait(4000); // let the app boot
 

@@ -657,9 +657,9 @@ export class PdfView implements RenderedDoc {
       const cssWidth = Math.floor(viewport.width / dpr);
       const cssHeight = Math.floor(viewport.height / dpr);
 
-      // pdf.js styles text-layer spans with calc(var(--scale-factor) * Npx);
-      // left unset, the spans inherit the document font size and every
-      // selection rectangle and text measurement on the page is wrong.
+      // pdf.js sizes text-layer spans and layers by the page's scale (see
+      // --total-scale-factor in styles.css); left unset, the spans take the
+      // document's font size and every selection and measurement is wrong.
       pageEl.style.setProperty("--scale-factor", String(scale));
 
       canvas.width = Math.floor(viewport.width);

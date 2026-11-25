@@ -715,6 +715,30 @@ kbd {
   transform-origin: 0 0;
   color: transparent;
 }
+/* pdf.js 6 gives each span its size and stretch as variables (--font-height,
+   --scale-x, --rotate) and the layers their size by the page's scale, for its
+   own stylesheet to apply; these are those rules. --scale-factor is set on
+   each page by pdf.ts; --min-font-size on the layer by pdf.js. */
+.pdf-page {
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+.text-layer {
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.text-layer > :not(.markedContent),
+.text-layer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.text-layer .markedContent { display: contents; }
 .text-layer ::selection {
   background: rgba(90, 169, 247, 0.45);
   color: transparent;

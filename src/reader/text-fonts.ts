@@ -48,8 +48,9 @@ export function fitTextToPdfFonts(divs: HTMLElement[], items: TextItem[]): numbe
     // come apart (a pdf.js that lays them out differently): left as they are.
     if (div && div.textContent !== item.str) continue;
     if (!div || div.dataset.pdfFont || !item.str.trim() || !item.fontName || !loaded.has(item.fontName)) continue;
-    const transform = div.style.transform;
-    if (/rotate/.test(transform)) continue;
+    // pdf.js 6 turns and stretches a span by variables its stylesheet applies.
+    const rotate = div.style.getPropertyValue("--rotate").trim();
+    if (rotate && rotate !== "0deg") continue;
     const standIn = div.style.fontFamily;
     const own = `"${item.fontName}", ${standIn}`;
     const before = widthOf(item.str, standIn);
@@ -60,10 +61,8 @@ export function fitTextToPdfFonts(divs: HTMLElement[], items: TextItem[]): numbe
     // Stretched as before, to the printed width: by as much more as the own
     // font is narrower. A span pdf.js did not stretch (its stand-in was the
     // width already) is stretched now, or the own font would change it.
-    const m = /scaleX\(([^)]+)\)/.exec(transform);
-    div.style.transform = m
-      ? transform.replace(m[0], `scaleX(${(Number(m[1]) * before) / after})`)
-      : `${transform} scaleX(${before / after})`.trim();
+    const stretch = Number(div.style.getPropertyValue("--scale-x")) || 1;
+    div.style.setProperty("--scale-x", String((stretch * before) / after));
     fitted++;
   }
   return fitted;

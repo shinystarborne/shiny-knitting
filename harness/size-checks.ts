@@ -100,13 +100,21 @@ export async function verifySizes() {
   const pick = () => document.querySelector<HTMLSelectElement>(".reader [data-size-pick]");
   const mine = () => [...document.querySelectorAll<HTMLElement>(".reader .size-mine")];
   const dim = () => [...document.querySelectorAll<HTMLElement>(".reader .size-dim")];
-  const sized = { ...store.patterns[0], id: "p-sized", title: "Sunday Cardigan", fileName: "sized-pattern.pdf", filePath: "library/originals/p-sized.pdf", format: "pdf", sizeIndex: null } as Pattern;
+  // Opened at its start, whatever place the pattern it is copied from was left at.
+  const sized = { ...store.patterns[0], id: "p-sized", title: "Sunday Cardigan", fileName: "sized-pattern.pdf", filePath: "library/originals/p-sized.pdf", format: "pdf", sizeIndex: null, lastPage: 0, lastScroll: 0 } as Pattern;
   store.patterns.push(sized);
   const open = async () => {
     tab("patterns");
     await waitFor(() => !!document.querySelector(".library"), "the library");
     document.querySelector(".library")!.dispatchEvent(new CustomEvent("open-pattern", { bubbles: true, detail: sized.id }));
     await waitFor(() => !!pick() && !pick()!.hidden, "the Size picker");
+    // Scrolled to where both pages are drawn: a page is drawn only when near
+    // the view, and the second begins below what a short pane reaches.
+    const scroller = document.querySelector<HTMLElement>(".reader .doc-scroller")!;
+    await waitFor(() => document.querySelectorAll(".reader .pdf-page").length >= 2, "both pages");
+    const second = document.querySelectorAll<HTMLElement>(".reader .pdf-page")[1];
+    scroller.scrollTop = Math.max(0, second.offsetTop - scroller.clientHeight / 2);
+    scroller.dispatchEvent(new Event("scroll"));
   };
 
   // What this suite changes in the store, put back at the end for the suites after it.

@@ -71,6 +71,9 @@ await send("Debugger.enable");
 await send("Profiler.enable");
 await send("Profiler.startPreciseCoverage", { callCount: true, detailed: true });
 await send("Page.enable");
+// Headless, the window never has focus; the checks that type into a field
+// and wait for it to be left need the page to act as if it had.
+await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 await send("Page.navigate", { url: PAGE });
 
 // The first load on a fresh dev server transforms every module; give it time.
@@ -136,6 +139,8 @@ await new Promise((r) => {
 });
 
 if (failed.length) {
+  // The run fails with them: a failed check printed in a green run is missed.
+  process.exitCode = 1;
   console.log(`\n${failed.length} check(s) failed:\n${failed.map((f) => `  ${f}`).join("\n")}`);
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Harness checks that failed\n\n${failed.map((f) => `- ${f}`).join("\n")}\n`);
